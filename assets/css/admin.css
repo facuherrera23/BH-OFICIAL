@@ -909,7 +909,7 @@ input, select, textarea { font-family: inherit; color: inherit; }
     transition: var(--transition);
     z-index: 999999;
 }
-.toast-msg.show { transform: translateY(0); opacity: 1; }
+.toast-msg.is-visible { transform: translateY(0); opacity: 1; }
 
 /* ============================================================
    LOADING SPINNER
@@ -939,7 +939,7 @@ input, select, textarea { font-family: inherit; color: inherit; }
 
 @media (max-width: 900px) {
     .sidebar { transform: translateX(-100%); }
-    .sidebar.mobile-open { transform: translateX(0); }
+    .sidebar.is-open { transform: translateX(0); }
     .main-wrapper { margin-left: 0; }
     .kpi-grid-6 { grid-template-columns: 1fr; }
     .leads-pipeline { grid-template-columns: 1fr; }

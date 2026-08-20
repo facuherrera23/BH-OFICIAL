@@ -151,6 +151,15 @@
     const dot = $('#cursorDot');
     if (!glow && !dot) return;
 
+    document.addEventListener('mouseenter', () => {
+      if (glow) glow.classList.add('is-visible');
+      if (dot) dot.classList.add('is-visible');
+    });
+    document.addEventListener('mouseleave', () => {
+      if (glow) glow.classList.remove('is-visible');
+      if (dot) dot.classList.remove('is-visible');
+    });
+
     document.addEventListener('mousemove', (e) => {
       if (glow) {
         glow.style.left = e.clientX + 'px';
@@ -1329,9 +1338,8 @@
         <h3 style="color:#fff; font-size:16px; font-weight:700; margin-bottom:4px;">${p.name}</h3>
         <p style="color:var(--text-dim); font-size:12px; margin-bottom:14px;">${count || 0} inmuebles publicables</p>
         <div style="display:flex; align-items:center; justify-content:center; gap:10px;">
-          <label class="toggle-switch" style="position:relative; display:inline-block; width:42px; height:22px;">
-            <input type="checkbox" ${i < 2 ? 'checked' : ''} style="opacity:0; width:0; height:0;" />
-            <span class="toggle-slider" style="position:absolute; cursor:pointer; inset:0; background:rgba(255,255,255,0.1); border-radius:22px; transition:.3s;"></span>
+          <label class="toggle-switch${i < 2 ? ' is-active' : ''}" onclick="this.classList.toggle('is-active')">
+            <input type="checkbox" ${i < 2 ? 'checked' : ''} style="opacity:0; width:0; height:0; position:absolute;" />
           </label>
           <button class="btn-action" title="Configurar API" onclick="window.adminApp.openPortalConfig(${i})"><i class="fas fa-cog"></i></button>
         </div>

@@ -926,6 +926,67 @@
     <!-- ============================================================
          SCRIPTS
          ============================================================ -->
+    <!-- Fallback banner (hidden by default, shown if CDN blocked) -->
+    <style>
+        #cdnWarningBanner {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 1000001;
+            background: linear-gradient(135deg, #DC2626, #B91C1C);
+            color: #fff;
+            padding: 14px 24px;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(220, 38, 38, 0.4);
+        }
+        #cdnWarningBanner a { color: #FEE2E2; text-decoration: underline; margin-left: 8px; }
+    </style>
+    <div id="cdnWarningBanner">
+        <i class="fas fa-exclamation-triangle"></i>
+        Tu bloqueador de anuncios está impidiendo que el panel cargue correctamente.
+        <strong>Desactivá las extensiones</strong> para este sitio o abrí en ventana incógnita.
+        <a href="#" onclick="document.getElementById('cdnWarningBanner').style.display='none'; return false;">Cerrar</a>
+    </div>
+
+    <!-- CDN timeout fallback: detect if external scripts fail to load -->
+    <script>
+        window.__cdnFallback = {
+            supabase: false,
+            fontawesome: false,
+            check: function() {
+                var missing = [];
+                if (!window.supabase) missing.push('Supabase JS');
+                if (!document.querySelector('link[href*="font-awesome"]') || !document.styleSheets[0]?.href?.includes('font-awesome')) {
+                    // Check if FA stylesheet actually loaded by testing if .fas class resolves
+                    var testEl = document.createElement('i');
+                    testEl.className = 'fas fa-check';
+                    testEl.style.position = 'absolute';
+                    testEl.style.left = '-9999px';
+                    document.body.appendChild(testEl);
+                    var computed = window.getComputedStyle(testEl);
+                    if (computed.fontFamily !== '"Font Awesome 6 Free"') {
+                        missing.push('Font Awesome');
+                    }
+                    document.body.removeChild(testEl);
+                }
+                if (missing.length) {
+                    var banner = document.getElementById('cdnWarningBanner');
+                    if (banner) {
+                        banner.style.display = 'block';
+                        if (missing.indexOf('Supabase JS') !== -1 && missing.indexOf('Font Awesome') !== -1) {
+                            banner.innerHTML = '<i class=\"fas fa-exclamation-triangle\"></i> <strong>Bloqueador de anuncios detectado.</strong> Desactivá las extensiones para este sitio o abrí en ventana incógnita. Falta: ' + missing.join(' + ') + '.';
+                        }
+                    }
+                }
+            }
+        };
+        // Check 3 seconds after page load
+        setTimeout(function() { window.__cdnFallback.check(); }, 3000);
+    </script>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="assets/js/config.js"></script>
     <script src="assets/js/supabase-client.js"></script>
