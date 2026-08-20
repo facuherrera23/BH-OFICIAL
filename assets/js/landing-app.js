@@ -642,11 +642,9 @@
         setText('.contact-title', c.title);
         setContactValue('.fa-envelope', c.email);
         setContactValue('.fa-phone', c.phone);
-        setContactValue('.fa-map-marker-alt', c.address);
         setContactValue('.fa-clock', c.schedule);
         setFooterValue('.fa-envelope', c.email);
         setFooterValue('.fa-phone', c.phone);
-        setFooterValue('.fa-map-marker-alt', c.address);
         if (c.email) {
           setAttr('a[href^="mailto:"]', 'href', 'mailto:' + c.email);
         }
