@@ -26,12 +26,22 @@
      1. AUTH
      ------------------------------------------------ */
   async function initAuth() {
+    if (!window.supabaseClient) {
+      console.error('[BH] Supabase client not available — CDN may be blocked by browser extension');
+      const loginScreen = $('#loginScreen');
+      const errorEl = $('#loginError');
+      if (loginScreen) loginScreen.classList.remove('is-hidden');
+      if (errorEl) { errorEl.textContent = 'Error: No se pudo conectar. Desactivá el bloqueador de anuncios para este sitio.'; errorEl.style.display = 'block'; }
+      hidePreloader();
+      return;
+    }
+
     try {
       const { data: { session } } = await window.supabaseClient.auth.getSession();
       if (session) {
         currentUser = session.user;
-        await loadProfile();
         showApp();
+        loadProfile().then(updateUserInfo).catch(() => {});
       } else {
         showLogin();
       }
@@ -43,8 +53,8 @@
     window.supabaseClient.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
         currentUser = session.user;
-        await loadProfile();
         showApp();
+        loadProfile().then(updateUserInfo).catch(() => {});
       } else if (event === 'SIGNED_OUT') {
         currentUser = null;
         currentProfile = null;
