@@ -234,14 +234,14 @@
         const interests = Array.from(activePills).map(p => p.dataset.value || p.textContent.trim()).filter(Boolean);
 
         const payload = {
-          nombre: data.nombre || '',
+          full_name: data.nombre || '',
           email: data.email || '',
-          telefono: data.telefono || '',
-          tipo_propiedad: data.tipo_propiedad || '',
-          presupuesto: data.presupuesto || '',
-          mensaje: data.mensaje || 'Consulta desde landing page',
-          intereses: interests,
-          consent: data.consent === 'on'
+          phone: data.telefono || '',
+          preferred_type: data.tipo_propiedad || '',
+          budget_usd: parseFloat(data.presupuesto) || null,
+          notes: data.mensaje || 'Consulta desde landing page',
+          source: 'landing_page',
+          preferred_zone: data.zona || '',
         };
 
         const { data: result, error } = await window.supabaseClient
@@ -322,23 +322,26 @@
       return;
     }
 
-    grid.innerHTML = props.map(p => `
-      <div class="property-card" data-type="${(p.property_type || '').toLowerCase()}" data-operation="${(p.operation || '').toLowerCase()}">
+    grid.innerHTML = props.map(p => {
+      const mainImg = (p.image_urls && p.image_urls.length > 0) ? p.image_urls[0] : 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80&fit=crop';
+      const locationText = [p.zone, p.address].filter(Boolean).join(', ');
+      return `
+      <div class="property-card" data-type="${(p.property_type || '').toLowerCase()}" data-status="${(p.status || '').toLowerCase()}">
         <div class="card-image-wrapper">
-          <img src="${p.main_image || 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80&fit=crop'}" 
+          <img src="${mainImg}" 
                alt="${p.title || 'Propiedad'}" loading="lazy" />
-          ${p.is_featured ? '<span class="card-badge">Destacada</span>' : ''}
+          ${p.featured ? '<span class="card-badge">Destacada</span>' : ''}
           <button class="card-favorite" aria-label="Guardar favorito"><i class="far fa-heart"></i></button>
         </div>
         <div class="card-body">
-          <div class="card-price">${formatPrice(p.price)}</div>
+          <div class="card-price">${formatPrice(p.price_usd)}</div>
           <h3 class="card-title">${p.title || 'Propiedad'}</h3>
-          <div class="card-location"><i class="fas fa-map-marker-alt"></i> ${p.location || ''}</div>
+          <div class="card-location"><i class="fas fa-map-marker-alt"></i> ${locationText}</div>
           <ul class="card-features">
             ${p.bedrooms ? `<li><i class="fas fa-bed"></i> ${p.bedrooms} ${p.bedrooms === 1 ? 'Dorm.' : 'Dorm.'}</li>` : ''}
             ${p.bathrooms ? `<li><i class="fas fa-bath"></i> ${p.bathrooms} Baños</li>` : ''}
             ${p.area_m2 ? `<li><i class="fas fa-ruler-combined"></i> ${p.area_m2} m²</li>` : ''}
-            ${p.garages ? `<li><i class="fas fa-car"></i> ${p.garages} ${p.garages === 1 ? 'Cochera' : 'Cocheras'}</li>` : ''}
+            ${p.garage_spaces ? `<li><i class="fas fa-car"></i> ${p.garage_spaces} ${p.garage_spaces === 1 ? 'Cochera' : 'Cocheras'}</li>` : ''}
           </ul>
           <p class="card-desc">${p.description || ''}</p>
           <a href="#" class="btn-card" onclick="return false;">
@@ -346,7 +349,7 @@
           </a>
         </div>
       </div>
-    `).join('');
+    `}).join('');
 
     // Re-init hover effects on new cards
     grid.querySelectorAll('.property-card').forEach(card => {
@@ -431,8 +434,7 @@
         </div>
         <div class="team-body">
           <h3 class="team-name">${m.full_name || ''}</h3>
-          <p class="team-role">${m.role || 'Agente'}</p>
-          <p class="team-experience">${m.years_experience ? m.years_experience + ' años de experiencia' : ''}</p>
+          <p class="team-role">${m.matricula || 'Agente'}</p>
           <p class="team-bio">${m.bio || ''}</p>
           <div class="team-specialties">
             ${(m.specialties || []).map(s => `<span class="team-pill">${s}</span>`).join('')}
@@ -440,7 +442,6 @@
           <div class="team-social">
             ${m.phone ? `<a href="tel:${m.phone}" class="social-btn" aria-label="Telefono"><i class="fas fa-phone"></i></a>` : ''}
             ${m.email ? `<a href="mailto:${m.email}" class="social-btn" aria-label="Email"><i class="fas fa-envelope"></i></a>` : ''}
-            ${m.instagram ? `<a href="https://instagram.com/${m.instagram.replace('@', '')}" target="_blank" rel="noopener" class="social-btn" aria-label="Instagram"><i class="fab fa-instagram"></i></a>` : ''}
           </div>
         </div>
       </div>
@@ -452,7 +453,7 @@
     try {
       const [propCount, soldCount, agentCount, expYears] = await Promise.all([
         window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('is_published', true),
-        window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('status', 'vendida'),
+        window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('status', 'vendido'),
         window.supabaseClient.from('agents').select('*', { count: 'exact', head: true }).eq('status', 'activo'),
         Promise.resolve({ count: 15 }) // Default experience years
       ]);

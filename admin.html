@@ -191,7 +191,7 @@
                     <th>Título / Ubicación</th>
                     <th>Precio</th>
                     <th>Tipo</th>
-                    <th>Estado</th>
+                    <th>Operación</th>
                     <th>Publicada</th>
                     <th>Acciones</th>
                   </tr>
@@ -542,7 +542,7 @@
             </div>
             <div class="form-group-admin">
               <label>Precio (USD) <span class="required">*</span></label>
-              <input type="number" name="price" class="form-input" placeholder="150000" required>
+              <input type="number" name="price_usd" class="form-input" placeholder="150000" required>
             </div>
             <div class="form-group-admin">
               <label>Tipo <span class="required">*</span></label>
@@ -550,9 +550,12 @@
                 <option value="">Seleccionar...</option>
                 <option value="departamento">Departamento</option>
                 <option value="casa">Casa</option>
-                <option value="ph">PH</option>
                 <option value="terreno">Terreno</option>
-                <option value="local">Local Comercial</option>
+                <option value="local">Local</option>
+                <option value="oficina">Oficina</option>
+                <option value="galpon">Galpón</option>
+                <option value="quinta">Quinta</option>
+                <option value="otro">Otro</option>
               </select>
             </div>
             <div class="form-group-admin">
@@ -563,8 +566,16 @@
               </select>
             </div>
             <div class="form-group-admin">
-              <label>Ubicación</label>
-              <input type="text" name="location" class="form-input" placeholder="Palermo, CABA">
+              <label>Zona</label>
+              <input type="text" name="zone" class="form-input" placeholder="Palermo">
+            </div>
+            <div class="form-group-admin">
+              <label>Dirección</label>
+              <input type="text" name="address" class="form-input" placeholder="Av. Santa Fe 1234">
+            </div>
+            <div class="form-group-admin">
+              <label>Ambientes</label>
+              <input type="number" name="rooms" class="form-input" placeholder="3">
             </div>
             <div class="form-group-admin">
               <label>Dormitorios</label>
@@ -580,21 +591,13 @@
             </div>
             <div class="form-group-admin">
               <label>Cocheras</label>
-              <input type="number" name="garages" class="form-input" placeholder="1">
+              <input type="number" name="garage_spaces" class="form-input" placeholder="1">
             </div>
             <div class="form-group-admin">
-              <label>Estado</label>
-              <select name="status" class="form-input">
-                <option value="disponible">Disponible</option>
-                <option value="reservada">Reservada</option>
-                <option value="vendida">Vendida</option>
-                <option value="alquilada">Alquilada</option>
-              </select>
+              <label>Imágenes</label>
+              <input type="file" name="image_files" class="form-input" accept="image/*" multiple>
             </div>
-            <div class="form-group-admin">
-              <label>Imagen Principal</label>
-              <input type="file" name="main_image_file" class="form-input" accept="image/*">
-            </div>
+            <div id="imagePreviewGrid" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;"></div>
             <div class="form-group-admin">
               <div class="form-checkbox" style="margin-top:20px;">
                 <input type="checkbox" name="is_published" id="propPublished">
@@ -603,7 +606,7 @@
             </div>
             <div class="form-group-admin">
               <div class="form-checkbox" style="margin-top:20px;">
-                <input type="checkbox" name="is_featured" id="propFeatured">
+                <input type="checkbox" name="featured" id="propFeatured">
                 <label for="propFeatured">Propiedad destacada</label>
               </div>
             </div>
@@ -640,12 +643,8 @@
               <input type="tel" name="phone" class="form-input" placeholder="+54 11 0000-0000">
             </div>
             <div class="form-group-admin">
-              <label>Rol</label>
-              <select name="role" class="form-input">
-                <option value="Agente">Agente</option>
-                <option value="Gerente">Gerente</option>
-                <option value="Asistente">Asistente</option>
-              </select>
+              <label>Matrícula</label>
+              <input type="text" name="matricula" class="form-input" placeholder="M-12345">
             </div>
             <div class="form-group-admin">
               <label>Estado</label>

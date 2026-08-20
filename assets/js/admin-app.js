@@ -222,18 +222,21 @@
         return;
       }
 
-      tbody.innerHTML = data.map(p => `
+      tbody.innerHTML = data.map(p => {
+        const thumb = (p.image_urls && p.image_urls.length > 0) ? p.image_urls[0] : 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=200&q=60&fit=crop';
+        const loc = [p.zone, p.address].filter(Boolean).join(', ');
+        return `
         <tr>
           <td>
-            <img class="table-thumb" src="${p.main_image || 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=200&q=60&fit=crop'}" alt="${p.title || ''}" />
+            <img class="table-thumb" src="${thumb}" alt="${p.title || ''}" />
           </td>
           <td>
             <div class="table-title">${p.title || 'Sin título'}</div>
-            <div class="table-subtitle">${p.location || ''}</div>
+            <div class="table-subtitle">${loc}</div>
           </td>
-          <td>${formatPrice(p.price)}</td>
+          <td>${formatPrice(p.price_usd)}</td>
           <td>${p.property_type || '-'}</td>
-          <td><span class="status-badge ${p.status || 'disponible'}">${p.status || 'disponible'}</span></td>
+          <td><span class="status-badge ${p.operation || 'venta'}">${p.operation || 'venta'}</span></td>
           <td><span class="status-badge ${p.is_published ? 'active' : 'pendiente'}">${p.is_published ? 'Publicada' : 'Borrador'}</span></td>
           <td>
             <div style="display:flex;gap:6px;">
@@ -242,7 +245,7 @@
             </div>
           </td>
         </tr>
-      `).join('');
+      `}).join('');
     } catch (err) {
       console.error('Error loading properties:', err);
       tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--danger);">Error al cargar propiedades</td></tr>`;
@@ -276,24 +279,30 @@
       const data = {
         title: formData.get('title') || '',
         description: formData.get('description') || '',
-        price: parseFloat(formData.get('price')) || 0,
+        price_usd: parseFloat(formData.get('price_usd')) || 0,
         property_type: formData.get('property_type') || '',
-        operation: formData.get('operation') || 'venta',
-        location: formData.get('location') || '',
+        zone: formData.get('zone') || '',
+        address: formData.get('address') || '',
         bedrooms: parseInt(formData.get('bedrooms')) || 0,
         bathrooms: parseInt(formData.get('bathrooms')) || 0,
         area_m2: parseFloat(formData.get('area_m2')) || 0,
-        garages: parseInt(formData.get('garages')) || 0,
-        status: formData.get('status') || 'disponible',
+        garage_spaces: parseInt(formData.get('garage_spaces')) || 0,
+        rooms: parseInt(formData.get('rooms')) || 0,
+        status: formData.get('operation') || 'venta',
         is_published: formData.get('is_published') === 'on',
-        is_featured: formData.get('is_featured') === 'on',
+        featured: formData.get('featured') === 'on',
       };
 
-      // Handle main image upload
-      const mainImageFile = formData.get('main_image_file');
-      if (mainImageFile && mainImageFile.size > 0) {
-        data.main_image = await uploadToCloudinary(mainImageFile);
+      const imageFiles = formData.getAll('image_files');
+      const existingUrls = formData.getAll('existing_image_urls').filter(u => u);
+      const newUrls = [];
+      for (const file of imageFiles) {
+        if (file && file.size > 0) {
+          const url = await uploadToCloudinary(file);
+          newUrls.push(url);
+        }
       }
+      data.image_urls = [...existingUrls, ...newUrls];
 
       if (editingPropertyId) {
         const { error } = await window.supabaseClient
@@ -336,17 +345,29 @@
       if (form) {
         form.elements.title.value = data.title || '';
         form.elements.description.value = data.description || '';
-        form.elements.price.value = data.price || '';
+        form.elements.price_usd.value = data.price_usd || '';
         form.elements.property_type.value = data.property_type || '';
-        form.elements.operation.value = data.operation || 'venta';
-        form.elements.location.value = data.location || '';
+        form.elements.operation.value = data.status || 'venta';
+        form.elements.zone.value = data.zone || '';
+        form.elements.address.value = data.address || '';
         form.elements.bedrooms.value = data.bedrooms || '';
         form.elements.bathrooms.value = data.bathrooms || '';
         form.elements.area_m2.value = data.area_m2 || '';
-        form.elements.garages.value = data.garages || '';
-        form.elements.status.value = data.status || 'disponible';
+        form.elements.garage_spaces.value = data.garage_spaces || '';
+        form.elements.rooms.value = data.rooms || '';
         form.elements.is_published.checked = data.is_published || false;
-        form.elements.is_featured.checked = data.is_featured || false;
+        form.elements.featured.checked = data.featured || false;
+
+        const previews = $('#imagePreviewGrid');
+        if (previews && data.image_urls?.length) {
+          previews.innerHTML = data.image_urls.map(url => `
+            <div class="image-preview-item">
+              <img src="${url}" alt="" />
+              <input type="hidden" name="existing_image_urls" value="${url}" />
+              <button type="button" class="image-remove-btn" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>
+            </div>
+          `).join('');
+        }
       }
 
       const title = $('#propertyModalTitle');
@@ -411,24 +432,31 @@
 
       if (error) throw error;
 
-      const groups = { nuevo: [], contactado: [], negociacion: [], cerrado: [] };
+      const groups = { nuevo: [], contactado: [], visita: [], oferta: [], cerrado: [], perdido: [] };
       (data || []).forEach(lead => {
-        const stage = lead.status || 'nuevo';
+        const stage = lead.stage || 'nuevo';
         if (groups[stage]) groups[stage].push(lead);
       });
 
-      Object.entries(groups).forEach(([stage, leads]) => {
-        const container = containers[stage === 'nuevo' ? 'nuevos' : stage === 'contactado' ? 'contactados' : stage];
-        if (!container) return;
+      const pipelineMap = {
+        nuevos: ['nuevo'],
+        contactados: ['contactado'],
+        negociacion: ['visita', 'oferta'],
+        cerrados: ['cerrado', 'perdido'],
+      };
 
-        // Update count badge
+      Object.entries(pipelineMap).forEach(([containerKey, stages]) => {
+        const container = containers[containerKey];
+        if (!container) return;
+        const leads = stages.flatMap(s => groups[s] || []);
+
         const countEl = container.closest('.pipeline-column')?.querySelector('.pipeline-column-count');
         if (countEl) countEl.textContent = leads.length;
 
         container.innerHTML = leads.map(l => `
           <div class="pipeline-card">
-            <div class="pipeline-card-name">${l.nombre || 'Sin nombre'}</div>
-            <div class="pipeline-card-prop">${l.tipo_propiedad || ''} ${l.presupuesto ? '- USD ' + l.presupuesto : ''}</div>
+            <div class="pipeline-card-name">${l.full_name || 'Sin nombre'}</div>
+            <div class="pipeline-card-prop">${l.preferred_type || ''} ${l.budget_usd ? '- USD ' + l.budget_usd : ''}</div>
             <div class="pipeline-card-date">${new Date(l.created_at).toLocaleDateString('es-AR')}</div>
           </div>
         `).join('') || '<p style="text-align:center;color:var(--text-tertiary);font-size:12px;padding:20px;">Sin leads</p>';
@@ -460,8 +488,8 @@
 
       tbody.innerHTML = data.map(v => `
         <tr>
-          <td class="table-title">${v.client_name || v.client_email || 'Sin cliente'}</td>
-          <td>${v.property_title || v.property_id || '-'}</td>
+          <td class="table-title">${v.client_name || 'Sin cliente'}</td>
+          <td>${v.client_phone || '-'}</td>
           <td>${v.visit_date ? new Date(v.visit_date).toLocaleDateString('es-AR') : '-'}</td>
           <td><span class="status-badge ${v.status || 'pendiente'}">${v.status || 'pendiente'}</span></td>
           <td>
@@ -620,7 +648,7 @@
               </div>
             </div>
           </td>
-          <td>${a.role || 'Agente'}</td>
+          <td>${a.matricula || '-'}</td>
           <td><span class="status-badge ${a.status || 'activo'}">${a.status || 'activo'}</span></td>
           <td>${a.phone || '-'}</td>
           <td>
@@ -655,7 +683,7 @@
         full_name: formData.get('full_name') || '',
         email: formData.get('email') || '',
         phone: formData.get('phone') || '',
-        role: formData.get('role') || 'Agente',
+        matricula: formData.get('matricula') || '',
         bio: formData.get('bio') || '',
         status: formData.get('status') || 'activo',
       };
@@ -707,7 +735,7 @@
         form.elements.full_name.value = data.full_name || '';
         form.elements.email.value = data.email || '';
         form.elements.phone.value = data.phone || '';
-        form.elements.role.value = data.role || '';
+        form.elements.matricula.value = data.matricula || '';
         form.elements.bio.value = data.bio || '';
         form.elements.status.value = data.status || 'activo';
       }
@@ -871,7 +899,7 @@
         <tr>
           <td class="table-title">${u.full_name || u.email || 'Sin nombre'}</td>
           <td>${u.email || '-'}</td>
-          <td><span class="status-badge ${u.role === 'admin' ? 'active' : 'pendiente'}">${u.role || '_usuario'}</span></td>
+          <td><span class="status-badge ${u.role === 'super_admin' ? 'active' : 'pendiente'}">${u.role || 'agente'}</span></td>
           <td>${u.created_at ? new Date(u.created_at).toLocaleDateString('es-AR') : '-'}</td>
         </tr>
       `).join('');
