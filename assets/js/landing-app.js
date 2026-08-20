@@ -536,6 +536,7 @@
       case 'services':
         setText('.services-title', c.title);
         setText('.services-desc', c.description);
+        setText('.services-label', c.badge);
         break;
 
       case 'team':
@@ -548,6 +549,14 @@
 
       case 'stats':
         setText('.stats-title', c.title);
+        if (c.properties_sold) {
+          const statNum = document.querySelector('.stats-premium .stat-card-number');
+          if (statNum) statNum.innerHTML = c.properties_sold + '<span class="accent-symbol">+</span>';
+        }
+        if (c.stat1_label) {
+          const statLabel = document.querySelector('.stats-premium .stat-card-title');
+          if (statLabel) statLabel.textContent = c.stat1_label;
+        }
         break;
 
       case 'contact':
