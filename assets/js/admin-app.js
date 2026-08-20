@@ -874,6 +874,26 @@
      ------------------------------------------------ */
   let cmsData = {};
 
+  const CMS_FIELD_MAP = {
+    hero_line1:    { section: 'hero', path: 'title' },
+    hero_line2:    { section: 'hero', path: 'subtitle' },
+    hero_eyebrow:  { section: 'hero', path: 'eyebrow' },
+    hero_desc:     { section: 'hero', path: 'description' },
+    hero_bg:       { section: 'hero', path: 'bg_image_url' },
+    hero_video:    { section: 'hero', path: 'video_url' },
+    serv_title:    { section: 'services', path: 'title' },
+    serv_badge:    { section: 'services', path: 'badge' },
+    serv_desc:     { section: 'services', path: 'description' },
+    team_title:    { section: 'team', path: 'title' },
+    stat1_val:     { section: 'stats', path: 'properties_sold' },
+    stat1_title:   { section: 'stats', path: 'stat1_label' },
+    proc_title:    { section: 'process', path: 'title' },
+    cont_wpp:      { section: 'contact', path: 'whatsapp' },
+    cont_email:    { section: 'contact', path: 'email' },
+    foot_wm:       { section: 'footer', path: 'copyright' },
+    foot_cri:      { section: 'footer', path: 'matricula' },
+  };
+
   async function loadCMS() {
     try {
       const { data, error } = await window.supabaseClient
@@ -896,15 +916,14 @@
   function populateCMSFields() {
     $$('.cms-field[data-key]').forEach(input => {
       const key = input.dataset.key;
-      const item = cmsData[key];
-      if (item) {
-        const content = item.content;
-        input.value = (typeof content === 'object' && content?.text) ? content.text : (content || '');
+      const mapping = CMS_FIELD_MAP[key];
+      if (mapping && cmsData[mapping.section]) {
+        const content = cmsData[mapping.section].content || {};
+        input.value = content[mapping.path] || '';
       }
     });
   }
 
-  /* CMS tab switching */
   $$('.cms-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       $$('.cms-tab-btn').forEach(b => b.classList.remove('is-active'));
@@ -915,39 +934,47 @@
     });
   });
 
-  /* Save CMS — single button */
   $('#cmsSaveBtn')?.addEventListener('click', async () => {
     const btn = $('#cmsSaveBtn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
 
     try {
       const fields = $$('.cms-field[data-key]');
-      let savedCount = 0;
+      const updatesBySection = {};
 
-      for (const field of fields) {
+      fields.forEach(field => {
         const key = field.dataset.key;
-        const value = field.value;
-        const existing = cmsData[key];
+        const mapping = CMS_FIELD_MAP[key];
+        if (!mapping) return;
+        if (!updatesBySection[mapping.section]) updatesBySection[mapping.section] = {};
+        updatesBySection[mapping.section][mapping.path] = field.value;
+      });
+
+      let savedCount = 0;
+      for (const [sectionKey, newFields] of Object.entries(updatesBySection)) {
+        const existing = cmsData[sectionKey];
+        const mergedContent = { ...(existing?.content || {}), ...newFields };
 
         if (existing) {
           const { error } = await window.supabaseClient
             .from('site_content')
-            .update({ content: { text: value } })
+            .update({ content: mergedContent })
             .eq('id', existing.id);
           if (error) throw error;
+          cmsData[sectionKey].content = mergedContent;
         } else {
           const { data, error } = await window.supabaseClient
             .from('site_content')
-            .insert([{ section_key: key, content: { text: value } }])
+            .insert([{ section_key: sectionKey, content: mergedContent }])
             .select()
             .single();
           if (error) throw error;
-          cmsData[key] = data;
+          cmsData[sectionKey] = data;
         }
         savedCount++;
       }
 
-      showToast(`${savedCount} campos guardados correctamente`, 'success');
+      showToast(`${savedCount} secciones guardadas correctamente`, 'success');
     } catch (err) {
       showToast('Error al guardar: ' + err.message, 'error');
     } finally {
