@@ -496,40 +496,110 @@
       if (error) throw error;
 
       (data || []).forEach(item => {
-        updateCMSField(item.section_key, item.content);
+        applySectionContent(item.section_key, item.content);
       });
     } catch (err) {
       console.error('Error loading CMS content:', err);
     }
   }
 
-  function updateCMSField(key, content) {
-    if (!content) return;
-
-    const elementMap = {
-      'hero_title': '.hero-title',
-      'hero_subtitle': '.hero-desc',
-      'hero_badge': '.eyebrow-pill',
-      'services_title': '.services-title',
-      'services_subtitle': '.services-desc',
-      'team_title': '.team-title',
-      'contact_title': '.contact-title',
-      'footer_description': '.footer-desc',
-      'stats_title': '.stats-title',
-      'process_title': '.process-title'
-    };
-
-    const selector = elementMap[key];
-    if (!selector) return;
-
+  function setText(selector, value) {
+    if (!value) return;
     const el = document.querySelector(selector);
-    if (!el) return;
+    if (el) el.textContent = value;
+  }
 
-    // If content is JSON with a "text" field
-    if (typeof content === 'object' && content.text) {
-      el.textContent = content.text;
-    } else if (typeof content === 'string') {
-      el.textContent = content;
+  function setAttr(selector, attr, value) {
+    if (!value) return;
+    const el = document.querySelector(selector);
+    if (el) el.setAttribute(attr, value);
+  }
+
+  function applySectionContent(section, c) {
+    if (!c || typeof c !== 'object') return;
+
+    switch (section) {
+
+      case 'hero':
+        setText('.hero-title', c.title);
+        setText('.hero-desc', c.subtitle);
+        if (c.eyebrow) {
+          const pill = document.querySelector('.eyebrow-pill');
+          if (pill) pill.innerHTML = '<span class="pulse-live" aria-hidden="true"></span> ' + c.eyebrow;
+        }
+        if (c.bg_image_url) {
+          const heroBg = document.querySelector('.hero-bg');
+          if (heroBg) heroBg.style.backgroundImage = 'url(' + c.bg_image_url + ')';
+        }
+        break;
+
+      case 'services':
+        setText('.services-title', c.title);
+        setText('.services-desc', c.description);
+        break;
+
+      case 'team':
+        setText('.team-title', c.title);
+        break;
+
+      case 'process':
+        setText('.process-title', c.title);
+        break;
+
+      case 'stats':
+        setText('.stats-title', c.title);
+        break;
+
+      case 'contact':
+        setText('.contact-title', c.title);
+        if (c.email) {
+          document.querySelectorAll('.contact-info-item').forEach(item => {
+            if (item.querySelector('.fa-envelope')) {
+              const val = item.querySelector('.value');
+              if (val) val.textContent = c.email;
+            }
+          });
+          setAttr('a[href^="mailto:"]', 'href', 'mailto:' + c.email);
+        }
+        if (c.phone) {
+          document.querySelectorAll('.contact-info-item').forEach(item => {
+            if (item.querySelector('.fa-phone')) {
+              const val = item.querySelector('.value');
+              if (val) val.textContent = c.phone;
+            }
+          });
+        }
+        if (c.address) {
+          document.querySelectorAll('.contact-info-item').forEach(item => {
+            if (item.querySelector('.fa-map-marker-alt')) {
+              const val = item.querySelector('.value');
+              if (val) val.textContent = c.address;
+            }
+          });
+        }
+        if (c.whatsapp) {
+          const waLinks = document.querySelectorAll('a[href*="wa.me"]');
+          waLinks.forEach(a => a.href = 'https://wa.me/' + c.whatsapp.replace(/[^0-9]/g, ''));
+        }
+        break;
+
+      case 'footer':
+        if (c.copyright) {
+          const footerBottom = document.querySelector('.footer-bottom span');
+          if (footerBottom) footerBottom.textContent = '© ' + new Date().getFullYear() + ' ' + c.copyright;
+        }
+        if (c.matricula) {
+          const footerSub = document.querySelector('.footer-logo-sub');
+          if (footerSub) footerSub.textContent = c.matricula;
+        }
+        if (c.cuit) {
+          document.querySelectorAll('.footer-contact-item').forEach(item => {
+            if (item.querySelector('.fa-id-card')) {
+              item.innerHTML = '<i class="fas fa-id-card"></i> CUIT: ' + c.cuit;
+            }
+          });
+        }
+        break;
     }
   }
 
