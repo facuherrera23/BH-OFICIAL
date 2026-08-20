@@ -508,8 +508,19 @@
                             <div class="form-field"><label>Badge Superior (Eyebrow)</label><input type="text" id="cms_hero_eyebrow" class="cms-field" data-key="hero_eyebrow" /></div>
                             <div class="form-field"><label>Descripción del Hero</label><textarea id="cms_hero_desc" class="cms-field" data-key="hero_desc"></textarea></div>
                             <div class="form-grid-2">
-                                <div class="form-field"><label>URL Imagen de Fondo</label><input type="text" id="cms_hero_bg" class="cms-field" data-key="hero_bg" /></div>
-                                <div class="form-field"><label>URL Video Modal</label><input type="text" id="cms_hero_video" class="cms-field" data-key="hero_video" /></div>
+                                <div class="form-field">
+                                    <label>Imagen de Fondo</label>
+                                    <div class="cms-image-upload">
+                                        <div class="cms-image-preview" id="cmsHeroBgPreview">
+                                            <i class="fas fa-cloud-arrow-up"></i>
+                                            <span>Sin imagen</span>
+                                        </div>
+                                        <input type="file" id="cmsHeroBgFile" accept="image/*" style="display:none;" />
+                                        <input type="hidden" id="cms_hero_bg" class="cms-field" data-key="hero_bg" />
+                                        <button type="button" class="btn-luxury-action btn-sm" id="cmsHeroBgUpload"><i class="fas fa-upload"></i> Seleccionar Imagen</button>
+                                    </div>
+                                </div>
+                                <div class="form-field"><label>URL Video Modal</label><input type="text" id="cms_hero_video" class="cms-field" data-key="hero_video" placeholder="https://www.youtube.com/watch?v=..." /></div>
                             </div>
                         </div>
 
@@ -538,8 +549,12 @@
 
                         <div class="cms-section-content" id="cms-contacto">
                             <div class="form-grid-2">
-                                <div class="form-field"><label>WhatsApp Directo</label><input type="text" id="cms_cont_wpp" class="cms-field" data-key="cont_wpp" /></div>
-                                <div class="form-field"><label>Email Corporativo</label><input type="email" id="cms_cont_email" class="cms-field" data-key="cont_email" /></div>
+                                <div class="form-field"><label>WhatsApp Directo</label><input type="text" id="cms_cont_wpp" class="cms-field" data-key="cont_wpp" placeholder="+54 11 0000-0000" /></div>
+                                <div class="form-field"><label>Email Corporativo</label><input type="email" id="cms_cont_email" class="cms-field" data-key="cont_email" placeholder="info@bienenhaus.com.ar" /></div>
+                            </div>
+                            <div class="form-grid-2">
+                                <div class="form-field"><label>Teléfono</label><input type="text" id="cms_cont_phone" class="cms-field" data-key="cont_phone" placeholder="+54 11 0000-0000" /></div>
+                                <div class="form-field"><label>Dirección</label><input type="text" id="cms_cont_addr" class="cms-field" data-key="cont_address" placeholder="Av. Corrientes 1234, CABA" /></div>
                             </div>
                         </div>
 
@@ -548,6 +563,7 @@
                                 <div class="form-field"><label>Marca de Agua (Watermark)</label><input type="text" id="cms_foot_wm" class="cms-field" data-key="foot_wm" /></div>
                                 <div class="form-field"><label>Matrícula C.R.I.</label><input type="text" id="cms_foot_cri" class="cms-field" data-key="foot_cri" /></div>
                             </div>
+                            <div class="form-field"><label>CUIT</label><input type="text" id="cms_foot_cuit" class="cms-field" data-key="foot_cuit" placeholder="30-00000000-0" /></div>
                         </div>
                     </div>
                 </section>

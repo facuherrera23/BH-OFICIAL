@@ -890,8 +890,11 @@
     proc_title:    { section: 'process', path: 'title' },
     cont_wpp:      { section: 'contact', path: 'whatsapp' },
     cont_email:    { section: 'contact', path: 'email' },
+    cont_phone:    { section: 'contact', path: 'phone' },
+    cont_address:  { section: 'contact', path: 'address' },
     foot_wm:       { section: 'footer', path: 'copyright' },
     foot_cri:      { section: 'footer', path: 'matricula' },
+    foot_cuit:     { section: 'footer', path: 'cuit' },
   };
 
   async function loadCMS() {
@@ -922,6 +925,9 @@
         input.value = content[mapping.path] || '';
       }
     });
+    if (heroBgHidden?.value && heroBgPreview) {
+      heroBgPreview.innerHTML = '<img src="' + heroBgHidden.value + '" alt="Hero background" />';
+    }
   }
 
   $$('.cms-tab-btn').forEach(btn => {
@@ -987,6 +993,32 @@
     if (!confirm('¿Restaurar los contenidos desde la base de datos?')) return;
     await loadCMS();
     showToast('Contenidos restaurados', 'success');
+  });
+
+  const heroBgFile = $('#cmsHeroBgFile');
+  const heroBgPreview = $('#cmsHeroBgPreview');
+  const heroBgHidden = $('#cms_hero_bg');
+
+  $('#cmsHeroBgUpload')?.addEventListener('click', () => heroBgFile?.click());
+
+  heroBgFile?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { showToast('Solo se permiten imágenes', 'error'); return; }
+
+    try {
+      heroBgPreview.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Subiendo...</span>';
+      if (!window.BH_Cloudinary) { showToast('Cloudinary no disponible', 'error'); return; }
+      const url = await window.BH_Cloudinary.uploadImage(file, 'bienenhaus/hero');
+      if (heroBgHidden) heroBgHidden.value = url;
+      heroBgPreview.innerHTML = '<img src="' + url + '" alt="Hero background" /><span style="position:absolute;bottom:2px;right:2px;font-size:9px;background:rgba(0,0,0,.7);padding:2px 5px;border-radius:3px;">Cloudinary ✓</span>';
+      heroBgPreview.style.position = 'relative';
+      showToast('Imagen subida a Cloudinary', 'success');
+    } catch (err) {
+      console.error('Upload error:', err);
+      heroBgPreview.innerHTML = '<i class="fas fa-cloud-arrow-up"></i><span>Error al subir</span>';
+      showToast('Error al subir imagen: ' + err.message, 'error');
+    }
   });
 
   /* ------------------------------------------------
