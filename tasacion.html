@@ -669,7 +669,20 @@ const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 
 let _authToken = null;
+// Security: validate event.origin for postMessage
+const ALLOWED_ORIGINS = [
+  'https://rnldqiwwzhjnurkguihu.supabase.co',
+  'https://bienenhaus.vercel.app',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+];
+
 window.addEventListener('message', (e) => {
+  // Validate origin
+  if (!ALLOWED_ORIGINS.includes(e.origin)) {
+    console.warn('postMessage rejected: unauthorized origin', e.origin);
+    return;
+  }
   if (e.data?.type === 'auth-session' && e.data?.token) {
     _authToken = e.data.token;
   }
@@ -1449,6 +1462,7 @@ init();
 </script>
 </body>
 </html>
+
 
 
 

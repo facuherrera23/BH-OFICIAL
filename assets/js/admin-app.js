@@ -1847,7 +1847,8 @@
         try {
           const { data: { session } } = await window.supabaseClient.auth.getSession();
           if (session && iframe.contentWindow) {
-            iframe.contentWindow.postMessage({ type: 'auth-session', token: session.access_token }, '*');
+            const targetOrigin = window.BH_CONFIG?.SUPABASE_URL || 'https://rnldqiwwzhjnurkguihu.supabase.co';
+            iframe.contentWindow.postMessage({ type: 'auth-session', token: session.access_token }, targetOrigin);
           }
         } catch (_) {}
       };
@@ -2000,7 +2001,7 @@
   function escapeCSV(val) {
     if (val == null) return '';
     var s = String(val);
-    if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1) {
+    if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\\n') !== -1) {
       return '"' + s.replace(/"/g, '""') + '"';
     }
     return s;
@@ -2280,6 +2281,12 @@
   });
 
 })();
+
+
+
+
+
+
 
 
 
