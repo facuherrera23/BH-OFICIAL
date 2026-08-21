@@ -18,6 +18,9 @@
   let editingLeadId = null;
   let editingVisitId = null;
   let toastTimer = null;
+  let ml_connected = false;
+  let ml_user = null;
+  let ml_listings = [];
 
   const $ = (sel, ctx = document) => ctx.querySelector(sel);
   const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
@@ -95,6 +98,7 @@
     hidePreloader();
     updateUserInfo();
     updateSidebarBadges();
+    mlCheckStatus().catch(() => {});
     navigateTo('tab-dashboard');
   }
 
@@ -380,12 +384,19 @@
     if (!tbody) return;
 
     try {
-      const { data, error } = await window.supabaseClient
-        .from('properties')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const [propsRes, listingsRes] = await Promise.all([
+        window.supabaseClient.from('properties').select('*').order('created_at', { ascending: false }),
+        ml_connected
+          ? window.supabaseClient.from('ml_listings').select('property_id, ml_listing_id, status')
+          : Promise.resolve({ data: [] }),
+      ]);
 
+      const data = propsRes.data;
+      const error = propsRes.error;
       if (error) throw error;
+
+      const mlMap = {};
+      (listingsRes.data || []).forEach(l => { mlMap[l.property_id] = l; });
 
       if (!data?.length) {
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">No hay propiedades cargadas</td></tr>';
@@ -395,13 +406,28 @@
       tbody.innerHTML = data.map(p => {
         const thumb = p.image_urls?.[0] || 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=200&q=60&fit=crop';
         const loc = [p.zone, p.address].filter(Boolean).join(', ');
+        const mlInfo = mlMap[p.id];
+        let mlBadge = '';
+        let mlButtons = '';
+
+        if (mlInfo) {
+          const mlStatusColor = mlInfo.status === 'active' ? 'var(--success)' : mlInfo.status === 'paused' ? 'var(--warning)' : 'var(--text-dim)';
+          const mlStatusText = mlInfo.status === 'active' ? 'En ML' : mlInfo.status === 'paused' ? 'Pausado' : mlInfo.status || 'ML';
+          mlBadge = `<span class="nav-badge status-pill ${mlInfo.status === 'active' ? 'active' : 'paused'}" style="font-size:10px; margin-left:4px;">${mlStatusText}</span>`;
+          mlButtons = `
+              <button class="btn-action" style="font-size:11px; color:#FFE600;" title="Actualizar en ML" onclick="window.adminApp.mlUpdateProperty('${p.id}','${mlInfo.ml_listing_id}')"><i class="fas fa-arrows-rotate"></i></button>
+              <button class="btn-action danger" style="font-size:11px;" title="Quitar de ML" onclick="window.adminApp.mlRemoveProperty('${mlInfo.ml_listing_id}')"><i class="fas fa-link-slash"></i></button>`;
+        } else if (ml_connected) {
+          mlButtons = `<button class="btn-action" style="font-size:11px; color:#FFE600;" title="Publicar en ML" onclick="window.adminApp.mlPublishProperty('${p.id}')"><i class="fab fa-mercarto-libre"></i></button>`;
+        }
+
         return `
         <tr>
           <td>
             <div style="display:flex; align-items:center; gap:12px;">
               <img src="${thumb}" alt="${p.title || ''}" style="width:52px; height:52px; border-radius:var(--radius-sm); object-fit:cover; border:1px solid var(--border-subtle);" />
               <div>
-                <div style="font-weight:600; color:#fff; font-size:13.5px;">${p.title || 'Sin título'}</div>
+                <div style="font-weight:600; color:#fff; font-size:13.5px;">${p.title || 'Sin título'}${mlBadge}</div>
                 <div style="color:var(--text-dim); font-size:12px; margin-top:2px;"><i class="fas fa-location-dot" style="margin-right:4px;"></i>${loc || 'Sin ubicación'}</div>
               </div>
             </div>
@@ -412,7 +438,8 @@
           <td><span class="nav-badge" style="background:${p.status === 'venta' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${p.status === 'venta' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${p.status || 'venta'}</span></td>
           <td><span class="nav-badge" style="background:${p.is_published ? 'rgba(0,200,120,0.15)' : 'rgba(255,255,255,0.06)'}; color:${p.is_published ? 'var(--success)' : 'var(--text-dim)'}; font-size:11px;">${p.is_published ? 'Publicada' : 'Borrador'}</span></td>
           <td>
-            <div style="display:flex; gap:6px;">
+            <div style="display:flex; gap:6px; align-items:center;">
+              ${mlButtons}
               <button class="btn-action" title="Editar" onclick="window.adminApp.editProperty('${p.id}')"><i class="fas fa-pen"></i></button>
               <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteProperty('${p.id}')"><i class="fas fa-trash"></i></button>
             </div>
@@ -1416,6 +1443,36 @@
     container.innerHTML = PORTALS.map((p, i) => {
       const db = settingsMap[p.name] || {};
       const isActive = db.is_active || false;
+
+      if (p.name === 'Mercado Libre') {
+        const statusColor = ml_connected ? 'var(--success)' : 'var(--text-dim)';
+        const statusText = ml_connected ? 'Conectado' : 'Desconectado';
+        const statusIcon = ml_connected ? 'fas fa-circle-check' : 'fas fa-circle-xmark';
+        const mlBtnHtml = ml_connected
+          ? `<button class="btn-action danger" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlDisconnect()"><i class="fas fa-link-slash"></i> Desconectar</button>`
+          : `<button class="btn-action" style="font-size:11px; padding:6px 12px; background:rgba(255,230,0,0.15); color:#FFE600; border:1px solid rgba(255,230,0,0.3);" onclick="window.adminApp.mlConnect()"><i class="fas fa-link"></i> Conectar ML</button>`;
+        const userInfoHtml = ml_connected && ml_user
+          ? `<p style="color:var(--text-muted); font-size:11px; margin-top:6px;"><i class="fas fa-user" style="margin-right:4px;"></i>${ml_user.nickname || ml_user.email || ''}</p>`
+          : '';
+
+        return `
+      <div class="glass-panel portal-card" style="padding:24px; text-align:center;">
+        <div style="width:56px; height:56px; border-radius:16px; background:${p.color}20; display:flex; align-items:center; justify-content:center; margin:0 auto 14px;">
+          <i class="${p.icon}" style="font-size:24px; color:${p.color};"></i>
+        </div>
+        <h3 style="color:#fff; font-size:16px; font-weight:700; margin-bottom:4px;">${p.name}</h3>
+        <div style="display:flex; align-items:center; justify-content:center; gap:6px; margin-bottom:14px;">
+          <i class="${statusIcon}" style="font-size:12px; color:${statusColor};"></i>
+          <span style="font-size:12px; color:${statusColor}; font-weight:600;">${statusText}</span>
+        </div>
+        ${userInfoHtml}
+        <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-top:12px;">
+          ${mlBtnHtml}
+          ${ml_connected ? `<button class="btn-action" title="Importar desde ML" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlImportFromML()"><i class="fas fa-file-import"></i></button>` : ''}
+        </div>
+      </div>`;
+      }
+
       return `
       <div class="glass-panel portal-card" style="padding:24px; text-align:center;">
         <div style="width:56px; height:56px; border-radius:16px; background:${p.color}20; display:flex; align-items:center; justify-content:center; margin:0 auto 14px;">
@@ -1504,6 +1561,154 @@
   $('#syncAllBtn')?.addEventListener('click', () => {
     showToast('Sincronización iniciada — próximamente', 'info');
   });
+
+  /* ------------------------------------------------
+     13B. MERCADO LIBRE INTEGRATION
+     ------------------------------------------------ */
+  const ML_FUNCTIONS_BASE = (window.BH_CONFIG?.SUPABASE_URL || '') + '/functions/v1';
+
+  async function mlApiCall(action, body = {}) {
+    const { data: { session } } = await window.supabaseClient.auth.getSession();
+    if (!session) throw new Error('No hay sesión activa');
+
+    const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-api`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ action, ...body }),
+    });
+
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || `Error ML API (${res.status})`);
+    return json;
+  }
+
+  /* Check ML connection status on app load */
+  async function mlCheckStatus() {
+    try {
+      const result = await mlApiCall('status');
+      ml_connected = result.connected || false;
+      ml_user = result.user || null;
+      ml_listings = result.listings || [];
+    } catch (err) {
+      console.warn('[ML] Status check failed:', err.message);
+      ml_connected = false;
+      ml_user = null;
+      ml_listings = [];
+    }
+  }
+
+  /* Connect to Mercado Libre — opens OAuth popup */
+  window.adminApp.mlConnect = async function () {
+    try {
+      showToast('Abriendo conexión con Mercado Libre...', 'info');
+      const result = await mlApiCall('auth');
+      const authUrl = result.auth_url;
+
+      /* Open popup for OAuth flow */
+      const width = 800, height = 600;
+      const left = (screen.width - width) / 2;
+      const top = (screen.height - height) / 2;
+      const popup = window.open(authUrl, 'ml_auth',
+        `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`);
+
+      /* Listen for message from ml-callback Edge Function */
+      const handler = async (event) => {
+        if (event.data?.type === 'ML_AUTH_SUCCESS') {
+          window.removeEventListener('message', handler);
+          if (popup && !popup.closed) popup.close();
+          showToast('¡Cuenta de Mercado Libre conectada exitosamente!', 'success');
+          ml_connected = true;
+          ml_user = event.data.user || null;
+          loadPortals();
+        } else if (event.data?.type === 'ML_AUTH_ERROR') {
+          window.removeEventListener('message', handler);
+          if (popup && !popup.closed) popup.close();
+          showToast('Error al conectar con Mercado Libre: ' + (event.data.error || 'Error desconocido'), 'error');
+        }
+      };
+      window.addEventListener('message', handler);
+
+      /* Timeout — close listener after 2 minutes */
+      setTimeout(() => { window.removeEventListener('message', handler); }, 120000);
+    } catch (err) {
+      showToast('Error al iniciar conexión ML: ' + err.message, 'error');
+    }
+  };
+
+  /* Disconnect from Mercado Libre */
+  window.adminApp.mlDisconnect = async function () {
+    if (!confirm('¿Desconectar la cuenta de Mercado Libre? Se perderán las credenciales de acceso.')) return;
+    try {
+      await mlApiCall('disconnect');
+      ml_connected = false;
+      ml_user = null;
+      ml_listings = [];
+      showToast('Cuenta de Mercado Libre desconectada', 'success');
+      loadPortals();
+    } catch (err) {
+      showToast('Error al desconectar: ' + err.message, 'error');
+    }
+  };
+
+  /* Publish a property to Mercado Libre */
+  window.adminApp.mlPublishProperty = async function (propertyId) {
+    if (!ml_connected) { showToast('Conectá tu cuenta de Mercado Libre primero', 'warning'); return; }
+    if (!confirm('¿Publicar esta propiedad en Mercado Libre?')) return;
+
+    try {
+      showToast('Publicando en Mercado Libre...', 'info');
+      const result = await mlApiCall('publish', { property_id: propertyId });
+      showToast('¡Propiedad publicada en Mercado Libre! ID: ' + (result.listing_id || ''), 'success');
+      loadProperties();
+    } catch (err) {
+      showToast('Error al publicar en ML: ' + err.message, 'error');
+    }
+  };
+
+  /* Update a property listing on Mercado Libre */
+  window.adminApp.mlUpdateProperty = async function (propertyId, listingId) {
+    if (!confirm('¿Actualizar esta propiedad en Mercado Libre?')) return;
+    try {
+      showToast('Actualizando en Mercado Libre...', 'info');
+      await mlApiCall('update', { property_id: propertyId, listing_id: listingId });
+      showToast('¡Propiedad actualizada en Mercado Libre!', 'success');
+      loadProperties();
+    } catch (err) {
+      showToast('Error al actualizar en ML: ' + err.message, 'error');
+    }
+  };
+
+  /* Remove a property listing from Mercado Libre */
+  window.adminApp.mlRemoveProperty = async function (listingId) {
+    if (!confirm('¿Eliminar esta propiedad de Mercado Libre?')) return;
+    try {
+      showToast('Eliminando de Mercado Libre...', 'info');
+      await mlApiCall('remove', { listing_id: listingId });
+      showToast('Propiedad eliminada de Mercado Libre', 'success');
+      loadProperties();
+    } catch (err) {
+      showToast('Error al eliminar de ML: ' + err.message, 'error');
+    }
+  };
+
+  /* Import properties from Mercado Libre */
+  window.adminApp.mlImportFromML = async function () {
+    if (!ml_connected) { showToast('Conectá tu cuenta de Mercado Libre primero', 'warning'); return; }
+    if (!confirm('¿Importar propiedades desde Mercado Libre? Se crearán como borradores en el sistema.')) return;
+
+    try {
+      showToast('Importando propiedades desde Mercado Libre...', 'info');
+      const result = await mlApiCall('sync-import');
+      const count = result.imported || 0;
+      showToast(`Se importaron ${count} propiedades desde Mercado Libre`, 'success');
+      loadProperties();
+    } catch (err) {
+      showToast('Error al importar de ML: ' + err.message, 'error');
+    }
+  };
 
   /* ------------------------------------------------
      14. MODALS
