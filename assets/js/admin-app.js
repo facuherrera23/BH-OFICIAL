@@ -1826,6 +1826,10 @@
 
   $('#btnBackToList')?.addEventListener('click', hideTasacionEditor);
 
+  window.addEventListener('message', (e) => {
+    if (e.data?.type === 'tasaciones-back') hideTasacionEditor();
+  });
+
   async function loadTasaciones() {
     const tbody = $('#tasacionesTableBody');
     if (!tbody) return;

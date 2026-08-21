@@ -652,7 +652,7 @@
 </footer>
 
 <div class="action-bar">
-  <button class="btn btn-back" id="btnBack" onclick="window.location.href='admin.html#tasaciones'">← Volver</button>
+  <button class="btn btn-back" id="btnBack" onclick="window.parent?.postMessage({type:'tasaciones-back'},'*')">← Volver</button>
   <button class="btn btn-save" id="btnSave">💾 Guardar</button>
   <button class="btn btn-edit" id="btnEdit" disabled>✏️ Editar</button>
   <button class="btn btn-finish" id="btnFinish">✅ Finalizar</button>
