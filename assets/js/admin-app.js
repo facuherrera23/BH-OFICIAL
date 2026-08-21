@@ -1636,7 +1636,7 @@
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Error al generar URL de autenticación');
-      const authUrl = result.auth_url;
+      const authUrl = result.authUrl;
 
       /* Open popup for OAuth flow */
       const width = 800, height = 600;
