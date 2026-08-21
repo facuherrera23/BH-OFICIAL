@@ -188,6 +188,7 @@
   });
 
   function navigateTo(section) {
+    const prevSection = currentSection;
     currentSection = section;
 
     /* Sidebar active */
@@ -231,6 +232,18 @@
       'tab-portales': loadPortals,
     };
     if (loaders[section]) loaders[section]();
+
+    if (section === 'tab-tasaciones') {
+      const editorView = $('#tasacionesEditorView');
+      const listView = $('#tasacionesListView');
+      const iframe = $('#tasacionesIframe');
+      if (editorView) editorView.style.display = 'none';
+      if (listView) listView.style.display = 'block';
+      if (iframe) iframe.src = '';
+    } else if (prevSection === 'tab-tasaciones') {
+      const prevFrame = $('#tasacionesIframe');
+      if (prevFrame) prevFrame.src = '';
+    }
 
     /* Close mobile sidebar */
     $('#sidebar')?.classList.remove('is-open');
