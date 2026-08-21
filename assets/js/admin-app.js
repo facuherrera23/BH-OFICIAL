@@ -449,8 +449,11 @@
   }
 
   /* Save property */
+  let _submittingProperty = false;
   $('#propertyForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (_submittingProperty) return;
+    _submittingProperty = true;
     const btn = $('#propertySaveBtn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
 
@@ -507,6 +510,7 @@
       console.error('Error saving property:', err);
       showToast('Error al guardar: ' + err.message, 'error');
     } finally {
+      _submittingProperty = false;
       if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar Inmueble'; }
     }
   });
@@ -669,8 +673,11 @@
   });
 
   /* Save lead */
+  let _submittingLead = false;
   $('#leadForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (_submittingLead) return;
+    _submittingLead = true;
     const btn = $('#leadSaveBtn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
 
@@ -703,6 +710,7 @@
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
     } finally {
+      _submittingLead = false;
       if (btn) { btn.disabled = false; btn.innerHTML = 'Registrar Lead'; }
     }
   });
@@ -797,8 +805,11 @@
   });
 
   /* Save visit */
+  let _submittingVisit = false;
   $('#visitForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (_submittingVisit) return;
+    _submittingVisit = true;
     const btn = $('#visitSaveBtn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
 
@@ -828,6 +839,7 @@
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
     } finally {
+      _submittingVisit = false;
       if (btn) { btn.disabled = false; btn.innerHTML = 'Confirmar Cita'; }
     }
   });
@@ -1078,8 +1090,11 @@
   });
 
   /* Save agent */
+  let _submittingAgent = false;
   $('#agentForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (_submittingAgent) return;
+    _submittingAgent = true;
     const btn = $('#agentSaveBtn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
 
@@ -1116,7 +1131,8 @@
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar Broker'; }
+      _submittingProperty = false;
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar Inmueble'; }
     }
   });
 
@@ -1235,8 +1251,11 @@
   });
 
   /* Save owner */
+  let _submittingOwner = false;
   $('#ownerForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (_submittingOwner) return;
+    _submittingOwner = true;
     const btn = $('#ownerSaveBtn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
 
@@ -1272,7 +1291,8 @@
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar Expediente'; }
+      _submittingAgent = false;
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar Broker'; }
     }
   });
 
@@ -1383,48 +1403,101 @@
     const container = $('#portalsContainer');
     if (!container) return;
 
-    /* Get published property count */
-    const { count } = await window.supabaseClient
-      .from('properties')
-      .select('*', { count: 'exact', head: true })
-      .eq('is_published', true);
+    /* Get published property count + portal settings from DB */
+    const [propsRes, settingsRes] = await Promise.all([
+      window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('is_published', true),
+      window.supabaseClient.from('portal_settings').select('*'),
+    ]);
 
-    container.innerHTML = PORTALS.map((p, i) => `
+    const count = propsRes.count || 0;
+    const settingsMap = {};
+    (settingsRes.data || []).forEach(s => { settingsMap[s.portal_name] = s; });
+
+    container.innerHTML = PORTALS.map((p, i) => {
+      const db = settingsMap[p.name] || {};
+      const isActive = db.is_active || false;
+      return `
       <div class="glass-panel portal-card" style="padding:24px; text-align:center;">
         <div style="width:56px; height:56px; border-radius:16px; background:${p.color}20; display:flex; align-items:center; justify-content:center; margin:0 auto 14px;">
           <i class="${p.icon}" style="font-size:24px; color:${p.color};"></i>
         </div>
         <h3 style="color:#fff; font-size:16px; font-weight:700; margin-bottom:4px;">${p.name}</h3>
-        <p style="color:var(--text-dim); font-size:12px; margin-bottom:14px;">${count || 0} inmuebles publicables</p>
+        <p style="color:var(--text-dim); font-size:12px; margin-bottom:14px;">${count} inmuebles publicables</p>
         <div style="display:flex; align-items:center; justify-content:center; gap:10px;">
-          <label class="toggle-switch${i < 2 ? ' is-active' : ''}" onclick="this.classList.toggle('is-active')">
-            <input type="checkbox" ${i < 2 ? 'checked' : ''} style="opacity:0; width:0; height:0; position:absolute;" />
+          <label class="toggle-switch${isActive ? ' is-active' : ''}" onclick="this.classList.toggle('is-active'); window.adminApp.togglePortal('${p.name}', this.classList.contains('is-active'))">
+            <input type="checkbox" ${isActive ? 'checked' : ''} style="opacity:0; width:0; height:0; position:absolute;" />
           </label>
           <button class="btn-action" title="Configurar API" onclick="window.adminApp.openPortalConfig(${i})"><i class="fas fa-cog"></i></button>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   }
 
-  window.adminApp.openPortalConfig = function (index) {
+  window.adminApp.togglePortal = async function (portalName, isActive) {
+    try {
+      const { error } = await window.supabaseClient
+        .from('portal_settings')
+        .upsert({ portal_name: portalName, is_active: isActive }, { onConflict: 'portal_name' });
+      if (error) throw error;
+      showToast(`${portalName} ${isActive ? 'activado' : 'desactivado'}`, 'success');
+    } catch (err) {
+      showToast('Error al actualizar portal: ' + err.message, 'error');
+      loadPortals();
+    }
+  };
+
+  window.adminApp.openPortalConfig = async function (index) {
     const portal = PORTALS[index];
     if (!portal) return;
     const title = $('#modalPortalTitle');
     if (title) title.textContent = `Configurar ${portal.name}`;
-    const apiKey = $('#portalApiKey');
-    if (apiKey) apiKey.value = '';
-    const secret = $('#portalApiSecret');
-    if (secret) secret.value = '••••••••••••••••••••';
     const idx = $('#portalIndex');
     if (idx) idx.value = index;
+
+    try {
+      const { data } = await window.supabaseClient
+        .from('portal_settings')
+        .select('api_key, api_secret')
+        .eq('portal_name', portal.name)
+        .single();
+
+      const apiKey = $('#portalApiKey');
+      const secret = $('#portalApiSecret');
+      if (apiKey) apiKey.value = data?.api_key || '';
+      if (secret) secret.value = data?.api_secret || '';
+    } catch (_) {
+      const apiKey = $('#portalApiKey');
+      const secret = $('#portalApiSecret');
+      if (apiKey) apiKey.value = '';
+      if (secret) secret.value = '';
+    }
+
     openModal('portalModal');
   };
 
-  /* Portal form */
   $('#portalApiForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
-    showToast('Credenciales del portal guardadas', 'success');
-    closeModal('portalModal');
+    const index = parseInt($('#portalIndex')?.value, 10);
+    const portal = PORTALS[index];
+    if (!portal) return;
+    const btn = e.target.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
+
+    try {
+      const apiKey = $('#portalApiKey')?.value?.trim() || '';
+      const secret = $('#portalApiSecret')?.value?.trim() || '';
+      const { error } = await window.supabaseClient
+        .from('portal_settings')
+        .upsert({ portal_name: portal.name, api_key: apiKey, api_secret: secret }, { onConflict: 'portal_name' });
+      if (error) throw error;
+      showToast(`${portal.name} configurado correctamente`, 'success');
+      closeModal('portalModal');
+    } catch (err) {
+      showToast('Error al guardar: ' + err.message, 'error');
+    } finally {
+      _submittingOwner = false;
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar Expediente'; }
+    }
   });
 
   /* Sync all button */
@@ -1574,12 +1647,79 @@
   });
 
   /* Global search */
-  $('#globalSearchInput')?.addEventListener('input', (e) => {
+  let _searchCache = null;
+
+  async function getSearchCache() {
+    if (_searchCache) return _searchCache;
+    try {
+      const [props, leads, agents, owners] = await Promise.all([
+        window.supabaseClient.from('properties').select('id, title, zone, address, price_usd, status').order('created_at', { ascending: false }).limit(200),
+        window.supabaseClient.from('leads').select('id, full_name, email, phone, stage').order('created_at', { ascending: false }).limit(200),
+        window.supabaseClient.from('agents').select('id, full_name, email, matricula').order('created_at', { ascending: false }).limit(100),
+        window.supabaseClient.from('owners').select('id, full_name, email, phone').order('created_at', { ascending: false }).limit(100),
+      ]);
+      _searchCache = {
+        properties: props.data || [],
+        leads: leads.data || [],
+        agents: agents.data || [],
+        owners: owners.data || [],
+      };
+      return _searchCache;
+    } catch (_) {
+      return { properties: [], leads: [], agents: [], owners: [] };
+    }
+  }
+
+  function invalidateSearchCache() { _searchCache = null; }
+
+  const _origLoadProperties = loadProperties;
+  loadProperties = function () { invalidateSearchCache(); return _origLoadProperties.apply(this, arguments); };
+
+  $('#globalSearchInput')?.addEventListener('input', async (e) => {
     const q = e.target.value.toLowerCase().trim();
-    if (!q) return;
-    /* Simple: if search matches property-like term, go to properties */
-    if (q.length >= 3) {
-      /* Could implement cross-module search later */
+    const resultsContainer = $('#globalSearchResults');
+    if (!resultsContainer) return;
+    if (!q || q.length < 2) { resultsContainer.innerHTML = ''; resultsContainer.style.display = 'none'; return; }
+
+    const cache = await getSearchCache();
+    const results = [];
+
+    cache.properties.filter(p => [p.title, p.zone, p.address].some(f => f && f.toLowerCase().includes(q))).forEach(p => {
+      results.push({ icon: 'fas fa-home', text: p.title || 'Sin título', sub: [p.zone, p.address].filter(Boolean).join(', '), tab: 'tab-propiedades', color: 'var(--accent)' });
+    });
+    cache.leads.filter(l => [l.full_name, l.email, l.phone].some(f => f && f.toLowerCase().includes(q))).forEach(l => {
+      results.push({ icon: 'fas fa-user', text: l.full_name || 'Sin nombre', sub: l.email || l.phone || '', tab: 'tab-leads', color: '#3B82F6' });
+    });
+    cache.agents.filter(a => [a.full_name, a.email, a.matricula].some(f => f && f.toLowerCase().includes(q))).forEach(a => {
+      results.push({ icon: 'fas fa-id-badge', text: a.full_name || 'Sin nombre', sub: a.matricula || a.email || '', tab: 'tab-agentes', color: '#10B981' });
+    });
+    cache.owners.filter(o => [o.full_name, o.email, o.phone].some(f => f && f.toLowerCase().includes(q))).forEach(o => {
+      results.push({ icon: 'fas fa-user-tie', text: o.full_name || 'Sin nombre', sub: o.email || o.phone || '', tab: 'tab-propietarios', color: '#F97316' });
+    });
+
+    if (!results.length) {
+      resultsContainer.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-dim); font-size:13px;">Sin resultados para "' + q + '"</div>';
+      resultsContainer.style.display = 'block';
+      return;
+    }
+
+    resultsContainer.innerHTML = results.slice(0, 10).map(r => `
+      <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--border-subtle); transition:background 0.15s;" onmouseenter="this.style.background='rgba(255,255,255,0.04)'" onmouseleave="this.style.style.background=''" onclick="navigateTo('${r.tab}'); document.getElementById('globalSearchResults').style.display='none'; document.getElementById('globalSearchInput').value='';">
+        <i class="${r.icon}" style="font-size:14px; color:${r.color}; min-width:18px; text-align:center;"></i>
+        <div style="flex:1; min-width:0;">
+          <div style="color:#fff; font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${r.text}</div>
+          <div style="color:var(--text-dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${r.sub}</div>
+        </div>
+      </div>
+    `).join('');
+    resultsContainer.style.display = 'block';
+  });
+
+  document.addEventListener('click', (e) => {
+    const results = $('#globalSearchResults');
+    const input = $('#globalSearchInput');
+    if (results && !results.contains(e.target) && e.target !== input) {
+      results.style.display = 'none';
     }
   });
 

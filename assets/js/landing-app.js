@@ -155,7 +155,8 @@
   const videoModalClose = document.getElementById('videoModalClose');
 
   document.getElementById('openVideoModal')?.addEventListener('click', () => {
-    if (videoEmbedUrl) injectVideoIframe(videoEmbedUrl);
+    if (!videoEmbedUrl) return;
+    injectVideoIframe(videoEmbedUrl);
     videoModal?.classList.add('is-open');
     document.body.style.overflow = 'hidden';
   });
@@ -668,6 +669,39 @@
         }
         break;
     }
+  }
+
+  /* ------------------------------------------------
+     13. NEWSLETTER FORM
+     ------------------------------------------------ */
+  const newsletterForm = document.getElementById('newsletterForm');
+  if (newsletterForm) {
+    newsletterForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const emailInput = document.getElementById('newsletterEmail');
+      const btn = document.getElementById('newsletterBtn');
+      const email = emailInput?.value?.trim();
+      if (!email) return;
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Suscribiendo...'; }
+
+      try {
+        const { error } = await window.supabaseClient
+          .from('leads')
+          .insert([{
+            email: email,
+            full_name: '',
+            source: 'newsletter',
+            notes: 'Suscripción al newsletter desde la landing page',
+          }]);
+        if (error) throw error;
+        newsletterForm.innerHTML = '<p style="color:var(--accent); font-size:14px; font-weight:500; padding:12px 0;"><i class="fas fa-check-circle"></i> ¡Gracias por suscribirte!</p>';
+      } catch (err) {
+        console.error('Newsletter error:', err);
+        if (btn) { btn.disabled = false; btn.innerHTML = 'Suscribirse <i class="fas fa-arrow-right"></i>'; }
+        emailInput.value = '';
+        emailInput.placeholder = 'Error — intentá de nuevo';
+      }
+    });
   }
 
 })();

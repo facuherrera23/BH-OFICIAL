@@ -28,6 +28,7 @@
     --text-secondary: #CBD5E1;
     --text-muted: #8E9BAE;
     --text-dim: #64748B;
+    --text-tertiary: #8E9BAE;
 
     --font-heading: 'Playfair Display', Georgia, serif;
     --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -40,6 +41,7 @@
     --radius-btn: 9999px;
 
     --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
     --transition: all 0.3s var(--ease-out);
 }
 

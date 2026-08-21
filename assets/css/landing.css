@@ -940,3 +940,18 @@ section[id], main[id], footer[id] { scroll-margin-top: var(--navbar-height); }
   .footer-grid { grid-template-columns: 1fr; }
   .stats-cta { flex-direction: column; text-align: center; }
 }
+
+/* --- Reduced Motion --- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .cursor-glow, .cursor-dot { display: none !important; }
+  .preloader-bar { animation: none !important; }
+  .pulse-live { animation: none !important; }
+  .grain-overlay { animation: none !important; }
+  [data-animate] { opacity: 1 !important; transform: none !important; }
+}
