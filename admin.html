@@ -129,7 +129,7 @@
                         <i class="fas fa-calculator"></i>
                         <span>Tasaciones</span>
                     </div>
-                    <span class="nav-badge">Próximamente</span>
+                    <span class="nav-badge" id="sideBadgeTasaciones">0</span>
                 </div>
 
                 <div class="menu-category">Red &amp; Difusión</div>
@@ -612,13 +612,24 @@
                     </div>
                 </section>
 
-                <!-- 9. TASACIONES (RESERVADO) -->
+                <!-- 9. TASACIONES -->
                 <section class="tab-module" id="tab-tasaciones">
-                    <div class="glass-panel" style="text-align:center; padding:60px 20px;">
-                        <i class="fas fa-calculator" style="font-size:54px; color:var(--accent); margin-bottom:16px;"></i>
-                        <h2 class="panel-title" style="font-size:24px; margin-bottom:8px;">Módulo de Tasaciones</h2>
-                        <p style="color:var(--text-muted); max-width:480px; margin:0 auto 20px;">Este apartado se encuentra reservado para la siguiente etapa de desarrollo.</p>
-                        <button class="btn-luxury-action" data-action="goToDashboard">Volver al Dashboard</button>
+                    <div class="glass-panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2 class="panel-title">Análisis Comparativo de Mercado</h2>
+                                <p style="color:var(--text-muted); font-size:12.5px;">Listado de tasaciones realizadas.</p>
+                            </div>
+                            <button class="btn-luxury-action" id="btnNewTasacion"><i class="fas fa-plus"></i> Nueva Tasación</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="luxury-table">
+                                <thead><tr><th>Título</th><th>Estado</th><th>Fecha</th><th>Acción</th></tr></thead>
+                                <tbody id="tasacionesTableBody">
+                                    <tr><td colspan="4" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando tasaciones...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </section>
 

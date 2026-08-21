@@ -223,6 +223,7 @@
       'tab-propiedades': loadProperties,
       'tab-leads': loadCRM,
       'tab-agenda': loadVisits,
+      'tab-tasaciones': loadTasaciones,
       'tab-sitio-web': loadCMS,
       'tab-agentes': loadAgents,
       'tab-propietarios': loadOwners,
@@ -1800,6 +1801,76 @@
   };
 
   /* ------------------------------------------------
+     13C. TASACIONES
+     ------------------------------------------------ */
+  async function loadTasaciones() {
+    const tbody = $('#tasacionesTableBody');
+    if (!tbody) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('tasaciones')
+        .select('id, title, status, created_at')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color:var(--text-dim);">No hay tasaciones registradas</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.map(t => {
+        const statusLabel = t.status === 'finalizada' ? 'Finalizada' : 'Borrador';
+        const statusClass = t.status === 'finalizada' ? 'active' : 'pending';
+        const date = t.created_at ? new Date(t.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+        return `<tr>
+          <td style="font-weight:600; color:#fff;">${t.title || 'Sin título'}</td>
+          <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
+          <td style="color:var(--text-muted); font-size:13px;">${date}</td>
+          <td>
+            <button class="icon-badge-btn" title="Abrir" onclick="window.open('tasacion.html?id=${t.id}','_blank')"><i class="fas fa-external-link-alt"></i></button>
+            <button class="icon-badge-btn" title="Eliminar" onclick="deleteTasacion('${t.id}')"><i class="fas fa-trash" style="color:var(--danger);"></i></button>
+          </td>
+        </tr>`;
+      }).join('');
+    } catch (err) {
+      console.error('loadTasaciones error:', err);
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar tasaciones</td></tr>';
+    }
+  }
+
+  async function deleteTasacion(id) {
+    if (!confirm('¿Eliminar esta tasación permanentemente?')) return;
+    try {
+      const { error } = await window.supabaseClient.from('tasaciones').delete().eq('id', id);
+      if (error) throw error;
+      showToast('Tasación eliminada', 'success');
+      loadTasaciones();
+      updateSidebarBadges();
+    } catch (err) {
+      showToast('Error al eliminar: ' + err.message, 'error');
+    }
+  }
+
+  async function createNewTasacion() {
+    try {
+      const { data: { user } } = await window.supabaseClient.auth.getUser();
+      const { data, error } = await window.supabaseClient
+        .from('tasaciones')
+        .insert({ title: 'Nueva Tasación', status: 'draft', created_by: user?.id })
+        .select('id')
+        .single();
+      if (error) throw error;
+      window.open(`tasacion.html?id=${data.id}`, '_blank');
+      loadTasaciones();
+      updateSidebarBadges();
+    } catch (err) {
+      showToast('Error al crear tasación: ' + err.message, 'error');
+    }
+  }
+
+  $('#btnNewTasacion')?.addEventListener('click', createNewTasacion);
+
+  /* ------------------------------------------------
      14. MODALS
      ------------------------------------------------ */
   function openModal(id) {
@@ -2022,22 +2093,25 @@
      ------------------------------------------------ */
   async function updateSidebarBadges() {
     try {
-      const [props, leads, visits, owners] = await Promise.all([
+      const [props, leads, visits, owners, tasaciones] = await Promise.all([
         window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('is_published', true),
         window.supabaseClient.from('leads').select('*', { count: 'exact', head: true }).not('stage', 'in', '(cerrado,perdido)'),
         window.supabaseClient.from('visits').select('*', { count: 'exact', head: true }).eq('status', 'pendiente'),
         window.supabaseClient.from('owners').select('*', { count: 'exact', head: true }),
+        window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true }),
       ]);
 
       const propsEl = $('#sideBadgeProps');
       const leadsEl = $('#sideBadgeLeads');
       const visitsEl = $('#sideBadgeVisits');
       const ownersEl = $('#sideBadgeOwners');
+      const tasEl = $('#sideBadgeTasaciones');
 
       if (propsEl) propsEl.textContent = props.count || 0;
       if (leadsEl) leadsEl.textContent = (leads.count || 0) + ' Activos';
       if (visitsEl) visitsEl.textContent = (visits.count || 0) + ' Citas';
       if (ownersEl) ownersEl.textContent = (owners.count || 0) + ' Activos';
+      if (tasEl) tasEl.textContent = tasaciones.count || 0;
     } catch (err) {
       console.error('Badge update error:', err);
     }
