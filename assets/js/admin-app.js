@@ -502,7 +502,7 @@
   }
 
   /* Save property */
-  \#propertyForm?.addEventListener('submit', async (e) => {
+  $('#propertyForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (_submittingProperty) return;
     _submittingProperty = true;
@@ -1146,7 +1146,6 @@
   });
 
   /* Save agent */
-  let _submittingAgent = false;
   $('#agentForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (_submittingAgent) return;
@@ -1308,7 +1307,6 @@
   });
 
   /* Save owner */
-  let _submittingOwner = false;
   $('#ownerForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (_submittingOwner) return;
@@ -2280,6 +2278,23 @@
   });
 
 })();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

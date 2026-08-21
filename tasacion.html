@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Bienenhaus Propiedades · Análisis Comparativo de Mercado</title>
+<title>Bienenhaus Propiedades Â· AnÃ¡lisis Comparativo de Mercado</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -288,7 +288,7 @@
 <header class="top">
   <div>
     <div class="brand">BIENENHAUS <span>PROPIEDADES</span></div>
-    <div class="subtitle">Análisis Comparativo de Mercado (ACM)</div>
+    <div class="subtitle">AnÃ¡lisis Comparativo de Mercado (ACM)</div>
   </div>
   <div style="display:flex; align-items:center; gap:16px;">
     <div class="subtitle" id="dateStamp"></div>
@@ -301,7 +301,7 @@
 <main>
 
   <div class="status-bar" id="statusBar">
-    <span><span class="dot"></span><span id="statusText">Documento en edición</span></span>
+    <span><span class="dot"></span><span id="statusText">Documento en ediciÃ³n</span></span>
     <span id="lastSaved" style="color:var(--muted); font-weight:400;"></span>
   </div>
 
@@ -312,8 +312,8 @@
     <h2>Datos del Cliente</h2>
     <div class="grid cols-2">
       <div class="field"><label>Solicitante</label><input type="text" id="f_solicitante"></div>
-      <div class="field"><label>Fecha de Tasación</label><input type="date" id="f_fecha"></div>
-      <div class="field"><label>Teléfono</label><input type="text" id="f_telefono"></div>
+      <div class="field"><label>Fecha de TasaciÃ³n</label><input type="date" id="f_fecha"></div>
+      <div class="field"><label>TelÃ©fono</label><input type="text" id="f_telefono"></div>
       <div class="field"><label>Destino</label>
         <select id="f_destino"><option value="Venta">Venta</option><option value="Alquiler">Alquiler</option></select>
       </div>
@@ -327,8 +327,8 @@
       <input type="file" id="f_fotoFachada" accept="image/*" style="display:none;">
       <img id="photoPreview" style="display:none;">
       <div class="photo-placeholder" id="photoPlaceholder">
-        <span>📷 Click para subir foto de la fachada</span>
-        <span class="photo-hint">Tamaño sugerido aprox. 15 cm × 7 cm (horizontal)</span>
+        <span>ðŸ“· Click para subir foto de la fachada</span>
+        <span class="photo-hint">TamaÃ±o sugerido aprox. 15 cm Ã— 7 cm (horizontal)</span>
       </div>
       <button type="button" class="remove" id="photoRemove" style="display:none;">Quitar foto</button>
     </div>
@@ -338,19 +338,19 @@
   <section class="card">
     <h2>Datos del Inmueble</h2>
     <div class="grid cols-2">
-      <div class="field"><label>Dirección</label><input type="text" id="f_direccion"></div>
+      <div class="field"><label>DirecciÃ³n</label><input type="text" id="f_direccion"></div>
       <div class="field"><label>Barrio</label><input type="text" id="f_barrio"></div>
       <div class="field"><label>Localidad</label><input type="text" id="f_localidad"></div>
       <div class="field"><label>Provincia</label><input type="text" id="f_provincia"></div>
-      <div class="field"><label>Superficie Terreno (m²)</label><input type="number" id="f_supTerreno"></div>
-      <div class="field"><label>Superficie Construida (m²)</label><input type="number" id="f_supConstruida"></div>
+      <div class="field"><label>Superficie Terreno (mÂ²)</label><input type="number" id="f_supTerreno"></div>
+      <div class="field"><label>Superficie Construida (mÂ²)</label><input type="number" id="f_supConstruida"></div>
     </div>
     <div class="field" style="margin-top:14px;"><label>Tipo de Inmueble</label>
         <select id="f_tipo">
           <option value="CASA">Casa</option>
           <option value="DEPTO">Depto</option>
           <option value="LOTE">Lote</option>
-          <option value="GALPON">Galpón</option>
+          <option value="GALPON">GalpÃ³n</option>
           <option value="OFICINA">Oficina</option>
           <option value="LOCAL">Local</option>
           <option value="OTRO">Otro</option>
@@ -358,7 +358,7 @@
     </div>
     <div class="valor-row">
       <div class="valor-box">
-        <label>Valor Dólar</label>
+        <label>Valor DÃ³lar</label>
         <div class="valor-input"><span>U$S</span><input type="number" id="f_precioDolar"></div>
       </div>
       <div class="valor-box">
@@ -368,39 +368,39 @@
     </div>
   </section>
 
-  <!-- ============ UBICACIÓN EN EL MAPA ============ -->
+  <!-- ============ UBICACIÃ“N EN EL MAPA ============ -->
   <section class="card">
-    <h2>Plano de Ubicación</h2>
+    <h2>Plano de UbicaciÃ³n</h2>
     <p style="font-size:12.5px; color:var(--muted); margin:-6px 0 12px; font-family:'Poppins',sans-serif;">
       Muestra la propiedad y todos los comparables juntos en un mismo mapa.
     </p>
     <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
-      <button type="button" class="add-btn" id="btnUpdateMap" style="width:auto; padding:10px 18px;">📍 Actualizar mapa con todas las ubicaciones</button>
+      <button type="button" class="add-btn" id="btnUpdateMap" style="width:auto; padding:10px 18px;">ðŸ“ Actualizar mapa con todas las ubicaciones</button>
       <span id="mapStatus" style="font-size:12px; color:var(--muted); font-family:'Poppins',sans-serif;"></span>
     </div>
     <div class="map-frame" id="leafletMap">
-      <div class="map-placeholder" id="mainMapPlaceholder">Cargá la dirección del inmueble y de los comparables, y presioná "Actualizar mapa"</div>
+      <div class="map-placeholder" id="mainMapPlaceholder">CargÃ¡ la direcciÃ³n del inmueble y de los comparables, y presionÃ¡ "Actualizar mapa"</div>
     </div>
     <div class="map-legend" id="mapLegend"></div>
   </section>
 
-  <!-- ============ DESCRIPCIÓN DE LA PROPIEDAD ============ -->
+  <!-- ============ DESCRIPCIÃ“N DE LA PROPIEDAD ============ -->
   <div class="print-group" id="printGroupPropiedad">
   <section class="card">
-    <h2>Descripción de la Propiedad</h2>
+    <h2>DescripciÃ³n de la Propiedad</h2>
     <div class="grid cols-4">
-      <div class="field"><label>Tipo de Construcción</label>
-        <select id="f_tipoConstruccion"><option value=""></option><option>Ladrillo</option><option>Metálica</option><option>Madera</option><option>Bloques de hormigón</option><option>N/A</option></select>
+      <div class="field"><label>Tipo de ConstrucciÃ³n</label>
+        <select id="f_tipoConstruccion"><option value=""></option><option>Ladrillo</option><option>MetÃ¡lica</option><option>Madera</option><option>Bloques de hormigÃ³n</option><option>N/A</option></select>
       </div>
-      <div class="field"><label>Espacio Habitable (m²)</label><input type="number" id="f_espacioHabitable"></div>
+      <div class="field"><label>Espacio Habitable (mÂ²)</label><input type="number" id="f_espacioHabitable"></div>
       <div class="field"><label>Cantidad de Plantas</label><input type="number" id="f_plantas"></div>
-      <div class="field"><label>Año de Construcción</label><input type="number" id="f_anioConstruccion"></div>
+      <div class="field"><label>AÃ±o de ConstrucciÃ³n</label><input type="number" id="f_anioConstruccion"></div>
 
       <div class="field"><label>Imp. Inmobiliario Mensual</label><input type="number" id="f_impInmobiliarios"></div>
       <div class="field"><label>Tipo de Techo</label>
-        <select id="f_tipoTecho"><option value=""></option><option>N/A</option><option>Losa H°A°</option><option>Losa cerámica</option><option>Tejas s/ estr. Madera</option><option>Pizarra s/ estr. Madera</option><option>Chapa s/ estr. Madera</option><option>Chapa s/ estr. Metálica</option></select>
+        <select id="f_tipoTecho"><option value=""></option><option>N/A</option><option>Losa HÂ°AÂ°</option><option>Losa cerÃ¡mica</option><option>Tejas s/ estr. Madera</option><option>Pizarra s/ estr. Madera</option><option>Chapa s/ estr. Madera</option><option>Chapa s/ estr. MetÃ¡lica</option></select>
       </div>
-      <div class="field"><label>Orientación</label>
+      <div class="field"><label>OrientaciÃ³n</label>
         <select id="f_orientacion"><option value=""></option><option>Norte</option><option>Sur</option><option>Este</option><option>Oeste</option><option>Noreste</option><option>Sudeste</option><option>Noroeste</option><option>Sudoeste</option><option>N/A</option></select>
       </div>
       <div class="field"><label>Luminosidad</label>
@@ -413,7 +413,7 @@
       <div class="field"><label>Calidad de Mantenimiento</label>
         <select id="f_calidadMantenimiento"><option value=""></option><option>Excelente</option><option>Buena</option><option>Media</option><option>Regular</option><option>Mala</option><option>N/A</option></select>
       </div>
-      <div class="field"><label>Detalles de Terminación</label>
+      <div class="field"><label>Detalles de TerminaciÃ³n</label>
         <select id="f_detallesTerminacion"><option value=""></option><option>Excelente</option><option>Bueno</option><option>Medio</option><option>Regular</option><option>Malo</option><option>N/A</option></select>
       </div>
       <div class="field"><label>Estacionamiento</label>
@@ -433,18 +433,18 @@
 
       <div class="amb-field"><span>Cocina-Comedor</span><input type="number" id="f_ambCocinaComedor"></div>
       <div class="amb-field"><span>Suite y Vestidor</span><input type="number" id="f_ambSuiteVestidor"></div>
-      <div class="amb-field"><span>Balcón</span><input type="number" id="f_ambBalcon"></div>
+      <div class="amb-field"><span>BalcÃ³n</span><input type="number" id="f_ambBalcon"></div>
 
       <div class="amb-field"><span>Living</span><input type="number" id="f_ambLiving"></div>
       <div class="amb-field"><span>Dormit. y Vestidor</span><input type="number" id="f_ambDormitVestidor"></div>
       <div class="amb-field"><span>Lavadero</span><input type="number" id="f_ambLavadero"></div>
 
       <div class="amb-field"><span>Living-Comedor</span><input type="number" id="f_ambLivingComedor"></div>
-      <div class="amb-field"><span>Baño Servicio</span><input type="number" id="f_ambBanoServicio"></div>
+      <div class="amb-field"><span>BaÃ±o Servicio</span><input type="number" id="f_ambBanoServicio"></div>
       <div class="amb-field"><span>Cuarto Guardado</span><input type="number" id="f_ambCuartoGuardado"></div>
 
       <div class="amb-field"><span>Escritorio</span><input type="number" id="f_ambEscritorio"></div>
-      <div class="amb-field"><span>Baño</span><input type="number" id="f_ambBano"></div>
+      <div class="amb-field"><span>BaÃ±o</span><input type="number" id="f_ambBano"></div>
       <div class="amb-field"><span>Garage / Cochera</span><input type="number" id="f_ambGarage"></div>
     </div>
 
@@ -455,7 +455,7 @@
 
     <p style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:18px 0 8px; font-family:'Poppins',sans-serif;">Comodidades</p>
     <div class="grid cols-3">
-      <div class="field"><label>Doble Circulación</label>
+      <div class="field"><label>Doble CirculaciÃ³n</label>
         <select id="f_comDobleCirculacion"><option value=""></option><option>Si</option><option>No</option><option>N/A</option></select>
       </div>
       <div class="field"><label>Asador</label>
@@ -467,7 +467,7 @@
     </div>
 
     <div class="grid cols-3" style="margin-top:16px;">
-      <div class="field"><label>Calefacción</label>
+      <div class="field"><label>CalefacciÃ³n</label>
         <select id="f_calefaccion"><option value=""></option><option>Central</option><option>Individual</option><option>Inexistente</option><option>N/A</option></select>
       </div>
       <div class="field"><label>Aire Acondicionado</label>
@@ -477,7 +477,7 @@
         <select id="f_aguaCaliente"><option value=""></option><option>Central</option><option>Individual</option><option>Inexistente</option><option>N/A</option></select>
       </div>
     </div>
-    <div class="field" style="margin-top:12px;"><label>Características Adversas / Deficiencias</label><textarea id="f_caracteristicasAdversas"></textarea></div>
+    <div class="field" style="margin-top:12px;"><label>CaracterÃ­sticas Adversas / Deficiencias</label><textarea id="f_caracteristicasAdversas"></textarea></div>
   </section>
 
   <!-- ============ SERVICIOS ============ -->
@@ -487,23 +487,23 @@
   </section>
   </div>
 
-  <!-- ============ CARACTERÍSTICAS DEL BARRIO ============ -->
+  <!-- ============ CARACTERÃSTICAS DEL BARRIO ============ -->
   <div class="print-group" id="printGroupBarrio">
   <section class="card">
-    <h2>Características del Barrio</h2>
+    <h2>CaracterÃ­sticas del Barrio</h2>
     <div class="grid cols-2">
-      <div class="field"><label>Tipologías edilicias predominantes</label>
+      <div class="field"><label>TipologÃ­as edilicias predominantes</label>
         <select id="f_tipologiasEdilicias"><option value=""></option>
-          <option>Construcción en altura</option><option>Construcción de media altura</option>
+          <option>ConstrucciÃ³n en altura</option><option>ConstrucciÃ³n de media altura</option>
           <option>Viviendas unifamiliares y PH de hasta tres plantas</option>
           <option>Viviendas unifamiliares y PH de una planta</option><option>Casas quinta</option>
-          <option>Industrias de gran envergadura</option><option>Industrias de pequeña y mediana envergadura</option>
+          <option>Industrias de gran envergadura</option><option>Industrias de pequeÃ±a y mediana envergadura</option>
         </select>
       </div>
       <div class="field"><label>Calidad constructiva predominante</label>
-        <select id="f_calidadConstructivaPredom"><option value=""></option><option>Excelente</option><option>Muy Buena</option><option>Buena</option><option>Media</option><option>Económica</option><option>Precaria</option></select>
+        <select id="f_calidadConstructivaPredom"><option value=""></option><option>Excelente</option><option>Muy Buena</option><option>Buena</option><option>Media</option><option>EconÃ³mica</option><option>Precaria</option></select>
       </div>
-      <div class="field"><label>Construcción en altura (prevalencia)</label>
+      <div class="field"><label>ConstrucciÃ³n en altura (prevalencia)</label>
         <select id="f_construccionAlturaPrevalencia"><option value=""></option><option>En todo el entorno</option><option>Sobre arterias principales</option><option>Ocasional</option><option>No relevante o inexistente</option></select>
       </div>
       <div class="field"><label>Uso comercial</label>
@@ -512,23 +512,23 @@
       <div class="field"><label>Uso industrial</label>
         <select id="f_usoIndustrialPrevalencia"><option value=""></option><option>En todo el entorno</option><option>Sobre arterias principales</option><option>Ocasional</option><option>No relevante o inexistente</option></select>
       </div>
-      <div class="field"><label>Nivel socioeconómico</label>
+      <div class="field"><label>Nivel socioeconÃ³mico</label>
         <select id="f_nivelSocioeconomicoBarrio"><option value=""></option><option>Alto</option><option>Medio alto</option><option>Medio</option><option>Medio Bajo</option><option>Bajo</option></select>
       </div>
     </div>
   </section>
 
-  <!-- ============ DESCRIPCIÓN DEL BARRIO ============ -->
+  <!-- ============ DESCRIPCIÃ“N DEL BARRIO ============ -->
   <section class="card">
-    <h2>Descripción del Barrio</h2>
+    <h2>DescripciÃ³n del Barrio</h2>
     <div class="grid cols-3">
       <div class="field"><label>Tipo</label>
         <select id="f_barrioTipo"><option value=""></option><option>Urbano</option><option>Suburbano</option><option>Rural</option></select>
       </div>
       <div class="field"><label>Construido</label>
-        <select id="f_construidoPct"><option value=""></option><option>Más del 75%</option><option>Entre el 75% y el 25%</option><option>Menos del 25%</option></select>
+        <select id="f_construidoPct"><option value=""></option><option>MÃ¡s del 75%</option><option>Entre el 75% y el 25%</option><option>Menos del 25%</option></select>
       </div>
-      <div class="field"><label>Índice de Crecimiento</label>
+      <div class="field"><label>Ãndice de Crecimiento</label>
         <select id="f_indiceCrecimiento"><option value=""></option><option>Estable</option><option>Creciente</option><option>Decreciente</option></select>
       </div>
       <div class="field"><label>Servicio de Vigilancia del Barrio</label>
@@ -538,16 +538,16 @@
         <select id="f_tendenciaValores"><option value=""></option><option>Creciente</option><option>Estable</option><option>Decreciente</option></select>
       </div>
       <div class="field"><label>Demanda / Oferta</label>
-        <select id="f_demandaOferta"><option value=""></option><option>Exceso de Oferta</option><option>Falta de Oferta</option><option>Relación Oferta/Demanda Equilibrada</option></select>
+        <select id="f_demandaOferta"><option value=""></option><option>Exceso de Oferta</option><option>Falta de Oferta</option><option>RelaciÃ³n Oferta/Demanda Equilibrada</option></select>
       </div>
-      <div class="field"><label>Tiempo de Comercialización</label>
-        <select id="f_tiempoComercializacion"><option value=""></option><option>Menos de 3 meses</option><option>Entre 3 y 6 meses</option><option>Más de 6 meses</option></select>
+      <div class="field"><label>Tiempo de ComercializaciÃ³n</label>
+        <select id="f_tiempoComercializacion"><option value=""></option><option>Menos de 3 meses</option><option>Entre 3 y 6 meses</option><option>MÃ¡s de 6 meses</option></select>
       </div>
       <div class="field"><label>Cambios Principales en el Uso del Terreno</label>
         <select id="f_cambiosUsoTerreno"><option value=""></option><option>Probable</option><option>Improbable</option><option>En Proceso</option></select>
       </div>
-      <div class="field"><label>Facilidades de Estacionamiento Típico</label>
-        <select id="f_facilidadesEstacionamiento"><option value=""></option><option>Garage Propio</option><option>Garajes privados</option><option>En la vía pública</option></select>
+      <div class="field"><label>Facilidades de Estacionamiento TÃ­pico</label>
+        <select id="f_facilidadesEstacionamiento"><option value=""></option><option>Garage Propio</option><option>Garajes privados</option><option>En la vÃ­a pÃºblica</option></select>
       </div>
     </div>
     <p style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:16px 0 8px; font-family:'Poppins',sans-serif;">Uso del Terreno %</p>
@@ -562,31 +562,31 @@
 
   <!-- ============ COMPARABLES ============ -->
   <section class="card">
-    <h2>Comparables — Comparación de Características</h2>
+    <h2>Comparables â€” ComparaciÃ³n de CaracterÃ­sticas</h2>
     <div id="comparablesContainer"></div>
     <button type="button" class="add-btn" id="addComparable">+ Agregar comparable</button>
   </section>
 
-  <!-- ============ ANÁLISIS COMPARATIVO ============ -->
+  <!-- ============ ANÃLISIS COMPARATIVO ============ -->
   <section class="card" id="sectionAnalisisComparativo">
-    <h2>Análisis Comparativo</h2>
+    <h2>AnÃ¡lisis Comparativo</h2>
     <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
-      <label style="font-family:'Poppins',sans-serif; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;">Dispersión (±%)</label>
+      <label style="font-family:'Poppins',sans-serif; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;">DispersiÃ³n (Â±%)</label>
       <input type="number" id="ac_dispersion" value="10" min="0" max="100" style="width:70px; padding:7px 8px; border:1px solid var(--line); border-radius:5px; background:#fff; color:var(--input-text); font-family:'Poppins',sans-serif; font-weight:700;">
-      <span style="font-size:11.5px; color:var(--muted); font-family:'Poppins',sans-serif;">Tildá los comparables que querés incluir en el promedio final.</span>
+      <span style="font-size:11.5px; color:var(--muted); font-family:'Poppins',sans-serif;">TildÃ¡ los comparables que querÃ©s incluir en el promedio final.</span>
     </div>
 
     <table class="data-table ac-table">
       <thead>
-        <tr><th style="width:36px;"></th><th>Comparable</th><th>Precio U$S/m²</th><th>Rango −%</th><th>Rango +%</th></tr>
+        <tr><th style="width:36px;"></th><th>Comparable</th><th>Precio U$S/mÂ²</th><th>Rango âˆ’%</th><th>Rango +%</th></tr>
       </thead>
       <tbody id="ac_tbody"></tbody>
     </table>
 
     <div class="valuation-summary" style="margin-top:16px;">
-      <div class="box"><div class="lbl">Valor Mínimo</div><div class="val" id="ac_valMin">—</div></div>
-      <div class="box"><div class="lbl">Valor Promedio</div><div class="val" id="ac_valProm">—</div></div>
-      <div class="box"><div class="lbl">Valor Máximo</div><div class="val" id="ac_valMax">—</div></div>
+      <div class="box"><div class="lbl">Valor MÃ­nimo</div><div class="val" id="ac_valMin">â€”</div></div>
+      <div class="box"><div class="lbl">Valor Promedio</div><div class="val" id="ac_valProm">â€”</div></div>
+      <div class="box"><div class="lbl">Valor MÃ¡ximo</div><div class="val" id="ac_valMax">â€”</div></div>
     </div>
 
     <div class="ac-chart-wrap">
@@ -594,33 +594,33 @@
     </div>
   </section>
 
-  <!-- ============ VALUACIÓN ============ -->
+  <!-- ============ VALUACIÃ“N ============ -->
   <section class="card">
-    <h2>Valuación</h2>
+    <h2>ValuaciÃ³n</h2>
     <table class="data-table" style="margin-bottom:18px;">
-      <thead><tr><th>Componente</th><th>Total m²</th><th>Precio m² (U$S)</th><th>Total (U$S)</th></tr></thead>
+      <thead><tr><th>Componente</th><th>Total mÂ²</th><th>Precio mÂ² (U$S)</th><th>Total (U$S)</th></tr></thead>
       <tbody>
         <tr>
           <td>Terreno</td>
-          <td id="v_terrenoM2">—</td>
+          <td id="v_terrenoM2">â€”</td>
           <td><input type="number" id="v_terrenoPrecio"></td>
-          <td id="v_terrenoTotal">—</td>
+          <td id="v_terrenoTotal">â€”</td>
         </tr>
         <tr>
           <td>Superficie Cubierta</td>
-          <td id="v_cubiertaM2">—</td>
-          <td id="v_cubiertaPrecio">—</td>
-          <td id="v_cubiertaTotal">—</td>
+          <td id="v_cubiertaM2">â€”</td>
+          <td id="v_cubiertaPrecio">â€”</td>
+          <td id="v_cubiertaTotal">â€”</td>
         </tr>
       </tbody>
     </table>
     <p style="font-size:11.5px; color:var(--muted); margin-top:-10px; font-family:'Poppins',sans-serif;">
-      Los m² de Terreno y Superficie Cubierta se completan automáticamente desde "Datos del Inmueble".
+      Los mÂ² de Terreno y Superficie Cubierta se completan automÃ¡ticamente desde "Datos del Inmueble".
     </p>
     <div class="valuation-summary cols-4">
-      <div class="box"><div class="lbl">Precio m² promedio comparables</div><div class="val" id="v_precioPromedio">U$S 0</div></div>
+      <div class="box"><div class="lbl">Precio mÂ² promedio comparables</div><div class="val" id="v_precioPromedio">U$S 0</div></div>
       <div class="box"><div class="lbl">Coef. de condiciones promedio</div><div class="val" id="v_coefPromedio">1.000</div></div>
-      <div class="box"><div class="lbl">Depreciación por Servicios</div><div class="val" id="v_depreciacionServicios">1.000</div></div>
+      <div class="box"><div class="lbl">DepreciaciÃ³n por Servicios</div><div class="val" id="v_depreciacionServicios">1.000</div></div>
       <div class="box final"><div class="lbl">Valor Final Estimado</div><div class="val" id="v_valorFinal">U$S 0</div></div>
     </div>
   </section>
@@ -634,14 +634,14 @@
   <!-- ============ PLAN DE MARKETING (texto fijo) ============ -->
   <section class="card">
     <h2>Plan de Marketing</h2>
-    <p class="marketing-text"><b>1. Cartel:</b> colocaremos un cartel en su propiedad con nuestros números de teléfono celular para no perder un solo llamado.</p>
+    <p class="marketing-text"><b>1. Cartel:</b> colocaremos un cartel en su propiedad con nuestros nÃºmeros de telÃ©fono celular para no perder un solo llamado.</p>
     <p class="marketing-text"><b>2. Sitio web:</b> bienenhaus.com.ar</p>
-    <p class="marketing-text"><b>3. Otros sitios web:</b> la propiedad será publicada en ZonaProp, MercadoLibre, Facebook y Clasificados La Voz.</p>
-    <p class="marketing-text"><b>4. Colaboración con otros profesionales:</b> trabajamos en conjunto con colegas para coordinar la venta; usted trata sólo conmigo.</p>
-    <p class="marketing-text"><b>5. Carpeta de presentación:</b> incluye características, plano de distribución y detalles de la zona.</p>
-    <p class="marketing-text"><b>6. Cuestionario:</b> aplicado a cada potencial comprador para conocer su reacción.</p>
+    <p class="marketing-text"><b>3. Otros sitios web:</b> la propiedad serÃ¡ publicada en ZonaProp, MercadoLibre, Facebook y Clasificados La Voz.</p>
+    <p class="marketing-text"><b>4. ColaboraciÃ³n con otros profesionales:</b> trabajamos en conjunto con colegas para coordinar la venta; usted trata sÃ³lo conmigo.</p>
+    <p class="marketing-text"><b>5. Carpeta de presentaciÃ³n:</b> incluye caracterÃ­sticas, plano de distribuciÃ³n y detalles de la zona.</p>
+    <p class="marketing-text"><b>6. Cuestionario:</b> aplicado a cada potencial comprador para conocer su reacciÃ³n.</p>
     <p class="marketing-text"><b>7. Seguimiento:</b> resumen mensual de acciones de venta y resultados.</p>
-    <p class="marketing-text"><b>8. Evaluación:</b> cada 30 días revisamos la actividad y ajustamos la estrategia.</p>
+    <p class="marketing-text"><b>8. EvaluaciÃ³n:</b> cada 30 dÃ­as revisamos la actividad y ajustamos la estrategia.</p>
   </section>
 
   </fieldset>
@@ -655,11 +655,11 @@
 </footer>
 
 <div class="action-bar">
-  <button class="btn btn-back" id="btnBack" onclick="window.parent?.postMessage({type:'tasaciones-back'},'*')">← Volver</button>
-  <button class="btn btn-save" id="btnSave">💾 Guardar</button>
-  <button class="btn btn-edit" id="btnEdit" disabled>✏️ Editar</button>
-  <button class="btn btn-finish" id="btnFinish">✅ Finalizar</button>
-  <button class="btn btn-pdf" id="btnPdf">⭳ Exportar a PDF</button>
+  <button class="btn btn-back" id="btnBack" onclick="window.parent?.postMessage({type:'tasaciones-back'},'*')">â† Volver</button>
+  <button class="btn btn-save" id="btnSave">ðŸ’¾ Guardar</button>
+  <button class="btn btn-edit" id="btnEdit" disabled>âœï¸ Editar</button>
+  <button class="btn btn-finish" id="btnFinish">âœ… Finalizar</button>
+  <button class="btn btn-pdf" id="btnPdf">â­³ Exportar a PDF</button>
 </div>
 
 <script>
@@ -667,7 +667,7 @@ const SUPABASE_URL = window.BH_CONFIG?.SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = window.BH_CONFIG?.SUPABASE_ANON_KEY || '';
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const urlParams = new URLSearchParams(window.location.search);
+
 let _authToken = null;
 window.addEventListener('message', (e) => {
   if (e.data?.type === 'auth-session' && e.data?.token) {
@@ -675,17 +675,19 @@ window.addEventListener('message', (e) => {
   }
 });
 
+
 const urlParams = new URLSearchParams(window.location.search);
+
 const TASACION_ID = urlParams.get('id');
 
 const PESOS = {
-  CASA:   {label:'Casa',    vars:[['Calidad de ubicación',0.30],['Cantidad de habitaciones',0.20],['Estado de mantenimiento',0.20],['Antigüedad',0.15],['Comodidades',0.10],['Estacionamiento',0.05]]},
-  DEPTO:  {label:'Depto',   vars:[['Calidad de ubicación (barrio)',0.30],['Cantidad de habitaciones',0.20],['Ubicación piso',0.15],['Antigüedad',0.15],['Comodidades (edificio)',0.12],['Ubicación planta',0.08]]},
-  LOTE:   {label:'Lote',    vars:[['Calidad de ubicación',0.35],['Superficie',0.25],['Servicios',0.20],['Acceso',0.10],['Forma',0.06],['Orientación',0.04]]},
-  GALPON: {label:'Galpón',  vars:[['Calidad de ubicación',0.25],['Superficie y altura libre',0.25],['Acceso',0.20],['Instalaciones',0.15],['Estado / antigüedad',0.10],['Oficinas y servicios anexos',0.05]]},
-  OFICINA:{label:'Oficina', vars:[['Calidad de ubicación',0.30],['Superficie y layout',0.20],['Ubicación piso / vista',0.15],['Comodidades del edificio',0.15],['Antigüedad / estado',0.12],['Estacionamiento',0.08]]},
-  LOCAL:  {label:'Local',   vars:[['Calidad de ubicación',0.35],['Frente / vidriera',0.20],['Superficie y forma',0.15],['Instalaciones',0.12],['Estado de mantenimiento',0.10],['Estacionamiento / carga y descarga',0.08]]},
-  OTRO:   {label:'Otro',    vars:[['Calidad de ubicación',0.30],['Superficie',0.15],['Servicios',0.15],['Acceso',0.15],['Instalaciones',0.15],['Estado de mantenimiento',0.10]]},
+  CASA:   {label:'Casa',    vars:[['Calidad de ubicaciÃ³n',0.30],['Cantidad de habitaciones',0.20],['Estado de mantenimiento',0.20],['AntigÃ¼edad',0.15],['Comodidades',0.10],['Estacionamiento',0.05]]},
+  DEPTO:  {label:'Depto',   vars:[['Calidad de ubicaciÃ³n (barrio)',0.30],['Cantidad de habitaciones',0.20],['UbicaciÃ³n piso',0.15],['AntigÃ¼edad',0.15],['Comodidades (edificio)',0.12],['UbicaciÃ³n planta',0.08]]},
+  LOTE:   {label:'Lote',    vars:[['Calidad de ubicaciÃ³n',0.35],['Superficie',0.25],['Servicios',0.20],['Acceso',0.10],['Forma',0.06],['OrientaciÃ³n',0.04]]},
+  GALPON: {label:'GalpÃ³n',  vars:[['Calidad de ubicaciÃ³n',0.25],['Superficie y altura libre',0.25],['Acceso',0.20],['Instalaciones',0.15],['Estado / antigÃ¼edad',0.10],['Oficinas y servicios anexos',0.05]]},
+  OFICINA:{label:'Oficina', vars:[['Calidad de ubicaciÃ³n',0.30],['Superficie y layout',0.20],['UbicaciÃ³n piso / vista',0.15],['Comodidades del edificio',0.15],['AntigÃ¼edad / estado',0.12],['Estacionamiento',0.08]]},
+  LOCAL:  {label:'Local',   vars:[['Calidad de ubicaciÃ³n',0.35],['Frente / vidriera',0.20],['Superficie y forma',0.15],['Instalaciones',0.12],['Estado de mantenimiento',0.10],['Estacionamiento / carga y descarga',0.08]]},
+  OTRO:   {label:'Otro',    vars:[['Calidad de ubicaciÃ³n',0.30],['Superficie',0.15],['Servicios',0.15],['Acceso',0.15],['Instalaciones',0.15],['Estado de mantenimiento',0.10]]},
 };
 const SLOT_ORDER = [3,2,5,0,4,1];
 
@@ -693,21 +695,21 @@ const NIVELES = {'Mucho Mejor':-0.75, 'Mejor':-0.3, 'Igual':0, 'Peor':0.3, 'Much
 const NIVELES_LIST = Object.keys(NIVELES);
 
 const RUBROS = {
-  'Electricidad':        {'Óptimo / Impecable (Listo para Habitar)':0,   'Sencilla (Cosmética / Menor)':0.010, 'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.065,'A Nuevo (Rediseño Total)':0.10},
-  'Agua Sanitaria':      {'Óptimo / Impecable (Listo para Habitar)':0,   'Sencilla (Cosmética / Menor)':0.0075,'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.07, 'A Nuevo (Rediseño Total)':0.11},
-  'Cloacas y Desagües':  {'Óptimo / Impecable (Listo para Habitar)':0,   'Sencilla (Cosmética / Menor)':0.0075,'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.08, 'A Nuevo (Rediseño Total)':0.115},
-  'Gas Natural':         {'Óptimo / Impecable (Listo para Habitar)':0,   'Sencilla (Cosmética / Menor)':0.0075,'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.09, 'A Nuevo (Rediseño Total)':0.125},
-  'Techos y Cubiertas':  {'Óptimo / Impecable (Listo para Habitar)':0,   'Sencilla (Cosmética / Menor)':0.015, 'Moderada (Parcial / Funcional)':0.045,'Grave (Deterioro Estructural)':0.115,'A Nuevo (Rediseño Total)':0.20},
-  'Internet / Redes':    {'Óptimo / Impecable (Listo para Habitar)':0,   'Sencilla (Cosmética / Menor)':0.0035,'Moderada (Parcial / Funcional)':0.01, 'Grave (Deterioro Estructural)':0.03, 'A Nuevo (Rediseño Total)':0.045},
+  'Electricidad':        {'Ã“ptimo / Impecable (Listo para Habitar)':0,   'Sencilla (CosmÃ©tica / Menor)':0.010, 'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.065,'A Nuevo (RediseÃ±o Total)':0.10},
+  'Agua Sanitaria':      {'Ã“ptimo / Impecable (Listo para Habitar)':0,   'Sencilla (CosmÃ©tica / Menor)':0.0075,'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.07, 'A Nuevo (RediseÃ±o Total)':0.11},
+  'Cloacas y DesagÃ¼es':  {'Ã“ptimo / Impecable (Listo para Habitar)':0,   'Sencilla (CosmÃ©tica / Menor)':0.0075,'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.08, 'A Nuevo (RediseÃ±o Total)':0.115},
+  'Gas Natural':         {'Ã“ptimo / Impecable (Listo para Habitar)':0,   'Sencilla (CosmÃ©tica / Menor)':0.0075,'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.09, 'A Nuevo (RediseÃ±o Total)':0.125},
+  'Techos y Cubiertas':  {'Ã“ptimo / Impecable (Listo para Habitar)':0,   'Sencilla (CosmÃ©tica / Menor)':0.015, 'Moderada (Parcial / Funcional)':0.045,'Grave (Deterioro Estructural)':0.115,'A Nuevo (RediseÃ±o Total)':0.20},
+  'Internet / Redes':    {'Ã“ptimo / Impecable (Listo para Habitar)':0,   'Sencilla (CosmÃ©tica / Menor)':0.0035,'Moderada (Parcial / Funcional)':0.01, 'Grave (Deterioro Estructural)':0.03, 'A Nuevo (RediseÃ±o Total)':0.045},
 };
-const RUBRO_NIVELES = ['Óptimo / Impecable (Listo para Habitar)','Sencilla (Cosmética / Menor)','Moderada (Parcial / Funcional)','Grave (Deterioro Estructural)','A Nuevo (Rediseño Total)'];
+const RUBRO_NIVELES = ['Ã“ptimo / Impecable (Listo para Habitar)','Sencilla (CosmÃ©tica / Menor)','Moderada (Parcial / Funcional)','Grave (Deterioro Estructural)','A Nuevo (RediseÃ±o Total)'];
 const SERVICIOS_MAP = [
   {key:'electricidad', label:'Electricidad', rubro:'Electricidad'},
   {key:'gas',           label:'Gas',            rubro:'Gas Natural'},
   {key:'internet',      label:'Internet',       rubro:'Internet / Redes'},
   {key:'agua',          label:'Agua',           rubro:'Agua Sanitaria'},
-  {key:'cloaca',        label:'Cloaca',         rubro:'Cloacas y Desagües'},
-  {key:'techos',        label:'Techos y Desagües', rubro:'Techos y Cubiertas'},
+  {key:'cloaca',        label:'Cloaca',         rubro:'Cloacas y DesagÃ¼es'},
+  {key:'techos',        label:'Techos y DesagÃ¼es', rubro:'Techos y Cubiertas'},
 ];
 
 let comparableCount = 0;
@@ -722,7 +724,7 @@ function renderServicios(){
     div.className='field';
     div.innerHTML = '<label>'+s.label+'</label>'+
       '<select id="serv_'+s.key+'" class="serv-select">'+
-        '<option value="">— Seleccionar —</option>'+
+        '<option value="">â€” Seleccionar â€”</option>'+
         RUBRO_NIVELES.map(n=>'<option value="'+n+'">'+n+'</option>').join('')+
       '</select>';
     grid.appendChild(div);
@@ -739,25 +741,25 @@ function addComparable(prefill){
   wrap.dataset.included = 'true';
   wrap.innerHTML = `
     <button type="button" class="remove" onclick="removeComparable(${id})">Quitar</button>
-    <h3>Comparable N° <span class="comp-index">${id}</span></h3>
+    <h3>Comparable NÂ° <span class="comp-index">${id}</span></h3>
     <div class="grid cols-3">
-      <div class="field"><label>Dirección</label><input type="text" class="c_direccion"></div>
+      <div class="field"><label>DirecciÃ³n</label><input type="text" class="c_direccion"></div>
       <div class="field"><label>Barrio</label><input type="text" class="c_barrio"></div>
       <div class="field"><label>Precio (U$S)</label><input type="number" class="c_precio"></div>
-      <div class="field"><label>Superficie Terreno (m²)</label><input type="number" class="c_supTerreno"></div>
-      <div class="field"><label>Superficie Cubierta (m²)</label><input type="number" class="c_supCubierta"></div>
-      <div class="field"><label>Días en Mercado</label><input type="number" class="c_dias"></div>
-      <div class="field"><label>Tipo de Construcción</label>
-        <select class="c_tipoConstruccion"><option value=""></option><option>Ladrillo</option><option>Metálica</option><option>Madera</option><option>Bloques de hormigón</option><option>N/A</option></select>
+      <div class="field"><label>Superficie Terreno (mÂ²)</label><input type="number" class="c_supTerreno"></div>
+      <div class="field"><label>Superficie Cubierta (mÂ²)</label><input type="number" class="c_supCubierta"></div>
+      <div class="field"><label>DÃ­as en Mercado</label><input type="number" class="c_dias"></div>
+      <div class="field"><label>Tipo de ConstrucciÃ³n</label>
+        <select class="c_tipoConstruccion"><option value=""></option><option>Ladrillo</option><option>MetÃ¡lica</option><option>Madera</option><option>Bloques de hormigÃ³n</option><option>N/A</option></select>
       </div>
-      <div class="field"><label>Antigüedad (años)</label><input type="number" class="c_antiguedad"></div>
-      <div class="field"><label>Precio por m² (calculado)</label><input type="text" class="c_precioM2" readonly style="background:#1c1c1c; color:var(--ink); font-weight:700;"></div>
+      <div class="field"><label>AntigÃ¼edad (aÃ±os)</label><input type="number" class="c_antiguedad"></div>
+      <div class="field"><label>Precio por mÂ² (calculado)</label><input type="text" class="c_precioM2" readonly style="background:#1c1c1c; color:var(--ink); font-weight:700;"></div>
     </div>
     <div class="field" style="margin:14px 0;">
-      <label>Página web de origen (aviso / publicación)</label>
+      <label>PÃ¡gina web de origen (aviso / publicaciÃ³n)</label>
       <div style="display:flex; gap:8px;">
         <input type="url" class="c_url" placeholder="https://..." style="flex:1;">
-        <button type="button" class="add-btn c_extract" style="width:auto; white-space:nowrap; padding:9px 16px;">⇩ Extraer datos</button>
+        <button type="button" class="add-btn c_extract" style="width:auto; white-space:nowrap; padding:9px 16px;">â‡© Extraer datos</button>
       </div>
       <div class="c_extract_status" style="font-size:11.5px; color:var(--muted); margin-top:6px; font-family:'Poppins',sans-serif;"></div>
     </div>
@@ -766,11 +768,11 @@ function addComparable(prefill){
       <input type="file" class="c_foto_input" accept="image/*" style="display:none;">
       <img class="c_foto_preview" style="display:none;">
       <div class="photo-placeholder c_foto_placeholder">
-        <span>📷 Click para subir foto</span>
+        <span>ðŸ“· Click para subir foto</span>
       </div>
       <button type="button" class="remove c_foto_remove" style="display:none;">Quitar foto</button>
     </div>
-    <p style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:16px 0 8px; font-family:'Poppins',sans-serif;">Comparación de características</p>
+    <p style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:16px 0 8px; font-family:'Poppins',sans-serif;">ComparaciÃ³n de caracterÃ­sticas</p>
     <div class="char-body"></div>
     <div class="coef-box">
       <span>Coeficiente de Condiciones</span>
@@ -790,8 +792,8 @@ async function extractFromUrl(wrap){
   const urlInput = wrap.querySelector('.c_url');
   const status = wrap.querySelector('.c_extract_status');
   const url = urlInput.value.trim();
-  if(!url){ status.textContent = 'Pegá primero el link del aviso.'; return; }
-  status.textContent = 'Buscando datos en la página\u2026';
+  if(!url){ status.textContent = 'PegÃ¡ primero el link del aviso.'; return; }
+  status.textContent = 'Buscando datos en la pÃ¡gina\u2026';
 
   const proxy = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
 
@@ -805,13 +807,13 @@ async function extractFromUrl(wrap){
     const titleText = (ogTitle && ogTitle[1]) || (titleTag && titleTag[1]) || '';
 
     const priceMatch = html.match(/(?:U\$S|USD|US\$)\s?([\d.,]{4,12})/i);
-    const surfaceMatches = [...html.matchAll(/([\d.,]{2,6})\s?m[²2]/gi)].map(m=>m[1]);
+    const surfaceMatches = [...html.matchAll(/([\d.,]{2,6})\s?m[Â²2]/gi)].map(m=>m[1]);
 
     let found = [];
 
     if(titleText){
       wrap.querySelector('.c_direccion').value = wrap.querySelector('.c_direccion').value || titleText.trim().slice(0,120);
-      found.push('título/dirección');
+      found.push('tÃ­tulo/direcciÃ³n');
     }
     if(priceMatch){
       const num = parseFloat(priceMatch[1].replace(/\./g,'').replace(',','.'));
@@ -823,13 +825,13 @@ async function extractFromUrl(wrap){
     }
 
     if(found.length){
-      status.textContent = '✓ Se completaron automáticamente: ' + found.join(', ') + '. Revisá y corregí si hace falta.';
+      status.textContent = 'âœ“ Se completaron automÃ¡ticamente: ' + found.join(', ') + '. RevisÃ¡ y corregÃ­ si hace falta.';
     } else {
-      status.textContent = 'No se pudieron identificar datos automáticamente en esta página. Cargalos a mano.';
+      status.textContent = 'No se pudieron identificar datos automÃ¡ticamente en esta pÃ¡gina. Cargalos a mano.';
     }
     recalcAll();
   }catch(e){
-    status.textContent = 'No se pudo leer esta página automáticamente (bloqueo del sitio o conexión). Cargá los datos a mano.';
+    status.textContent = 'No se pudo leer esta pÃ¡gina automÃ¡ticamente (bloqueo del sitio o conexiÃ³n). CargÃ¡ los datos a mano.';
   }
 }
 
@@ -948,17 +950,17 @@ function recalcAll(){
   const terrM2 = parseFloat(document.getElementById('f_supTerreno').value)||0;
   const terrPrecio = parseFloat(document.getElementById('v_terrenoPrecio').value)||0;
   const terrTotal = terrM2*terrPrecio;
-  document.getElementById('v_terrenoM2').textContent = terrM2? terrM2.toLocaleString('es-AR') : '—';
-  document.getElementById('v_terrenoTotal').textContent = terrTotal? 'U$S '+terrTotal.toLocaleString('es-AR',{maximumFractionDigits:0}) : '—';
+  document.getElementById('v_terrenoM2').textContent = terrM2? terrM2.toLocaleString('es-AR') : 'â€”';
+  document.getElementById('v_terrenoTotal').textContent = terrTotal? 'U$S '+terrTotal.toLocaleString('es-AR',{maximumFractionDigits:0}) : 'â€”';
 
   const depreciacion = coefDepreciacionPropia();
   document.getElementById('v_depreciacionServicios').textContent = depreciacion.toFixed(3);
   const cubM2 = parseFloat(document.getElementById('f_supConstruida').value)||0;
   const precioCubiertaM2 = precioAjustado * depreciacion;
   const cubTotal = cubM2 * precioCubiertaM2;
-  document.getElementById('v_cubiertaM2').textContent = cubM2? cubM2.toLocaleString('es-AR') : '—';
-  document.getElementById('v_cubiertaPrecio').textContent = precioCubiertaM2? 'U$S '+precioCubiertaM2.toFixed(2) : '—';
-  document.getElementById('v_cubiertaTotal').textContent = cubTotal? 'U$S '+cubTotal.toLocaleString('es-AR',{maximumFractionDigits:0}) : '—';
+  document.getElementById('v_cubiertaM2').textContent = cubM2? cubM2.toLocaleString('es-AR') : 'â€”';
+  document.getElementById('v_cubiertaPrecio').textContent = precioCubiertaM2? 'U$S '+precioCubiertaM2.toFixed(2) : 'â€”';
+  document.getElementById('v_cubiertaTotal').textContent = cubTotal? 'U$S '+cubTotal.toLocaleString('es-AR',{maximumFractionDigits:0}) : 'â€”';
 
   const valorFinal = terrTotal + cubTotal;
   document.getElementById('v_valorFinal').textContent = 'U$S ' + valorFinal.toLocaleString('es-AR',{maximumFractionDigits:0});
@@ -1058,14 +1060,14 @@ function setLocked(locked){
     txt.textContent = 'Documento finalizado (solo lectura)';
   } else {
     bar.classList.remove('locked');
-    txt.textContent = 'Documento en edición';
+    txt.textContent = 'Documento en ediciÃ³n';
   }
 }
 
 async function saveToSupabase(finalize){
   if(_saving) return;
   if(!_authToken){
-    showToast('Sesión no válida. Volvé al panel y abrí de nuevo.');
+    showToast('SesiÃ³n no vÃ¡lida. VolvÃ© al panel y abrÃ­ de nuevo.');
     return;
   }
   _saving = true;
@@ -1075,7 +1077,7 @@ async function saveToSupabase(finalize){
 
   try{
     const formData = collectFormData();
-    const title = formData.fields.f_direccion || formData.fields.f_barrio || 'Sin título';
+    const title = formData.fields.f_direccion || formData.fields.f_barrio || 'Sin tÃ­tulo';
     const status = finalize ? 'finalized' : 'draft';
 
     if(TASACION_ID){
@@ -1095,13 +1097,13 @@ async function saveToSupabase(finalize){
       }
     }
     document.getElementById('lastSaved').textContent = 'Guardado ' + new Date().toLocaleTimeString('es-AR');
-    showToast(finalize ? 'Tasación finalizada y guardada' : 'Guardado correctamente');
+    showToast(finalize ? 'TasaciÃ³n finalizada y guardada' : 'Guardado correctamente');
   }catch(e){
     showToast('Error al guardar: ' + (e.message || e));
   }finally{
     _saving = false;
     btn.disabled = false;
-    btn.innerHTML = '💾 Guardar';
+    btn.innerHTML = 'ðŸ’¾ Guardar';
   }
 }
 
@@ -1114,7 +1116,7 @@ document.getElementById('btnFinish').addEventListener('click', async ()=>{
 
 document.getElementById('btnEdit').addEventListener('click', ()=>{
   setLocked(false);
-  showToast('Documento habilitado para edición');
+  showToast('Documento habilitado para ediciÃ³n');
 });
 
 document.getElementById('btnPdf').addEventListener('click', ()=>{
@@ -1149,9 +1151,9 @@ function renderAnalisisComparativo(){
     tr.innerHTML =
       '<td><input type="checkbox" class="ac_check" '+(r.included?'checked':'')+'></td>'+
       '<td>'+r.label+'</td>'+
-      '<td>'+(r.precioM2? 'U$S '+r.precioM2.toFixed(2) : '—')+'</td>'+
-      '<td>'+(r.precioM2? 'U$S '+low.toFixed(2) : '—')+'</td>'+
-      '<td>'+(r.precioM2? 'U$S '+high.toFixed(2) : '—')+'</td>';
+      '<td>'+(r.precioM2? 'U$S '+r.precioM2.toFixed(2) : 'â€”')+'</td>'+
+      '<td>'+(r.precioM2? 'U$S '+low.toFixed(2) : 'â€”')+'</td>'+
+      '<td>'+(r.precioM2? 'U$S '+high.toFixed(2) : 'â€”')+'</td>';
     tr.querySelector('.ac_check').addEventListener('change', (e)=>{
       r.wrap.dataset.included = e.target.checked ? 'true' : 'false';
       recalcAll();
@@ -1167,9 +1169,9 @@ function renderAnalisisComparativo(){
     valMin = Math.min(...vals) * (1 - dispersion/100);
     valMax = Math.max(...vals) * (1 + dispersion/100);
   }
-  document.getElementById('ac_valMin').textContent = valMin? 'U$S '+valMin.toFixed(2) : '—';
-  document.getElementById('ac_valProm').textContent = valProm? 'U$S '+valProm.toFixed(2) : '—';
-  document.getElementById('ac_valMax').textContent = valMax? 'U$S '+valMax.toFixed(2) : '—';
+  document.getElementById('ac_valMin').textContent = valMin? 'U$S '+valMin.toFixed(2) : 'â€”';
+  document.getElementById('ac_valProm').textContent = valProm? 'U$S '+valProm.toFixed(2) : 'â€”';
+  document.getElementById('ac_valMax').textContent = valMax? 'U$S '+valMax.toFixed(2) : 'â€”';
 
   const canvas = document.getElementById('ac_chart');
   if(!canvas || typeof Chart === 'undefined') return;
@@ -1184,7 +1186,7 @@ function renderAnalisisComparativo(){
     data: {
       labels: labels,
       datasets: [{
-        label: 'Rango U$S/m² (± '+dispersion+'%)',
+        label: 'Rango U$S/mÂ² (Â± '+dispersion+'%)',
         data: dataRanges,
         backgroundColor: colors,
         borderRadius: 4,
@@ -1199,12 +1201,12 @@ function renderAnalisisComparativo(){
         legend: { display:false },
         tooltip: {
           callbacks:{
-            label: (ctx)=> 'U$S ' + ctx.raw[0].toFixed(2) + ' \u2014 U$S ' + ctx.raw[1].toFixed(2) + ' /m²'
+            label: (ctx)=> 'U$S ' + ctx.raw[0].toFixed(2) + ' \u2014 U$S ' + ctx.raw[1].toFixed(2) + ' /mÂ²'
           }
         }
       },
       scales: {
-        x: { ticks:{color:'#b8b3aa'}, grid:{color:'#2a2a2a'}, title:{display:true, text:'U$S / m²', color:'#b8b3aa'} },
+        x: { ticks:{color:'#b8b3aa'}, grid:{color:'#2a2a2a'}, title:{display:true, text:'U$S / mÂ²', color:'#b8b3aa'} },
         y: { ticks:{color:'#f5f5f4', font:{family:'Poppins'}}, grid:{color:'#2a2a2a'} }
       }
     }
@@ -1288,11 +1290,11 @@ async function updateMainMap(){
   });
 
   if(!points.length){
-    statusEl.textContent = 'Cargá al menos una dirección (propiedad o comparable).';
+    statusEl.textContent = 'CargÃ¡ al menos una direcciÃ³n (propiedad o comparable).';
     return;
   }
 
-  statusEl.textContent = 'Ubicando ' + points.length + ' dirección(es)...';
+  statusEl.textContent = 'Ubicando ' + points.length + ' direcciÃ³n(es)...';
   placeholder.style.display = 'none';
 
   if(!leafletMapInstance){
@@ -1330,9 +1332,9 @@ async function updateMainMap(){
 
   if(bounds.length){
     leafletMapInstance.fitBounds(bounds, {padding:[30,30]});
-    statusEl.textContent = okCount+' de '+points.length+' ubicación(es) encontradas.';
+    statusEl.textContent = okCount+' de '+points.length+' ubicaciÃ³n(es) encontradas.';
   } else {
-    statusEl.textContent = 'No se pudo ubicar ninguna dirección. Revisá que estén completas (calle, barrio, ciudad).';
+    statusEl.textContent = 'No se pudo ubicar ninguna direcciÃ³n. RevisÃ¡ que estÃ©n completas (calle, barrio, ciudad).';
     placeholder.style.display = 'flex';
   }
   setTimeout(()=>{ if(leafletMapInstance) leafletMapInstance.invalidateSize(); }, 200);
@@ -1417,7 +1419,7 @@ async function init(){
         statusBar.style.display = 'block';
       }
       const statusText = document.getElementById('statusText');
-      if(statusText) statusText.textContent = '⚠ Sin sesión — Abrí desde el panel de administración';
+      if(statusText) statusText.textContent = 'âš  Sin sesiÃ³n â€” AbrÃ­ desde el panel de administraciÃ³n';
     }
   }, 2000);
 
@@ -1428,7 +1430,7 @@ async function init(){
       if(data && data.data){
         applyFormData(data.data);
         if(data.status === 'finalized') setLocked(true);
-        showToast('Tasación cargada correctamente');
+        showToast('TasaciÃ³n cargada correctamente');
       } else {
         addComparable();
       }
@@ -1447,3 +1449,12 @@ init();
 </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
