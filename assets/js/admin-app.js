@@ -1803,6 +1803,29 @@
   /* ------------------------------------------------
      13C. TASACIONES
      ------------------------------------------------ */
+  function showTasacionEditor(id, title) {
+    const listView = $('#tasacionesListView');
+    const editorView = $('#tasacionesEditorView');
+    const iframe = $('#tasacionesIframe');
+    const titleEl = $('#tasacionesEditorTitle');
+    if (listView) listView.style.display = 'none';
+    if (editorView) editorView.style.display = 'block';
+    if (titleEl) titleEl.textContent = title || '';
+    if (iframe) iframe.src = `tasacion.html?id=${id}`;
+  }
+
+  function hideTasacionEditor() {
+    const listView = $('#tasacionesListView');
+    const editorView = $('#tasacionesEditorView');
+    const iframe = $('#tasacionesIframe');
+    if (editorView) editorView.style.display = 'none';
+    if (listView) listView.style.display = 'block';
+    if (iframe) iframe.src = '';
+    loadTasaciones();
+  }
+
+  $('#btnBackToList')?.addEventListener('click', hideTasacionEditor);
+
   async function loadTasaciones() {
     const tbody = $('#tasacionesTableBody');
     if (!tbody) return;
@@ -1827,7 +1850,7 @@
           <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
           <td style="color:var(--text-muted); font-size:13px;">${date}</td>
           <td>
-            <button class="icon-badge-btn" title="Abrir" onclick="window.open('tasacion.html?id=${t.id}','_blank')"><i class="fas fa-external-link-alt"></i></button>
+            <button class="icon-badge-btn" title="Abrir" onclick="navigateToTasacion('${t.id}','${(t.title||'').replace(/'/g,"\\'")}')"><i class="fas fa-external-link-alt"></i></button>
             <button class="icon-badge-btn" title="Eliminar" onclick="deleteTasacion('${t.id}')"><i class="fas fa-trash" style="color:var(--danger);"></i></button>
           </td>
         </tr>`;
@@ -1837,6 +1860,10 @@
       tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar tasaciones</td></tr>';
     }
   }
+
+  window.navigateToTasacion = function (id, title) {
+    showTasacionEditor(id, title);
+  };
 
   async function deleteTasacion(id) {
     if (!confirm('¿Eliminar esta tasación permanentemente?')) return;
@@ -1860,8 +1887,7 @@
         .select('id')
         .single();
       if (error) throw error;
-      window.open(`tasacion.html?id=${data.id}`, '_blank');
-      loadTasaciones();
+      showTasacionEditor(data.id, 'Nueva Tasación');
       updateSidebarBadges();
     } catch (err) {
       showToast('Error al crear tasación: ' + err.message, 'error');

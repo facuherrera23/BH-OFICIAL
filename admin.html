@@ -614,21 +614,32 @@
 
                 <!-- 9. TASACIONES -->
                 <section class="tab-module" id="tab-tasaciones">
-                    <div class="glass-panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2 class="panel-title">Análisis Comparativo de Mercado</h2>
-                                <p style="color:var(--text-muted); font-size:12.5px;">Listado de tasaciones realizadas.</p>
+                    <div id="tasacionesListView">
+                        <div class="glass-panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h2 class="panel-title">Análisis Comparativo de Mercado</h2>
+                                    <p style="color:var(--text-muted); font-size:12.5px;">Listado de tasaciones realizadas.</p>
+                                </div>
+                                <button class="btn-luxury-action" id="btnNewTasacion"><i class="fas fa-plus"></i> Nueva Tasación</button>
                             </div>
-                            <button class="btn-luxury-action" id="btnNewTasacion"><i class="fas fa-plus"></i> Nueva Tasación</button>
+                            <div class="table-responsive">
+                                <table class="luxury-table">
+                                    <thead><tr><th>Título</th><th>Estado</th><th>Fecha</th><th>Acción</th></tr></thead>
+                                    <tbody id="tasacionesTableBody">
+                                        <tr><td colspan="4" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando tasaciones...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                        <div class="table-responsive">
-                            <table class="luxury-table">
-                                <thead><tr><th>Título</th><th>Estado</th><th>Fecha</th><th>Acción</th></tr></thead>
-                                <tbody id="tasacionesTableBody">
-                                    <tr><td colspan="4" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando tasaciones...</td></tr>
-                                </tbody>
-                            </table>
+                    </div>
+                    <div id="tasacionesEditorView" style="display:none;">
+                        <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+                            <button class="btn-luxury-action" id="btnBackToList"><i class="fas fa-arrow-left"></i> Volver al listado</button>
+                            <span style="color:var(--text-muted); font-size:13px;" id="tasacionesEditorTitle"></span>
+                        </div>
+                        <div style="border-radius:12px; overflow:hidden; border:1px solid var(--border-subtle); background:#000;">
+                            <iframe id="tasacionesIframe" src="" style="width:100%; height:calc(100vh - 180px); border:none;"></iframe>
                         </div>
                     </div>
                 </section>
