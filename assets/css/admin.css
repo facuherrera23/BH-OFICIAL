@@ -701,6 +701,50 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .status-pill.paused { background: rgba(245, 158, 11, 0.12); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.3); }
 
 /* ============================================================
+   ML CONFIG PANEL
+   ============================================================ */
+.ml-config-panel {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    animation: fadeSlideIn 0.25s ease;
+}
+.ml-config-field {
+    margin-bottom: 10px;
+}
+.ml-config-field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+.ml-config-input {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    font-size: 13px;
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-sizing: border-box;
+}
+.ml-config-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(31, 200, 195, 0.1);
+}
+.ml-config-input::placeholder {
+    color: var(--text-dim);
+    opacity: 0.5;
+}
+
+/* ============================================================
    CRM PIPELINE
    ============================================================ */
 .leads-pipeline {

@@ -21,6 +21,7 @@
   let ml_connected = false;
   let ml_user = null;
   let ml_listings = [];
+  let ml_configured = false;
 
   const $ = (sel, ctx = document) => ctx.querySelector(sel);
   const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
@@ -1445,15 +1446,31 @@
       const isActive = db.is_active || false;
 
       if (p.name === 'Mercado Libre') {
-        const statusColor = ml_connected ? 'var(--success)' : 'var(--text-dim)';
-        const statusText = ml_connected ? 'Conectado' : 'Desconectado';
-        const statusIcon = ml_connected ? 'fas fa-circle-check' : 'fas fa-circle-xmark';
+        const statusColor = ml_connected ? 'var(--success)' : ml_configured ? '#FFE600' : 'var(--text-dim)';
+        const statusText = ml_connected ? 'Conectado' : ml_configured ? 'Configurado' : 'No configurado';
+        const statusIcon = ml_connected ? 'fas fa-circle-check' : ml_configured ? 'fas fa-circle-half-stroke' : 'fas fa-circle-xmark';
         const mlBtnHtml = ml_connected
           ? `<button class="btn-action danger" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlDisconnect()"><i class="fas fa-link-slash"></i> Desconectar</button>`
-          : `<button class="btn-action" style="font-size:11px; padding:6px 12px; background:rgba(255,230,0,0.15); color:#FFE600; border:1px solid rgba(255,230,0,0.3);" onclick="window.adminApp.mlConnect()"><i class="fas fa-link"></i> Conectar ML</button>`;
+          : ml_configured
+            ? `<button class="btn-action" style="font-size:11px; padding:6px 12px; background:rgba(255,230,0,0.15); color:#FFE600; border:1px solid rgba(255,230,0,0.3);" onclick="window.adminApp.mlConnect()"><i class="fas fa-link"></i> Conectar ML</button>`
+            : '';
         const userInfoHtml = ml_connected && ml_user
-          ? `<p style="color:var(--text-muted); font-size:11px; margin-top:6px;"><i class="fas fa-user" style="margin-right:4px;"></i>${ml_user.nickname || ml_user.email || ''}</p>`
+          ? `<p style="color:var(--text-muted); font-size:11px; margin-top:6px;"><i class="fas fa-user" style="margin-right:4px;"></i>${ml_user.ml_nickname || ml_user.ml_email || ''}</p>`
           : '';
+        const configPanelHtml = !ml_configured ? `
+          <div id="mlConfigPanel" class="ml-config-panel" style="display:none; margin-top:12px; text-align:left;">
+            <div class="ml-config-field">
+              <label>APP ID</label>
+              <input type="text" id="mlAppIdInput" placeholder="Ej: 12345678901234" class="ml-config-input" />
+            </div>
+            <div class="ml-config-field">
+              <label>SECRET KEY</label>
+              <input type="password" id="mlSecretInput" placeholder="NGRD...tu-secret-key" class="ml-config-input" />
+            </div>
+            <button class="btn-action" style="width:100%; margin-top:8px; background:rgba(255,230,0,0.15); color:#FFE600; border:1px solid rgba(255,230,0,0.3);" onclick="window.adminApp.mlSaveCredentials()">
+              <i class="fas fa-save"></i> Guardar Credenciales
+            </button>
+          </div>` : '';
 
         return `
       <div class="glass-panel portal-card" style="padding:24px; text-align:center;">
@@ -1468,8 +1485,10 @@
         ${userInfoHtml}
         <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-top:12px;">
           ${mlBtnHtml}
+          ${!ml_configured ? `<button class="btn-action" title="Configurar credenciales" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlToggleConfig()"><i class="fas fa-cog"></i></button>` : ''}
           ${ml_connected ? `<button class="btn-action" title="Importar desde ML" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlImportFromML()"><i class="fas fa-file-import"></i></button>` : ''}
         </div>
+        ${configPanelHtml}
       </div>`;
       }
 
@@ -1585,18 +1604,23 @@
     return json;
   }
 
-  /* Check ML connection status on app load */
   async function mlCheckStatus() {
     try {
       const result = await mlApiCall('status');
       ml_connected = result.connected || false;
-      ml_user = result.user || null;
+      ml_user = result.settings || null;
       ml_listings = result.listings || [];
     } catch (err) {
       console.warn('[ML] Status check failed:', err.message);
       ml_connected = false;
       ml_user = null;
       ml_listings = [];
+    }
+    try {
+      const config = await mlConfigGet();
+      ml_configured = !!(config.ml_app_id && config.has_secret);
+    } catch (_) {
+      ml_configured = false;
     }
   }
 
@@ -1707,6 +1731,64 @@
       loadProperties();
     } catch (err) {
       showToast('Error al importar de ML: ' + err.message, 'error');
+    }
+  };
+
+  /* --- ML Config: get/save credentials from portal_settings --- */
+  async function mlConfigGet() {
+    const { data: { session } } = await window.supabaseClient.auth.getSession();
+    if (!session) throw new Error('No hay sesión activa');
+    const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-config`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${session.access_token}` },
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Error fetching ML config');
+    return json;
+  }
+
+  async function mlConfigSave(appId, secretKey) {
+    const { data: { session } } = await window.supabaseClient.auth.getSession();
+    if (!session) throw new Error('No hay sesión activa');
+    const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-config`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ ml_app_id: appId, ml_secret_key: secretKey }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Error saving ML config');
+    return json;
+  }
+
+  window.adminApp.mlSaveCredentials = async function () {
+    const appIdInput = $('#mlAppIdInput');
+    const secretInput = $('#mlSecretInput');
+    const appId = (appIdInput?.value || '').trim();
+    const secret = (secretInput?.value || '').trim();
+
+    if (!appId || !secret) {
+      showToast('Completá ambos campos: APP_ID y SECRET_KEY', 'warning');
+      return;
+    }
+
+    try {
+      showToast('Guardando credenciales de Mercado Libre...', 'info');
+      await mlConfigSave(appId, secret);
+      ml_configured = true;
+      showToast('Credenciales guardadas. Ahora podés conectar tu cuenta.', 'success');
+      loadPortals();
+    } catch (err) {
+      showToast('Error al guardar credenciales: ' + err.message, 'error');
+    }
+  };
+
+  window.adminApp.mlToggleConfig = function () {
+    const panel = $('#mlConfigPanel');
+    if (panel) {
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
     }
   };
 
