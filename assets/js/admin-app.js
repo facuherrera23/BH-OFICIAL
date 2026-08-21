@@ -94,13 +94,14 @@
   function showApp() {
     const loginScreen = $('#loginScreen');
     const appLayout = $('#appLayout');
+    const wasHidden = !appLayout || appLayout.style.display === 'none' || appLayout.style.display === '';
     if (loginScreen) loginScreen.classList.add('is-hidden');
     if (appLayout) appLayout.style.display = 'flex';
     hidePreloader();
     updateUserInfo();
     updateSidebarBadges();
     mlCheckStatus().catch(() => {});
-    navigateTo('tab-dashboard');
+    if (wasHidden) navigateTo('tab-dashboard');
   }
 
   function hidePreloader() {
@@ -1859,8 +1860,8 @@
       }
 
       tbody.innerHTML = data.map(t => {
-        const statusLabel = t.status === 'finalizada' ? 'Finalizada' : 'Borrador';
-        const statusClass = t.status === 'finalizada' ? 'active' : 'pending';
+        const statusLabel = t.status === 'finalized' ? 'Finalizada' : 'Borrador';
+        const statusClass = t.status === 'finalized' ? 'active' : 'pending';
         const date = t.created_at ? new Date(t.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
         return `<tr>
           <td style="font-weight:600; color:#fff;">${t.title || 'Sin título'}</td>
@@ -1897,10 +1898,11 @@
 
   async function createNewTasacion() {
     try {
-      const { data: { user } } = await window.supabaseClient.auth.getUser();
+      const userId = currentUser?.id;
+      if (!userId) { showToast('No hay sesión activa', 'error'); return; }
       const { data, error } = await window.supabaseClient
         .from('tasaciones')
-        .insert({ title: 'Nueva Tasación', status: 'draft', created_by: user?.id })
+        .insert({ title: 'Nueva Tasación', status: 'draft', created_by: userId })
         .select('id')
         .single();
       if (error) throw error;
