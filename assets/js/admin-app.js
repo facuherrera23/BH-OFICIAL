@@ -13,6 +13,14 @@
   let currentProfile = null;
   let currentSection = 'tab-dashboard';
   let editingPropertyId = null;
+  let _submittingProperty = false;
+  let _submittingAgent = false;
+  let _submittingOwner = false;
+
+  function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
   let editingAgentId = null;
   let editingOwnerId = null;
   let editingLeadId = null;
@@ -259,6 +267,7 @@
      4. DASHBOARD
      ------------------------------------------------ */
   async function loadDashboard() {
+    if (!window.supabaseClient) return;
     try {
       const [propsRes, leadsRes, visitsRes, agentsRes] = await Promise.all([
         window.supabaseClient.from('properties').select('price_usd, zone, status, is_published, created_at'),
@@ -324,7 +333,7 @@
       const pct = Math.round((count / max) * 100);
       return `
         <div style="display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--border-subtle);">
-          <span style="color:var(--text-secondary); font-size:13px; min-width:120px;">${zone}</span>
+          <span style="color:var(--text-secondary); font-size:13px; min-width:120px;">${esc(zone)}</span>
           <div style="flex:1; height:6px; background:rgba(255,255,255,0.05); border-radius:99px; overflow:hidden;">
             <div style="height:100%; width:${pct}%; background:linear-gradient(90deg, var(--accent), var(--glow)); border-radius:99px;"></div>
           </div>
@@ -344,7 +353,7 @@
     el.innerHTML = upcoming.map(v => `
       <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border-subtle);">
         <div>
-          <div style="color:#fff; font-size:13px; font-weight:500;">${v.client_name || 'Sin cliente'}</div>
+          <div style="color:#fff; font-size:13px; font-weight:500;">${esc(v.client_name || 'Sin cliente')}</div>
           <div style="color:var(--text-dim); font-size:11px;">${v.visit_date ? new Date(v.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'}</div>
         </div>
         <span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : 'var(--warning)'}; font-size:11px;">${v.status || 'pendiente'}</span>
@@ -364,7 +373,7 @@
     el.innerHTML = hot.map(l => `
       <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border-subtle);">
         <div>
-          <div style="color:#fff; font-size:13px; font-weight:500;">${l.full_name || 'Sin nombre'}</div>
+          <div style="color:#fff; font-size:13px; font-weight:500;">${esc(l.full_name || 'Sin nombre')}</div>
           <div style="color:var(--text-dim); font-size:11px;">${l.budget_usd ? 'USD ' + l.budget_usd.toLocaleString('es-AR') : 'Sin presupuesto'}</div>
         </div>
         <span class="nav-badge" style="background:${stageColors[l.stage] || 'rgba(255,255,255,0.1)'}; color:#fff; font-size:11px;">${l.stage || 'nuevo'}</span>
@@ -384,8 +393,8 @@
       <div style="display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border-subtle);">
         <div style="width:28px; height:28px; border-radius:50%; background:var(--surface-2); display:flex; align-items:center; justify-content:center; color:var(--accent); font-size:11px; font-weight:700;">${i + 1}</div>
         <div style="flex:1;">
-          <div style="color:#fff; font-size:13px; font-weight:500;">${a.full_name || 'Sin nombre'}</div>
-          <div style="color:var(--text-dim); font-size:11px;">${a.matricula || 'S/M'}</div>
+          <div style="color:#fff; font-size:13px; font-weight:500;">${esc(a.full_name || 'Sin nombre')}</div>
+          <div style="color:var(--text-dim); font-size:11px;">${esc(a.matricula || 'S/M')}</div>
         </div>
         <span style="color:var(--success); font-size:12px; font-weight:600;">${formatPrice(a.sales_ytd)}</span>
       </div>
@@ -398,6 +407,7 @@
   async function loadProperties() {
     const tbody = $('#propertiesTableBody');
     if (!tbody) return;
+    if (!window.supabaseClient) return;
 
     try {
       const [propsRes, listingsRes] = await Promise.all([
@@ -441,10 +451,10 @@
         <tr>
           <td>
             <div style="display:flex; align-items:center; gap:12px;">
-              <img src="${thumb}" alt="${p.title || ''}" style="width:52px; height:52px; border-radius:var(--radius-sm); object-fit:cover; border:1px solid var(--border-subtle);" />
+              <img src="${thumb}" alt="${esc(p.title || '')}" style="width:52px; height:52px; border-radius:var(--radius-sm); object-fit:cover; border:1px solid var(--border-subtle);" />
               <div>
-                <div style="font-weight:600; color:#fff; font-size:13.5px;">${p.title || 'Sin título'}${mlBadge}</div>
-                <div style="color:var(--text-dim); font-size:12px; margin-top:2px;"><i class="fas fa-location-dot" style="margin-right:4px;"></i>${loc || 'Sin ubicación'}</div>
+                <div style="font-weight:600; color:#fff; font-size:13.5px;">${esc(p.title || 'Sin título')}${mlBadge}</div>
+                <div style="color:var(--text-dim); font-size:12px; margin-top:2px;"><i class="fas fa-location-dot" style="margin-right:4px;"></i>${esc(loc || 'Sin ubicación')}</div>
               </div>
             </div>
           </td>
@@ -652,6 +662,7 @@
      7. CRM — LEADS PIPELINE
      ------------------------------------------------ */
   async function loadCRM() {
+    if (!window.supabaseClient) return;
     try {
       const { data, error } = await window.supabaseClient
         .from('leads')
@@ -690,8 +701,8 @@
 
         container.innerHTML = leads.map(l => `
           <div class="lead-card" style="background:var(--surface-2); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:14px; margin-bottom:10px; cursor:pointer;" onclick="window.adminApp.editLead('${l.id}')">
-            <div style="font-weight:600; color:#fff; font-size:13px; margin-bottom:4px;">${l.full_name || 'Sin nombre'}</div>
-            <div style="color:var(--text-dim); font-size:11px; margin-bottom:6px;">${l.preferred_type ? l.preferred_type.charAt(0).toUpperCase() + l.preferred_type.slice(1) : ''} ${l.preferred_zone ? '· ' + l.preferred_zone : ''}</div>
+            <div style="font-weight:600; color:#fff; font-size:13px; margin-bottom:4px;">${esc(l.full_name || 'Sin nombre')}</div>
+            <div style="color:var(--text-dim); font-size:11px; margin-bottom:6px;">${esc(l.preferred_type ? l.preferred_type.charAt(0).toUpperCase() + l.preferred_type.slice(1) : '')} ${l.preferred_zone ? '· ' + esc(l.preferred_zone) : ''}</div>
             ${l.budget_usd ? '<div style="color:var(--accent); font-size:12px; font-weight:500;">USD ' + l.budget_usd.toLocaleString('es-AR') + '</div>' : ''}
             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:8px; border-top:1px solid var(--border-subtle);">
               <span style="color:var(--text-dim); font-size:10px;">${new Date(l.created_at).toLocaleDateString('es-AR')}</span>
@@ -801,6 +812,7 @@
   async function loadVisits() {
     const tbody = $('#visitsTableBody');
     if (!tbody) return;
+    if (!window.supabaseClient) return;
 
     try {
       const { data, error } = await window.supabaseClient
@@ -823,7 +835,7 @@
         <tr>
           <td style="font-size:13px;">${dateStr}</td>
           <td style="font-size:13px; color:var(--text-dim);">-</td>
-          <td style="font-size:13px; font-weight:500;">${v.client_name || 'Sin cliente'}</td>
+          <td style="font-size:13px; font-weight:500;">${esc(v.client_name || 'Sin cliente')}</td>
           <td style="font-size:13px; color:var(--text-dim);">-</td>
           <td><span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : v.status === 'completada' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : v.status === 'completada' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${v.status || 'pendiente'}</span></td>
           <td>
@@ -953,6 +965,7 @@
   };
 
   async function loadCMS() {
+    if (!window.supabaseClient) return;
     try {
       const { data, error } = await window.supabaseClient
         .from('site_content')
@@ -981,7 +994,7 @@
       }
     });
     if (heroBgHidden?.value && heroBgPreview) {
-      heroBgPreview.innerHTML = '<img src="' + heroBgHidden.value + '" alt="Hero background" />';
+      heroBgPreview.innerHTML = '<img src="' + esc(heroBgHidden.value) + '" alt="Hero background" />';
     }
   }
 
@@ -1066,7 +1079,7 @@
       if (!window.BH_Cloudinary) { showToast('Cloudinary no disponible', 'error'); return; }
       const url = await window.BH_Cloudinary.uploadImage(file, 'bienenhaus/hero');
       if (heroBgHidden) heroBgHidden.value = url;
-      heroBgPreview.innerHTML = '<img src="' + url + '" alt="Hero background" /><span style="position:absolute;bottom:2px;right:2px;font-size:9px;background:rgba(0,0,0,.7);padding:2px 5px;border-radius:3px;">Cloudinary ✓</span>';
+      heroBgPreview.innerHTML = '<img src="' + esc(url) + '" alt="Hero background" /><span style="position:absolute;bottom:2px;right:2px;font-size:9px;background:rgba(0,0,0,.7);padding:2px 5px;border-radius:3px;">Cloudinary ✓</span>';
       heroBgPreview.style.position = 'relative';
       showToast('Imagen subida a Cloudinary', 'success');
     } catch (err) {
@@ -1082,6 +1095,7 @@
   async function loadAgents() {
     const tbody = $('#agentsTableBody');
     if (!tbody) return;
+    if (!window.supabaseClient) return;
 
     try {
       const { data, error } = await window.supabaseClient
@@ -1102,14 +1116,14 @@
             <div style="display:flex; align-items:center; gap:10px;">
               <img style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid var(--border-subtle);" src="${a.photo_url || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=100&q=60&fit=crop'}" alt="" />
               <div>
-                <div style="font-weight:600; color:#fff; font-size:13px;">${a.full_name || 'Sin nombre'}</div>
-                <div style="color:var(--text-dim); font-size:11px;">${a.email || ''}</div>
+                <div style="font-weight:600; color:#fff; font-size:13px;">${esc(a.full_name || 'Sin nombre')}</div>
+                <div style="color:var(--text-dim); font-size:11px;">${esc(a.email || '')}</div>
               </div>
             </div>
           </td>
-          <td style="font-size:13px;">${a.matricula || '-'}</td>
+          <td style="font-size:13px;">${esc(a.matricula || '-')}</td>
           <td><span class="nav-badge" style="background:${a.status === 'activo' ? 'rgba(0,200,120,0.15)' : 'rgba(255,255,255,0.06)'}; color:${a.status === 'activo' ? 'var(--success)' : 'var(--text-dim)'}; font-size:11px;">${a.status || 'activo'}</span></td>
-          <td style="font-size:13px;">${a.phone || '-'}</td>
+          <td style="font-size:13px;">${esc(a.phone || '-')}</td>
           <td>
             <div style="display:flex; gap:6px;">
               <button class="btn-action" title="Editar" onclick="window.adminApp.editAgent('${a.id}')"><i class="fas fa-pen"></i></button>
@@ -1174,8 +1188,8 @@
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
     } finally {
-      _submittingProperty = false;
-      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar Inmueble'; }
+      _submittingAgent = false;
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar Broker'; }
     }
   });
 
@@ -1222,6 +1236,7 @@
   async function loadOwners() {
     const tbody = $('#ownersTableBody');
     if (!tbody) return;
+    if (!window.supabaseClient) return;
 
     try {
       const { data: owners, error } = await window.supabaseClient
@@ -1258,17 +1273,17 @@
         <tr>
           <td>
             <div>
-              <div style="font-weight:600; color:#fff; font-size:13px;">${o.full_name || 'Sin nombre'}</div>
-              <div style="color:var(--text-dim); font-size:11px;">${o.dni_cuit || 'S/DNI'}</div>
+              <div style="font-weight:600; color:#fff; font-size:13px;">${esc(o.full_name || 'Sin nombre')}</div>
+              <div style="color:var(--text-dim); font-size:11px;">${esc(o.dni_cuit || 'S/DNI')}</div>
             </div>
           </td>
           <td>
-            <div style="font-size:13px;">${o.phone || '-'}</div>
-            <div style="color:var(--text-dim); font-size:11px;">${o.email || ''}</div>
+            <div style="font-size:13px;">${esc(o.phone || '-')}</div>
+            <div style="color:var(--text-dim); font-size:11px;">${esc(o.email || '')}</div>
           </td>
           <td><span class="nav-badge" style="background:${o.exclusive ? 'rgba(31,200,195,0.15)' : 'rgba(255,255,255,0.06)'}; color:${o.exclusive ? 'var(--accent)' : 'var(--text-dim)'}; font-size:11px;">${o.exclusive ? 'Exclusivo' : 'Normal'}</span></td>
           <td>
-            <div style="font-size:12px; color:var(--text-dim);">${o.bank_name || '-'}</div>
+            <div style="font-size:12px; color:var(--text-dim);">${esc(o.bank_name || '-')}</div>
             <div style="font-size:11px; color:var(--text-dim);">${o.cbu_cvu ? o.cbu_cvu.slice(0, 8) + '...' : ''}</div>
           </td>
           <td>
@@ -1334,8 +1349,8 @@
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
     } finally {
-      _submittingAgent = false;
-      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar Broker'; }
+      _submittingOwner = false;
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar Expediente'; }
     }
   });
 
@@ -1395,6 +1410,7 @@
   async function loadUsers() {
     const tbody = $('#usersTableBody');
     if (!tbody) return;
+    if (!window.supabaseClient) return;
 
     try {
       const { data, error } = await window.supabaseClient
@@ -1413,8 +1429,8 @@
         const roleLabels = { super_admin: 'Super Admin', broker: 'Broker', agente: 'Agente' };
         return `
         <tr>
-          <td style="font-weight:500; color:#fff; font-size:13px;">${u.full_name || u.email || 'Sin nombre'}</td>
-          <td style="font-size:13px; color:var(--text-dim);">${u.email || '-'}</td>
+          <td style="font-weight:500; color:#fff; font-size:13px;">${esc(u.full_name || u.email || 'Sin nombre')}</td>
+          <td style="font-size:13px; color:var(--text-dim);">${esc(u.email || '-')}</td>
           <td><span class="nav-badge" style="background:${u.role === 'super_admin' ? 'rgba(31,200,195,0.15)' : 'rgba(255,255,255,0.06)'}; color:${u.role === 'super_admin' ? 'var(--accent)' : 'var(--text-dim)'}; font-size:11px;">${roleLabels[u.role] || u.role || 'agente'}</span></td>
           <td><span class="nav-badge" style="background:${u.is_active !== false ? 'rgba(0,200,120,0.15)' : 'rgba(255,60,60,0.15)'}; color:${u.is_active !== false ? 'var(--success)' : 'var(--danger)'}; font-size:11px;">${u.is_active !== false ? 'Activo' : 'Inactivo'}</span></td>
           <td style="color:var(--text-dim); font-size:12px;">${u.created_at ? new Date(u.created_at).toLocaleDateString('es-AR') : '-'}</td>
@@ -1445,6 +1461,7 @@
   async function loadPortals() {
     const container = $('#portalsContainer');
     if (!container) return;
+    if (!window.supabaseClient) return;
 
     /* Get published property count + portal settings from DB */
     const [propsRes, settingsRes] = await Promise.all([
@@ -1825,7 +1842,17 @@
     if (listView) listView.style.display = 'none';
     if (editorView) editorView.style.display = 'block';
     if (titleEl) titleEl.textContent = title || '';
-    if (iframe) iframe.src = `tasacion.html?id=${id}`;
+    if (iframe) {
+      iframe.src = `tasacion.html?id=${id}`;
+      iframe.onload = async () => {
+        try {
+          const { data: { session } } = await window.supabaseClient.auth.getSession();
+          if (session && iframe.contentWindow) {
+            iframe.contentWindow.postMessage({ type: 'auth-session', token: session.access_token }, '*');
+          }
+        } catch (_) {}
+      };
+    }
   }
 
   function hideTasacionEditor() {
@@ -1847,6 +1874,8 @@
   async function loadTasaciones() {
     const tbody = $('#tasacionesTableBody');
     if (!tbody) return;
+    if (!currentUser || !window.supabaseClient) return;
+
     try {
       const { data, error } = await window.supabaseClient
         .from('tasaciones')
@@ -1864,11 +1893,11 @@
         const statusClass = t.status === 'finalized' ? 'active' : 'pending';
         const date = t.created_at ? new Date(t.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
         return `<tr>
-          <td style="font-weight:600; color:#fff;">${t.title || 'Sin título'}</td>
+          <td style="font-weight:600; color:#fff;">${esc(t.title || 'Sin título')}</td>
           <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
           <td style="color:var(--text-muted); font-size:13px;">${date}</td>
           <td>
-            <button class="icon-badge-btn" title="Abrir" onclick="navigateToTasacion('${t.id}','${(t.title||'').replace(/'/g,"\\'")}')"><i class="fas fa-external-link-alt"></i></button>
+            <button class="icon-badge-btn" title="Abrir" onclick="navigateToTasacion('${t.id}','${esc((t.title||'').replace(/'/g,"\\'"))}')"><i class="fas fa-external-link-alt"></i></button>
             <button class="icon-badge-btn" title="Eliminar" onclick="deleteTasacion('${t.id}')"><i class="fas fa-trash" style="color:var(--danger);"></i></button>
           </td>
         </tr>`;
@@ -1965,6 +1994,73 @@
       }
     });
   });
+
+  /* ------------------------------------------------
+     14B. CSV EXPORT
+     ------------------------------------------------ */
+  function escapeCSV(val) {
+    if (val == null) return '';
+    var s = String(val);
+    if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+
+  function downloadCSV(filename, rows, headers) {
+    var csv = headers.map(escapeCSV).join(',') + '\n';
+    rows.forEach(function(row) {
+      csv += row.map(escapeCSV).join(',') + '\n';
+    });
+    var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  window.exportLeadsCSV = async function() {
+    if (!window.supabaseClient) return;
+    var { data, error } = await window.supabaseClient.from('leads').select('*').order('created_at', { ascending: false });
+    if (error) { showToast('Error exportando: ' + error.message, 'error'); return; }
+    var headers = ['ID', 'Nombre', 'Email', 'Teléfono', 'Mensaje', 'Propiedad', 'Estado', 'Fecha'];
+    var rows = data.map(function(l) {
+      return [l.id, l.name, l.email, l.phone, l.message, l.property_title, l.status, l.created_at];
+    });
+    var date = new Date().toISOString().slice(0, 10);
+    downloadCSV('leads-' + date + '.csv', rows, headers);
+    showToast('Leads exportados (' + rows.length + ')');
+  };
+
+  window.exportPropertiesCSV = async function() {
+    if (!window.supabaseClient) return;
+    var { data, error } = await window.supabaseClient.from('properties').select('*').order('created_at', { ascending: false });
+    if (error) { showToast('Error exportando: ' + error.message, 'error'); return; }
+    var headers = ['ID', 'Título', 'Tipo', 'Zona', 'Dirección', 'Precio USD', 'Dormitorios', 'Baños', 'm²', 'Estado', 'Publicada', 'Fecha'];
+    var rows = data.map(function(p) {
+      return [p.id, p.title, p.property_type, p.zone, p.address, p.price_usd, p.bedrooms, p.bathrooms, p.area_m2, p.status, p.published, p.created_at];
+    });
+    var date = new Date().toISOString().slice(0, 10);
+    downloadCSV('propiedades-' + date + '.csv', rows, headers);
+    showToast('Propiedades exportadas (' + rows.length + ')');
+  };
+
+  window.exportTasacionesCSV = async function() {
+    if (!window.supabaseClient) return;
+    var { data, error } = await window.supabaseClient.from('tasaciones').select('*').order('created_at', { ascending: false });
+    if (error) { showToast('Error exportando: ' + error.message, 'error'); return; }
+    var headers = ['ID', 'Título', 'Estado', 'Fecha creación', 'Última edición'];
+    var rows = data.map(function(t) {
+      return [t.id, t.title, t.status, t.created_at, t.updated_at];
+    });
+    var date = new Date().toISOString().slice(0, 10);
+    downloadCSV('tasaciones-' + date + '.csv', rows, headers);
+    showToast('Tasaciones exportadas (' + rows.length + ')');
+  };
 
   /* ------------------------------------------------
      15. TOAST NOTIFICATIONS
@@ -2109,17 +2205,17 @@
     });
 
     if (!results.length) {
-      resultsContainer.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-dim); font-size:13px;">Sin resultados para "' + q + '"</div>';
+      resultsContainer.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-dim); font-size:13px;">Sin resultados para "' + esc(q) + '"</div>';
       resultsContainer.style.display = 'block';
       return;
     }
 
     resultsContainer.innerHTML = results.slice(0, 10).map(r => `
-      <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--border-subtle); transition:background 0.15s;" onmouseenter="this.style.background='rgba(255,255,255,0.04)'" onmouseleave="this.style.style.background=''" onclick="navigateTo('${r.tab}'); document.getElementById('globalSearchResults').style.display='none'; document.getElementById('globalSearchInput').value='';">
+      <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--border-subtle); transition:background 0.15s;" onmouseenter="this.style.background='rgba(255,255,255,0.04)'" onmouseleave="this.style.background=''" onclick="navigateTo('${r.tab}'); document.getElementById('globalSearchResults').style.display='none'; document.getElementById('globalSearchInput').value='';">
         <i class="${r.icon}" style="font-size:14px; color:${r.color}; min-width:18px; text-align:center;"></i>
         <div style="flex:1; min-width:0;">
-          <div style="color:#fff; font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${r.text}</div>
-          <div style="color:var(--text-dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${r.sub}</div>
+          <div style="color:#fff; font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(r.text)}</div>
+          <div style="color:var(--text-dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(r.sub)}</div>
         </div>
       </div>
     `).join('');
@@ -2138,6 +2234,7 @@
      17. SIDEBAR BADGES
      ------------------------------------------------ */
   async function updateSidebarBadges() {
+    if (!currentUser || !window.supabaseClient) return;
     try {
       const [props, leads, visits, owners, tasaciones] = await Promise.all([
         window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('is_published', true),

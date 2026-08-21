@@ -486,6 +486,9 @@ section[id], main[id], footer[id] { scroll-margin-top: var(--navbar-height); }
   margin-top: auto; transition: var(--transition);
 }
 .btn-card:hover { color: var(--glow); transform: translateX(4px); }
+.btn-card--coming-soon {
+  opacity: 0.4; cursor: not-allowed; pointer-events: none;
+}
 
 /* Empty State */
 .empty-state {

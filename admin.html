@@ -337,6 +337,7 @@
                             </div>
                             <div style="display:flex; gap:10px;">
                                 <input type="text" id="propSearchInput" placeholder="Filtrar por título o zona..." style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); padding:8px 14px; border-radius:var(--radius-sm); font-size:13px; outline:none; color:#fff;" />
+                                <button class="btn-luxury-action" onclick="exportPropertiesCSV()" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
                                 <button class="btn-luxury-action" id="btnNewProp"><i class="fas fa-plus"></i> Publicar</button>
                             </div>
                         </div>
@@ -369,7 +370,10 @@
                             <h2 class="panel-title">Pipeline de Prospectos &amp; Compradores</h2>
                             <p style="color:var(--text-muted); font-size:12.5px;">Gestión de etapas comerciales con guardado automático.</p>
                         </div>
-                        <button class="btn-luxury-action" id="btnNewLead">+ Agregar Lead</button>
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn-luxury-action" onclick="exportLeadsCSV()" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
+                            <button class="btn-luxury-action" id="btnNewLead">+ Agregar Lead</button>
+                        </div>
                     </div>
 
                     <div class="leads-pipeline">
@@ -624,7 +628,10 @@
                                     <h2 class="panel-title">Análisis Comparativo de Mercado</h2>
                                     <p style="color:var(--text-muted); font-size:12.5px;">Listado de tasaciones realizadas.</p>
                                 </div>
-                                <button class="btn-luxury-action" id="btnNewTasacion"><i class="fas fa-plus"></i> Nueva Tasación</button>
+                                <div style="display:flex; gap:10px;">
+                                    <button class="btn-luxury-action" onclick="exportTasacionesCSV()" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
+                                    <button class="btn-luxury-action" id="btnNewTasacion"><i class="fas fa-plus"></i> Nueva Tasación</button>
+                                </div>
                             </div>
                             <div class="table-responsive">
                                 <table class="luxury-table">
@@ -994,38 +1001,34 @@
 
     <!-- CDN timeout fallback: detect if external scripts fail to load -->
     <script>
-        window.__cdnFallback = {
-            supabase: false,
-            fontawesome: false,
-            check: function() {
+        (function() {
+            function checkCDN() {
                 var missing = [];
                 if (!window.supabase) missing.push('Supabase JS');
-                if (!document.querySelector('link[href*="font-awesome"]') || !document.styleSheets[0]?.href?.includes('font-awesome')) {
-                    // Check if FA stylesheet actually loaded by testing if .fas class resolves
-                    var testEl = document.createElement('i');
-                    testEl.className = 'fas fa-check';
-                    testEl.style.position = 'absolute';
-                    testEl.style.left = '-9999px';
-                    document.body.appendChild(testEl);
-                    var computed = window.getComputedStyle(testEl);
-                    if (computed.fontFamily !== '"Font Awesome 6 Free"') {
-                        missing.push('Font Awesome');
-                    }
-                    document.body.removeChild(testEl);
+                if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');
+                var testEl = document.createElement('i');
+                testEl.className = 'fas fa-check';
+                testEl.style.position = 'absolute';
+                testEl.style.left = '-9999px';
+                document.body.appendChild(testEl);
+                var computed = window.getComputedStyle(testEl);
+                if (computed.fontFamily.indexOf('Font Awesome') === -1) {
+                    missing.push('Font Awesome');
                 }
+                document.body.removeChild(testEl);
                 if (missing.length) {
                     var banner = document.getElementById('cdnWarningBanner');
                     if (banner) {
                         banner.style.display = 'block';
-                        if (missing.indexOf('Supabase JS') !== -1 && missing.indexOf('Font Awesome') !== -1) {
-                            banner.innerHTML = '<i class=\"fas fa-exclamation-triangle\"></i> <strong>Bloqueador de anuncios detectado.</strong> Desactivá las extensiones para este sitio o abrí en ventana incógnita. Falta: ' + missing.join(' + ') + '.';
-                        }
+                        banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Bloqueador de anuncios detectado.</strong> Desactivá las extensiones para este sitio o abrí en ventana incógnita. Faltan: ' + missing.join(', ') + '.';
                     }
+                    return false;
                 }
+                return true;
             }
-        };
-        // Check 3 seconds after page load
-        setTimeout(function() { window.__cdnFallback.check(); }, 3000);
+            setTimeout(function() { checkCDN(); }, 3000);
+            setTimeout(function() { checkCDN(); }, 6000);
+        })();
     </script>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

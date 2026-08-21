@@ -668,6 +668,14 @@ const SUPABASE_ANON_KEY = window.BH_CONFIG?.SUPABASE_ANON_KEY || '';
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const urlParams = new URLSearchParams(window.location.search);
+let _authToken = null;
+window.addEventListener('message', (e) => {
+  if (e.data?.type === 'auth-session' && e.data?.token) {
+    _authToken = e.data.token;
+  }
+});
+
+const urlParams = new URLSearchParams(window.location.search);
 const TASACION_ID = urlParams.get('id');
 
 const PESOS = {
@@ -1056,6 +1064,10 @@ function setLocked(locked){
 
 async function saveToSupabase(finalize){
   if(_saving) return;
+  if(!_authToken){
+    showToast('Sesión no válida. Volvé al panel y abrí de nuevo.');
+    return;
+  }
   _saving = true;
   const btn = document.getElementById('btnSave');
   btn.disabled = true;
@@ -1396,6 +1408,18 @@ async function init(){
   document.getElementById('dateStamp').textContent = new Date().toLocaleDateString('es-AR', {year:'numeric',month:'long',day:'numeric'});
   document.querySelectorAll('.field label').forEach(l=>{ l.title = l.textContent; });
   renderServicios();
+
+  setTimeout(() => {
+    if(!_authToken){
+      const statusBar = document.getElementById('statusBar');
+      if(statusBar){
+        statusBar.style.background = '#7f1d1d';
+        statusBar.style.display = 'block';
+      }
+      const statusText = document.getElementById('statusText');
+      if(statusText) statusText.textContent = '⚠ Sin sesión — Abrí desde el panel de administración';
+    }
+  }, 2000);
 
   if(TASACION_ID){
     try{

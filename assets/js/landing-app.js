@@ -285,6 +285,10 @@
   let allTeam = [];
 
   async function loadLandingData() {
+    if (!window.supabaseClient) {
+      console.warn('[BH Landing] Supabase client not available — data will not load');
+      return;
+    }
     await Promise.all([
       loadProperties(),
       loadTeam(),
@@ -329,7 +333,7 @@
       const mainImg = (p.image_urls && p.image_urls.length > 0) ? p.image_urls[0] : 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80&fit=crop';
       const locationText = [p.zone, p.address].filter(Boolean).join(', ');
       return `
-      <div class="property-card" data-type="${(p.property_type || '').toLowerCase()}" data-status="${(p.status || '').toLowerCase()}">
+      <div class="property-card" data-type="${(p.property_type || '').toLowerCase()}">
         <div class="card-image-wrapper">
           <img src="${mainImg}" 
                alt="${p.title || 'Propiedad'}" loading="lazy" />
@@ -347,9 +351,9 @@
             ${p.garage_spaces ? `<li><i class="fas fa-car"></i> ${p.garage_spaces} ${p.garage_spaces === 1 ? 'Cochera' : 'Cocheras'}</li>` : ''}
           </ul>
           <p class="card-desc">${p.description || ''}</p>
-          <a href="#" class="btn-card" onclick="return false;">
+          <button class="btn-card btn-card--coming-soon" disabled title="Próximamente disponible">
             Ver Detalles <i class="fas fa-arrow-right"></i>
-          </a>
+          </button>
         </div>
       </div>
     `}).join('');
