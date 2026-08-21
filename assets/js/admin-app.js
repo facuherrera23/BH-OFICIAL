@@ -1883,7 +1883,7 @@
     showTasacionEditor(id, title);
   };
 
-  async function deleteTasacion(id) {
+  async function _deleteTasacion(id) {
     if (!confirm('¿Eliminar esta tasación permanentemente?')) return;
     try {
       const { error } = await window.supabaseClient.from('tasaciones').delete().eq('id', id);
@@ -1895,6 +1895,7 @@
       showToast('Error al eliminar: ' + err.message, 'error');
     }
   }
+  window.deleteTasacion = _deleteTasacion;
 
   async function createNewTasacion() {
     try {
