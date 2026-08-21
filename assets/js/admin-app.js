@@ -1590,13 +1590,13 @@
     const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (!session) throw new Error('No hay sesión activa');
 
-    const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-api`, {
+    const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-api?action=${encodeURIComponent(action)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ action, ...body }),
+      body: JSON.stringify(body),
     });
 
     const json = await res.json();
@@ -1608,27 +1608,34 @@
     try {
       const result = await mlApiCall('status');
       ml_connected = result.connected || false;
+      ml_configured = result.has_credentials || false;
       ml_user = result.settings || null;
       ml_listings = result.listings || [];
     } catch (err) {
       console.warn('[ML] Status check failed:', err.message);
       ml_connected = false;
+      ml_configured = false;
       ml_user = null;
       ml_listings = [];
     }
-    try {
-      const config = await mlConfigGet();
-      ml_configured = !!(config.ml_app_id && config.has_secret);
-    } catch (_) {
-      ml_configured = false;
-    }
   }
 
-  /* Connect to Mercado Libre — opens OAuth popup */
+  /* Connect to Mercado Libre — opens OAuth popup via ml-auth Edge Function */
   window.adminApp.mlConnect = async function () {
     try {
       showToast('Abriendo conexión con Mercado Libre...', 'info');
-      const result = await mlApiCall('auth');
+      const { data: { session } } = await window.supabaseClient.auth.getSession();
+      if (!session) throw new Error('No hay sesión activa');
+
+      const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-auth`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Error al generar URL de autenticación');
       const authUrl = result.auth_url;
 
       /* Open popup for OAuth flow */
