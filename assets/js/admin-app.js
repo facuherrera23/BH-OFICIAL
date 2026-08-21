@@ -87,7 +87,9 @@
       currentProfile = data;
     } catch (err) {
       console.error('Error loading profile:', err);
-      currentProfile = { email: currentUser.email, role: 'super_admin', full_name: currentUser.email };
+      currentProfile = null;
+      showToast('No se pudieron cargar los permisos. Acceso denegado.', 'error');
+      setTimeout(() => { window.supabaseClient.auth.signOut(); }, 2000);
     }
   }
 
@@ -2278,6 +2280,8 @@
   });
 
 })();
+
+
 
 
 
