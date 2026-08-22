@@ -13,6 +13,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/js/utils.js?v=1"></script>
 <script src="assets/js/config.js?v=2"></script>
 <style>
   :root{
@@ -293,7 +294,7 @@
   <div style="display:flex; align-items:center; gap:16px;">
     <div class="subtitle" id="dateStamp"></div>
     <div class="logo-badge">
-      <img src="assets/img/logo-bh.png" alt="Bienenhaus" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%2314b8a6%22 width=%2248%22 height=%2248%22 rx=%228%22/><text x=%2224%22 y=%2232%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2220%22 font-weight=%22bold%22>BH</text></svg>'">
+      <img id="brandLogo" src="assets/img/logo-bh.png" alt="Bienenhaus">
     </div>
   </div>
 </header>
@@ -651,11 +652,11 @@
 <div class="toast" id="toast"></div>
 
 <footer class="brand-footer">
-  <img src="assets/img/logo-bh.png" alt="Bienenhaus" style="height:60px; width:auto; opacity:.85;" onerror="this.style.display='none'">
+  <img src="assets/img/logo-bh.png" alt="Bienenhaus" style="height:60px; width:auto; opacity:.85;">
 </footer>
 
 <div class="action-bar">
-  <button class="btn btn-back" id="btnBack" onclick="window.parent?.postMessage({type:'tasaciones-back'},'*')">â† Volver</button>
+  <button class="btn btn-back" id="btnBack">â† Volver</button>
   <button class="btn btn-save" id="btnSave">ðŸ’¾ Guardar</button>
   <button class="btn btn-edit" id="btnEdit" disabled>âœï¸ Editar</button>
   <button class="btn btn-finish" id="btnFinish">âœ… Finalizar</button>
@@ -671,6 +672,7 @@ const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let _authToken = null;
 // Security: validate event.origin for postMessage
 const ALLOWED_ORIGINS = [
+  window.location.origin,
   'https://rnldqiwwzhjnurkguihu.supabase.co',
   'https://bienenhaus.vercel.app',
   'http://localhost:3000',
@@ -753,7 +755,7 @@ function addComparable(prefill){
   wrap.dataset.id = id;
   wrap.dataset.included = 'true';
   wrap.innerHTML = `
-    <button type="button" class="remove" onclick="removeComparable(${id})">Quitar</button>
+    <button type="button" class="remove" data-remove-id="${id}">Quitar</button>
     <h3>Comparable NÂ° <span class="comp-index">${id}</span></h3>
     <div class="grid cols-3">
       <div class="field"><label>DirecciÃ³n</label><input type="text" class="c_direccion"></div>
@@ -1138,6 +1140,28 @@ document.getElementById('btnPdf').addEventListener('click', ()=>{
 
 document.getElementById('addComparable').addEventListener('click', ()=>addComparable());
 
+/* --- Security hardening: sin handlers inline (CSP-safe), postMessage con targetOrigin explicito --- */
+const _bhEsc = (s) => (window.BHUtils && typeof window.BHUtils.esc === 'function') ? window.BHUtils.esc(s) : '';
+document.getElementById('btnBack').addEventListener('click', () => {
+  try {
+    window.parent?.postMessage({ type: 'tasaciones-back' }, window.location.origin);
+  } catch (err) {
+    console.error('[TAS] btnBack postMessage failed:', err);
+  }
+});
+document.getElementById('comparablesContainer').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-remove-id]');
+  if (!btn) return;
+  const rid = parseInt(btn.dataset.removeId, 10);
+  if (!Number.isNaN(rid)) removeComparable(rid);
+});
+const brandLogoEl = document.getElementById('brandLogo');
+if (brandLogoEl) brandLogoEl.addEventListener('error', () => {
+  brandLogoEl.src = "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%2314b8a6%22 width=%2248%22 height=%2248%22 rx=%228%22/><text x=%2224%22 y=%2232%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2220%22 font-weight=%22bold%22>BH</text></svg>";
+});
+const footerLogoEl = document.querySelector('footer img');
+if (footerLogoEl) footerLogoEl.addEventListener('error', () => { footerLogoEl.style.display = 'none'; });
+
 let acChartInstance = null;
 function renderAnalisisComparativo(){
   const tbody = document.getElementById('ac_tbody');
@@ -1332,12 +1356,12 @@ async function updateMainMap(){
         className:'', html:'<div style="width:16px;height:16px;border-radius:50%;background:'+p.color+';border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.2)"></div>',
         iconSize:[16,16], iconAnchor:[8,8]
       });
-      L.marker([geo.lat, geo.lon], {icon}).addTo(leafletMapInstance).bindPopup('<b>'+p.label+'</b><br>'+p.query);
+      L.marker([geo.lat, geo.lon], {icon}).addTo(leafletMapInstance).bindPopup('<b>'+_bhEsc(p.label)+'</b><br>'+_bhEsc(p.query));
       bounds.push([geo.lat, geo.lon]);
       okCount++;
       const chip = document.createElement('div');
       chip.className = 'chip';
-      chip.innerHTML = '<span class="swatch" style="background:'+p.color+'"></span>'+p.label;
+      chip.innerHTML = '<span class="swatch" style="background:'+p.color+'"></span>'+_bhEsc(p.label);
       legendEl.appendChild(chip);
     }catch(e){}
     await new Promise(r=>setTimeout(r, 1100));
