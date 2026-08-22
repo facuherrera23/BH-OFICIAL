@@ -666,9 +666,9 @@
                         </div>
                         <div class="table-responsive">
                             <table class="luxury-table">
-                                <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Estado</th><th>AcciÃ³n</th></tr></thead>
+                                <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Estado</th><th>Creado</th><th>Cambiar Rol</th></tr></thead>
                                 <tbody id="usersTableBody">
-                                    <tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando usuarios...</td></tr>
+                                    <tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando usuarios...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -931,6 +931,7 @@
                 <div class="form-field"><label>Nombre Completo *</label><input type="text" name="full_name" required placeholder="Juan PÃ©rez" /></div>
                 <div class="form-grid-2">
                     <div class="form-field"><label>Email Corporativo *</label><input type="email" name="email" required placeholder="juan@bienenhaus.com.ar" /></div>
+                    <div class="form-field"><label>Teléfono (opcional)</label><input type="tel" name="phone" placeholder="+54 9 387 000-0000" /></div>
                     <div class="form-field">
                         <label>Rol de Acceso</label>
                         <select name="role">
@@ -940,9 +941,36 @@
                         </select>
                     </div>
                 </div>
+                <div class="form-field" style="margin-top:14px;">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:var(--text-muted); font-size:12.5px;">
+                        <input type="checkbox" name="no_email" style="width:auto;" />
+                        Crear sin email (genera contraseña temporal)
+                    </label>
+                </div>
+                <div class="form-field" id="userTempPassBox" style="display:none;">
+                    <label>Contraseña Temporal (se muestra una sola vez)</label>
+                    <input type="text" id="userTempPass" readonly onclick="this.select()" />
+                </div>
                 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
                     <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
-                    <button type="submit" class="btn-luxury-action" id="userSaveBtn">Crear Usuario</button>
+                    <button type="submit" class="btn-luxury-action" id="userSaveBtn">Enviar Invitación</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DEFINIR CONTRASEÑA (ACEPTACIÓN DE INVITACIÓN) -->
+    <div class="admin-modal" id="inviteSetupModal">
+        <div class="modal-box">
+            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:6px;">Definí tu Contraseña</h3>
+            <p style="color:var(--text-muted); font-size:12.5px; margin-bottom:18px;">Fuiste invitado al panel de BIENENHAUS. Elegí una contraseña para <span id="inviteSetupEmail" style="color:var(--accent);"></span>.</p>
+            <form id="inviteSetupForm">
+                <div class="form-field"><label>Contraseña *</label><input type="password" name="password" required minlength="6" placeholder="Mínimo 6 caracteres" /></div>
+                <div class="form-field"><label>Repetir Contraseña *</label><input type="password" name="password2" required minlength="6" placeholder="Repetí la contraseña" /></div>
+                <p id="inviteSetupError" style="display:none; color:#f87171; font-size:12px; margin-top:10px;"></p>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+                    <button type="button" class="status-pill pending modal-close-btn">Ahora no</button>
+                    <button type="submit" class="btn-luxury-action" id="inviteSetupBtn">Guardar Contraseña</button>
                 </div>
             </form>
         </div>
@@ -1033,10 +1061,10 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="assets/js/utils.js?v=1"></script>
-<script src="assets/js/config.js?v=4"></script>
+<script src="assets/js/config.js?v=5"></script>
 <script src="assets/js/supabase-client.js?v=4"></script>
 <script src="assets/js/cloudinary.js?v=6"></script>
-<script src="assets/js/admin-app.js?v=12"></script>
+<script src="assets/js/admin-app.js?v=15"></script>
 </body>
 </html>
 

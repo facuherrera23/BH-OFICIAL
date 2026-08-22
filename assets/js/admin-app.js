@@ -52,13 +52,32 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
     }
 
     try {
+      /* Link de invitacion: #access_token=..&type=invite. Capturo el
+         fragmento ANTES de getSession porque supabase-js lo consume y
+         crea la sesion durante su inicializacion; el hash se limpia
+         recien despues, para no romper esa deteccion. */
+      const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+      const isInviteLink = hashParams.get('type') === 'invite';
+      const inviteError = hashParams.get('error_description');
+
       const { data: { session } } = await window.supabaseClient.auth.getSession();
+
+      if (hashParams.get('access_token') || inviteError) {
+        window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+      }
+
       if (session) {
         currentUser = session.user;
         showApp();
         loadProfile().then(updateUserInfo).catch(() => {});
+        if (isInviteLink && !inviteError) {
+          openInvitePasswordModal(session.user?.email || '');
+        }
       } else {
         showLogin();
+        if (inviteError) {
+          showToast('El enlace de invitación es inválido o ya expiró.', 'error');
+        }
       }
     } catch (err) {
       console.error('Auth init error:', err);
@@ -160,6 +179,40 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   /* Logout */
   $('#logoutBtn')?.addEventListener('click', async () => {
     await window.supabaseClient.auth.signOut();
+  });
+
+  /* Aceptación de invitación: definir contraseña del usuario invitado */
+  function openInvitePasswordModal(email) {
+    const emailEl = $('#inviteSetupEmail');
+    if (emailEl && email) emailEl.textContent = email;
+    const errEl = $('#inviteSetupError');
+    if (errEl) { errEl.style.display = 'none'; }
+    $('#inviteSetupForm')?.reset();
+    openModal('inviteSetupModal');
+  }
+
+  $('#inviteSetupForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const pwd = String(fd.get('password') || '');
+    const pwd2 = String(fd.get('password2') || '');
+    const errEl = $('#inviteSetupError');
+    const btn = $('#inviteSetupBtn');
+    const fail = (msg) => { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } };
+    if (pwd.length < 6) return fail('La contraseña debe tener al menos 6 caracteres.');
+    if (pwd !== pwd2) return fail('Las contraseñas no coinciden.');
+    if (!btn || !window.supabaseClient) return;
+    btn.disabled = true;
+    try {
+      const { error } = await window.supabaseClient.auth.updateUser({ password: pwd });
+      if (error) throw error;
+      closeModal('inviteSetupModal');
+      showToast('Contraseña definida. ¡Bienvenido al panel!', 'success');
+    } catch (err) {
+      fail(err.message || 'No se pudo definir la contraseña.');
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   /* ------------------------------------------------
@@ -1401,6 +1454,20 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   /* ------------------------------------------------
      12. USERS MANAGEMENT
      ------------------------------------------------ */
+  const USER_ROLE_LABELS = { super_admin: 'Super Admin', broker: 'Broker', agente: 'Agente' };
+  const USER_ROLE_ORDER = ['super_admin', 'broker', 'agente'];
+
+  function buildRoleSelect(userId, currentRole) {
+    const isSelf = currentUser && userId === currentUser.id;
+    if (isSelf) {
+      return '<span style="color:var(--text-dim); font-size:12px;">Tu usuario</span>';
+    }
+    const options = USER_ROLE_ORDER.map(r =>
+      `<option value="${r}" ${currentRole === r ? 'selected' : ''}>${USER_ROLE_LABELS[r]}</option>`
+    ).join('');
+    return `<select class="user-role-select" data-id="${esc(userId)}" data-current="${esc(currentRole || 'agente')}" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:10px; padding:7px 12px; color:#fff; font-size:12.5px;">${options}</select>`;
+  }
+
   async function loadUsers() {
     const tbody = $('#usersTableBody');
     if (!tbody) return;
@@ -1415,29 +1482,130 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
       if (error) throw error;
 
       if (!data?.length) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-dim);">No hay usuarios</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-dim);">No hay usuarios</td></tr>';
         return;
       }
 
-      tbody.innerHTML = data.map(u => {
-        const roleLabels = { super_admin: 'Super Admin', broker: 'Broker', agente: 'Agente' };
-        return `
+      tbody.innerHTML = data.map(u => `
         <tr>
           <td style="font-weight:500; color:#fff; font-size:13px;">${esc(u.full_name || u.email || 'Sin nombre')}</td>
           <td style="font-size:13px; color:var(--text-dim);">${esc(u.email || '-')}</td>
-          <td><span class="nav-badge" style="background:${u.role === 'super_admin' ? 'rgba(31,200,195,0.15)' : 'rgba(255,255,255,0.06)'}; color:${u.role === 'super_admin' ? 'var(--accent)' : 'var(--text-dim)'}; font-size:11px;">${esc(roleLabels[u.role] || u.role || 'agente')}</span></td>
+          <td><span class="nav-badge" style="background:${u.role === 'super_admin' ? 'rgba(31,200,195,0.15)' : 'rgba(255,255,255,0.06)'}; color:${u.role === 'super_admin' ? 'var(--accent)' : 'var(--text-dim)'}; font-size:11px;">${esc(USER_ROLE_LABELS[u.role] || u.role || 'agente')}</span></td>
           <td><span class="nav-badge" style="background:${u.is_active !== false ? 'rgba(0,200,120,0.15)' : 'rgba(255,60,60,0.15)'}; color:${u.is_active !== false ? 'var(--success)' : 'var(--danger)'}; font-size:11px;">${u.is_active !== false ? 'Activo' : 'Inactivo'}</span></td>
           <td style="color:var(--text-dim); font-size:12px;">${u.created_at ? new Date(u.created_at).toLocaleDateString('es-AR') : '-'}</td>
-        </tr>`;
-      }).join('');
+          <td>${buildRoleSelect(u.id, u.role)}</td>
+        </tr>`).join('');
     } catch (err) {
       console.error('Users error:', err);
     }
   }
 
-  /* Create user (placeholder — needs Supabase admin invite) */
+  /* User management via edge function manage-users (requiere super_admin). */
+  async function getAdminToken() {
+    if (!window.supabaseClient) throw new Error('Supabase no disponible');
+    const { data, error } = await window.supabaseClient.auth.getSession();
+    if (error || !data?.session?.access_token) throw new Error('Sesión requerida');
+    return data.session.access_token;
+  }
+
+  async function callManageUsers(payload) {
+    const token = await getAdminToken();
+    const res = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/manage-users`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out.error || `Error ${res.status}`);
+    return out;
+  }
+
+  function showUserTempPassword(tempPassword, email) {
+    const box = $('#userTempPassBox');
+    const input = $('#userTempPass');
+    if (box && input) {
+      box.style.display = '';
+      input.value = tempPassword;
+      input.focus();
+      input.select();
+    }
+    showToast(`Usuario creado: ${email}. Copiá la contraseña temporal y pasásela al usuario.`, 'warning');
+  }
+
   $('#btnNewUser')?.addEventListener('click', () => {
-    showToast('La creación de usuarios requiere configuración de Supabase Auth Admin', 'info');
+    $('#userForm')?.reset();
+    const passBox = $('#userTempPassBox');
+    if (passBox) passBox.style.display = 'none';
+    openModal('userModal');
+  });
+
+  const userNoEmailCb = document.querySelector('#userForm input[name="no_email"]');
+  userNoEmailCb?.addEventListener('change', () => {
+    const btn = $('#userSaveBtn');
+    if (btn) btn.textContent = userNoEmailCb.checked ? 'Crear Usuario' : 'Enviar Invitación';
+  });
+
+  $('#userForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const btn = $('#userSaveBtn');
+    if (!btn) return;
+    const fd = new FormData(form);
+    btn.disabled = true;
+    try {
+      const noEmail = fd.get('no_email') === 'on';
+      const out = await callManageUsers({
+        action: noEmail ? 'create-direct' : 'invite',
+        email: String(fd.get('email') || '').trim(),
+        full_name: String(fd.get('full_name') || '').trim(),
+        phone: String(fd.get('phone') || '').trim(),
+        role: String(fd.get('role') || 'agente'),
+      });
+      if (noEmail && out.tempPassword) {
+        showUserTempPassword(out.tempPassword, String(fd.get('email') || '').trim());
+        loadUsers();
+      } else {
+        showToast(`Invitación enviada a ${fd.get('email')}. Debe aceptarla desde su email para definir su contraseña.`, 'success');
+        closeModal('userModal');
+        form.reset();
+        loadUsers();
+      }
+    } catch (err) {
+      let msg = err.message || 'No se pudo enviar la invitación';
+      if (/rate limit|too many|429/i.test(msg)) {
+        msg = 'Se alcanzó el límite de emails por hora del servidor. Usá "Crear sin email" o configurá un SMTP propio (Authentication → SMTP).';
+      }
+      showToast(msg, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $('#usersTableBody')?.addEventListener('change', async (e) => {
+    const select = e.target.closest('.user-role-select');
+    if (!select) return;
+    const previous = select.dataset.current || 'agente';
+    const next = select.value;
+    if (next === previous) return;
+
+    if (previous === 'super_admin' && !window.confirm(`¿Quitar el rol Super Admin a este usuario?`)) {
+      select.value = previous;
+      return;
+    }
+    select.disabled = true;
+    try {
+      await callManageUsers({ action: 'set-role', userId: select.dataset.id, role: next });
+      showToast('Rol actualizado correctamente', 'success');
+      loadUsers();
+    } catch (err) {
+      select.value = previous;
+      showToast(err.message || 'No se pudo cambiar el rol', 'error');
+    } finally {
+      select.disabled = false;
+    }
   });
 
   /* ------------------------------------------------
