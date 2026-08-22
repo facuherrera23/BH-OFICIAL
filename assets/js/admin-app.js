@@ -728,16 +728,29 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   async function loadCRM() {
     if (!window.supabaseClient) return;
     try {
-      const { data, error } = await window.supabaseClient
-        .from('leads')
-        .select('*')
-        .order('created_at', { ascending: false });
+      /* Traer leads y sus visitas (próximas y última) en una sola query */
+      const [{ data: leads, error: leadsErr }, { data: visits, error: visitsErr }] = await Promise.all([
+        window.supabaseClient.from('leads').select('*').order('created_at', { ascending: false }),
+        window.supabaseClient.from('visits')
+          .select('id, lead_id, visit_date, status, client_name')
+          .neq('status', 'cancelada')
+          .order('visit_date', { ascending: true }),
+      ]);
+      if (leadsErr) throw leadsErr;
+      if (visitsErr) throw visitsErr;
 
-      if (error) throw error;
+      /* Agrupar visitas por lead_id para acceso rápido */
+      const visitsByLead = {};
+      (visits || []).forEach(v => {
+        if (v.lead_id) {
+          if (!visitsByLead[v.lead_id]) visitsByLead[v.lead_id] = [];
+          visitsByLead[v.lead_id].push(v);
+        }
+      });
 
       /* Group by stage */
       const groups = { nuevo: [], contactado: [], visita: [], oferta: [], cerrado: [], perdido: [] };
-      (data || []).forEach(lead => {
+      (leads || []).forEach(lead => {
         const stage = lead.stage || 'nuevo';
         if (groups[stage]) groups[stage].push(lead);
       });
@@ -751,37 +764,69 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
       };
 
       Object.entries(columnMap).forEach(([containerId, { stages, badge }]) => {
-        const container = $(`#${containerId}`);
-        const badgeEl = $(`#${badge}`);
-        const leads = stages.flatMap(s => groups[s] || []);
+        const container = document.querySelector('#' + containerId);
+        const badgeEl = document.querySelector('#' + badge);
+        const leadsArr = stages.flatMap(s => groups[s] || []);
 
-        if (badgeEl) badgeEl.textContent = leads.length;
+        if (badgeEl) badgeEl.textContent = leadsArr.length;
 
         if (!container) return;
-        if (!leads.length) {
+        if (!leadsArr.length) {
           container.innerHTML = '<p style="text-align:center; color:var(--text-dim); font-size:12px; padding:24px 8px;">Sin prospectos</p>';
           return;
         }
 
-        container.innerHTML = leads.map(l => `
-          <div class="lead-card" style="background:var(--surface-2); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:14px; margin-bottom:10px; cursor:pointer;" onclick="window.adminApp.editLead('${l.id}')">
-            <div style="font-weight:600; color:#fff; font-size:13px; margin-bottom:4px;">${esc(l.full_name || 'Sin nombre')}</div>
-            <div style="color:var(--text-dim); font-size:11px; margin-bottom:6px;">${esc(l.preferred_type ? l.preferred_type.charAt(0).toUpperCase() + l.preferred_type.slice(1) : '')} ${l.preferred_zone ? '· ' + esc(l.preferred_zone) : ''}</div>
-            ${l.budget_usd ? '<div style="color:var(--accent); font-size:12px; font-weight:500;">USD ' + l.budget_usd.toLocaleString('es-AR') + '</div>' : ''}
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:8px; border-top:1px solid var(--border-subtle);">
-              <span style="color:var(--text-dim); font-size:10px;">${new Date(l.created_at).toLocaleDateString('es-AR')}</span>
-              <div style="display:flex; gap:4px;">
-                <button class="btn-action" style="padding:4px 6px; font-size:10px;" title="Editar" onclick="event.stopPropagation(); window.adminApp.editLead('${l.id}')"><i class="fas fa-pen"></i></button>
-                <button class="btn-action danger" style="padding:4px 6px; font-size:10px;" title="Eliminar" onclick="event.stopPropagation(); window.adminApp.deleteLead('${l.id}')"><i class="fas fa-trash"></i></button>
-              </div>
-            </div>
-          </div>
-        `).join('');
+        var htmlParts = [];
+        leadsArr.forEach(function(l) {
+          var leadVisits = visitsByLead[l.id] || [];
+          var upcomingVisit = leadVisits.find(function(v) { return v.status === 'pendiente' || v.status === 'confirmada'; });
+          var hasFutureVisit = !!upcomingVisit;
+          var showScheduleBtn = (l.stage === 'contactado' || l.stage === 'visita') && !hasFutureVisit;
+
+          var visitInfo = '';
+          if (upcomingVisit) {
+            var badgeColor = upcomingVisit.status === 'confirmada' ? 'rgba(0,200,120,0.2)' : 'rgba(255,184,0,0.2)';
+            var badgeTextColor = upcomingVisit.status === 'confirmada' ? 'var(--success)' : 'var(--warning)';
+            var visitDate = new Date(upcomingVisit.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+            visitInfo = '<div style="margin-top:6px; padding:6px 8px; background:rgba(31,200,195,0.08); border-radius:4px; font-size:11px; color:var(--accent); display:flex; align-items:center; gap:6px;">' +
+              '<i class="fas fa-calendar-day"></i>' +
+              '<span>' + esc(visitDate) + '</span>' +
+              '<span class="nav-badge" style="font-size:9px; background:' + badgeColor + '; color:var(--success);">' + esc(upcomingVisit.status) + '</span>' +
+              '</div>';
+          }
+
+          var scheduleBtn = '';
+          if (showScheduleBtn) {
+            scheduleBtn = '<button class="btn-action" style="padding:4px 8px; font-size:10px; margin-top:8px; width:100%; background:rgba(31,200,195,0.15); color:var(--accent); border:1px solid var(--accent);" ' +
+              'onclick="event.stopPropagation(); window.adminApp.openVisitModal({ lead_id: \'' + esc(l.id) + '\', client_name: \'' + esc(l.full_name) + '\', client_phone: \'' + esc(l.phone || l.whatsapp || '') + '\', property_id: \'' + esc(l.property_id || '') + '\' })">' +
+              '<i class="fas fa-calendar-plus"></i> Agendar visita' +
+              '</button>';
+          }
+
+          var budgetHtml = l.budget_usd ? '<div style="color:var(--accent); font-size:12px; font-weight:500;">USD ' + l.budget_usd.toLocaleString('es-AR') + '</div>' : '';
+          var prefType = l.preferred_type ? l.preferred_type.charAt(0).toUpperCase() + l.preferred_type.slice(1) : '';
+          var prefZone = l.preferred_zone ? '· ' + esc(l.preferred_zone) : '';
+          var createdDate = new Date(l.created_at).toLocaleDateString('es-AR');
+
+          var cardHtml =
+            '<div class="lead-card" style="background:var(--surface-2); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:14px; margin-bottom:10px; cursor:pointer;" onclick="window.adminApp.editLead(\'' + esc(l.id) + '\')">' +
+            '<div style="font-weight:600; color:#fff; font-size:13px; margin-bottom:4px;">' + esc(l.full_name || 'Sin nombre') + '</div>' +
+            '<div style="color:var(--text-dim); font-size:11px; margin-bottom:6px;">' + esc(prefType) + (prefZone ? ' · ' + esc(l.preferred_zone) : '') + '</div>' +
+            (l.budget_usd ? '<div style="color:var(--accent); font-size:12px; font-weight:500;">USD ' + l.budget_usd.toLocaleString('es-AR') + '</div>' : '') +
+            visitInfo +
+            scheduleBtn +
+            '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:8px; border-top:1px solid var(--border-subtle);">' +
+              '<span style="color:var(--text-dim); font-size:10px;">' + new Date(l.created_at).toLocaleDateString('es-AR') + '</span>' +
+              '<div style="display:flex; gap:4px;">' +
+                '<button class="btn-action" style="padding:4px 6px; font-size:10px;" title="Editar" onclick="event.stopPropagation(); window.adminApp.editLead(\'' + esc(l.id) + '\')"><i class="fas fa-pen"></i></button>' +
+                '<button class="btn-action danger" style="padding:4px 6px; font-size:10px;" title="Eliminar" onclick="event.stopPropagation(); window.adminApp.deleteLead(\'' + esc(l.id) + '\')"><i class="fas fa-trash"></i></button>' +
+              '</div>' +
+            '</div>' +
+            '</div>';
+          htmlParts.push(cardHtml);
+        });
+        container.innerHTML = htmlParts.join('');
       });
-    } catch (err) {
-      console.error('CRM error:', err);
-    }
-  }
 
   /* Create lead */
   $('#btnNewLead')?.addEventListener('click', () => {
@@ -833,25 +878,63 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
     }
   });
 
-  /* Edit lead */
+/* Edit lead */
   window.adminApp.editLead = async function (id) {
     try {
-      const { data, error } = await window.supabaseClient.from('leads').select('*').eq('id', id).single();
-      if (error) throw error;
+      const [{ data: lead, error: leadErr }, { data: visits, error: visitsErr }] = await Promise.all([
+        window.supabaseClient.from('leads').select('*').eq('id', id).single(),
+        window.supabaseClient
+          .from('visits')
+          .select('id, visit_date, status, client_name, property_id')
+          .eq('lead_id', id)
+          .order('visit_date', { ascending: true }),
+      ]);
+      if (leadErr) throw leadErr;
+      if (visitsErr) throw visitsErr;
+
       editingLeadId = id;
       const form = $('#leadForm');
       if (form) {
-        form.elements.full_name.value = data.full_name || '';
-        form.elements.phone.value = data.phone || '';
-        form.elements.email.value = data.email || '';
-        form.elements.budget_usd.value = data.budget_usd || '';
-        form.elements.stage.value = data.stage || 'nuevo';
-        form.elements.preferred_type.value = data.preferred_type || '';
-        form.elements.preferred_zone.value = data.preferred_zone || '';
-        form.elements.notes.value = data.notes || '';
+        form.elements.full_name.value = lead.full_name || '';
+        form.elements.phone.value = lead.phone || '';
+        form.elements.email.value = lead.email || '';
+        form.elements.budget_usd.value = lead.budget_usd || '';
+        form.elements.stage.value = lead.stage || 'nuevo';
+        form.elements.preferred_type.value = lead.preferred_type || '';
+        form.elements.preferred_zone.value = lead.preferred_zone || '';
+        form.elements.notes.value = lead.notes || '';
       }
+
+      /* Visitas asociadas en el modal */
+      const visitsContainer = $('#leadVisitsContainer');
+      if (visitsContainer) {
+        if (visits?.length) {
+          visitsContainer.innerHTML = `
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border-subtle);">
+              <div style="font-weight:600; color:var(--accent); font-size:12px; margin-bottom:8px;">Visitas asociadas (${visits.length})</div>
+              ${visits.map(v => `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px; background:var(--surface-2); border-radius:6px; margin-bottom:6px; font-size:12px;">
+                  <div>
+                    <div style="font-weight:500; color:#fff;">${new Date(v.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+                    <div style="color:var(--text-dim); font-size:11px;">${esc(v.client_name || 'Sin cliente')} · ${esc(v.status)}</div>
+                  </div>
+                  <button class="btn-action" style="font-size:10px;" onclick="event.stopPropagation(); window.adminApp.editVisit('${v.id}')">
+                    <i class="fas fa-external-link-alt"></i> Ver en Agenda
+                  </button>
+                </div>
+              `).join('')}
+            </div>`;
+        } else {
+          visitsContainer.innerHTML = `
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border-subtle); color:var(--text-dim); font-size:12px;">
+              Sin visitas asociadas. <button class="btn-action" style="padding:2px 8px; font-size:10px; margin-left:8px;" onclick="event.stopPropagation(); window.adminApp.openVisitModal({ lead_id: '${editingLeadId}', client_name: '${esc(lead.full_name)}', client_phone: '${esc(lead.phone || lead.whatsapp || '')}', property_id: '${lead.property_id || ''}' })"><i class="fas fa-calendar-plus"></i> Agendar primera visita</button>
+            </div>`;
+        }
+      }
+
       openModal('leadModal');
     } catch (err) {
+      console.error('Error al cargar lead:', err);
       showToast('Error al cargar lead', 'error');
     }
   };
@@ -879,15 +962,16 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
     if (!window.supabaseClient) return;
 
     try {
+      /* JOIN con leads para mostrar nombre del lead y link a CRM */
       const { data, error } = await window.supabaseClient
         .from('visits')
-        .select('*')
+        .select('*, leads!left(id, full_name, stage)')
         .order('visit_date', { ascending: true });
 
       if (error) throw error;
 
       if (!data?.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-dim);">No hay visitas programadas</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">No hay visitas programadas</td></tr>';
         return;
       }
 
@@ -895,13 +979,21 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
         const dateStr = v.visit_date
           ? new Date(v.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
           : '-';
+        const lead = v.leads;
+        const leadLink = lead
+          ? `<button class="btn-action" style="font-size:10px; color:var(--accent);" title="Ver en CRM" onclick="event.stopPropagation(); window.adminApp.editLead('${lead.id}')">
+               <i class="fas fa-user"></i> ${esc(lead.full_name)} <i class="fas fa-external-link-alt" style="font-size:9px; margin-left:2px;"></i>
+             </button>`
+          : '<span style="color:var(--text-dim); font-size:12px;">—</span>';
+
         return `
         <tr>
           <td style="font-size:13px;">${dateStr}</td>
-          <td style="font-size:13px; color:var(--text-dim);">-</td>
           <td style="font-size:13px; font-weight:500;">${esc(v.client_name || 'Sin cliente')}</td>
-          <td style="font-size:13px; color:var(--text-dim);">-</td>
+          <td style="font-size:13px; color:var(--text-dim);">${leadLink}</td>
+          <td style="font-size:13px; color:var(--text-dim);">${v.property_id ? '✓' : '—'}</td>
           <td><span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : v.status === 'completada' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : v.status === 'completada' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${esc(v.status || 'pendiente')}</span></td>
+          <td style="font-size:12px; color:var(--text-dim);">${v.lead_id ? '✓' : '—'}</td>
           <td>
             <div style="display:flex; gap:6px;">
               <button class="btn-action" title="Editar" onclick="window.adminApp.editVisit('${v.id}')"><i class="fas fa-pen"></i></button>
@@ -910,9 +1002,24 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
           </td>
         </tr>`;
       }).join('');
+
+      /* Actualizar header de la tabla si existe */
+      const thead = tbody.closest('table').querySelector('thead');
+      if (thead && !thead.querySelector('th:nth-child(3)')?.textContent?.includes('Lead')) {
+        thead.innerHTML = `
+          <tr>
+            <th>Fecha y Hora</th>
+            <th>Cliente</th>
+            <th>Lead (CRM)</th>
+            <th>Propiedad</th>
+            <th>Estado</th>
+            <th>Vinculado</th>
+            <th>Acciones</th>
+          </tr>`;
+      }
     } catch (err) {
       console.error('Visits error:', err);
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar visitas</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar visitas</td></tr>';
     }
   }
 
@@ -920,8 +1027,52 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   $('#btnNewVisit')?.addEventListener('click', () => {
     editingVisitId = null;
     $('#visitForm')?.reset();
+    /* Limpiar selector dinámico si existe */
+    const oldSelect = $('#visitLeadSelect');
+    if (oldSelect) oldSelect.remove();
+    const oldInfo = $('#visitLeadInfo');
+    if (oldInfo) oldInfo.remove();
     openModal('visitModal');
   });
+
+  /* openVisitModal — llamado desde CRM con pre-llenado */
+  window.adminApp.openVisitModal = function (prefill = {}) {
+    editingVisitId = null;
+    const form = $('#visitForm');
+    if (form) form.reset();
+    /* Limpiar selector dinámico si existe */
+    const oldSelect = $('#visitLeadSelect');
+    if (oldSelect) oldSelect.remove();
+    const oldInfo = $('#visitLeadInfo');
+    if (oldInfo) oldInfo.remove();
+
+    /* Pre-llenar desde CRM */
+    if (prefill.visit_date) {
+      const d = new Date(prefill.visit_date);
+      const visitDateEl = document.querySelector('#visitForm [name="visit_date"]');
+      if (visitDateEl) visitDateEl.value = d.toISOString().slice(0, 16);
+    }
+    if (prefill.client_name) {
+      const el = document.querySelector('#visitForm [name="client_name"]');
+      if (el) el.value = prefill.client_name;
+    }
+    if (prefill.client_phone) {
+      const el = document.querySelector('#visitForm [name="client_phone"]');
+      if (el) el.value = prefill.client_phone;
+    }
+    if (prefill.property_id) {
+      const el = document.querySelector('#visitForm [name="property_id"]');
+      if (el) el.value = prefill.property_id;
+    }
+    if (prefill.lead_id) {
+      /* El selector se creará en editVisit al abrir modal, pero para nueva visita
+         necesitamos setear el lead_id después de que se cree el selector.
+         Usamos un flag temporal. */
+      window._pendingLeadId = prefill.lead_id;
+    }
+
+    openModal('visitModal');
+  };
 
   /* Save visit */
   let _submittingVisit = false;
@@ -934,13 +1085,26 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
 
     try {
       const formData = new FormData(e.target);
+      const oldStatus = editingVisitId
+        ? (await window.supabaseClient.from('visits').select('status, lead_id').eq('id', editingVisitId).single()).data?.status
+        : null;
+      const oldLeadId = editingVisitId
+        ? (await window.supabaseClient.from('visits').select('lead_id').eq('id', editingVisitId).single()).data?.lead_id
+        : null;
+
+      const formDataObj = new FormData(e.target);
       const data = {
-        visit_date: formData.get('visit_date') || null,
-        status: formData.get('status') || 'pendiente',
-        client_name: formData.get('client_name') || '',
-        client_phone: formData.get('client_phone') || '',
-        notes: formData.get('notes') || '',
+        visit_date: formDataObj.get('visit_date') || null,
+        status: formDataObj.get('status') || 'pendiente',
+        client_name: formDataObj.get('client_name') || '',
+        client_phone: formDataObj.get('client_phone') || '',
+        notes: formDataObj.get('notes') || '',
+        lead_id: formDataObj.get('lead_id') || null,
       };
+
+      const newStatus = data.status;
+      const newLeadId = data.lead_id;
+      const leadIdChanged = oldLeadId !== newLeadId;
 
       if (editingVisitId) {
         const { error } = await window.supabaseClient.from('visits').update(data).eq('id', editingVisitId);
@@ -952,8 +1116,35 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
         showToast('Visita agendada', 'success');
       }
 
+      /* Prompt: visita completada → mover lead a Oferta */
+      if (newStatus === 'completada' && oldStatus !== 'completada' && newLeadId) {
+        try {
+          const { data: leadData } = await window.supabaseClient
+            .from('leads')
+            .select('stage')
+            .eq('id', newLeadId)
+            .single();
+          if (leadData && leadData.stage === 'visita') {
+            const confirmMove = confirm('¿Mover el lead a "Oferta / Cierre"?');
+            if (confirmMove) {
+              await window.supabaseClient
+                .from('leads')
+                .update({ stage: 'oferta', updated_at: new Date().toISOString() })
+                .eq('id', newLeadId);
+              showToast('Lead movido a Oferta / Cierre', 'success');
+            }
+          }
+        } catch (_) {}
+      }
+
+      /* Si se asignó lead_id nuevo (era NULL) → el trigger DB actualizará lead a "visita" */
+      /* Si se quitó lead_id (era valor → NULL) → no hacemos nada en lead */
+
       closeModal('visitModal');
+      /* Limpiar flag pendiente */
+      delete window._pendingLeadId;
       loadVisits();
+      loadCRM(); // Refrescar CRM por si cambió stage
       updateSidebarBadges();
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
@@ -963,13 +1154,20 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
     }
   });
 
-  /* Edit visit */
+/* Edit visit */
   window.adminApp.editVisit = async function (id) {
     try {
-      const { data, error } = await window.supabaseClient.from('visits').select('*').eq('id', id).single();
+      const { data, error } = await window.supabaseClient
+        .from('visits')
+        .select('*, leads!left(id, full_name, stage, phone, whatsapp, property_id)')
+        .eq('id', id)
+        .single();
       if (error) throw error;
+
       editingVisitId = id;
       const form = $('#visitForm');
+      const lead = data.leads;
+
       if (form) {
         if (data.visit_date) {
           const d = new Date(data.visit_date);
@@ -979,9 +1177,79 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
         form.elements.client_name.value = data.client_name || '';
         form.elements.client_phone.value = data.client_phone || '';
         form.elements.notes.value = data.notes || '';
+
+        /* Lead selector para vincular/desvincular */
+        const leadSelect = document.createElement('select');
+        leadSelect.id = 'visitLeadSelect';
+        leadSelect.name = 'lead_id';
+        leadSelect.style.cssText = 'width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border-input); background:rgba(255,255,255,0.03); color:#fff; font-size:13px; margin-top:8px;';
+        leadSelect.innerHTML = '<option value="">— Sin lead vinculado (visita espontánea) —</option>';
+        
+        /* Cargar leads en stage "contactado" o "visita" que no tengan visita futura */
+        try {
+          const { data: availableLeads } = await window.supabaseClient
+            .from('leads')
+            .select('id, full_name, stage, phone, whatsapp, property_id')
+            .in('stage', ['contactado', 'visita'])
+            .order('full_name');
+          
+          if (availableLeads?.length) {
+            availableLeads.forEach(l => {
+              const opt = document.createElement('option');
+              opt.value = l.id;
+              opt.textContent = `${l.full_name} (${l.stage})`;
+              if (l.property_id) opt.textContent += ' 🏠';
+              leadSelect.appendChild(opt);
+            });
+          }
+        } catch (_) {}
+
+        if (form.elements.lead_id) form.elements.lead_id.remove();
+        form.appendChild(leadSelect);
+        
+        /* Seleccionar lead actual si existe */
+        if (data.lead_id) leadSelect.value = data.lead_id;
+
+        /* Mostrar info del lead seleccionado */
+        const leadInfo = document.createElement('div');
+        leadInfo.id = 'visitLeadInfo';
+        leadInfo.style.cssText = 'margin-top:8px; padding:8px 12px; background:rgba(31,200,195,0.08); border-radius:6px; font-size:12px; display:none;';
+        form.appendChild(leadInfo);
+        
+        leadSelect.addEventListener('change', async (e) => {
+          const selectedId = e.target.value;
+          const infoEl = $('#visitLeadInfo');
+          if (selectedId) {
+            try {
+              const { data: leadData } = await window.supabaseClient
+                .from('leads')
+                .select('full_name, stage, phone, whatsapp, property_id')
+                .eq('id', selectedId)
+                .single();
+              if (leadData) {
+                infoEl.style.display = 'block';
+                infoEl.innerHTML = `
+                  <strong>${esc(leadData.full_name)}</strong> · Etapa: ${esc(leadData.stage)}
+                  ${leadData.property_id ? ' · <span style="color:var(--accent);">🏠 Propiedad asignada</span>' : ' · <span style="color:var(--warning);">⚠️ Sin propiedad asignada</span>'}
+                `;
+                /* Auto-rellenar campos si no estaban llenos */
+                if (!form.elements.client_name.value) form.elements.client_name.value = leadData.full_name || '';
+                if (!form.elements.client_phone.value) form.elements.client_phone.value = leadData.phone || leadData.whatsapp || '';
+              }
+            } catch (_) {}
+          } else {
+            infoEl.style.display = 'none';
+            infoEl.innerHTML = '';
+          }
+        });
+
+        /* Disparar cambio si ya hay lead seleccionado */
+        if (data.lead_id) leadSelect.dispatchEvent(new Event('change'));
       }
+
       openModal('visitModal');
     } catch (err) {
+      console.error('Error al cargar visita:', err);
       showToast('Error al cargar visita', 'error');
     }
   };

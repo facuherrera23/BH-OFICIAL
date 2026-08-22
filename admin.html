@@ -823,6 +823,7 @@
                     <button type="submit" class="btn-luxury-action" id="leadSaveBtn">Registrar Lead</button>
                 </div>
             </form>
+        <div id="leadVisitsContainer" style="margin-top:16px;"></div>
         </div>
     </div>
 
@@ -831,12 +832,15 @@
         <div class="modal-box">
             <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Agendar Nueva Visita</h3>
             <form id="visitForm">
+                <input type="hidden" name="property_id" id="visitPropertyId" />
                 <div class="form-grid-2">
                     <div class="form-field"><label>Fecha y Hora *</label><input type="datetime-local" name="visit_date" required /></div>
                     <div class="form-field"><label>Estado</label>
                         <select name="status">
                             <option value="pendiente">Pendiente</option>
                             <option value="confirmada">Confirmada</option>
+                            <option value="completada">Completada</option>
+                            <option value="cancelada">Cancelada</option>
                         </select>
                     </div>
                 </div>
