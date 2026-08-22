@@ -155,3 +155,15 @@ Hallazgos del puerto:
 **Decisión de fuente de verdad:** la RAÍZ del repo es la copia deployable. La carpeta anidada queda como workspace local; sus JS difieren solo en cache-buster (?v=3 vs ?v=4).
 
 Push final: `282579c..1ac84ed main -> main`. Árbol tracked limpio.
+
+## 11. Reparación global de mojibake (2026-08-22)
+
+Escaneo Node de ambos árboles detectó ~330 secuencias corruptas en 5 archivos: doble-codificación **UTF-8→CP1252→UTF-8** ("AnÃ¡lisis", "TelÃ©fono", "GestiÃ³n", "â† Volver", emojis rotos). Corrupción histórica pre-existente — algún editor guardó UTF-8 interpretándolo como CP1252.
+
+**Fix**: recuperación algorítmica determinística por runs (mapa cp1252→byte → decodificación UTF-8 inversa) con validación fail-safe: se descarta cualquier run que no decodifique limpio. Resultado: **666 runs recuperados** — acentos completos (á é í ó ú ñ ü Á Í Ó Ú), signos (¡ ¿ ° ± ² · ×), em-dash, flechas/checkmarks (← ✓ ✅ ⚠ ⇩ ⭳ −) y emojis (📷 💾 📍 ✏️).
+
+Residuo post-fix: **0 real** (2 falsos positivos verificados = bullets ••• legítimos de placeholders de password).
+
+Verificación: re-scan 0 patrones · spot-checks 7/7 PASS · `node --check` ×3 PASS · diff simétrico (+472/−472, cero cambios estructurales) · cache-buster admin-app.js **v10→v11** para invalidar caché.
+
+Archivos tocados: RAÍZ `tasacion.html` + `assets/js/admin-app.js` + `admin.html` (buster); ANIDADA `admin.html` + `assets/js/admin-app.js` + `tasacion.html`.
