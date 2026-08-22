@@ -344,19 +344,20 @@
 
                         <div class="table-responsive">
                             <table class="luxury-table">
-                                <thead>
+<thead>
                                     <tr>
+                                        <th>Código</th>
                                         <th>Inmueble</th>
                                         <th>Superficie</th>
                                         <th>Ambientes</th>
                                         <th>Precio (USD)</th>
-                                        <th>OperaciÃ³n</th>
+                                        <th>Operación</th>
                                         <th>Estado</th>
                                         <th>Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody id="propertiesTableBody">
-                                    <tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando propiedades...</td></tr>
+                                    <tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando propiedades...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -709,6 +710,11 @@
             <h3 id="propModalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Nueva Propiedad</h3>
             <form id="propertyForm">
                 <input type="hidden" id="propId" />
+                <div class="form-field">
+                    <label>Código</label>
+                    <input type="text" id="propCode" name="property_code" readonly placeholder="Se genera automáticamente" style="background:rgba(255,255,255,0.03); color:var(--accent); font-weight:600; font-family:monospace; font-size:13px;" title="Se genera automáticamente al guardar" />
+                    <span style="font-size:11px; color:var(--text-dim); margin-top:4px; display:block;">Formato: FH-P0001 (iniciales + secuencia) / ML-P0001 (Mercado Libre)</span>
+                </div>
                 <div class="form-field"><label>TÃ­tulo del Inmueble *</label><input type="text" name="title" required placeholder="Ej: Departamento en Palermo" /></div>
                 <div class="form-grid-2">
                     <div class="form-field">

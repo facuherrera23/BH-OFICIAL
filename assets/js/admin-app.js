@@ -483,7 +483,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
       (listingsRes.data || []).forEach(l => { mlMap[l.property_id] = l; });
 
       if (!data?.length) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">No hay propiedades cargadas</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-dim);">No hay propiedades cargadas</td></tr>';
         return;
       }
 
@@ -506,8 +506,13 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
           mlButtons = `<button class="btn-action" style="font-size:11px; color:#FFE600;" title="Publicar en ML" data-ml-publish="${esc(p.id)}"><i class="fab fa-mercarto-libre"></i></button>`;
         }
 
+        const codeBadge = p.property_code 
+          ? `<span style="font-family:monospace; font-size:12px; font-weight:600; color:var(--accent); background:rgba(31,200,195,0.1); padding:2px 6px; border-radius:4px;">${esc(p.property_code)}</span>`
+          : '<span style="color:var(--text-dim); font-size:11px;">—</span>';
+
         return `
         <tr>
+          <td>${codeBadge}</td>
           <td>
             <div style="display:flex; align-items:center; gap:12px;">
               <img src="${esc(thumb)}" alt="${esc(p.title || '')}" style="width:52px; height:52px; border-radius:var(--radius-sm); object-fit:cover; border:1px solid var(--border-subtle);" />
@@ -533,7 +538,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
       }).join('');
     } catch (err) {
       console.error('Error loading properties:', err);
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar propiedades</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar propiedades</td></tr>';
     }
   }
 
@@ -556,6 +561,8 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
     if (form) form.reset();
     const previews = $('#imagePreviewGrid');
     if (previews) previews.innerHTML = '';
+    const codeInput = $('#propCode');
+    if (codeInput) { codeInput.value = ''; codeInput.removeAttribute('readonly'); }
     const title = $('#propModalTitle');
     if (title) title.textContent = 'Nueva Propiedad';
   }
@@ -654,6 +661,13 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
         form.elements.rooms.value = data.rooms || '';
         form.elements.is_published.checked = data.is_published || false;
         form.elements.featured.checked = data.featured || false;
+
+        // Código de propiedad (solo lectura en edición)
+        const codeInput = $('#propCode');
+        if (codeInput) {
+          codeInput.value = data.property_code || '';
+          codeInput.setAttribute('readonly', 'readonly');
+        }
 
         const previews = $('#imagePreviewGrid');
         if (previews && data.image_urls?.length) {

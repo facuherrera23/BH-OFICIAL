@@ -389,6 +389,15 @@ const _usdFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
       price.className = 'card-price';
       price.textContent = formatPrice(p.price_usd);
 
+      // Badge de código de propiedad
+      if (p.property_code) {
+        const codeBadge = document.createElement('span');
+        codeBadge.className = 'card-property-code';
+        codeBadge.style.cssText = 'font-family:monospace; font-size:11px; font-weight:600; color:var(--accent); background:rgba(31,200,195,0.12); padding:2px 8px; border-radius:4px; display:inline-block; margin-bottom:6px;';
+        codeBadge.textContent = p.property_code;
+        body.appendChild(codeBadge);
+      }
+
       const title = document.createElement('h3');
       title.className = 'card-title';
       title.textContent = p.title || 'Propiedad';
