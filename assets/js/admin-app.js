@@ -827,6 +827,10 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
         });
         container.innerHTML = htmlParts.join('');
       });
+    } catch (err) {
+      console.error('CRM error:', err);
+    }
+  }
 
   /* Create lead */
   $('#btnNewLead')?.addEventListener('click', () => {
