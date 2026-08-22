@@ -1,0 +1,1498 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Bienenhaus Propiedades Â· AnÃ¡lisis Comparativo de Mercado</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/js/utils.js?v=1"></script>
+<script src="assets/js/config.js?v=2"></script>
+<style>
+  :root{
+    --teal:#14b8a6;
+    --teal-dark:#2dd4bf;
+    --ink:#f5f5f4;
+    --paper:#000000;
+    --line:#3f3f3f;
+    --muted:#b8b3aa;
+    --warn:#f59e0b;
+    --card:#121212;
+    --input-text:#1c2321;
+    --dark:#1c2321;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:'Source Serif 4', Georgia, serif;
+    padding-bottom:110px;
+  }
+  h1,h2,h3,.brand,.btn,label,.tag,th{font-family:'Poppins',sans-serif;}
+  header.top{
+    background:#000; color:#fff; padding:22px 28px; border-bottom:1px solid var(--line);
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;
+  }
+  header.top .brand{font-weight:800; font-size:22px; letter-spacing:.2px;}
+  header.top .brand span{color:var(--teal); }
+  header.top .subtitle{font-family:'Source Serif 4',serif; font-style:italic; color:#cfd3d1; font-size:14px;}
+  .logo-badge{
+    background:#fff; border-radius:12px; padding:6px 10px; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 2px 8px rgba(0,0,0,.25);
+  }
+  .logo-badge img{height:48px; width:auto; display:block;}
+  .brand-footer{
+    max-width:980px; margin:0 auto; padding:30px 20px 10px; display:flex; justify-content:center;
+  }
+  .brand-footer img{height:60px; width:auto; opacity:.85;}
+  main{max-width:980px; margin:0 auto; padding:28px 20px 40px;}
+  .status-bar{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--card); border:1px solid var(--line); border-left:6px solid var(--teal);
+    border-radius:6px; padding:12px 16px; margin-bottom:24px; font-family:'Poppins',sans-serif; font-size:13px;
+  }
+  .status-bar .dot{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--teal); margin-right:8px;}
+  .status-bar.locked{border-left-color:var(--warn);}
+  .status-bar.locked .dot{background:var(--warn);}
+  section.card{
+    background:var(--card); border:1px solid var(--line); border-radius:8px;
+    padding:24px 26px; margin-bottom:22px;
+  }
+  section.card h2{
+    margin:0 0 18px; font-size:13px; letter-spacing:1.6px; text-transform:uppercase;
+    color:var(--teal-dark); border-bottom:2px solid var(--line); padding-bottom:10px;
+    cursor:pointer; user-select:none; display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  section.card h2:hover{color:var(--teal);}
+  .accordion-arrow{
+    font-family:'Poppins',sans-serif; font-size:12px; transition:transform .2s ease; flex:none;
+    display:inline-block;
+  }
+  section.card.collapsed h2{margin-bottom:0; border-bottom-color:transparent; padding-bottom:10px;}
+  section.card.collapsed .accordion-arrow{transform:rotate(-90deg);}
+  .accordion-body{overflow:hidden;}
+  section.card.collapsed .accordion-body{display:none;}
+  .grid{display:grid; gap:14px;}
+  .grid.cols-2{grid-template-columns:1fr 1fr;}
+  .grid.cols-3{grid-template-columns:1fr 1fr 1fr;}
+  .grid.cols-4{grid-template-columns:1fr 1fr 1fr 1fr;}
+  @media (max-width:640px){ .grid.cols-2,.grid.cols-3,.grid.cols-4{grid-template-columns:1fr;} }
+  .field label{
+    display:block; font-size:10.5px; font-weight:600; text-transform:uppercase;
+    letter-spacing:.6px; color:var(--muted); margin-bottom:5px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .field input, .field select, .field textarea{
+    width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:5px;
+    font-family:'Source Serif 4',serif; font-size:14.5px; background:#ffffff; color:var(--input-text);
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--teal); outline-offset:1px;}
+  .field textarea{resize:vertical; min-height:56px;}
+  fieldset:disabled .field input, fieldset:disabled .field select, fieldset:disabled .field textarea{
+    background:#f2f1ee; color:#565049;
+  }
+  fieldset{border:0; margin:0; padding:0;}
+  .comp-block{border:2px solid var(--teal); border-radius:8px; padding:18px; margin-bottom:16px; position:relative; background:rgba(20,184,166,.05);}
+  .comp-block h3{margin:0 0 14px; font-size:15px; color:var(--teal-dark);}
+  .comp-block .remove{
+    position:absolute; top:14px; right:14px; background:none; border:1px solid var(--line);
+    color:var(--muted); font-size:11px; padding:5px 10px; border-radius:5px; cursor:pointer; font-family:'Poppins',sans-serif;
+  }
+  .comp-block .remove:hover{border-color:var(--warn); color:var(--warn);}
+  .char-grid{display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px 12px; margin-bottom:8px;}
+  @media (max-width:640px){.char-grid{grid-template-columns:1fr;}}
+  .char-cell .label{
+    font-size:11px; font-weight:700; text-transform:uppercase; color:var(--teal-dark);
+    margin-bottom:6px; display:block;
+  }
+  .char-cell select{
+    width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:5px;
+    font-family:'Source Serif 4',serif; font-size:14.5px; background:#ffffff; color:var(--input-text);
+  }
+  .char-cell select:focus{outline:2px solid var(--teal); outline-offset:1px;}
+  .amb-grid{gap:10px 16px;}
+  .amb-field{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:8px 0; border-bottom:1px solid var(--line);
+  }
+  .amb-field span{
+    font-family:'Poppins',sans-serif; font-size:12.5px; color:var(--ink); flex:1;
+  }
+  .amb-field input{
+    width:44px; flex:none; text-align:center; padding:6px 2px; border:1px solid var(--line);
+    border-radius:5px; font-family:'Poppins',sans-serif; font-weight:700; font-size:14px;
+    background:#fff; color:var(--input-text);
+  }
+  .amb-field input:focus{outline:2px solid var(--teal); outline-offset:1px;}
+
+  .ac-table td, .ac-table th{text-align:center;}
+  .ac-table td:nth-child(2), .ac-table th:nth-child(2){text-align:left;}
+  .ac-table input[type="checkbox"]{width:18px; height:18px; accent-color:var(--teal); cursor:pointer;}
+  .ac-table .ac-excluded{opacity:.4;}
+  .ac-chart-wrap{position:relative; height:280px; margin-top:20px; background:#0d0d0d; border:1px solid var(--line); border-radius:8px; padding:14px;}
+
+  .total-cuartos-row{
+    display:flex; align-items:center; justify-content:flex-end; gap:12px; margin:16px 0 4px;
+    padding:10px 14px; background:rgba(20,184,166,.08); border:1px solid var(--teal); border-radius:6px;
+  }
+  .total-cuartos-row span{
+    font-family:'Poppins',sans-serif; font-weight:700; font-size:12px; text-transform:uppercase;
+    letter-spacing:.5px; color:var(--teal-dark); margin-right:auto;
+  }
+  .total-cuartos-row input{
+    width:56px; text-align:center; padding:6px 4px; border:1px solid var(--line); border-radius:5px;
+    font-family:'Poppins',sans-serif; font-weight:700; font-size:15px; background:#fff; color:var(--input-text);
+  }
+  .coef-box{
+    margin-top:14px; padding:12px 14px; background:rgba(20,184,166,.10); border:1px solid var(--teal);
+    border-radius:6px; display:flex; justify-content:space-between; align-items:center; font-family:'Poppins',sans-serif;
+  }
+  .coef-box .num{font-size:20px; font-weight:800; color:var(--teal-dark);}
+  .add-btn{
+    background:none; border:1.5px dashed var(--teal); color:var(--teal-dark); font-family:'Poppins',sans-serif;
+    font-weight:600; font-size:13px; padding:10px 16px; border-radius:6px; cursor:pointer; width:100%;
+  }
+  .add-btn:hover{background:rgba(20,184,166,.10);}
+  table.data-table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  table.data-table th{
+    text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.5px;
+    color:var(--muted); border-bottom:2px solid var(--line); padding:8px 6px;
+  }
+  table.data-table td{padding:6px; border-bottom:1px solid var(--line);}
+  table.data-table td input{padding:6px 8px; font-size:13.5px;}
+  .valuation-summary{
+    display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; text-align:center;
+  }
+  .valuation-summary.cols-4{grid-template-columns:1fr 1fr 1fr 1fr;}
+  @media (max-width:640px){.valuation-summary{grid-template-columns:1fr;}}
+  .valuation-summary .box{background:#1c1c1c; border:1px solid var(--line); border-radius:6px; padding:16px;}
+  .valuation-summary .box .lbl{font-family:'Poppins',sans-serif; font-size:11px; text-transform:uppercase; color:var(--muted); letter-spacing:.5px;}
+  .valuation-summary .box .val{font-size:24px; font-weight:700; margin-top:6px;}
+  .valuation-summary .box.final{background:#000; border:1.5px solid var(--teal); color:#fff;}
+  .valuation-summary .box.final .val{color:var(--teal);}
+  .marketing-text{font-size:13.5px; line-height:1.55; color:#c9c4ba; margin-bottom:10px;}
+  .marketing-text b{color:var(--ink);}
+
+  .photo-box{
+    position:relative; width:100%; max-width:600px; aspect-ratio:15/7;
+    border:2px dashed var(--line); border-radius:8px; overflow:hidden;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; background:#1c1c1c;
+    margin:0 auto;
+  }
+  .photo-box img{width:100%; height:100%; object-fit:cover;}
+  .photo-placeholder{
+    display:flex; flex-direction:column; align-items:center; gap:6px; text-align:center;
+    color:var(--muted); font-family:'Poppins',sans-serif; padding:20px;
+  }
+  .photo-placeholder span{font-size:14px;}
+  .photo-hint{font-size:11px !important; color:#9a9284;}
+  .photo-box .remove{position:absolute; top:10px; right:10px; background:#fff;}
+
+  .map-frame{
+    position:relative; width:100%; height:340px; border-radius:8px; overflow:hidden;
+    border:1px solid var(--line); background:#eceae5;
+  }
+  .map-frame.small{height:200px;}
+  .map-frame iframe{width:100%; height:100%; border:0; display:block; position:relative; z-index:1;}
+  .map-placeholder{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    text-align:center; padding:20px; color:var(--muted); font-family:'Poppins',sans-serif; font-size:13px;
+    z-index:0;
+  }
+  .map-legend{display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; font-family:'Poppins',sans-serif; font-size:12px;}
+  .map-legend .chip{display:flex; align-items:center; gap:6px; background:#1c1c1c; border:1px solid var(--line); border-radius:20px; padding:4px 12px;}
+  .map-legend .chip .swatch{width:10px; height:10px; border-radius:50%; display:inline-block;}
+
+  .valor-row{display:flex; gap:16px; margin-top:16px; flex-wrap:wrap;}
+  .valor-box{
+    flex:1; min-width:200px; background:rgba(20,184,166,.10); border:1.5px solid var(--teal);
+    border-radius:8px; padding:14px 18px;
+  }
+  .valor-box label{
+    display:block; font-family:'Poppins',sans-serif; font-size:11px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.6px; color:var(--teal-dark); margin-bottom:8px;
+  }
+  .valor-input{display:flex; align-items:baseline; gap:8px;}
+  .valor-input span{font-family:'Poppins',sans-serif; font-weight:700; color:var(--teal-dark); font-size:15px;}
+  .valor-input input{
+    border:none; background:none; font-size:22px; font-weight:700; color:var(--ink);
+    font-family:'Poppins',sans-serif; width:100%; padding:2px 0;
+  }
+  .valor-input input:focus{outline:none; border-bottom:2px solid var(--teal);}
+
+  .action-bar{
+    position:fixed; bottom:0; left:0; right:0; background:#0a0a0a; border-top:1px solid var(--line);
+    padding:14px 20px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;
+    box-shadow:0 -4px 16px rgba(0,0,0,.4); z-index:50;
+  }
+  .btn{
+    border:none; border-radius:6px; padding:12px 22px; font-weight:600; font-size:13.5px;
+    cursor:pointer; display:inline-flex; align-items:center; gap:8px; transition:transform .08s ease;
+  }
+  .btn:active{transform:scale(.97);}
+  .btn-save{background:#1c1c1c; border:1.5px solid var(--ink); color:var(--ink);}
+  .btn-edit{background:#1c1c1c; border:1.5px solid var(--teal); color:var(--teal-dark);}
+  .btn-finish{background:#fff; color:#000;}
+  .btn-pdf{background:var(--teal); color:#000;}
+  .btn-back{background:none; border:1.5px solid var(--muted); color:var(--muted);}
+  .btn:disabled{opacity:.4; cursor:not-allowed;}
+  .toast{
+    position:fixed; bottom:78px; left:50%; transform:translateX(-50%);
+    background:var(--teal); color:#000; padding:10px 18px; border-radius:6px; font-family:'Poppins',sans-serif;
+    font-size:13px; font-weight:600; opacity:0; pointer-events:none; transition:opacity .25s ease, bottom .25s ease; z-index:60;
+  }
+  .toast.show{opacity:1; bottom:92px;}
+
+  @media print{
+    .action-bar, .toast, .add-btn, .remove{display:none !important;}
+    .comp-block[data-included="false"]{display:none !important;}
+    .print-group{break-inside:avoid; page-break-inside:avoid;}
+    #printGroupPropiedad{break-before:page; page-break-before:always;}
+    #printGroupBarrio{break-before:page; page-break-before:always;}
+    .comp-block{break-inside:avoid; page-break-inside:avoid;}
+    #sectionAnalisisComparativo{break-before:page; page-break-before:always; break-inside:avoid; page-break-inside:avoid;}
+    .accordion-arrow{display:none !important;}
+    section.card.collapsed .accordion-body{display:block !important;}
+    section.card.collapsed h2{border-bottom-color:#ccc !important;}
+    body{padding-bottom:0; background:#fff !important; color:var(--dark) !important;}
+    section.card{break-inside:avoid; border:1px solid #ccc; background:#fff !important; color:var(--dark) !important;}
+    section.card h2{color:var(--teal-dark) !important; border-bottom-color:#ccc !important;}
+    .field label, .char-cell .label, .valor-box label, .valuation-summary .box .lbl{color:#555 !important;}
+    .comp-block{background:#fff !important; border-color:var(--teal) !important;}
+    .comp-block h3{color:var(--teal-dark) !important;}
+    .marketing-text{color:#333 !important;}
+    .marketing-text b{color:var(--dark) !important;}
+    .valuation-summary .box{background:#f6f5f2 !important; color:var(--dark) !important; border-color:#ccc !important;}
+    .valuation-summary .box.final{background:#000 !important; color:#fff !important;}
+    .valor-input input{color:var(--dark) !important;}
+    .amb-field span{color:var(--dark) !important;}
+    .amb-field{border-bottom-color:#ccc !important;}
+    .total-cuartos-row span{color:var(--teal-dark) !important;}
+    header.top{background:#fff !important; color:var(--dark) !important; border-bottom:2px solid var(--teal);}
+    header.top .brand{color:var(--dark) !important;}
+    header.top .brand span{color:var(--teal-dark) !important;}
+    header.top .subtitle{color:#555 !important;}
+    .logo-badge{box-shadow:none; border:1px solid var(--line);}
+    .status-bar{display:none;}
+    .map-legend{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div>
+    <div class="brand">BIENENHAUS <span>PROPIEDADES</span></div>
+    <div class="subtitle">AnÃ¡lisis Comparativo de Mercado (ACM)</div>
+  </div>
+  <div style="display:flex; align-items:center; gap:16px;">
+    <div class="subtitle" id="dateStamp"></div>
+    <div class="logo-badge">
+      <img id="brandLogo" src="assets/img/logo-bh.png" alt="Bienenhaus">
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <div class="status-bar" id="statusBar">
+    <span><span class="dot"></span><span id="statusText">Documento en ediciÃ³n</span></span>
+    <span id="lastSaved" style="color:var(--muted); font-weight:400;"></span>
+  </div>
+
+  <fieldset id="formFieldset">
+
+  <!-- ============ DATOS DEL CLIENTE ============ -->
+  <section class="card">
+    <h2>Datos del Cliente</h2>
+    <div class="grid cols-2">
+      <div class="field"><label>Solicitante</label><input type="text" id="f_solicitante"></div>
+      <div class="field"><label>Fecha de TasaciÃ³n</label><input type="date" id="f_fecha"></div>
+      <div class="field"><label>TelÃ©fono</label><input type="text" id="f_telefono"></div>
+      <div class="field"><label>Destino</label>
+        <select id="f_destino"><option value="Venta">Venta</option><option value="Alquiler">Alquiler</option></select>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FOTO DE FACHADA ============ -->
+  <section class="card">
+    <h2>Foto de Fachada</h2>
+    <div class="photo-box" id="photoBox">
+      <input type="file" id="f_fotoFachada" accept="image/*" style="display:none;">
+      <img id="photoPreview" style="display:none;">
+      <div class="photo-placeholder" id="photoPlaceholder">
+        <span>ðŸ“· Click para subir foto de la fachada</span>
+        <span class="photo-hint">TamaÃ±o sugerido aprox. 15 cm Ã— 7 cm (horizontal)</span>
+      </div>
+      <button type="button" class="remove" id="photoRemove" style="display:none;">Quitar foto</button>
+    </div>
+  </section>
+
+  <!-- ============ DATOS DEL INMUEBLE ============ -->
+  <section class="card">
+    <h2>Datos del Inmueble</h2>
+    <div class="grid cols-2">
+      <div class="field"><label>DirecciÃ³n</label><input type="text" id="f_direccion"></div>
+      <div class="field"><label>Barrio</label><input type="text" id="f_barrio"></div>
+      <div class="field"><label>Localidad</label><input type="text" id="f_localidad"></div>
+      <div class="field"><label>Provincia</label><input type="text" id="f_provincia"></div>
+      <div class="field"><label>Superficie Terreno (mÂ²)</label><input type="number" id="f_supTerreno"></div>
+      <div class="field"><label>Superficie Construida (mÂ²)</label><input type="number" id="f_supConstruida"></div>
+    </div>
+    <div class="field" style="margin-top:14px;"><label>Tipo de Inmueble</label>
+        <select id="f_tipo">
+          <option value="CASA">Casa</option>
+          <option value="DEPTO">Depto</option>
+          <option value="LOTE">Lote</option>
+          <option value="GALPON">GalpÃ³n</option>
+          <option value="OFICINA">Oficina</option>
+          <option value="LOCAL">Local</option>
+          <option value="OTRO">Otro</option>
+        </select>
+    </div>
+    <div class="valor-row">
+      <div class="valor-box">
+        <label>Valor DÃ³lar</label>
+        <div class="valor-input"><span>U$S</span><input type="number" id="f_precioDolar"></div>
+      </div>
+      <div class="valor-box">
+        <label>Valor UVA's</label>
+        <div class="valor-input"><span>UVA</span><input type="number" id="f_valorUva"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ UBICACIÃ“N EN EL MAPA ============ -->
+  <section class="card">
+    <h2>Plano de UbicaciÃ³n</h2>
+    <p style="font-size:12.5px; color:var(--muted); margin:-6px 0 12px; font-family:'Poppins',sans-serif;">
+      Muestra la propiedad y todos los comparables juntos en un mismo mapa.
+    </p>
+    <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+      <button type="button" class="add-btn" id="btnUpdateMap" style="width:auto; padding:10px 18px;">ðŸ“ Actualizar mapa con todas las ubicaciones</button>
+      <span id="mapStatus" style="font-size:12px; color:var(--muted); font-family:'Poppins',sans-serif;"></span>
+    </div>
+    <div class="map-frame" id="leafletMap">
+      <div class="map-placeholder" id="mainMapPlaceholder">CargÃ¡ la direcciÃ³n del inmueble y de los comparables, y presionÃ¡ "Actualizar mapa"</div>
+    </div>
+    <div class="map-legend" id="mapLegend"></div>
+  </section>
+
+  <!-- ============ DESCRIPCIÃ“N DE LA PROPIEDAD ============ -->
+  <div class="print-group" id="printGroupPropiedad">
+  <section class="card">
+    <h2>DescripciÃ³n de la Propiedad</h2>
+    <div class="grid cols-4">
+      <div class="field"><label>Tipo de ConstrucciÃ³n</label>
+        <select id="f_tipoConstruccion"><option value=""></option><option>Ladrillo</option><option>MetÃ¡lica</option><option>Madera</option><option>Bloques de hormigÃ³n</option><option>N/A</option></select>
+      </div>
+      <div class="field"><label>Espacio Habitable (mÂ²)</label><input type="number" id="f_espacioHabitable"></div>
+      <div class="field"><label>Cantidad de Plantas</label><input type="number" id="f_plantas"></div>
+      <div class="field"><label>AÃ±o de ConstrucciÃ³n</label><input type="number" id="f_anioConstruccion"></div>
+
+      <div class="field"><label>Imp. Inmobiliario Mensual</label><input type="number" id="f_impInmobiliarios"></div>
+      <div class="field"><label>Tipo de Techo</label>
+        <select id="f_tipoTecho"><option value=""></option><option>N/A</option><option>Losa HÂ°AÂ°</option><option>Losa cerÃ¡mica</option><option>Tejas s/ estr. Madera</option><option>Pizarra s/ estr. Madera</option><option>Chapa s/ estr. Madera</option><option>Chapa s/ estr. MetÃ¡lica</option></select>
+      </div>
+      <div class="field"><label>OrientaciÃ³n</label>
+        <select id="f_orientacion"><option value=""></option><option>Norte</option><option>Sur</option><option>Este</option><option>Oeste</option><option>Noreste</option><option>Sudeste</option><option>Noroeste</option><option>Sudoeste</option><option>N/A</option></select>
+      </div>
+      <div class="field"><label>Luminosidad</label>
+        <select id="f_luminosidad"><option value=""></option><option>Malo</option><option>Regular</option><option>Promedio</option><option>Buena</option><option>Excelente</option><option>N/A</option></select>
+      </div>
+
+      <div class="field"><label>Calidad Constructiva</label>
+        <select id="f_calidadConstructiva"><option value=""></option><option>Excelente</option><option>Buena</option><option>Media</option><option>Regular</option><option>Mala</option><option>N/A</option></select>
+      </div>
+      <div class="field"><label>Calidad de Mantenimiento</label>
+        <select id="f_calidadMantenimiento"><option value=""></option><option>Excelente</option><option>Buena</option><option>Media</option><option>Regular</option><option>Mala</option><option>N/A</option></select>
+      </div>
+      <div class="field"><label>Detalles de TerminaciÃ³n</label>
+        <select id="f_detallesTerminacion"><option value=""></option><option>Excelente</option><option>Bueno</option><option>Medio</option><option>Regular</option><option>Malo</option><option>N/A</option></select>
+      </div>
+      <div class="field"><label>Estacionamiento</label>
+        <select id="f_estacionamientoTipo"><option value=""></option><option>Garaje cubierto</option><option>Garaje semicubierto</option><option>Garaje descubierto</option><option>N/A</option></select>
+      </div>
+    </div>
+
+    <p style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:18px 0 8px; font-family:'Poppins',sans-serif;">Ambientes (indicar cantidad)</p>
+    <div class="grid cols-3 amb-grid">
+      <div class="amb-field"><span>Cocina</span><input type="number" id="f_ambCocina"></div>
+      <div class="amb-field"><span>Dormitorios</span><input type="number" id="f_ambDormitorios"></div>
+      <div class="amb-field"><span>Terraza</span><input type="number" id="f_ambTerraza"></div>
+
+      <div class="amb-field"><span>Comedor</span><input type="number" id="f_ambComedor"></div>
+      <div class="amb-field"><span>Suite</span><input type="number" id="f_ambSuite"></div>
+      <div class="amb-field"><span>Patio</span><input type="number" id="f_ambPatio"></div>
+
+      <div class="amb-field"><span>Cocina-Comedor</span><input type="number" id="f_ambCocinaComedor"></div>
+      <div class="amb-field"><span>Suite y Vestidor</span><input type="number" id="f_ambSuiteVestidor"></div>
+      <div class="amb-field"><span>BalcÃ³n</span><input type="number" id="f_ambBalcon"></div>
+
+      <div class="amb-field"><span>Living</span><input type="number" id="f_ambLiving"></div>
+      <div class="amb-field"><span>Dormit. y Vestidor</span><input type="number" id="f_ambDormitVestidor"></div>
+      <div class="amb-field"><span>Lavadero</span><input type="number" id="f_ambLavadero"></div>
+
+      <div class="amb-field"><span>Living-Comedor</span><input type="number" id="f_ambLivingComedor"></div>
+      <div class="amb-field"><span>BaÃ±o Servicio</span><input type="number" id="f_ambBanoServicio"></div>
+      <div class="amb-field"><span>Cuarto Guardado</span><input type="number" id="f_ambCuartoGuardado"></div>
+
+      <div class="amb-field"><span>Escritorio</span><input type="number" id="f_ambEscritorio"></div>
+      <div class="amb-field"><span>BaÃ±o</span><input type="number" id="f_ambBano"></div>
+      <div class="amb-field"><span>Garage / Cochera</span><input type="number" id="f_ambGarage"></div>
+    </div>
+
+    <div class="total-cuartos-row">
+      <span>Total Cuartos</span>
+      <input type="number" id="f_ambTotalCuartos" readonly>
+    </div>
+
+    <p style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:18px 0 8px; font-family:'Poppins',sans-serif;">Comodidades</p>
+    <div class="grid cols-3">
+      <div class="field"><label>Doble CirculaciÃ³n</label>
+        <select id="f_comDobleCirculacion"><option value=""></option><option>Si</option><option>No</option><option>N/A</option></select>
+      </div>
+      <div class="field"><label>Asador</label>
+        <select id="f_comAsador"><option value=""></option><option>Si</option><option>No</option><option>N/A</option></select>
+      </div>
+      <div class="field"><label>Piscina</label>
+        <select id="f_comPiscina"><option value=""></option><option>Si</option><option>No</option><option>N/A</option></select>
+      </div>
+    </div>
+
+    <div class="grid cols-3" style="margin-top:16px;">
+      <div class="field"><label>CalefacciÃ³n</label>
+        <select id="f_calefaccion"><option value=""></option><option>Central</option><option>Individual</option><option>Inexistente</option><option>N/A</option></select>
+      </div>
+      <div class="field"><label>Aire Acondicionado</label>
+        <select id="f_aireAcondicionado"><option value=""></option><option>Central</option><option>Individual</option><option>Inexistente</option><option>N/A</option></select>
+      </div>
+      <div class="field"><label>Agua Caliente</label>
+        <select id="f_aguaCaliente"><option value=""></option><option>Central</option><option>Individual</option><option>Inexistente</option><option>N/A</option></select>
+      </div>
+    </div>
+    <div class="field" style="margin-top:12px;"><label>CaracterÃ­sticas Adversas / Deficiencias</label><textarea id="f_caracteristicasAdversas"></textarea></div>
+  </section>
+
+  <!-- ============ SERVICIOS ============ -->
+  <section class="card">
+    <h2>Servicios</h2>
+    <div class="grid cols-3" id="serviciosGrid"></div>
+  </section>
+  </div>
+
+  <!-- ============ CARACTERÃSTICAS DEL BARRIO ============ -->
+  <div class="print-group" id="printGroupBarrio">
+  <section class="card">
+    <h2>CaracterÃ­sticas del Barrio</h2>
+    <div class="grid cols-2">
+      <div class="field"><label>TipologÃ­as edilicias predominantes</label>
+        <select id="f_tipologiasEdilicias"><option value=""></option>
+          <option>ConstrucciÃ³n en altura</option><option>ConstrucciÃ³n de media altura</option>
+          <option>Viviendas unifamiliares y PH de hasta tres plantas</option>
+          <option>Viviendas unifamiliares y PH de una planta</option><option>Casas quinta</option>
+          <option>Industrias de gran envergadura</option><option>Industrias de pequeÃ±a y mediana envergadura</option>
+        </select>
+      </div>
+      <div class="field"><label>Calidad constructiva predominante</label>
+        <select id="f_calidadConstructivaPredom"><option value=""></option><option>Excelente</option><option>Muy Buena</option><option>Buena</option><option>Media</option><option>EconÃ³mica</option><option>Precaria</option></select>
+      </div>
+      <div class="field"><label>ConstrucciÃ³n en altura (prevalencia)</label>
+        <select id="f_construccionAlturaPrevalencia"><option value=""></option><option>En todo el entorno</option><option>Sobre arterias principales</option><option>Ocasional</option><option>No relevante o inexistente</option></select>
+      </div>
+      <div class="field"><label>Uso comercial</label>
+        <select id="f_usoComercialPrevalencia"><option value=""></option><option>En todo el entorno</option><option>Sobre arterias principales</option><option>Ocasional</option><option>No relevante o inexistente</option></select>
+      </div>
+      <div class="field"><label>Uso industrial</label>
+        <select id="f_usoIndustrialPrevalencia"><option value=""></option><option>En todo el entorno</option><option>Sobre arterias principales</option><option>Ocasional</option><option>No relevante o inexistente</option></select>
+      </div>
+      <div class="field"><label>Nivel socioeconÃ³mico</label>
+        <select id="f_nivelSocioeconomicoBarrio"><option value=""></option><option>Alto</option><option>Medio alto</option><option>Medio</option><option>Medio Bajo</option><option>Bajo</option></select>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DESCRIPCIÃ“N DEL BARRIO ============ -->
+  <section class="card">
+    <h2>DescripciÃ³n del Barrio</h2>
+    <div class="grid cols-3">
+      <div class="field"><label>Tipo</label>
+        <select id="f_barrioTipo"><option value=""></option><option>Urbano</option><option>Suburbano</option><option>Rural</option></select>
+      </div>
+      <div class="field"><label>Construido</label>
+        <select id="f_construidoPct"><option value=""></option><option>MÃ¡s del 75%</option><option>Entre el 75% y el 25%</option><option>Menos del 25%</option></select>
+      </div>
+      <div class="field"><label>Ãndice de Crecimiento</label>
+        <select id="f_indiceCrecimiento"><option value=""></option><option>Estable</option><option>Creciente</option><option>Decreciente</option></select>
+      </div>
+      <div class="field"><label>Servicio de Vigilancia del Barrio</label>
+        <select id="f_servVigilancia"><option value=""></option><option>Si</option><option>No</option></select>
+      </div>
+      <div class="field"><label>Tendencia de Valores de la Propiedad</label>
+        <select id="f_tendenciaValores"><option value=""></option><option>Creciente</option><option>Estable</option><option>Decreciente</option></select>
+      </div>
+      <div class="field"><label>Demanda / Oferta</label>
+        <select id="f_demandaOferta"><option value=""></option><option>Exceso de Oferta</option><option>Falta de Oferta</option><option>RelaciÃ³n Oferta/Demanda Equilibrada</option></select>
+      </div>
+      <div class="field"><label>Tiempo de ComercializaciÃ³n</label>
+        <select id="f_tiempoComercializacion"><option value=""></option><option>Menos de 3 meses</option><option>Entre 3 y 6 meses</option><option>MÃ¡s de 6 meses</option></select>
+      </div>
+      <div class="field"><label>Cambios Principales en el Uso del Terreno</label>
+        <select id="f_cambiosUsoTerreno"><option value=""></option><option>Probable</option><option>Improbable</option><option>En Proceso</option></select>
+      </div>
+      <div class="field"><label>Facilidades de Estacionamiento TÃ­pico</label>
+        <select id="f_facilidadesEstacionamiento"><option value=""></option><option>Garage Propio</option><option>Garajes privados</option><option>En la vÃ­a pÃºblica</option></select>
+      </div>
+    </div>
+    <p style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:16px 0 8px; font-family:'Poppins',sans-serif;">Uso del Terreno %</p>
+    <div class="grid cols-4">
+      <div class="field"><label>Residencial</label><input type="number" id="f_usoResidencial" min="0" max="100"></div>
+      <div class="field"><label>Comercial</label><input type="number" id="f_usoComercial" min="0" max="100"></div>
+      <div class="field"><label>Industrial</label><input type="number" id="f_usoIndustrial" min="0" max="100"></div>
+      <div class="field"><label>Otro (calculado)</label><input type="text" id="f_usoOtro" readonly style="background:#f2f1ee;"></div>
+    </div>
+  </section>
+  </div>
+
+  <!-- ============ COMPARABLES ============ -->
+  <section class="card">
+    <h2>Comparables â€” ComparaciÃ³n de CaracterÃ­sticas</h2>
+    <div id="comparablesContainer"></div>
+    <button type="button" class="add-btn" id="addComparable">+ Agregar comparable</button>
+  </section>
+
+  <!-- ============ ANÃLISIS COMPARATIVO ============ -->
+  <section class="card" id="sectionAnalisisComparativo">
+    <h2>AnÃ¡lisis Comparativo</h2>
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+      <label style="font-family:'Poppins',sans-serif; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;">DispersiÃ³n (Â±%)</label>
+      <input type="number" id="ac_dispersion" value="10" min="0" max="100" style="width:70px; padding:7px 8px; border:1px solid var(--line); border-radius:5px; background:#fff; color:var(--input-text); font-family:'Poppins',sans-serif; font-weight:700;">
+      <span style="font-size:11.5px; color:var(--muted); font-family:'Poppins',sans-serif;">TildÃ¡ los comparables que querÃ©s incluir en el promedio final.</span>
+    </div>
+
+    <table class="data-table ac-table">
+      <thead>
+        <tr><th style="width:36px;"></th><th>Comparable</th><th>Precio U$S/mÂ²</th><th>Rango âˆ’%</th><th>Rango +%</th></tr>
+      </thead>
+      <tbody id="ac_tbody"></tbody>
+    </table>
+
+    <div class="valuation-summary" style="margin-top:16px;">
+      <div class="box"><div class="lbl">Valor MÃ­nimo</div><div class="val" id="ac_valMin">â€”</div></div>
+      <div class="box"><div class="lbl">Valor Promedio</div><div class="val" id="ac_valProm">â€”</div></div>
+      <div class="box"><div class="lbl">Valor MÃ¡ximo</div><div class="val" id="ac_valMax">â€”</div></div>
+    </div>
+
+    <div class="ac-chart-wrap">
+      <canvas id="ac_chart"></canvas>
+    </div>
+  </section>
+
+  <!-- ============ VALUACIÃ“N ============ -->
+  <section class="card">
+    <h2>ValuaciÃ³n</h2>
+    <table class="data-table" style="margin-bottom:18px;">
+      <thead><tr><th>Componente</th><th>Total mÂ²</th><th>Precio mÂ² (U$S)</th><th>Total (U$S)</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Terreno</td>
+          <td id="v_terrenoM2">â€”</td>
+          <td><input type="number" id="v_terrenoPrecio"></td>
+          <td id="v_terrenoTotal">â€”</td>
+        </tr>
+        <tr>
+          <td>Superficie Cubierta</td>
+          <td id="v_cubiertaM2">â€”</td>
+          <td id="v_cubiertaPrecio">â€”</td>
+          <td id="v_cubiertaTotal">â€”</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size:11.5px; color:var(--muted); margin-top:-10px; font-family:'Poppins',sans-serif;">
+      Los mÂ² de Terreno y Superficie Cubierta se completan automÃ¡ticamente desde "Datos del Inmueble".
+    </p>
+    <div class="valuation-summary cols-4">
+      <div class="box"><div class="lbl">Precio mÂ² promedio comparables</div><div class="val" id="v_precioPromedio">U$S 0</div></div>
+      <div class="box"><div class="lbl">Coef. de condiciones promedio</div><div class="val" id="v_coefPromedio">1.000</div></div>
+      <div class="box"><div class="lbl">DepreciaciÃ³n por Servicios</div><div class="val" id="v_depreciacionServicios">1.000</div></div>
+      <div class="box final"><div class="lbl">Valor Final Estimado</div><div class="val" id="v_valorFinal">U$S 0</div></div>
+    </div>
+  </section>
+
+  <!-- ============ OBSERVACIONES GENERALES ============ -->
+  <section class="card">
+    <h2>Observaciones Generales</h2>
+    <div class="field"><textarea id="f_observaciones" style="min-height:90px;"></textarea></div>
+  </section>
+
+  <!-- ============ PLAN DE MARKETING (texto fijo) ============ -->
+  <section class="card">
+    <h2>Plan de Marketing</h2>
+    <p class="marketing-text"><b>1. Cartel:</b> colocaremos un cartel en su propiedad con nuestros nÃºmeros de telÃ©fono celular para no perder un solo llamado.</p>
+    <p class="marketing-text"><b>2. Sitio web:</b> bienenhaus.com.ar</p>
+    <p class="marketing-text"><b>3. Otros sitios web:</b> la propiedad serÃ¡ publicada en ZonaProp, MercadoLibre, Facebook y Clasificados La Voz.</p>
+    <p class="marketing-text"><b>4. ColaboraciÃ³n con otros profesionales:</b> trabajamos en conjunto con colegas para coordinar la venta; usted trata sÃ³lo conmigo.</p>
+    <p class="marketing-text"><b>5. Carpeta de presentaciÃ³n:</b> incluye caracterÃ­sticas, plano de distribuciÃ³n y detalles de la zona.</p>
+    <p class="marketing-text"><b>6. Cuestionario:</b> aplicado a cada potencial comprador para conocer su reacciÃ³n.</p>
+    <p class="marketing-text"><b>7. Seguimiento:</b> resumen mensual de acciones de venta y resultados.</p>
+    <p class="marketing-text"><b>8. EvaluaciÃ³n:</b> cada 30 dÃ­as revisamos la actividad y ajustamos la estrategia.</p>
+  </section>
+
+  </fieldset>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<footer class="brand-footer">
+  <img src="assets/img/logo-bh.png" alt="Bienenhaus" style="height:60px; width:auto; opacity:.85;">
+</footer>
+
+<div class="action-bar">
+  <button class="btn btn-back" id="btnBack">â† Volver</button>
+  <button class="btn btn-save" id="btnSave">ðŸ’¾ Guardar</button>
+  <button class="btn btn-edit" id="btnEdit" disabled>âœï¸ Editar</button>
+  <button class="btn btn-finish" id="btnFinish">âœ… Finalizar</button>
+  <button class="btn btn-pdf" id="btnPdf">â­³ Exportar a PDF</button>
+</div>
+
+<script>
+const SUPABASE_URL = window.BH_CONFIG?.SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = window.BH_CONFIG?.SUPABASE_ANON_KEY || '';
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+
+let _authToken = null;
+// Security: validate event.origin for postMessage
+const ALLOWED_ORIGINS = [
+  window.location.origin,
+  'https://rnldqiwwzhjnurkguihu.supabase.co',
+  'https://bienenhaus.vercel.app',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+];
+
+window.addEventListener('message', (e) => {
+  // Validate origin
+  if (!ALLOWED_ORIGINS.includes(e.origin)) {
+    console.warn('postMessage rejected: unauthorized origin', e.origin);
+    return;
+  }
+  if (e.data?.type === 'auth-session' && e.data?.token) {
+    _authToken = e.data.token;
+  }
+});
+
+
+const urlParams = new URLSearchParams(window.location.search);
+
+const TASACION_ID = urlParams.get('id');
+
+const PESOS = {
+  CASA:   {label:'Casa',    vars:[['Calidad de ubicaciÃ³n',0.30],['Cantidad de habitaciones',0.20],['Estado de mantenimiento',0.20],['AntigÃ¼edad',0.15],['Comodidades',0.10],['Estacionamiento',0.05]]},
+  DEPTO:  {label:'Depto',   vars:[['Calidad de ubicaciÃ³n (barrio)',0.30],['Cantidad de habitaciones',0.20],['UbicaciÃ³n piso',0.15],['AntigÃ¼edad',0.15],['Comodidades (edificio)',0.12],['UbicaciÃ³n planta',0.08]]},
+  LOTE:   {label:'Lote',    vars:[['Calidad de ubicaciÃ³n',0.35],['Superficie',0.25],['Servicios',0.20],['Acceso',0.10],['Forma',0.06],['OrientaciÃ³n',0.04]]},
+  GALPON: {label:'GalpÃ³n',  vars:[['Calidad de ubicaciÃ³n',0.25],['Superficie y altura libre',0.25],['Acceso',0.20],['Instalaciones',0.15],['Estado / antigÃ¼edad',0.10],['Oficinas y servicios anexos',0.05]]},
+  OFICINA:{label:'Oficina', vars:[['Calidad de ubicaciÃ³n',0.30],['Superficie y layout',0.20],['UbicaciÃ³n piso / vista',0.15],['Comodidades del edificio',0.15],['AntigÃ¼edad / estado',0.12],['Estacionamiento',0.08]]},
+  LOCAL:  {label:'Local',   vars:[['Calidad de ubicaciÃ³n',0.35],['Frente / vidriera',0.20],['Superficie y forma',0.15],['Instalaciones',0.12],['Estado de mantenimiento',0.10],['Estacionamiento / carga y descarga',0.08]]},
+  OTRO:   {label:'Otro',    vars:[['Calidad de ubicaciÃ³n',0.30],['Superficie',0.15],['Servicios',0.15],['Acceso',0.15],['Instalaciones',0.15],['Estado de mantenimiento',0.10]]},
+};
+const SLOT_ORDER = [3,2,5,0,4,1];
+
+const NIVELES = {'Mucho Mejor':-0.75, 'Mejor':-0.3, 'Igual':0, 'Peor':0.3, 'Mucho Peor':0.75};
+const NIVELES_LIST = Object.keys(NIVELES);
+
+const RUBROS = {
+  'Electricidad':        {'Ã“ptimo / Impecable (Listo para Habitar)':0,   'Sencilla (CosmÃ©tica / Menor)':0.010, 'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.065,'A Nuevo (RediseÃ±o Total)':0.10},
+  'Agua Sanitaria':      {'Ã“ptimo / Impecable (Listo para Habitar)':0,   'Sencilla (CosmÃ©tica / Menor)':0.0075,'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.07, 'A Nuevo (RediseÃ±o Total)':0.11},
+  'Cloacas y DesagÃ¼es':  {'Ã“ptimo / Impecable (Listo para Habitar)':0,   'Sencilla (CosmÃ©tica / Menor)':0.0075,'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.08, 'A Nuevo (RediseÃ±o Total)':0.115},
+  'Gas Natural':         {'Ã“ptimo / Impecable (Listo para Habitar)':0,   'Sencilla (CosmÃ©tica / Menor)':0.0075,'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.09, 'A Nuevo (RediseÃ±o Total)':0.125},
+  'Techos y Cubiertas':  {'Ã“ptimo / Impecable (Listo para Habitar)':0,   'Sencilla (CosmÃ©tica / Menor)':0.015, 'Moderada (Parcial / Funcional)':0.045,'Grave (Deterioro Estructural)':0.115,'A Nuevo (RediseÃ±o Total)':0.20},
+  'Internet / Redes':    {'Ã“ptimo / Impecable (Listo para Habitar)':0,   'Sencilla (CosmÃ©tica / Menor)':0.0035,'Moderada (Parcial / Funcional)':0.01, 'Grave (Deterioro Estructural)':0.03, 'A Nuevo (RediseÃ±o Total)':0.045},
+};
+const RUBRO_NIVELES = ['Ã“ptimo / Impecable (Listo para Habitar)','Sencilla (CosmÃ©tica / Menor)','Moderada (Parcial / Funcional)','Grave (Deterioro Estructural)','A Nuevo (RediseÃ±o Total)'];
+const SERVICIOS_MAP = [
+  {key:'electricidad', label:'Electricidad', rubro:'Electricidad'},
+  {key:'gas',           label:'Gas',            rubro:'Gas Natural'},
+  {key:'internet',      label:'Internet',       rubro:'Internet / Redes'},
+  {key:'agua',          label:'Agua',           rubro:'Agua Sanitaria'},
+  {key:'cloaca',        label:'Cloaca',         rubro:'Cloacas y DesagÃ¼es'},
+  {key:'techos',        label:'Techos y DesagÃ¼es', rubro:'Techos y Cubiertas'},
+];
+
+let comparableCount = 0;
+let finalized = false;
+let _saving = false;
+
+function renderServicios(){
+  const grid = document.getElementById('serviciosGrid');
+  grid.innerHTML = '';
+  SERVICIOS_MAP.forEach(s=>{
+    const div = document.createElement('div');
+    div.className='field';
+    div.innerHTML = '<label>'+s.label+'</label>'+
+      '<select id="serv_'+s.key+'" class="serv-select">'+
+        '<option value="">â€” Seleccionar â€”</option>'+
+        RUBRO_NIVELES.map(n=>'<option value="'+n+'">'+n+'</option>').join('')+
+      '</select>';
+    grid.appendChild(div);
+  });
+  grid.querySelectorAll('.serv-select').forEach(sel=>sel.addEventListener('change', recalcAll));
+}
+
+function addComparable(prefill){
+  comparableCount++;
+  const id = comparableCount;
+  const wrap = document.createElement('div');
+  wrap.className = 'comp-block';
+  wrap.dataset.id = id;
+  wrap.dataset.included = 'true';
+  wrap.innerHTML = `
+    <button type="button" class="remove" data-remove-id="${id}">Quitar</button>
+    <h3>Comparable NÂ° <span class="comp-index">${id}</span></h3>
+    <div class="grid cols-3">
+      <div class="field"><label>DirecciÃ³n</label><input type="text" class="c_direccion"></div>
+      <div class="field"><label>Barrio</label><input type="text" class="c_barrio"></div>
+      <div class="field"><label>Precio (U$S)</label><input type="number" class="c_precio"></div>
+      <div class="field"><label>Superficie Terreno (mÂ²)</label><input type="number" class="c_supTerreno"></div>
+      <div class="field"><label>Superficie Cubierta (mÂ²)</label><input type="number" class="c_supCubierta"></div>
+      <div class="field"><label>DÃ­as en Mercado</label><input type="number" class="c_dias"></div>
+      <div class="field"><label>Tipo de ConstrucciÃ³n</label>
+        <select class="c_tipoConstruccion"><option value=""></option><option>Ladrillo</option><option>MetÃ¡lica</option><option>Madera</option><option>Bloques de hormigÃ³n</option><option>N/A</option></select>
+      </div>
+      <div class="field"><label>AntigÃ¼edad (aÃ±os)</label><input type="number" class="c_antiguedad"></div>
+      <div class="field"><label>Precio por mÂ² (calculado)</label><input type="text" class="c_precioM2" readonly style="background:#1c1c1c; color:var(--ink); font-weight:700;"></div>
+    </div>
+    <div class="field" style="margin:14px 0;">
+      <label>PÃ¡gina web de origen (aviso / publicaciÃ³n)</label>
+      <div style="display:flex; gap:8px;">
+        <input type="url" class="c_url" placeholder="https://..." style="flex:1;">
+        <button type="button" class="add-btn c_extract" style="width:auto; white-space:nowrap; padding:9px 16px;">â‡© Extraer datos</button>
+      </div>
+      <div class="c_extract_status" style="font-size:11.5px; color:var(--muted); margin-top:6px; font-family:'Poppins',sans-serif;"></div>
+    </div>
+    <p style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:14px 0 8px; font-family:'Poppins',sans-serif;">Foto del comparable</p>
+    <div class="photo-box c_photo_box">
+      <input type="file" class="c_foto_input" accept="image/*" style="display:none;">
+      <img class="c_foto_preview" style="display:none;">
+      <div class="photo-placeholder c_foto_placeholder">
+        <span>ðŸ“· Click para subir foto</span>
+      </div>
+      <button type="button" class="remove c_foto_remove" style="display:none;">Quitar foto</button>
+    </div>
+    <p style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:16px 0 8px; font-family:'Poppins',sans-serif;">ComparaciÃ³n de caracterÃ­sticas</p>
+    <div class="char-body"></div>
+    <div class="coef-box">
+      <span>Coeficiente de Condiciones</span>
+      <span class="num c_coef">1.000</span>
+    </div>
+  `;
+  document.getElementById('comparablesContainer').appendChild(wrap);
+  renderCharacteristics(wrap);
+  wrap.querySelectorAll('input,select').forEach(el=>el.addEventListener('input', recalcAll));
+  wrap.querySelectorAll('input,select').forEach(el=>el.addEventListener('change', recalcAll));
+  wrap.querySelector('.c_extract').addEventListener('click', ()=>extractFromUrl(wrap));
+  setupComparablePhoto(wrap);
+  recalcAll();
+}
+
+async function extractFromUrl(wrap){
+  const urlInput = wrap.querySelector('.c_url');
+  const status = wrap.querySelector('.c_extract_status');
+  const url = urlInput.value.trim();
+  if(!url){ status.textContent = 'PegÃ¡ primero el link del aviso.'; return; }
+  status.textContent = 'Buscando datos en la pÃ¡gina\u2026';
+
+  const proxy = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+
+  try{
+    const res = await fetch(proxy);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const html = await res.text();
+
+    const ogTitle = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
+    const titleTag = html.match(/<title>([^<]+)<\/title>/i);
+    const titleText = (ogTitle && ogTitle[1]) || (titleTag && titleTag[1]) || '';
+
+    const priceMatch = html.match(/(?:U\$S|USD|US\$)\s?([\d.,]{4,12})/i);
+    const surfaceMatches = [...html.matchAll(/([\d.,]{2,6})\s?m[Â²2]/gi)].map(m=>m[1]);
+
+    let found = [];
+
+    if(titleText){
+      wrap.querySelector('.c_direccion').value = wrap.querySelector('.c_direccion').value || titleText.trim().slice(0,120);
+      found.push('tÃ­tulo/direcciÃ³n');
+    }
+    if(priceMatch){
+      const num = parseFloat(priceMatch[1].replace(/\./g,'').replace(',','.'));
+      if(!isNaN(num)){ wrap.querySelector('.c_precio').value = num; found.push('precio'); }
+    }
+    if(surfaceMatches.length){
+      const num = parseFloat(surfaceMatches[0].replace(/\./g,'').replace(',','.'));
+      if(!isNaN(num)){ wrap.querySelector('.c_supCubierta').value = num; found.push('superficie'); }
+    }
+
+    if(found.length){
+      status.textContent = 'âœ“ Se completaron automÃ¡ticamente: ' + found.join(', ') + '. RevisÃ¡ y corregÃ­ si hace falta.';
+    } else {
+      status.textContent = 'No se pudieron identificar datos automÃ¡ticamente en esta pÃ¡gina. Cargalos a mano.';
+    }
+    recalcAll();
+  }catch(e){
+    status.textContent = 'No se pudo leer esta pÃ¡gina automÃ¡ticamente (bloqueo del sitio o conexiÃ³n). CargÃ¡ los datos a mano.';
+  }
+}
+
+function removeComparable(id){
+  const el = document.querySelector('.comp-block[data-id="'+id+'"]');
+  if(el) el.remove();
+  renumberComparables();
+  recalcAll();
+}
+function renumberComparables(){
+  document.querySelectorAll('.comp-block').forEach((el,i)=>{
+    el.querySelector('.comp-index').textContent = i+1;
+  });
+}
+
+function renderCharacteristics(wrap){
+  const tipo = document.getElementById('f_tipo').value;
+  const vars = PESOS[tipo].vars;
+  const body = wrap.querySelector('.char-body');
+  body.innerHTML = '<div class="char-grid"></div>';
+  const grid = body.querySelector('.char-grid');
+  SLOT_ORDER.forEach(idx=>{
+    const [name] = vars[idx];
+    const cell = document.createElement('div');
+    cell.className = 'char-cell';
+    cell.innerHTML =
+      '<span class="label">'+name+'</span>'+
+      '<select class="c_char" data-varindex="'+idx+'">'+
+        '<option value="">\u2014</option>'+
+        NIVELES_LIST.map(n=>'<option value="'+n+'" '+(n==='Igual'?'selected':'')+'>'+n+'</option>').join('')+
+      '</select>';
+    grid.appendChild(cell);
+  });
+  body.querySelectorAll('select').forEach(el=>{el.addEventListener('change', recalcAll);});
+}
+
+function refreshAllCharacteristics(){
+  document.querySelectorAll('.comp-block').forEach(wrap=>renderCharacteristics(wrap));
+  recalcAll();
+}
+
+function coefCondicionesFor(wrap){
+  const tipo = document.getElementById('f_tipo').value;
+  const vars = PESOS[tipo].vars;
+  let product = 1;
+  wrap.querySelectorAll('.c_char').forEach(sel=>{
+    const idx = parseInt(sel.dataset.varindex,10);
+    const peso = vars[idx][1];
+    const nivel = sel.value;
+    const ajuste = NIVELES[nivel] || 0;
+    product *= (1 + peso*ajuste);
+  });
+  return product;
+}
+
+function coefDepreciacionPropia(){
+  let sum=0, n=0;
+  SERVICIOS_MAP.forEach(s=>{
+    const sel = document.getElementById('serv_'+s.key);
+    const val = sel ? sel.value : '';
+    const pct = (val && RUBROS[s.rubro][val]!==undefined) ? RUBROS[s.rubro][val] : 0;
+    sum += pct; n++;
+  });
+  return 1 - (sum/n);
+}
+
+const AMBIENTE_IDS = ['f_ambCocina','f_ambComedor','f_ambCocinaComedor','f_ambLiving','f_ambLivingComedor','f_ambEscritorio',
+  'f_ambDormitorios','f_ambSuite','f_ambSuiteVestidor','f_ambDormitVestidor','f_ambBanoServicio','f_ambBano',
+  'f_ambTerraza','f_ambPatio','f_ambBalcon','f_ambLavadero','f_ambCuartoGuardado','f_ambGarage'];
+function recalcAmbientes(){
+  let total = 0;
+  AMBIENTE_IDS.forEach(id=>{
+    const el = document.getElementById(id);
+    total += parseFloat(el && el.value) || 0;
+  });
+  document.getElementById('f_ambTotalCuartos').value = total;
+}
+
+function recalcUsoTerreno(){
+  const r = parseFloat(document.getElementById('f_usoResidencial').value)||0;
+  const c = parseFloat(document.getElementById('f_usoComercial').value)||0;
+  const i = parseFloat(document.getElementById('f_usoIndustrial').value)||0;
+  const otro = Math.max(0, 100 - r - c - i);
+  document.getElementById('f_usoOtro').value = otro.toFixed(1) + '%';
+}
+
+function recalcAll(){
+  recalcUsoTerreno();
+  recalcAmbientes();
+  let precios = [];
+  let coefs = [];
+  document.querySelectorAll('.comp-block').forEach(wrap=>{
+    const coef = coefCondicionesFor(wrap);
+    wrap.querySelector('.c_coef').textContent = coef.toFixed(3);
+    const precio = parseFloat(wrap.querySelector('.c_precio').value)||0;
+    const supCub = parseFloat(wrap.querySelector('.c_supCubierta').value)||0;
+    const supTer = parseFloat(wrap.querySelector('.c_supTerreno').value)||0;
+    const base = supCub>0? supCub : supTer;
+    const precioM2Field = wrap.querySelector('.c_precioM2');
+    if(precioM2Field) precioM2Field.value = (precio>0 && base>0) ? 'U$S ' + (precio/base).toFixed(2) : '';
+    const included = wrap.dataset.included !== 'false';
+    if(precio>0 && base>0 && included){
+      precios.push(precio/base);
+      coefs.push(coef);
+    }
+  });
+
+  const precioPromedio = precios.length ? precios.reduce((a,b)=>a+b,0)/precios.length : 0;
+  const coefPromedio = coefs.length ? coefs.reduce((a,b)=>a+b,0)/coefs.length : 1;
+
+  document.getElementById('v_precioPromedio').textContent = 'U$S ' + precioPromedio.toFixed(2);
+  document.getElementById('v_coefPromedio').textContent = coefPromedio.toFixed(3);
+
+  const precioAjustado = precioPromedio * coefPromedio;
+
+  const terrM2 = parseFloat(document.getElementById('f_supTerreno').value)||0;
+  const terrPrecio = parseFloat(document.getElementById('v_terrenoPrecio').value)||0;
+  const terrTotal = terrM2*terrPrecio;
+  document.getElementById('v_terrenoM2').textContent = terrM2? terrM2.toLocaleString('es-AR') : 'â€”';
+  document.getElementById('v_terrenoTotal').textContent = terrTotal? 'U$S '+terrTotal.toLocaleString('es-AR',{maximumFractionDigits:0}) : 'â€”';
+
+  const depreciacion = coefDepreciacionPropia();
+  document.getElementById('v_depreciacionServicios').textContent = depreciacion.toFixed(3);
+  const cubM2 = parseFloat(document.getElementById('f_supConstruida').value)||0;
+  const precioCubiertaM2 = precioAjustado * depreciacion;
+  const cubTotal = cubM2 * precioCubiertaM2;
+  document.getElementById('v_cubiertaM2').textContent = cubM2? cubM2.toLocaleString('es-AR') : 'â€”';
+  document.getElementById('v_cubiertaPrecio').textContent = precioCubiertaM2? 'U$S '+precioCubiertaM2.toFixed(2) : 'â€”';
+  document.getElementById('v_cubiertaTotal').textContent = cubTotal? 'U$S '+cubTotal.toLocaleString('es-AR',{maximumFractionDigits:0}) : 'â€”';
+
+  const valorFinal = terrTotal + cubTotal;
+  document.getElementById('v_valorFinal').textContent = 'U$S ' + valorFinal.toLocaleString('es-AR',{maximumFractionDigits:0});
+
+  renderAnalisisComparativo();
+}
+
+function collectFormData(){
+  const data = {tipo: document.getElementById('f_tipo').value, fields:{}, servicios:{}, comparables:[], valuacion:{}, photo: photoDataUrl};
+  document.querySelectorAll('main [id^="f_"]:not(#f_fotoFachada)').forEach(el=>{ data.fields[el.id] = el.value; });
+  SERVICIOS_MAP.forEach(s=>{ data.servicios[s.key] = document.getElementById('serv_'+s.key).value; });
+  document.querySelectorAll('.comp-block').forEach(wrap=>{
+    const comp = {
+      url: wrap.querySelector('.c_url').value,
+      direccion: wrap.querySelector('.c_direccion').value,
+      barrio: wrap.querySelector('.c_barrio').value,
+      precio: wrap.querySelector('.c_precio').value,
+      supTerreno: wrap.querySelector('.c_supTerreno').value,
+      supCubierta: wrap.querySelector('.c_supCubierta').value,
+      dias: wrap.querySelector('.c_dias').value,
+      tipoConstruccion: wrap.querySelector('.c_tipoConstruccion').value,
+      antiguedad: wrap.querySelector('.c_antiguedad').value,
+      photo: wrap.dataset.photo || null,
+      chars: Array.from(wrap.querySelectorAll('.c_char')).map(s=>s.value)
+    };
+    data.comparables.push(comp);
+  });
+  ['v_terrenoPrecio'].forEach(id=>{ data.valuacion[id] = document.getElementById(id).value; });
+  return data;
+}
+
+function applyFormData(data){
+  if(!data) return;
+  if(data.fields){
+    Object.keys(data.fields).forEach(id=>{
+      if(id === 'f_fotoFachada') return;
+      const el = document.getElementById(id);
+      if(el) el.value = data.fields[id];
+    });
+  }
+  if(data.photo){ setPhoto(data.photo); }
+  renderServicios();
+  if(data.servicios){
+    Object.keys(data.servicios).forEach(k=>{
+      const el = document.getElementById('serv_'+k);
+      if(el) el.value = data.servicios[k];
+    });
+  }
+  document.getElementById('comparablesContainer').innerHTML='';
+  comparableCount = 0;
+  if(data.comparables && data.comparables.length){
+    data.comparables.forEach(c=>{
+      addComparable();
+      const wrap = document.querySelector('.comp-block:last-child');
+      wrap.querySelector('.c_url').value = c.url||'';
+      wrap.querySelector('.c_direccion').value = c.direccion||'';
+      wrap.querySelector('.c_barrio').value = c.barrio||'';
+      wrap.querySelector('.c_precio').value = c.precio||'';
+      wrap.querySelector('.c_supTerreno').value = c.supTerreno||'';
+      wrap.querySelector('.c_supCubierta').value = c.supCubierta||'';
+      wrap.querySelector('.c_dias').value = c.dias||'';
+      wrap.querySelector('.c_tipoConstruccion').value = c.tipoConstruccion||'';
+      wrap.querySelector('.c_antiguedad').value = c.antiguedad||'';
+      if(c.photo) setComparablePhotoFromData(wrap, c.photo);
+      const chars = wrap.querySelectorAll('.c_char');
+      (c.chars||[]).forEach((v,i)=>{ if(chars[i]) chars[i].value = v; });
+    });
+  } else {
+    addComparable();
+  }
+  if(data.valuacion){
+    Object.keys(data.valuacion).forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.value = data.valuacion[id];
+    });
+  }
+  recalcAll();
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+function setLocked(locked){
+  finalized = locked;
+  document.getElementById('formFieldset').disabled = locked;
+  document.getElementById('btnFinish').disabled = locked;
+  document.getElementById('btnEdit').disabled = !locked;
+  document.getElementById('addComparable').style.display = locked? 'none':'block';
+  const bar = document.getElementById('statusBar');
+  const txt = document.getElementById('statusText');
+  if(locked){
+    bar.classList.add('locked');
+    txt.textContent = 'Documento finalizado (solo lectura)';
+  } else {
+    bar.classList.remove('locked');
+    txt.textContent = 'Documento en ediciÃ³n';
+  }
+}
+
+async function saveToSupabase(finalize){
+  if(_saving) return;
+  if(!_authToken){
+    showToast('SesiÃ³n no vÃ¡lida. VolvÃ© al panel y abrÃ­ de nuevo.');
+    return;
+  }
+  _saving = true;
+  const btn = document.getElementById('btnSave');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+
+  try{
+    const formData = collectFormData();
+    const title = formData.fields.f_direccion || formData.fields.f_barrio || 'Sin tÃ­tulo';
+    const status = finalize ? 'finalized' : 'draft';
+
+    if(TASACION_ID){
+      const { error } = await _supabase.from('tasaciones').update({
+        title, data: formData, status, updated_at: new Date().toISOString()
+      }).eq('id', TASACION_ID);
+      if(error) throw error;
+    } else {
+      const { data, error } = await _supabase.from('tasaciones').insert({
+        title, data: formData, status
+      }).select('id').single();
+      if(error) throw error;
+      if(data && data.id){
+        const url = new URL(window.location);
+        url.searchParams.set('id', data.id);
+        window.history.replaceState({}, '', url);
+      }
+    }
+    document.getElementById('lastSaved').textContent = 'Guardado ' + new Date().toLocaleTimeString('es-AR');
+    showToast(finalize ? 'TasaciÃ³n finalizada y guardada' : 'Guardado correctamente');
+  }catch(e){
+    showToast('Error al guardar: ' + (e.message || e));
+  }finally{
+    _saving = false;
+    btn.disabled = false;
+    btn.innerHTML = 'ðŸ’¾ Guardar';
+  }
+}
+
+document.getElementById('btnSave').addEventListener('click', ()=> saveToSupabase(false));
+
+document.getElementById('btnFinish').addEventListener('click', async ()=>{
+  await saveToSupabase(true);
+  setLocked(true);
+});
+
+document.getElementById('btnEdit').addEventListener('click', ()=>{
+  setLocked(false);
+  showToast('Documento habilitado para ediciÃ³n');
+});
+
+document.getElementById('btnPdf').addEventListener('click', ()=>{
+  window.print();
+});
+
+document.getElementById('addComparable').addEventListener('click', ()=>addComparable());
+
+/* --- Security hardening: sin handlers inline (CSP-safe), postMessage con targetOrigin explicito --- */
+const _bhEsc = (s) => (window.BHUtils && typeof window.BHUtils.esc === 'function') ? window.BHUtils.esc(s) : '';
+document.getElementById('btnBack').addEventListener('click', () => {
+  try {
+    window.parent?.postMessage({ type: 'tasaciones-back' }, window.location.origin);
+  } catch (err) {
+    console.error('[TAS] btnBack postMessage failed:', err);
+  }
+});
+document.getElementById('comparablesContainer').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-remove-id]');
+  if (!btn) return;
+  const rid = parseInt(btn.dataset.removeId, 10);
+  if (!Number.isNaN(rid)) removeComparable(rid);
+});
+const brandLogoEl = document.getElementById('brandLogo');
+if (brandLogoEl) brandLogoEl.addEventListener('error', () => {
+  brandLogoEl.src = "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2248%22 height=%2248%22><rect fill=%22%2314b8a6%22 width=%2248%22 height=%2248%22 rx=%228%22/><text x=%2224%22 y=%2232%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2220%22 font-weight=%22bold%22>BH</text></svg>";
+});
+const footerLogoEl = document.querySelector('footer img');
+if (footerLogoEl) footerLogoEl.addEventListener('error', () => { footerLogoEl.style.display = 'none'; });
+
+let acChartInstance = null;
+function renderAnalisisComparativo(){
+  const tbody = document.getElementById('ac_tbody');
+  if(!tbody) return;
+  const dispersion = parseFloat(document.getElementById('ac_dispersion').value) || 0;
+  tbody.innerHTML = '';
+
+  const rows = [];
+  document.querySelectorAll('.comp-block').forEach((wrap,i)=>{
+    const precio = parseFloat(wrap.querySelector('.c_precio').value)||0;
+    const supCub = parseFloat(wrap.querySelector('.c_supCubierta').value)||0;
+    const supTer = parseFloat(wrap.querySelector('.c_supTerreno').value)||0;
+    const base = supCub>0? supCub : supTer;
+    const precioM2 = (precio>0 && base>0) ? precio/base : 0;
+    const included = wrap.dataset.included !== 'false';
+    rows.push({wrap, label:'Comparable '+(i+1), precioM2, included});
+  });
+
+  rows.forEach(r=>{
+    const low = r.precioM2 * (1 - dispersion/100);
+    const high = r.precioM2 * (1 + dispersion/100);
+    const tr = document.createElement('tr');
+    if(!r.included) tr.classList.add('ac-excluded');
+    tr.innerHTML =
+      '<td><input type="checkbox" class="ac_check" '+(r.included?'checked':'')+'></td>'+
+      '<td>'+r.label+'</td>'+
+      '<td>'+(r.precioM2? 'U$S '+r.precioM2.toFixed(2) : 'â€”')+'</td>'+
+      '<td>'+(r.precioM2? 'U$S '+low.toFixed(2) : 'â€”')+'</td>'+
+      '<td>'+(r.precioM2? 'U$S '+high.toFixed(2) : 'â€”')+'</td>';
+    tr.querySelector('.ac_check').addEventListener('change', (e)=>{
+      r.wrap.dataset.included = e.target.checked ? 'true' : 'false';
+      recalcAll();
+    });
+    tbody.appendChild(tr);
+  });
+
+  const included = rows.filter(r=>r.included && r.precioM2>0);
+  let valMin=0, valProm=0, valMax=0;
+  if(included.length){
+    const vals = included.map(r=>r.precioM2);
+    valProm = vals.reduce((a,b)=>a+b,0)/vals.length;
+    valMin = Math.min(...vals) * (1 - dispersion/100);
+    valMax = Math.max(...vals) * (1 + dispersion/100);
+  }
+  document.getElementById('ac_valMin').textContent = valMin? 'U$S '+valMin.toFixed(2) : 'â€”';
+  document.getElementById('ac_valProm').textContent = valProm? 'U$S '+valProm.toFixed(2) : 'â€”';
+  document.getElementById('ac_valMax').textContent = valMax? 'U$S '+valMax.toFixed(2) : 'â€”';
+
+  const canvas = document.getElementById('ac_chart');
+  if(!canvas || typeof Chart === 'undefined') return;
+  const labels = rows.map(r=>r.label).concat(included.length ? ['Promedio'] : []);
+  const dataRanges = rows.map(r=> r.precioM2 ? [r.precioM2*(1-dispersion/100), r.precioM2*(1+dispersion/100)] : [0,0]);
+  if(included.length) dataRanges.push([valMin, valMax]);
+  const colors = rows.map(r=> r.included ? '#14b8a6' : '#555').concat(included.length ? ['#f59e0b'] : []);
+
+  if(acChartInstance) acChartInstance.destroy();
+  acChartInstance = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Rango U$S/mÂ² (Â± '+dispersion+'%)',
+        data: dataRanges,
+        backgroundColor: colors,
+        borderRadius: 4,
+        barPercentage: 0.6
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display:false },
+        tooltip: {
+          callbacks:{
+            label: (ctx)=> 'U$S ' + ctx.raw[0].toFixed(2) + ' \u2014 U$S ' + ctx.raw[1].toFixed(2) + ' /mÂ²'
+          }
+        }
+      },
+      scales: {
+        x: { ticks:{color:'#b8b3aa'}, grid:{color:'#2a2a2a'}, title:{display:true, text:'U$S / mÂ²', color:'#b8b3aa'} },
+        y: { ticks:{color:'#f5f5f4', font:{family:'Poppins'}}, grid:{color:'#2a2a2a'} }
+      }
+    }
+  });
+}
+document.getElementById('ac_dispersion').addEventListener('input', renderAnalisisComparativo);
+
+let photoDataUrl = null;
+function setPhoto(dataUrl){
+  photoDataUrl = dataUrl;
+  const img = document.getElementById('photoPreview');
+  img.src = dataUrl;
+  img.style.display = 'block';
+  document.getElementById('photoPlaceholder').style.display = 'none';
+  document.getElementById('photoRemove').style.display = 'block';
+}
+function clearPhoto(){
+  photoDataUrl = null;
+  const img = document.getElementById('photoPreview');
+  img.style.display = 'none';
+  img.src = '';
+  document.getElementById('photoPlaceholder').style.display = 'flex';
+  document.getElementById('photoRemove').style.display = 'none';
+  document.getElementById('f_fotoFachada').value = '';
+}
+document.getElementById('photoBox').addEventListener('click', (e)=>{
+  if(e.target.id === 'photoRemove') return;
+  document.getElementById('f_fotoFachada').click();
+});
+document.getElementById('f_fotoFachada').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=> setPhoto(reader.result);
+  reader.readAsDataURL(file);
+});
+document.getElementById('photoRemove').addEventListener('click', (e)=>{
+  e.stopPropagation();
+  clearPhoto();
+});
+document.getElementById('f_tipo').addEventListener('change', refreshAllCharacteristics);
+
+let leafletMapInstance = null;
+const MARKER_COLOR_PROPIEDAD = '#2563eb';
+const MARKER_COLOR_COMPARABLE = '#dc2626';
+
+function buildPropiedadQuery(){
+  const parts = [
+    document.getElementById('f_direccion').value,
+    document.getElementById('f_barrio').value,
+    document.getElementById('f_localidad').value,
+    document.getElementById('f_provincia').value
+  ].filter(Boolean);
+  return parts.join(', ');
+}
+
+async function geocode(query){
+  const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(query);
+  const res = await fetch(url, {headers:{'Accept':'application/json'}});
+  if(!res.ok) throw new Error('geocode failed');
+  const data = await res.json();
+  if(!data.length) return null;
+  return {lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon)};
+}
+
+async function updateMainMap(){
+  const statusEl = document.getElementById('mapStatus');
+  const legendEl = document.getElementById('mapLegend');
+  const container = document.getElementById('leafletMap');
+  const placeholder = document.getElementById('mainMapPlaceholder');
+
+  const points = [];
+  const propQuery = buildPropiedadQuery();
+  if(propQuery) points.push({label:'Propiedad', query: propQuery, color: MARKER_COLOR_PROPIEDAD});
+
+  document.querySelectorAll('.comp-block').forEach((wrap,i)=>{
+    const dir = wrap.querySelector('.c_direccion').value;
+    const barrio = wrap.querySelector('.c_barrio').value;
+    const q = [dir, barrio].filter(Boolean).join(', ');
+    if(q) points.push({label:'Comparable '+(i+1), query:q, color: MARKER_COLOR_COMPARABLE});
+  });
+
+  if(!points.length){
+    statusEl.textContent = 'CargÃ¡ al menos una direcciÃ³n (propiedad o comparable).';
+    return;
+  }
+
+  statusEl.textContent = 'Ubicando ' + points.length + ' direcciÃ³n(es)...';
+  placeholder.style.display = 'none';
+
+  if(!leafletMapInstance){
+    container.innerHTML = '';
+    leafletMapInstance = L.map(container).setView([-31.4201,-64.1888], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(leafletMapInstance);
+  } else {
+    leafletMapInstance.eachLayer(layer=>{ if(layer instanceof L.Marker) leafletMapInstance.removeLayer(layer); });
+  }
+
+  const bounds = [];
+  legendEl.innerHTML = '';
+  let okCount = 0;
+
+  for(const p of points){
+    try{
+      const geo = await geocode(p.query);
+      if(!geo){ continue; }
+      const icon = L.divIcon({
+        className:'', html:'<div style="width:16px;height:16px;border-radius:50%;background:'+p.color+';border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.2)"></div>',
+        iconSize:[16,16], iconAnchor:[8,8]
+      });
+      L.marker([geo.lat, geo.lon], {icon}).addTo(leafletMapInstance).bindPopup('<b>'+_bhEsc(p.label)+'</b><br>'+_bhEsc(p.query));
+      bounds.push([geo.lat, geo.lon]);
+      okCount++;
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.innerHTML = '<span class="swatch" style="background:'+p.color+'"></span>'+_bhEsc(p.label);
+      legendEl.appendChild(chip);
+    }catch(e){}
+    await new Promise(r=>setTimeout(r, 1100));
+  }
+
+  if(bounds.length){
+    leafletMapInstance.fitBounds(bounds, {padding:[30,30]});
+    statusEl.textContent = okCount+' de '+points.length+' ubicaciÃ³n(es) encontradas.';
+  } else {
+    statusEl.textContent = 'No se pudo ubicar ninguna direcciÃ³n. RevisÃ¡ que estÃ©n completas (calle, barrio, ciudad).';
+    placeholder.style.display = 'flex';
+  }
+  setTimeout(()=>{ if(leafletMapInstance) leafletMapInstance.invalidateSize(); }, 200);
+}
+document.getElementById('btnUpdateMap').addEventListener('click', updateMainMap);
+
+function setupComparablePhoto(wrap){
+  const box = wrap.querySelector('.c_photo_box');
+  const input = wrap.querySelector('.c_foto_input');
+  const img = wrap.querySelector('.c_foto_preview');
+  const placeholder = wrap.querySelector('.c_foto_placeholder');
+  const removeBtn = wrap.querySelector('.c_foto_remove');
+
+  box.addEventListener('click', (e)=>{ if(e.target !== removeBtn) input.click(); });
+  input.addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      wrap.dataset.photo = reader.result;
+      img.src = reader.result;
+      img.style.display = 'block';
+      placeholder.style.display = 'none';
+      removeBtn.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  });
+  removeBtn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    delete wrap.dataset.photo;
+    img.style.display = 'none'; img.src = '';
+    placeholder.style.display = 'flex';
+    removeBtn.style.display = 'none';
+    input.value = '';
+  });
+}
+function setComparablePhotoFromData(wrap, dataUrl){
+  if(!dataUrl) return;
+  wrap.dataset.photo = dataUrl;
+  const img = wrap.querySelector('.c_foto_preview');
+  img.src = dataUrl; img.style.display = 'block';
+  wrap.querySelector('.c_foto_placeholder').style.display = 'none';
+  wrap.querySelector('.c_foto_remove').style.display = 'block';
+}
+document.querySelectorAll('main input, main select, main textarea').forEach(el=>{
+  el.addEventListener('input', recalcAll);
+});
+
+function makeAccordions(){
+  document.querySelectorAll('section.card').forEach(section=>{
+    const h2 = section.querySelector('h2');
+    if(!h2 || h2.querySelector('.accordion-arrow')) return;
+    const body = document.createElement('div');
+    body.className = 'accordion-body';
+    let sibling = h2.nextSibling;
+    while(sibling){
+      const next = sibling.nextSibling;
+      body.appendChild(sibling);
+      sibling = next;
+    }
+    section.appendChild(body);
+    const arrow = document.createElement('span');
+    arrow.className = 'accordion-arrow';
+    arrow.textContent = '\u25BE';
+    h2.appendChild(arrow);
+    h2.addEventListener('click', ()=>{
+      section.classList.toggle('collapsed');
+    });
+  });
+}
+
+async function init(){
+  document.getElementById('dateStamp').textContent = new Date().toLocaleDateString('es-AR', {year:'numeric',month:'long',day:'numeric'});
+  document.querySelectorAll('.field label').forEach(l=>{ l.title = l.textContent; });
+  renderServicios();
+
+  setTimeout(() => {
+    if(!_authToken){
+      const statusBar = document.getElementById('statusBar');
+      if(statusBar){
+        statusBar.style.background = '#7f1d1d';
+        statusBar.style.display = 'block';
+      }
+      const statusText = document.getElementById('statusText');
+      if(statusText) statusText.textContent = 'âš  Sin sesiÃ³n â€” AbrÃ­ desde el panel de administraciÃ³n';
+    }
+  }, 2000);
+
+  if(TASACION_ID){
+    try{
+      const { data, error } = await _supabase.from('tasaciones').select('data, status').eq('id', TASACION_ID).single();
+      if(error) throw error;
+      if(data && data.data){
+        applyFormData(data.data);
+        if(data.status === 'finalized') setLocked(true);
+        showToast('TasaciÃ³n cargada correctamente');
+      } else {
+        addComparable();
+      }
+    }catch(e){
+      console.error('Error loading tasacion:', e);
+      addComparable();
+    }
+  } else {
+    addComparable();
+  }
+  recalcAll();
+  makeAccordions();
+}
+
+init();
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
