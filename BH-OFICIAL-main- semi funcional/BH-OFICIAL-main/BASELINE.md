@@ -134,3 +134,24 @@ Infra nueva:
 Verificación final: `node --check` PASS x3 JS · grep residual: 0 handlers inline peligrosos · utils cableado en las 3 páginas.
 
 Follow-ups recomendados (no bloqueantes): CSP meta (requiere refactor de inline styles/scripts masivos), rate limiting server-side, monorepo /landing fail-open.
+
+## 10. Unificación: puerto de la capa de seguridad a la RAÍZ deployable (2026-08-22)
+
+La otra máquina del usuario empujó su sprint (18 commits, `cfd9dc6..a4d68a1`) mientras se trabajaba; el remoto y esta copia divergieron. Verificación hunk-por-hunk (`git diff --no-index`) confirmó que TODOS los deltas restantes eran la capa XSS de este sprint y que la raíz no tenía cambios únicos que perder.
+
+Commits en raíz (deployable):
+- `8c21bf2` feat(security): BHUtils en raíz
+- `a352bf0` chore(security): wiring utils.js + cache-busters (landing v3→v4, admin v9→v10)
+- `fd11f1b` fix(security): tasacion.html raíz
+- `57b308c` fix(security): landing-app.js raíz
+- `1ac84ed` fix(security): admin-app.js raíz
+
+Hallazgos del puerto:
+- **admin.html raíz tenía mojibake + BOM** (ContraseÃ±a, GestiÃ³n); quedó UTF-8 limpio tras el copy.
+- **tasacion.html tiene mojibake HISTÓRICO pre-existente** en ambos lados ("Anǭlisis", "Tasaci��n", "TelǸfono") — ya estaba publicado así; requiere corrección de textos aparte (no es regresión de este sprint).
+- El commit remoto `a4d68a1` (harden postMessage) NUNCA cambió el targetOrigin real — seguía siendo SUPABASE_URL; el fix efectivo fue el de este sprint (`window.location.origin`).
+- React Doctor (hook pre-commit): solo warnings de performance PRE-EXISTENTES (await en loop L540/L1035, Intl por llamada, iteraciones encadenadas). No bloquean.
+
+**Decisión de fuente de verdad:** la RAÍZ del repo es la copia deployable. La carpeta anidada queda como workspace local; sus JS difieren solo en cache-buster (?v=3 vs ?v=4).
+
+Push final: `282579c..1ac84ed main -> main`. Árbol tracked limpio.
