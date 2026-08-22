@@ -691,10 +691,20 @@ async function runJob(
 
             const itemResult = await runWithRetry(
                 accessToken,
-                () =>
-                    fetch(`https://api.mercadolibre.com/items/${itemId}`, {
+                async () => {
+                    const r = await fetchWithTimeout(`https://api.mercadolibre.com/items/${itemId}`, {
                         headers: { Authorization: `Bearer ${accessToken}` },
-                    }).then((r) => r.json()),
+                    });
+                    if (!r.ok) {
+                        const body = await r.text();
+                        const retryAfter = r.headers.get('retry-after');
+                        throw new Error(
+                            `mlGetItem ${r.status === 429 ? 'rate limit' : 'error'} ${r.status}` +
+                                `${retryAfter ? `, retry-after: ${retryAfter}` : ''}: ${body.slice(0, 300)}`,
+                        );
+                    }
+                    return r.json();
+                },
                 'mlGetItem',
                 queueId,
                 propertyId,
@@ -989,19 +999,21 @@ Deno.serve(async (req) => {
                 status: 'batch_aborted_rate_limited',
                 metadata: { released: jobs.length - (i + MAX_CONCURRENT_JOBS) },
             });
-            for (const job of jobs.slice(i + MAX_CONCURRENT_JOBS)) {
-                await supabase
-                    .from('ml_sync_queue')
-                    .update({
-                        status: 'pending',
-                        attempts: Math.max(0, job.attempts - 1),
-                        locked_by: null,
-                        locked_at: null,
-                        next_attempt_at: new Date().toISOString(),
-                        last_error: null,
-                    })
-                    .eq('id', job.id);
-            }
+            await Promise.all(
+                jobs.slice(i + MAX_CONCURRENT_JOBS).map((job) =>
+                    supabase
+                        .from('ml_sync_queue')
+                        .update({
+                            status: 'pending',
+                            attempts: Math.max(0, job.attempts - 1),
+                            locked_by: null,
+                            locked_at: null,
+                            next_attempt_at: new Date().toISOString(),
+                            last_error: null,
+                        })
+                        .eq('id', job.id),
+                ),
+            );
             break;
         }
     }

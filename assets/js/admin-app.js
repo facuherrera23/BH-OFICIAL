@@ -1518,9 +1518,11 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
       },
       body: JSON.stringify(payload),
     });
-    const out = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(out.error || `Error ${res.status}`);
-    return out;
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error || `Error ${res.status}`);
+    }
+    return res.json().catch(() => ({}));
   }
 
   function showUserTempPassword(tempPassword, email) {
