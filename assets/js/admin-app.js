@@ -3,6 +3,9 @@
    Matches admin.html luxury design system
    ============================================================ */
 
+const _usdFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+const _numFormatter = new Intl.NumberFormat('es-AR');
+
 (function () {
   'use strict';
 
@@ -386,7 +389,7 @@
   function renderDashBrokers(agents) {
     const el = $('#dashBrokersList');
     if (!el) return;
-    const sorted = [...agents].sort((a, b) => (b.sales_ytd || 0) - (a.sales_ytd || 0)).slice(0, 4);
+    const sorted = agents.toSorted((a, b) => (b.sales_ytd || 0) - (a.sales_ytd || 0)).slice(0, 4);
     if (!sorted.length) {
       el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Sin brokers registrados</p>';
       return;
@@ -534,13 +537,13 @@
       /* Image uploads */
       const imageFiles = formData.getAll('image_files');
       const existingUrls = formData.getAll('existing_image_urls').filter(u => u);
-      const newUrls = [];
+      const uploadPromises = [];
       for (const file of imageFiles) {
         if (file && file.size > 0) {
-          const url = await uploadToCloudinary(file);
-          newUrls.push(url);
+          uploadPromises.push(uploadToCloudinary(file));
         }
       }
+      const newUrls = await Promise.all(uploadPromises);
       data.image_urls = [...existingUrls, ...newUrls];
 
       if (editingPropertyId) {
@@ -647,17 +650,8 @@
      6. CLOUDINARY UPLOAD
      ------------------------------------------------ */
   async function uploadToCloudinary(file) {
-    const url = `https://api.cloudinary.com/v1_1/${window.BH_CONFIG.CLOUDINARY.cloud_name}/image/upload`;
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', window.BH_CONFIG.CLOUDINARY.upload_preset);
-    formData.append('quality', 'auto');
-    formData.append('fetch_format', 'auto');
-
-    const response = await fetch(url, { method: 'POST', body: formData });
-    if (!response.ok) throw new Error('Upload failed');
-    const result = await response.json();
-    return result.secure_url;
+    if (!window.BH_Cloudinary) throw new Error('BH_Cloudinary no disponible');
+    return window.BH_Cloudinary.uploadImage(file, 'bienenhaus/properties');
   }
 
   /* ------------------------------------------------
@@ -1026,8 +1020,8 @@
         updatesBySection[mapping.section][mapping.path] = field.value;
       });
 
-      let savedCount = 0;
-      for (const [sectionKey, newFields] of Object.entries(updatesBySection)) {
+      const sectionEntries = Object.entries(updatesBySection);
+      await Promise.all(sectionEntries.map(async ([sectionKey, newFields]) => {
         const existing = cmsData[sectionKey];
         const mergedContent = { ...(existing?.content || {}), ...newFields };
 
@@ -1047,8 +1041,8 @@
           if (error) throw error;
           cmsData[sectionKey] = data;
         }
-        savedCount++;
-      }
+      }));
+      const savedCount = sectionEntries.length;
 
       showToast(`${savedCount} secciones guardadas correctamente`, 'success');
     } catch (err) {
@@ -1870,6 +1864,8 @@
   $('#btnBackToList')?.addEventListener('click', hideTasacionEditor);
 
   window.addEventListener('message', (e) => {
+    /* Security: solo aceptar mensajes de origen propio (tasacion.html vive en el mismo origin) */
+    if (e.origin !== window.location.origin) return;
     if (e.data?.type === 'tasaciones-back') hideTasacionEditor();
   });
 
@@ -2217,18 +2213,24 @@
     const cache = await getSearchCache();
     const results = [];
 
-    cache.properties.filter(p => [p.title, p.zone, p.address].some(f => f && f.toLowerCase().includes(q))).forEach(p => {
+    const matches = (fields) => fields.some(f => f && f.toLowerCase().includes(q));
+
+    for (const p of cache.properties) {
+      if (!matches([p.title, p.zone, p.address])) continue;
       results.push({ icon: 'fas fa-home', text: p.title || 'Sin título', sub: [p.zone, p.address].filter(Boolean).join(', '), tab: 'tab-propiedades', color: 'var(--accent)' });
-    });
-    cache.leads.filter(l => [l.full_name, l.email, l.phone].some(f => f && f.toLowerCase().includes(q))).forEach(l => {
+    }
+    for (const l of cache.leads) {
+      if (!matches([l.full_name, l.email, l.phone])) continue;
       results.push({ icon: 'fas fa-user', text: l.full_name || 'Sin nombre', sub: l.email || l.phone || '', tab: 'tab-leads', color: '#3B82F6' });
-    });
-    cache.agents.filter(a => [a.full_name, a.email, a.matricula].some(f => f && f.toLowerCase().includes(q))).forEach(a => {
+    }
+    for (const a of cache.agents) {
+      if (!matches([a.full_name, a.email, a.matricula])) continue;
       results.push({ icon: 'fas fa-id-badge', text: a.full_name || 'Sin nombre', sub: a.matricula || a.email || '', tab: 'tab-agentes', color: '#10B981' });
-    });
-    cache.owners.filter(o => [o.full_name, o.email, o.phone].some(f => f && f.toLowerCase().includes(q))).forEach(o => {
+    }
+    for (const o of cache.owners) {
+      if (!matches([o.full_name, o.email, o.phone])) continue;
       results.push({ icon: 'fas fa-user-tie', text: o.full_name || 'Sin nombre', sub: o.email || o.phone || '', tab: 'tab-propietarios', color: '#F97316' });
-    });
+    }
 
     if (!results.length) {
       resultsContainer.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-dim); font-size:13px;">Sin resultados para "' + esc(q) + '"</div>';
@@ -2313,11 +2315,11 @@
      ------------------------------------------------ */
   function formatPrice(price) {
     if (!price) return '-';
-    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(price);
+    return _usdFormatter.format(price);
   }
 
   function formatNumber(num) {
-    return new Intl.NumberFormat('es-AR').format(num);
+    return _numFormatter.format(num);
   }
 
   /* ------------------------------------------------

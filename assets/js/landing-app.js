@@ -2,6 +2,8 @@
    BIENENHAUS PROPIEDADES — Landing Page App
    ============================================================ */
 
+const _usdFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+
 (function () {
   'use strict';
 
@@ -241,7 +243,10 @@
 
         // Determine interest from active pills
         const activePills = contactForm.querySelectorAll('.form-pill.active');
-        const interests = Array.from(activePills).map(p => p.dataset.value || p.textContent.trim()).filter(Boolean);
+        const interests = Array.from(activePills).flatMap(p => {
+          const v = p.dataset.value || p.textContent.trim();
+          return v ? [v] : [];
+        });
 
         const payload = {
           full_name: data.nombre || '',
@@ -336,45 +341,97 @@
       return;
     }
 
-    grid.innerHTML = props.map(p => {
-      const mainImg = (p.image_urls && p.image_urls.length > 0) ? p.image_urls[0] : 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80&fit=crop';
-      const locationText = [p.zone, p.address].filter(Boolean).join(', ');
-      const cardImg = safeImageUrl(mainImg);
-      return `
-      <div class="property-card" data-type="${escAttr((p.property_type || '').toLowerCase())}">
-        <div class="card-image-wrapper">
-          <img src="${escAttr(cardImg)}" 
-               alt="${escAttr(p.title || 'Propiedad')}" loading="lazy" />
-          ${p.featured ? '<span class="card-badge">Destacada</span>' : ''}
-          <button class="card-favorite" aria-label="Guardar favorito"><i class="far fa-heart"></i></button>
-        </div>
-        <div class="card-body">
-          <div class="card-price">${formatPrice(p.price_usd)}</div>
-          <h3 class="card-title">${esc(p.title || 'Propiedad')}</h3>
-          <div class="card-location"><i class="fas fa-map-marker-alt"></i> ${esc(locationText)}</div>
-          <ul class="card-features">
-            ${p.bedrooms ? `<li><i class="fas fa-bed"></i> ${p.bedrooms} ${p.bedrooms === 1 ? 'Dorm.' : 'Dorm.'}</li>` : ''}
-            ${p.bathrooms ? `<li><i class="fas fa-bath"></i> ${p.bathrooms} Baños</li>` : ''}
-            ${p.area_m2 ? `<li><i class="fas fa-ruler-combined"></i> ${p.area_m2} m²</li>` : ''}
-            ${p.garage_spaces ? `<li><i class="fas fa-car"></i> ${p.garage_spaces} ${p.garage_spaces === 1 ? 'Cochera' : 'Cocheras'}</li>` : ''}
-          </ul>
-          <p class="card-desc">${esc(p.description || '')}</p>
-          <button class="btn-card btn-card--coming-soon" disabled title="Próximamente disponible">
-            Ver Detalles <i class="fas fa-arrow-right"></i>
-          </button>
-        </div>
-      </div>
-    `}).join('');
+    const FALLBACK_IMG = 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80&fit=crop';
+    const cursorGlow = document.getElementById('cursorGlow');
 
-    // Re-init hover effects on new cards
-    grid.querySelectorAll('.property-card').forEach(card => {
-      card.addEventListener('mouseenter', () => {
-        document.getElementById('cursorGlow')?.classList.add('is-hover');
-      });
-      card.addEventListener('mouseleave', () => {
-        document.getElementById('cursorGlow')?.classList.remove('is-hover');
-      });
-    });
+    const makeIcon = (cls) => {
+      const el = document.createElement('i');
+      el.className = cls;
+      return el;
+    };
+
+    const fragment = document.createDocumentFragment();
+
+    for (const p of props) {
+      const mainImg = (p.image_urls && p.image_urls.length > 0) ? p.image_urls[0] : FALLBACK_IMG;
+      const locationText = [p.zone, p.address].filter(Boolean).join(', ');
+
+      const card = document.createElement('div');
+      card.className = 'property-card';
+      card.dataset.type = (p.property_type || '').toLowerCase();
+
+      const imageWrapper = document.createElement('div');
+      imageWrapper.className = 'card-image-wrapper';
+
+      const img = document.createElement('img');
+      img.src = safeImageUrl(mainImg);
+      img.alt = p.title || 'Propiedad';
+      img.loading = 'lazy';
+      imageWrapper.appendChild(img);
+
+      if (p.featured) {
+        const badge = document.createElement('span');
+        badge.className = 'card-badge';
+        badge.textContent = 'Destacada';
+        imageWrapper.appendChild(badge);
+      }
+
+      const favBtn = document.createElement('button');
+      favBtn.className = 'card-favorite';
+      favBtn.setAttribute('aria-label', 'Guardar favorito');
+      favBtn.appendChild(makeIcon('far fa-heart'));
+      imageWrapper.appendChild(favBtn);
+
+      const body = document.createElement('div');
+      body.className = 'card-body';
+
+      const price = document.createElement('div');
+      price.className = 'card-price';
+      price.textContent = formatPrice(p.price_usd);
+
+      const title = document.createElement('h3');
+      title.className = 'card-title';
+      title.textContent = p.title || 'Propiedad';
+
+      const location = document.createElement('div');
+      location.className = 'card-location';
+      location.appendChild(makeIcon('fas fa-map-marker-alt'));
+      location.appendChild(document.createTextNode(' ' + locationText));
+
+      const features = document.createElement('ul');
+      features.className = 'card-features';
+      const addFeature = (value, iconCls, label) => {
+        if (!value) return;
+        const li = document.createElement('li');
+        li.appendChild(makeIcon(iconCls));
+        li.appendChild(document.createTextNode(' ' + label));
+        features.appendChild(li);
+      };
+      addFeature(p.bedrooms, 'fas fa-bed', `${p.bedrooms} Dorm.`);
+      addFeature(p.bathrooms, 'fas fa-bath', `${p.bathrooms} Baños`);
+      addFeature(p.area_m2, 'fas fa-ruler-combined', `${p.area_m2} m²`);
+      addFeature(p.garage_spaces, 'fas fa-car', `${p.garage_spaces} ${p.garage_spaces === 1 ? 'Cochera' : 'Cocheras'}`);
+
+      const desc = document.createElement('p');
+      desc.className = 'card-desc';
+      desc.textContent = p.description || '';
+
+      const detailsBtn = document.createElement('button');
+      detailsBtn.className = 'btn-card btn-card--coming-soon';
+      detailsBtn.disabled = true;
+      detailsBtn.title = 'Próximamente disponible';
+      detailsBtn.appendChild(document.createTextNode('Ver Detalles '));
+      detailsBtn.appendChild(makeIcon('fas fa-arrow-right'));
+
+      body.append(price, title, location, features, desc, detailsBtn);
+      card.append(imageWrapper, body);
+      fragment.appendChild(card);
+
+      card.addEventListener('mouseenter', () => cursorGlow?.classList.add('is-hover'));
+      card.addEventListener('mouseleave', () => cursorGlow?.classList.remove('is-hover'));
+    }
+
+    grid.replaceChildren(fragment);
   }
 
   function renderEmptyState(container, title, text) {
@@ -407,7 +464,7 @@
 
   function formatPrice(price) {
     if (!price) return 'Consultar precio';
-    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(price);
+    return _usdFormatter.format(price);
   }
 
   /* --- Team --- */
