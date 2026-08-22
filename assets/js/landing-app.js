@@ -5,6 +5,13 @@
 (function () {
   'use strict';
 
+  /* Security helpers (assets/js/utils.js). Fail-closed: sin BHUtils no se renderiza data dinamica. */
+  if (!window.BHUtils) {
+    console.error('[BH Landing] BHUtils no disponible — abortando init (fail-closed)');
+    return;
+  }
+  const { esc, escAttr, safeUrl, safeImageUrl, safeCssUrl } = window.BHUtils;
+
   /* ------------------------------------------------
      0. PRELOADER & INITIALIZATION
      ------------------------------------------------ */
@@ -332,25 +339,26 @@
     grid.innerHTML = props.map(p => {
       const mainImg = (p.image_urls && p.image_urls.length > 0) ? p.image_urls[0] : 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80&fit=crop';
       const locationText = [p.zone, p.address].filter(Boolean).join(', ');
+      const cardImg = safeImageUrl(mainImg);
       return `
-      <div class="property-card" data-type="${(p.property_type || '').toLowerCase()}">
+      <div class="property-card" data-type="${escAttr((p.property_type || '').toLowerCase())}">
         <div class="card-image-wrapper">
-          <img src="${mainImg}" 
-               alt="${p.title || 'Propiedad'}" loading="lazy" />
+          <img src="${escAttr(cardImg)}" 
+               alt="${escAttr(p.title || 'Propiedad')}" loading="lazy" />
           ${p.featured ? '<span class="card-badge">Destacada</span>' : ''}
           <button class="card-favorite" aria-label="Guardar favorito"><i class="far fa-heart"></i></button>
         </div>
         <div class="card-body">
           <div class="card-price">${formatPrice(p.price_usd)}</div>
-          <h3 class="card-title">${p.title || 'Propiedad'}</h3>
-          <div class="card-location"><i class="fas fa-map-marker-alt"></i> ${locationText}</div>
+          <h3 class="card-title">${esc(p.title || 'Propiedad')}</h3>
+          <div class="card-location"><i class="fas fa-map-marker-alt"></i> ${esc(locationText)}</div>
           <ul class="card-features">
             ${p.bedrooms ? `<li><i class="fas fa-bed"></i> ${p.bedrooms} ${p.bedrooms === 1 ? 'Dorm.' : 'Dorm.'}</li>` : ''}
             ${p.bathrooms ? `<li><i class="fas fa-bath"></i> ${p.bathrooms} Baños</li>` : ''}
             ${p.area_m2 ? `<li><i class="fas fa-ruler-combined"></i> ${p.area_m2} m²</li>` : ''}
             ${p.garage_spaces ? `<li><i class="fas fa-car"></i> ${p.garage_spaces} ${p.garage_spaces === 1 ? 'Cochera' : 'Cocheras'}</li>` : ''}
           </ul>
-          <p class="card-desc">${p.description || ''}</p>
+          <p class="card-desc">${esc(p.description || '')}</p>
           <button class="btn-card btn-card--coming-soon" disabled title="Próximamente disponible">
             Ver Detalles <i class="fas fa-arrow-right"></i>
           </button>
@@ -436,19 +444,19 @@
     grid.innerHTML = members.map(m => `
       <div class="team-card">
         <div class="team-image-wrapper">
-          <img src="${m.photo_url || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=600&q=80&fit=crop'}" 
-               alt="${m.full_name || 'Agente'}" loading="lazy" />
+          <img src="${escAttr(safeImageUrl(m.photo_url || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=600&q=80&fit=crop'))}" 
+               alt="${escAttr(m.full_name || 'Agente')}" loading="lazy" />
         </div>
         <div class="team-body">
-          <h3 class="team-name">${m.full_name || ''}</h3>
-          <p class="team-role">${m.matricula || 'Agente'}</p>
-          <p class="team-bio">${m.bio || ''}</p>
+          <h3 class="team-name">${esc(m.full_name || '')}</h3>
+          <p class="team-role">${esc(m.matricula || 'Agente')}</p>
+          <p class="team-bio">${esc(m.bio || '')}</p>
           <div class="team-specialties">
-            ${(m.specialties || []).map(s => `<span class="team-pill">${s}</span>`).join('')}
+            ${(m.specialties || []).map(s => `<span class="team-pill">${esc(s)}</span>`).join('')}
           </div>
           <div class="team-social">
-            ${m.phone ? `<a href="tel:${m.phone}" class="social-btn" aria-label="Telefono"><i class="fas fa-phone"></i></a>` : ''}
-            ${m.email ? `<a href="mailto:${m.email}" class="social-btn" aria-label="Email"><i class="fas fa-envelope"></i></a>` : ''}
+            ${m.phone ? `<a href="tel:${escAttr(String(m.phone))}" class="social-btn" aria-label="Telefono"><i class="fas fa-phone"></i></a>` : ''}
+            ${m.email ? `<a href="mailto:${escAttr(String(m.email))}" class="social-btn" aria-label="Email"><i class="fas fa-envelope"></i></a>` : ''}
           </div>
         </div>
       </div>
@@ -515,10 +523,14 @@
     const frame = document.querySelector('.video-modal-frame');
     if (!frame) return;
     const embed = toEmbedUrl(url);
-    if (embed) {
-      frame.innerHTML = '<iframe src="' + embed + '" allow="autoplay; encrypted-media" allowfullscreen></iframe>';
+    const safeEmbed = embed ? safeUrl(embed) : '';
+    if (safeEmbed) {
+      frame.innerHTML = '<iframe src="' + escAttr(safeEmbed) + '" allow="autoplay; encrypted-media" allowfullscreen></iframe>';
     } else if (/\.(mp4|webm|ogg)$/i.test(url)) {
-      frame.innerHTML = '<video controls autoplay src="' + url + '" style="width:100%;max-height:80vh;border-radius:12px;"></video>';
+      const safeDirect = safeUrl(url);
+      if (safeDirect) {
+        frame.innerHTML = '<video controls autoplay src="' + escAttr(safeDirect) + '" style="width:100%;max-height:80vh;border-radius:12px;"></video>';
+      }
     }
   }
 
@@ -571,7 +583,7 @@
     });
     document.querySelectorAll('.footer-contact-item').forEach(item => {
       if (item.querySelector(iconClass)) {
-        item.innerHTML = '<i class="' + fasClass + '"></i> ' + value;
+        item.innerHTML = '<i class="' + escAttr(fasClass) + '"></i> ' + esc(value);
       }
     });
   }
@@ -581,7 +593,7 @@
     const fasClass = 'fas ' + iconClass.replace('.', '');
     document.querySelectorAll('.footer-contact-item').forEach(item => {
       if (item.querySelector(iconClass)) {
-        item.innerHTML = '<i class="' + fasClass + '"></i> ' + value;
+        item.innerHTML = '<i class="' + escAttr(fasClass) + '"></i> ' + esc(value);
       }
     });
   }
@@ -599,11 +611,12 @@
         setText('.hero-desc', c.subtitle);
         if (c.eyebrow) {
           const pill = document.querySelector('.eyebrow-pill');
-          if (pill) pill.innerHTML = '<span class="pulse-live" aria-hidden="true"></span> ' + c.eyebrow;
+          if (pill) pill.innerHTML = '<span class="pulse-live" aria-hidden="true"></span> ' + esc(c.eyebrow);
         }
         if (c.bg_image_url) {
+          const cssBg = safeCssUrl(c.bg_image_url);
           const heroBg = document.querySelector('.hero-bg');
-          if (heroBg) heroBg.style.backgroundImage = 'url(' + c.bg_image_url + ')';
+          if (heroBg && cssBg) heroBg.style.backgroundImage = 'url("' + cssBg + '")';
         }
         if (c.video_url) {
           videoEmbedUrl = c.video_url;
@@ -631,7 +644,7 @@
           const statCards = document.querySelectorAll('.stats-premium .stat-card');
           if (statCards[0]) {
             const num = statCards[0].querySelector('.stat-card-number');
-            if (num) num.innerHTML = c.properties_sold + '<span class="accent-symbol">+</span>';
+            if (num) num.innerHTML = esc(c.properties_sold) + '<span class="accent-symbol">+</span>';
           }
         }
         if (c.stat1_label) {
