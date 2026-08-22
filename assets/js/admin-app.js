@@ -358,7 +358,7 @@
           <div style="color:#fff; font-size:13px; font-weight:500;">${esc(v.client_name || 'Sin cliente')}</div>
           <div style="color:var(--text-dim); font-size:11px;">${v.visit_date ? new Date(v.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'}</div>
         </div>
-        <span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : 'var(--warning)'}; font-size:11px;">${v.status || 'pendiente'}</span>
+        <span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : 'var(--warning)'}; font-size:11px;">${esc(v.status || 'pendiente')}</span>
       </div>
     `).join('');
   }
@@ -378,7 +378,7 @@
           <div style="color:#fff; font-size:13px; font-weight:500;">${esc(l.full_name || 'Sin nombre')}</div>
           <div style="color:var(--text-dim); font-size:11px;">${l.budget_usd ? 'USD ' + l.budget_usd.toLocaleString('es-AR') : 'Sin presupuesto'}</div>
         </div>
-        <span class="nav-badge" style="background:${stageColors[l.stage] || 'rgba(255,255,255,0.1)'}; color:#fff; font-size:11px;">${l.stage || 'nuevo'}</span>
+        <span class="nav-badge" style="background:${stageColors[l.stage] || 'rgba(255,255,255,0.1)'}; color:#fff; font-size:11px;">${esc(l.stage || 'nuevo')}</span>
       </div>
     `).join('');
   }
@@ -440,20 +440,21 @@
 
         if (mlInfo) {
           const mlStatusColor = mlInfo.status === 'active' ? 'var(--success)' : mlInfo.status === 'paused' ? 'var(--warning)' : 'var(--text-dim)';
-          const mlStatusText = mlInfo.status === 'active' ? 'En ML' : mlInfo.status === 'paused' ? 'Pausado' : mlInfo.status || 'ML';
+          const mlStatusText = esc(mlInfo.status === 'active' ? 'En ML' : mlInfo.status === 'paused' ? 'Pausado' : mlInfo.status || 'ML');
           mlBadge = `<span class="nav-badge status-pill ${mlInfo.status === 'active' ? 'active' : 'paused'}" style="font-size:10px; margin-left:4px;">${mlStatusText}</span>`;
+          /* Security: ml_listing_id es texto externo (API de ML): viaja en data-* + delegacion, NUNCA dentro de onclick */
           mlButtons = `
-              <button class="btn-action" style="font-size:11px; color:#FFE600;" title="Actualizar en ML" onclick="window.adminApp.mlUpdateProperty('${p.id}','${mlInfo.ml_listing_id}')"><i class="fas fa-arrows-rotate"></i></button>
-              <button class="btn-action danger" style="font-size:11px;" title="Quitar de ML" onclick="window.adminApp.mlRemoveProperty('${mlInfo.ml_listing_id}')"><i class="fas fa-link-slash"></i></button>`;
+              <button class="btn-action" style="font-size:11px; color:#FFE600;" title="Actualizar en ML" data-ml-update-prop="${esc(p.id)}" data-ml-listing="${esc(mlInfo.ml_listing_id)}"><i class="fas fa-arrows-rotate"></i></button>
+              <button class="btn-action danger" style="font-size:11px;" title="Quitar de ML" data-ml-remove data-ml-listing="${esc(mlInfo.ml_listing_id)}"><i class="fas fa-link-slash"></i></button>`;
         } else if (ml_connected) {
-          mlButtons = `<button class="btn-action" style="font-size:11px; color:#FFE600;" title="Publicar en ML" onclick="window.adminApp.mlPublishProperty('${p.id}')"><i class="fab fa-mercarto-libre"></i></button>`;
+          mlButtons = `<button class="btn-action" style="font-size:11px; color:#FFE600;" title="Publicar en ML" data-ml-publish="${esc(p.id)}"><i class="fab fa-mercarto-libre"></i></button>`;
         }
 
         return `
         <tr>
           <td>
             <div style="display:flex; align-items:center; gap:12px;">
-              <img src="${thumb}" alt="${esc(p.title || '')}" style="width:52px; height:52px; border-radius:var(--radius-sm); object-fit:cover; border:1px solid var(--border-subtle);" />
+              <img src="${esc(thumb)}" alt="${esc(p.title || '')}" style="width:52px; height:52px; border-radius:var(--radius-sm); object-fit:cover; border:1px solid var(--border-subtle);" />
               <div>
                 <div style="font-weight:600; color:#fff; font-size:13.5px;">${esc(p.title || 'Sin tÃ­tulo')}${mlBadge}</div>
                 <div style="color:var(--text-dim); font-size:12px; margin-top:2px;"><i class="fas fa-location-dot" style="margin-right:4px;"></i>${esc(loc || 'Sin ubicaciÃ³n')}</div>
@@ -463,7 +464,7 @@
           <td style="font-size:13px;">${p.area_m2 ? p.area_m2 + ' mÂ²' : '-'}</td>
           <td style="font-size:13px;">${p.rooms || '-'}</td>
           <td style="font-weight:600; color:var(--accent); font-size:13.5px;">${formatPrice(p.price_usd)}</td>
-          <td><span class="nav-badge" style="background:${p.status === 'venta' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${p.status === 'venta' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${p.status || 'venta'}</span></td>
+          <td><span class="nav-badge" style="background:${p.status === 'venta' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${p.status === 'venta' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${esc(p.status || 'venta')}</span></td>
           <td><span class="nav-badge" style="background:${p.is_published ? 'rgba(0,200,120,0.15)' : 'rgba(255,255,255,0.06)'}; color:${p.is_published ? 'var(--success)' : 'var(--text-dim)'}; font-size:11px;">${p.is_published ? 'Publicada' : 'Borrador'}</span></td>
           <td>
             <div style="display:flex; gap:6px; align-items:center;">
@@ -602,9 +603,9 @@
         if (previews && data.image_urls?.length) {
           previews.innerHTML = data.image_urls.map(url => `
             <div class="image-preview-item" style="position:relative; width:80px; height:80px; border-radius:8px; overflow:hidden; border:1px solid var(--border-subtle);">
-              <img src="${url}" alt="" style="width:100%; height:100%; object-fit:cover;" />
-              <input type="hidden" name="existing_image_urls" value="${url}" />
-              <button type="button" onclick="this.parentElement.remove()" style="position:absolute; top:4px; right:4px; width:20px; height:20px; border-radius:50%; background:rgba(0,0,0,0.7); color:#fff; border:none; cursor:pointer; font-size:10px; display:flex; align-items:center; justify-content:center;"><i class="fas fa-times"></i></button>
+              <img src="${esc(url)}" alt="" style="width:100%; height:100%; object-fit:cover;" />
+              <input type="hidden" name="existing_image_urls" value="${esc(url)}" />
+              <button type="button" class="preview-remove" style="position:absolute; top:4px; right:4px; width:20px; height:20px; border-radius:50%; background:rgba(0,0,0,0.7); color:#fff; border:none; cursor:pointer; font-size:10px; display:flex; align-items:center; justify-content:center;"><i class="fas fa-times"></i></button>
             </div>
           `).join('');
         }
@@ -838,7 +839,7 @@
           <td style="font-size:13px; color:var(--text-dim);">-</td>
           <td style="font-size:13px; font-weight:500;">${esc(v.client_name || 'Sin cliente')}</td>
           <td style="font-size:13px; color:var(--text-dim);">-</td>
-          <td><span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : v.status === 'completada' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : v.status === 'completada' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${v.status || 'pendiente'}</span></td>
+          <td><span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : v.status === 'completada' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : v.status === 'completada' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${esc(v.status || 'pendiente')}</span></td>
           <td>
             <div style="display:flex; gap:6px;">
               <button class="btn-action" title="Editar" onclick="window.adminApp.editVisit('${v.id}')"><i class="fas fa-pen"></i></button>
@@ -1115,7 +1116,7 @@
         <tr>
           <td>
             <div style="display:flex; align-items:center; gap:10px;">
-              <img style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid var(--border-subtle);" src="${a.photo_url || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=100&q=60&fit=crop'}" alt="" />
+              <img style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid var(--border-subtle);" src="${esc(a.photo_url || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=100&q=60&fit=crop')}" alt="" />
               <div>
                 <div style="font-weight:600; color:#fff; font-size:13px;">${esc(a.full_name || 'Sin nombre')}</div>
                 <div style="color:var(--text-dim); font-size:11px;">${esc(a.email || '')}</div>
@@ -1123,7 +1124,7 @@
             </div>
           </td>
           <td style="font-size:13px;">${esc(a.matricula || '-')}</td>
-          <td><span class="nav-badge" style="background:${a.status === 'activo' ? 'rgba(0,200,120,0.15)' : 'rgba(255,255,255,0.06)'}; color:${a.status === 'activo' ? 'var(--success)' : 'var(--text-dim)'}; font-size:11px;">${a.status || 'activo'}</span></td>
+          <td><span class="nav-badge" style="background:${a.status === 'activo' ? 'rgba(0,200,120,0.15)' : 'rgba(255,255,255,0.06)'}; color:${a.status === 'activo' ? 'var(--success)' : 'var(--text-dim)'}; font-size:11px;">${esc(a.status || 'activo')}</span></td>
           <td style="font-size:13px;">${esc(a.phone || '-')}</td>
           <td>
             <div style="display:flex; gap:6px;">
@@ -1284,7 +1285,7 @@
           <td><span class="nav-badge" style="background:${o.exclusive ? 'rgba(31,200,195,0.15)' : 'rgba(255,255,255,0.06)'}; color:${o.exclusive ? 'var(--accent)' : 'var(--text-dim)'}; font-size:11px;">${o.exclusive ? 'Exclusivo' : 'Normal'}</span></td>
           <td>
             <div style="font-size:12px; color:var(--text-dim);">${esc(o.bank_name || '-')}</div>
-            <div style="font-size:11px; color:var(--text-dim);">${o.cbu_cvu ? o.cbu_cvu.slice(0, 8) + '...' : ''}</div>
+            <div style="font-size:11px; color:var(--text-dim);">${o.cbu_cvu ? esc(o.cbu_cvu.slice(0, 8)) + '...' : ''}</div>
           </td>
           <td>
             <div style="display:flex; gap:6px;">
@@ -1430,7 +1431,7 @@
         <tr>
           <td style="font-weight:500; color:#fff; font-size:13px;">${esc(u.full_name || u.email || 'Sin nombre')}</td>
           <td style="font-size:13px; color:var(--text-dim);">${esc(u.email || '-')}</td>
-          <td><span class="nav-badge" style="background:${u.role === 'super_admin' ? 'rgba(31,200,195,0.15)' : 'rgba(255,255,255,0.06)'}; color:${u.role === 'super_admin' ? 'var(--accent)' : 'var(--text-dim)'}; font-size:11px;">${roleLabels[u.role] || u.role || 'agente'}</span></td>
+          <td><span class="nav-badge" style="background:${u.role === 'super_admin' ? 'rgba(31,200,195,0.15)' : 'rgba(255,255,255,0.06)'}; color:${u.role === 'super_admin' ? 'var(--accent)' : 'var(--text-dim)'}; font-size:11px;">${esc(roleLabels[u.role] || u.role || 'agente')}</span></td>
           <td><span class="nav-badge" style="background:${u.is_active !== false ? 'rgba(0,200,120,0.15)' : 'rgba(255,60,60,0.15)'}; color:${u.is_active !== false ? 'var(--success)' : 'var(--danger)'}; font-size:11px;">${u.is_active !== false ? 'Activo' : 'Inactivo'}</span></td>
           <td style="color:var(--text-dim); font-size:12px;">${u.created_at ? new Date(u.created_at).toLocaleDateString('es-AR') : '-'}</td>
         </tr>`;
@@ -1486,7 +1487,7 @@
             ? `<button class="btn-action" style="font-size:11px; padding:6px 12px; background:rgba(255,230,0,0.15); color:#FFE600; border:1px solid rgba(255,230,0,0.3);" onclick="window.adminApp.mlConnect()"><i class="fas fa-link"></i> Conectar ML</button>`
             : '';
         const userInfoHtml = ml_connected && ml_user
-          ? `<p style="color:var(--text-muted); font-size:11px; margin-top:6px;"><i class="fas fa-user" style="margin-right:4px;"></i>${ml_user.ml_nickname || ml_user.ml_email || ''}</p>`
+          ? `<p style="color:var(--text-muted); font-size:11px; margin-top:6px;"><i class="fas fa-user" style="margin-right:4px;"></i>${esc(ml_user.ml_nickname || ml_user.ml_email || '')}</p>`
           : '';
         const configPanelHtml = !ml_configured ? `
           <div id="mlConfigPanel" class="ml-config-panel" style="display:none; margin-top:12px; text-align:left;">
@@ -1847,8 +1848,9 @@
         try {
           const { data: { session } } = await window.supabaseClient.auth.getSession();
           if (session && iframe.contentWindow) {
-            const targetOrigin = window.BH_CONFIG?.SUPABASE_URL || 'https://rnldqiwwzhjnurkguihu.supabase.co';
-            iframe.contentWindow.postMessage({ type: 'auth-session', token: session.access_token }, targetOrigin);
+            /* Security: el iframe carga tasacion.html desde ESTE mismo origen; usar window.location.origin.
+               El SUPABASE_URL previo hacia fallar la entrega del token por origin mismatch. */
+            iframe.contentWindow.postMessage({ type: 'auth-session', token: session.access_token }, window.location.origin);
           }
         } catch (_) {}
       };
@@ -1897,8 +1899,8 @@
           <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
           <td style="color:var(--text-muted); font-size:13px;">${date}</td>
           <td>
-            <button class="icon-badge-btn" title="Abrir" onclick="navigateToTasacion('${t.id}','${esc((t.title||'').replace(/'/g,"\\'"))}')"><i class="fas fa-external-link-alt"></i></button>
-            <button class="icon-badge-btn" title="Eliminar" onclick="deleteTasacion('${t.id}')"><i class="fas fa-trash" style="color:var(--danger);"></i></button>
+            <button class="icon-badge-btn" title="Abrir" data-open-tasacion="${esc(t.id)}" data-tasacion-title="${esc(t.title || '')}"><i class="fas fa-external-link-alt"></i></button>
+            <button class="icon-badge-btn" title="Eliminar" data-del-tasacion="${esc(t.id)}"><i class="fas fa-trash" style="color:var(--danger);"></i></button>
           </td>
         </tr>`;
       }).join('');
@@ -1925,6 +1927,30 @@
     }
   }
   window.deleteTasacion = _deleteTasacion;
+
+  /* ------------------------------------------------
+     Security: delegated handlers (sin onclick inline; datos externos viajan en data-* esc()'
+     ------------------------------------------------ */
+  $('#propertiesTableBody')?.addEventListener('click', (e) => {
+    const upd = e.target.closest('[data-ml-update-prop]');
+    if (upd) { window.adminApp.mlUpdateProperty(upd.dataset.mlUpdateProp, upd.dataset.mlListing || ''); return; }
+    const rem = e.target.closest('[data-ml-remove]');
+    if (rem) { window.adminApp.mlRemoveProperty(rem.dataset.mlListing || ''); return; }
+    const pub = e.target.closest('[data-ml-publish]');
+    if (pub) { window.adminApp.mlPublishProperty(pub.dataset.mlPublish); }
+  });
+
+  $('#imagePreviewGrid')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.preview-remove');
+    if (btn) btn.closest('.image-preview-item')?.remove();
+  });
+
+  $('#tasacionesTableBody')?.addEventListener('click', (e) => {
+    const open = e.target.closest('[data-open-tasacion]');
+    if (open) { window.navigateToTasacion(open.dataset.openTasacion, open.dataset.tasacionTitle || ''); return; }
+    const del = e.target.closest('[data-del-tasacion]');
+    if (del) _deleteTasacion(del.dataset.delTasacion);
+  });
 
   async function createNewTasacion() {
     try {
@@ -2211,8 +2237,8 @@
     }
 
     resultsContainer.innerHTML = results.slice(0, 10).map(r => `
-      <div style="display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--border-subtle); transition:background 0.15s;" onmouseenter="this.style.background='rgba(255,255,255,0.04)'" onmouseleave="this.style.background=''" onclick="navigateTo('${r.tab}'); document.getElementById('globalSearchResults').style.display='none'; document.getElementById('globalSearchInput').value='';">
-        <i class="${r.icon}" style="font-size:14px; color:${r.color}; min-width:18px; text-align:center;"></i>
+      <div class="gs-result" data-tab="${esc(r.tab)}" style="display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--border-subtle); transition:background 0.15s;">
+        <i class="${esc(r.icon)}" style="font-size:14px; color:${r.color}; min-width:18px; text-align:center;"></i>
         <div style="flex:1; min-width:0;">
           <div style="color:#fff; font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(r.text)}</div>
           <div style="color:var(--text-dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(r.sub)}</div>
@@ -2229,6 +2255,28 @@
       results.style.display = 'none';
     }
   });
+
+  /* Security: resultados de busqueda sin handlers inline (CSP-safe) */
+  (() => {
+    const gsResults = $('#globalSearchResults');
+    if (!gsResults) return;
+    gsResults.addEventListener('click', (e) => {
+      const item = e.target.closest('.gs-result');
+      if (!item) return;
+      if (item.dataset.tab) navigateTo(item.dataset.tab);
+      gsResults.style.display = 'none';
+      const input = $('#globalSearchInput');
+      if (input) input.value = '';
+    });
+    gsResults.addEventListener('mouseover', (e) => {
+      const item = e.target.closest('.gs-result');
+      if (item) item.style.background = 'rgba(255,255,255,0.04)';
+    });
+    gsResults.addEventListener('mouseout', (e) => {
+      const item = e.target.closest('.gs-result');
+      if (item) item.style.background = '';
+    });
+  })();
 
   /* ------------------------------------------------
      17. SIDEBAR BADGES
