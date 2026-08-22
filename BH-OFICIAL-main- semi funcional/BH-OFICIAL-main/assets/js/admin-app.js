@@ -1,5 +1,5 @@
 ﻿/* ============================================================
-   BIENENHAUS PROPIEDADES â€” Admin Panel App (Luxury v2)
+   BIENENHAUS PROPIEDADES — Admin Panel App (Luxury v2)
    Matches admin.html luxury design system
    ============================================================ */
 
@@ -39,11 +39,11 @@
      ------------------------------------------------ */
   async function initAuth() {
     if (!window.supabaseClient) {
-      console.error('[BH] Supabase client not available â€” CDN may be blocked by browser extension');
+      console.error('[BH] Supabase client not available — CDN may be blocked by browser extension');
       const loginScreen = $('#loginScreen');
       const errorEl = $('#loginError');
       if (loginScreen) loginScreen.classList.remove('is-hidden');
-      if (errorEl) { errorEl.textContent = 'Error: No se pudo conectar. DesactivÃ¡ el bloqueador de anuncios para este sitio.'; errorEl.style.display = 'block'; }
+      if (errorEl) { errorEl.textContent = 'Error: No se pudo conectar. Desactivá el bloqueador de anuncios para este sitio.'; errorEl.style.display = 'block'; }
       hidePreloader();
       return;
     }
@@ -210,16 +210,16 @@
     /* Module title */
     const titles = {
       'tab-dashboard': 'Dashboard Principal',
-      'tab-propiedades': 'GestiÃ³n de Propiedades',
+      'tab-propiedades': 'Gestión de Propiedades',
       'tab-leads': 'CRM & Prospectos',
       'tab-agenda': 'Agenda de Visitas',
       'tab-tasaciones': 'Tasaciones',
       'tab-sitio-web': 'Editor del Sitio Web',
       'tab-portales': 'Portales & APIs',
       'tab-agentes': 'Brokers & Asesores',
-      'tab-propietarios': 'PadrÃ³n de Propietarios',
+      'tab-propietarios': 'Padrón de Propietarios',
       'tab-usuarios': 'Usuarios & Permisos',
-      'tab-configuracion': 'ConfiguraciÃ³n General',
+      'tab-configuracion': 'Configuración General',
     };
     const titleEl = $('#moduleTitle');
     if (titleEl) titleEl.textContent = titles[section] || 'Panel';
@@ -326,7 +326,7 @@
 
     const entries = Object.entries(zones).sort((a, b) => b[1] - a[1]);
     if (!entries.length) {
-      container.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Las zonas se actualizarÃ¡n al cargar propiedades.</p>';
+      container.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Las zonas se actualizarán al cargar propiedades.</p>';
       return;
     }
 
@@ -456,12 +456,12 @@
             <div style="display:flex; align-items:center; gap:12px;">
               <img src="${esc(thumb)}" alt="${esc(p.title || '')}" style="width:52px; height:52px; border-radius:var(--radius-sm); object-fit:cover; border:1px solid var(--border-subtle);" />
               <div>
-                <div style="font-weight:600; color:#fff; font-size:13.5px;">${esc(p.title || 'Sin tÃ­tulo')}${mlBadge}</div>
-                <div style="color:var(--text-dim); font-size:12px; margin-top:2px;"><i class="fas fa-location-dot" style="margin-right:4px;"></i>${esc(loc || 'Sin ubicaciÃ³n')}</div>
+                <div style="font-weight:600; color:#fff; font-size:13.5px;">${esc(p.title || 'Sin título')}${mlBadge}</div>
+                <div style="color:var(--text-dim); font-size:12px; margin-top:2px;"><i class="fas fa-location-dot" style="margin-right:4px;"></i>${esc(loc || 'Sin ubicación')}</div>
               </div>
             </div>
           </td>
-          <td style="font-size:13px;">${p.area_m2 ? p.area_m2 + ' mÂ²' : '-'}</td>
+          <td style="font-size:13px;">${p.area_m2 ? p.area_m2 + ' m²' : '-'}</td>
           <td style="font-size:13px;">${p.rooms || '-'}</td>
           <td style="font-weight:600; color:var(--accent); font-size:13.5px;">${formatPrice(p.price_usd)}</td>
           <td><span class="nav-badge" style="background:${p.status === 'venta' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${p.status === 'venta' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${esc(p.status || 'venta')}</span></td>
@@ -621,7 +621,7 @@
 
   /* Delete property */
   window.adminApp.deleteProperty = async function (id) {
-    if (!confirm('Â¿Eliminar esta propiedad? Esta acciÃ³n no se puede deshacer.')) return;
+    if (!confirm('¿Eliminar esta propiedad? Esta acción no se puede deshacer.')) return;
     try {
       const { error } = await window.supabaseClient.from('properties').delete().eq('id', id);
       if (error) throw error;
@@ -661,7 +661,7 @@
   }
 
   /* ------------------------------------------------
-     7. CRM â€” LEADS PIPELINE
+     7. CRM — LEADS PIPELINE
      ------------------------------------------------ */
   async function loadCRM() {
     if (!window.supabaseClient) return;
@@ -704,7 +704,7 @@
         container.innerHTML = leads.map(l => `
           <div class="lead-card" style="background:var(--surface-2); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:14px; margin-bottom:10px; cursor:pointer;" onclick="window.adminApp.editLead('${l.id}')">
             <div style="font-weight:600; color:#fff; font-size:13px; margin-bottom:4px;">${esc(l.full_name || 'Sin nombre')}</div>
-            <div style="color:var(--text-dim); font-size:11px; margin-bottom:6px;">${esc(l.preferred_type ? l.preferred_type.charAt(0).toUpperCase() + l.preferred_type.slice(1) : '')} ${l.preferred_zone ? 'Â· ' + esc(l.preferred_zone) : ''}</div>
+            <div style="color:var(--text-dim); font-size:11px; margin-bottom:6px;">${esc(l.preferred_type ? l.preferred_type.charAt(0).toUpperCase() + l.preferred_type.slice(1) : '')} ${l.preferred_zone ? '· ' + esc(l.preferred_zone) : ''}</div>
             ${l.budget_usd ? '<div style="color:var(--accent); font-size:12px; font-weight:500;">USD ' + l.budget_usd.toLocaleString('es-AR') + '</div>' : ''}
             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:8px; border-top:1px solid var(--border-subtle);">
               <span style="color:var(--text-dim); font-size:10px;">${new Date(l.created_at).toLocaleDateString('es-AR')}</span>
@@ -796,7 +796,7 @@
 
   /* Delete lead */
   window.adminApp.deleteLead = async function (id) {
-    if (!confirm('Â¿Eliminar este lead?')) return;
+    if (!confirm('¿Eliminar este lead?')) return;
     try {
       const { error } = await window.supabaseClient.from('leads').delete().eq('id', id);
       if (error) throw error;
@@ -926,7 +926,7 @@
 
   /* Delete visit */
   window.adminApp.deleteVisit = async function (id) {
-    if (!confirm('Â¿Eliminar esta visita?')) return;
+    if (!confirm('¿Eliminar esta visita?')) return;
     try {
       const { error } = await window.supabaseClient.from('visits').delete().eq('id', id);
       if (error) throw error;
@@ -1060,7 +1060,7 @@
 
   /* Reset CMS to reload from DB */
   $('#cmsResetBtn')?.addEventListener('click', async () => {
-    if (!confirm('Â¿Restaurar los contenidos desde la base de datos?')) return;
+    if (!confirm('¿Restaurar los contenidos desde la base de datos?')) return;
     await loadCMS();
     showToast('Contenidos restaurados', 'success');
   });
@@ -1074,14 +1074,14 @@
   heroBgFile?.addEventListener('change', async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) { showToast('Solo se permiten imÃ¡genes', 'error'); return; }
+    if (!file.type.startsWith('image/')) { showToast('Solo se permiten imágenes', 'error'); return; }
 
     try {
       heroBgPreview.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Subiendo...</span>';
       if (!window.BH_Cloudinary) { showToast('Cloudinary no disponible', 'error'); return; }
       const url = await window.BH_Cloudinary.uploadImage(file, 'bienenhaus/hero');
       if (heroBgHidden) heroBgHidden.value = url;
-      heroBgPreview.innerHTML = '<img src="' + esc(url) + '" alt="Hero background" /><span style="position:absolute;bottom:2px;right:2px;font-size:9px;background:rgba(0,0,0,.7);padding:2px 5px;border-radius:3px;">Cloudinary âœ“</span>';
+      heroBgPreview.innerHTML = '<img src="' + esc(url) + '" alt="Hero background" /><span style="position:absolute;bottom:2px;right:2px;font-size:9px;background:rgba(0,0,0,.7);padding:2px 5px;border-radius:3px;">Cloudinary ✓</span>';
       heroBgPreview.style.position = 'relative';
       showToast('Imagen subida a Cloudinary', 'success');
     } catch (err) {
@@ -1219,7 +1219,7 @@
 
   /* Delete agent */
   window.adminApp.deleteAgent = async function (id) {
-    if (!confirm('Â¿Eliminar este agente?')) return;
+    if (!confirm('¿Eliminar este agente?')) return;
     try {
       const { error } = await window.supabaseClient.from('agents').delete().eq('id', id);
       if (error) throw error;
@@ -1384,7 +1384,7 @@
 
   /* Delete owner */
   window.adminApp.deleteOwner = async function (id) {
-    if (!confirm('Â¿Eliminar este propietario?')) return;
+    if (!confirm('¿Eliminar este propietario?')) return;
     try {
       const { error } = await window.supabaseClient.from('owners').delete().eq('id', id);
       if (error) throw error;
@@ -1441,9 +1441,9 @@
     }
   }
 
-  /* Create user (placeholder â€” needs Supabase admin invite) */
+  /* Create user (placeholder — needs Supabase admin invite) */
   $('#btnNewUser')?.addEventListener('click', () => {
-    showToast('La creaciÃ³n de usuarios requiere configuraciÃ³n de Supabase Auth Admin', 'info');
+    showToast('La creación de usuarios requiere configuración de Supabase Auth Admin', 'info');
   });
 
   /* ------------------------------------------------
@@ -1610,7 +1610,7 @@
 
   /* Sync all button */
   $('#syncAllBtn')?.addEventListener('click', () => {
-    showToast('SincronizaciÃ³n iniciada â€” prÃ³ximamente', 'info');
+    showToast('Sincronización iniciada — próximamente', 'info');
   });
 
   /* ------------------------------------------------
@@ -1620,7 +1620,7 @@
 
   async function mlApiCall(action, body = {}) {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
-    if (!session) throw new Error('No hay sesiÃ³n activa');
+    if (!session) throw new Error('No hay sesión activa');
 
     const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-api?action=${encodeURIComponent(action)}`, {
       method: 'POST',
@@ -1652,12 +1652,12 @@
     }
   }
 
-  /* Connect to Mercado Libre â€” opens OAuth popup via ml-auth Edge Function */
+  /* Connect to Mercado Libre — opens OAuth popup via ml-auth Edge Function */
   window.adminApp.mlConnect = async function () {
     try {
-      showToast('Abriendo conexiÃ³n con Mercado Libre...', 'info');
+      showToast('Abriendo conexión con Mercado Libre...', 'info');
       const { data: { session } } = await window.supabaseClient.auth.getSession();
-      if (!session) throw new Error('No hay sesiÃ³n activa');
+      if (!session) throw new Error('No hay sesión activa');
 
       const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-auth`, {
         method: 'POST',
@@ -1667,7 +1667,7 @@
         },
       });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Error al generar URL de autenticaciÃ³n');
+      if (!res.ok) throw new Error(result.error || 'Error al generar URL de autenticación');
       const authUrl = result.authUrl;
 
       /* Open popup for OAuth flow */
@@ -1682,7 +1682,7 @@
         if (event.data?.type === 'ML_AUTH_SUCCESS') {
           window.removeEventListener('message', handler);
           if (popup && !popup.closed) popup.close();
-          showToast('Â¡Cuenta de Mercado Libre conectada exitosamente!', 'success');
+          showToast('¡Cuenta de Mercado Libre conectada exitosamente!', 'success');
           ml_connected = true;
           ml_user = event.data.user || null;
           loadPortals();
@@ -1694,16 +1694,16 @@
       };
       window.addEventListener('message', handler);
 
-      /* Timeout â€” close listener after 2 minutes */
+      /* Timeout — close listener after 2 minutes */
       setTimeout(() => { window.removeEventListener('message', handler); }, 120000);
     } catch (err) {
-      showToast('Error al iniciar conexiÃ³n ML: ' + err.message, 'error');
+      showToast('Error al iniciar conexión ML: ' + err.message, 'error');
     }
   };
 
   /* Disconnect from Mercado Libre */
   window.adminApp.mlDisconnect = async function () {
-    if (!confirm('Â¿Desconectar la cuenta de Mercado Libre? Se perderÃ¡n las credenciales de acceso.')) return;
+    if (!confirm('¿Desconectar la cuenta de Mercado Libre? Se perderán las credenciales de acceso.')) return;
     try {
       await mlApiCall('disconnect');
       ml_connected = false;
@@ -1718,13 +1718,13 @@
 
   /* Publish a property to Mercado Libre */
   window.adminApp.mlPublishProperty = async function (propertyId) {
-    if (!ml_connected) { showToast('ConectÃ¡ tu cuenta de Mercado Libre primero', 'warning'); return; }
-    if (!confirm('Â¿Publicar esta propiedad en Mercado Libre?')) return;
+    if (!ml_connected) { showToast('Conectá tu cuenta de Mercado Libre primero', 'warning'); return; }
+    if (!confirm('¿Publicar esta propiedad en Mercado Libre?')) return;
 
     try {
       showToast('Publicando en Mercado Libre...', 'info');
       const result = await mlApiCall('publish', { property_id: propertyId });
-      showToast('Â¡Propiedad publicada en Mercado Libre! ID: ' + (result.listing_id || ''), 'success');
+      showToast('¡Propiedad publicada en Mercado Libre! ID: ' + (result.listing_id || ''), 'success');
       loadProperties();
     } catch (err) {
       showToast('Error al publicar en ML: ' + err.message, 'error');
@@ -1733,11 +1733,11 @@
 
   /* Update a property listing on Mercado Libre */
   window.adminApp.mlUpdateProperty = async function (propertyId, listingId) {
-    if (!confirm('Â¿Actualizar esta propiedad en Mercado Libre?')) return;
+    if (!confirm('¿Actualizar esta propiedad en Mercado Libre?')) return;
     try {
       showToast('Actualizando en Mercado Libre...', 'info');
       await mlApiCall('update', { property_id: propertyId, listing_id: listingId });
-      showToast('Â¡Propiedad actualizada en Mercado Libre!', 'success');
+      showToast('¡Propiedad actualizada en Mercado Libre!', 'success');
       loadProperties();
     } catch (err) {
       showToast('Error al actualizar en ML: ' + err.message, 'error');
@@ -1746,7 +1746,7 @@
 
   /* Remove a property listing from Mercado Libre */
   window.adminApp.mlRemoveProperty = async function (listingId) {
-    if (!confirm('Â¿Eliminar esta propiedad de Mercado Libre?')) return;
+    if (!confirm('¿Eliminar esta propiedad de Mercado Libre?')) return;
     try {
       showToast('Eliminando de Mercado Libre...', 'info');
       await mlApiCall('remove', { listing_id: listingId });
@@ -1759,8 +1759,8 @@
 
   /* Import properties from Mercado Libre */
   window.adminApp.mlImportFromML = async function () {
-    if (!ml_connected) { showToast('ConectÃ¡ tu cuenta de Mercado Libre primero', 'warning'); return; }
-    if (!confirm('Â¿Importar propiedades desde Mercado Libre? Se crearÃ¡n como borradores en el sistema.')) return;
+    if (!ml_connected) { showToast('Conectá tu cuenta de Mercado Libre primero', 'warning'); return; }
+    if (!confirm('¿Importar propiedades desde Mercado Libre? Se crearán como borradores en el sistema.')) return;
 
     try {
       showToast('Importando propiedades desde Mercado Libre...', 'info');
@@ -1776,7 +1776,7 @@
   /* --- ML Config: get/save credentials from portal_settings --- */
   async function mlConfigGet() {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
-    if (!session) throw new Error('No hay sesiÃ³n activa');
+    if (!session) throw new Error('No hay sesión activa');
     const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-config`, {
       method: 'GET',
       headers: { 'Authorization': `Bearer ${session.access_token}` },
@@ -1788,7 +1788,7 @@
 
   async function mlConfigSave(appId, secretKey) {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
-    if (!session) throw new Error('No hay sesiÃ³n activa');
+    if (!session) throw new Error('No hay sesión activa');
     const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-config`, {
       method: 'POST',
       headers: {
@@ -1809,7 +1809,7 @@
     const secret = (secretInput?.value || '').trim();
 
     if (!appId || !secret) {
-      showToast('CompletÃ¡ ambos campos: APP_ID y SECRET_KEY', 'warning');
+      showToast('Completá ambos campos: APP_ID y SECRET_KEY', 'warning');
       return;
     }
 
@@ -1817,7 +1817,7 @@
       showToast('Guardando credenciales de Mercado Libre...', 'info');
       await mlConfigSave(appId, secret);
       ml_configured = true;
-      showToast('Credenciales guardadas. Ahora podÃ©s conectar tu cuenta.', 'success');
+      showToast('Credenciales guardadas. Ahora podés conectar tu cuenta.', 'success');
       loadPortals();
     } catch (err) {
       showToast('Error al guardar credenciales: ' + err.message, 'error');
@@ -1895,7 +1895,7 @@
         const statusClass = t.status === 'finalized' ? 'active' : 'pending';
         const date = t.created_at ? new Date(t.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
         return `<tr>
-          <td style="font-weight:600; color:#fff;">${esc(t.title || 'Sin tÃ­tulo')}</td>
+          <td style="font-weight:600; color:#fff;">${esc(t.title || 'Sin título')}</td>
           <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
           <td style="color:var(--text-muted); font-size:13px;">${date}</td>
           <td>
@@ -1915,11 +1915,11 @@
   };
 
   async function _deleteTasacion(id) {
-    if (!confirm('Â¿Eliminar esta tasaciÃ³n permanentemente?')) return;
+    if (!confirm('¿Eliminar esta tasación permanentemente?')) return;
     try {
       const { error } = await window.supabaseClient.from('tasaciones').delete().eq('id', id);
       if (error) throw error;
-      showToast('TasaciÃ³n eliminada', 'success');
+      showToast('Tasación eliminada', 'success');
       loadTasaciones();
       updateSidebarBadges();
     } catch (err) {
@@ -1955,17 +1955,17 @@
   async function createNewTasacion() {
     try {
       const userId = currentUser?.id;
-      if (!userId) { showToast('No hay sesiÃ³n activa', 'error'); return; }
+      if (!userId) { showToast('No hay sesión activa', 'error'); return; }
       const { data, error } = await window.supabaseClient
         .from('tasaciones')
-        .insert({ title: 'Nueva TasaciÃ³n', status: 'draft', created_by: userId })
+        .insert({ title: 'Nueva Tasación', status: 'draft', created_by: userId })
         .select('id')
         .single();
       if (error) throw error;
-      showTasacionEditor(data.id, 'Nueva TasaciÃ³n');
+      showTasacionEditor(data.id, 'Nueva Tasación');
       updateSidebarBadges();
     } catch (err) {
-      showToast('Error al crear tasaciÃ³n: ' + err.message, 'error');
+      showToast('Error al crear tasación: ' + err.message, 'error');
     }
   }
 
@@ -2053,7 +2053,7 @@
     if (!window.supabaseClient) return;
     var { data, error } = await window.supabaseClient.from('leads').select('*').order('created_at', { ascending: false });
     if (error) { showToast('Error exportando: ' + error.message, 'error'); return; }
-    var headers = ['ID', 'Nombre', 'Email', 'TelÃ©fono', 'Mensaje', 'Propiedad', 'Estado', 'Fecha'];
+    var headers = ['ID', 'Nombre', 'Email', 'Teléfono', 'Mensaje', 'Propiedad', 'Estado', 'Fecha'];
     var rows = data.map(function(l) {
       return [l.id, l.name, l.email, l.phone, l.message, l.property_title, l.status, l.created_at];
     });
@@ -2066,7 +2066,7 @@
     if (!window.supabaseClient) return;
     var { data, error } = await window.supabaseClient.from('properties').select('*').order('created_at', { ascending: false });
     if (error) { showToast('Error exportando: ' + error.message, 'error'); return; }
-    var headers = ['ID', 'TÃ­tulo', 'Tipo', 'Zona', 'DirecciÃ³n', 'Precio USD', 'Dormitorios', 'BaÃ±os', 'mÂ²', 'Estado', 'Publicada', 'Fecha'];
+    var headers = ['ID', 'Título', 'Tipo', 'Zona', 'Dirección', 'Precio USD', 'Dormitorios', 'Baños', 'm²', 'Estado', 'Publicada', 'Fecha'];
     var rows = data.map(function(p) {
       return [p.id, p.title, p.property_type, p.zone, p.address, p.price_usd, p.bedrooms, p.bathrooms, p.area_m2, p.status, p.published, p.created_at];
     });
@@ -2079,7 +2079,7 @@
     if (!window.supabaseClient) return;
     var { data, error } = await window.supabaseClient.from('tasaciones').select('*').order('created_at', { ascending: false });
     if (error) { showToast('Error exportando: ' + error.message, 'error'); return; }
-    var headers = ['ID', 'TÃ­tulo', 'Estado', 'Fecha creaciÃ³n', 'Ãšltima ediciÃ³n'];
+    var headers = ['ID', 'Título', 'Estado', 'Fecha creación', 'Última edición'];
     var rows = data.map(function(t) {
       return [t.id, t.title, t.status, t.created_at, t.updated_at];
     });
@@ -2218,7 +2218,7 @@
     const results = [];
 
     cache.properties.filter(p => [p.title, p.zone, p.address].some(f => f && f.toLowerCase().includes(q))).forEach(p => {
-      results.push({ icon: 'fas fa-home', text: p.title || 'Sin tÃ­tulo', sub: [p.zone, p.address].filter(Boolean).join(', '), tab: 'tab-propiedades', color: 'var(--accent)' });
+      results.push({ icon: 'fas fa-home', text: p.title || 'Sin título', sub: [p.zone, p.address].filter(Boolean).join(', '), tab: 'tab-propiedades', color: 'var(--accent)' });
     });
     cache.leads.filter(l => [l.full_name, l.email, l.phone].some(f => f && f.toLowerCase().includes(q))).forEach(l => {
       results.push({ icon: 'fas fa-user', text: l.full_name || 'Sin nombre', sub: l.email || l.phone || '', tab: 'tab-leads', color: '#3B82F6' });
