@@ -592,6 +592,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
         status: formData.get('status') || 'venta',
         is_published: formData.get('is_published') === 'on',
         featured: formData.get('featured') === 'on',
+        created_by: currentUser?.id || null, // para trigger property_code
       };
 
       /* Image uploads */
