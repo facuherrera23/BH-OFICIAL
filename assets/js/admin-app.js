@@ -3424,38 +3424,69 @@ let dayCount = 1;
       _chatUnreadTotal = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
       updateSidebarChatBadge();
 
-      listEl.innerHTML = conversations.map(c => {
-        const acc = accounts?.find(a => a.zernio_account_id === c.account_id);
+      // Build with DOM to avoid innerHTML sink — all dynamic values already escaped via esc()
+      // Map accounts for O(1) lookup instead of array.find() in loop
+      const accountById = new Map((accounts || []).map(a => [a.zernio_account_id, a]));
+      listEl.innerHTML = '';
+      const frag = document.createDocumentFragment();
+      for (const c of conversations) {
+        const acc = accountById.get(c.account_id);
         const platformIcon = getPlatformIcon(acc?.platform);
         const platformLabel = acc?.platform || '—';
         const timeAgo = c.last_message_at ? formatRelativeTime(c.last_message_at) : '—';
-        const preview = esc(c.last_message_preview || '');
         const unread = c.unread_count || 0;
         const isActive = _chatCurrentConv?.id === c.id;
 
-        return `
-          <div class="chat-conv-item ${isActive ? 'active' : ''}" data-conv-id="${esc(c.id)}" style="
-            display:flex; gap:10px; padding:12px; border-radius:10px; cursor:pointer;
-            transition:background 0.15s; border:1px solid ${isActive ? 'var(--accent)' : 'transparent'};
-            background:${isActive ? 'rgba(31,200,195,0.1)' : 'rgba(255,255,255,0.02)'};
-          ">
-            <div style="width:40px; height:40px; border-radius:50%; background:rgba(31,200,195,0.15); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-              ${platformIcon}
-            </div>
-            <div style="flex:1; min-width:0;">
-              <div style="display:flex; justify-content:space-between; gap:8px;">
-                <span style="font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(c.contact_name || 'Sin nombre')}</span>
-                <span style="font-size:11px; color:var(--text-dim); white-space:nowrap;">${timeAgo}</span>
-              </div>
-              <div style="display:flex; justify-content:space-between; gap:8px; margin-top:4px;">
-                <span style="font-size:12px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(c.last_message_preview || '')}</span>
-                <span style="font-size:10px; color:var(--text-dim); white-space:nowrap;">${platformLabel}</span>
-              </div>
-            </div>
-            ${c.unread_count > 0 ? `<span class="chat-unread-badge" style="background:var(--accent); color:#fff; font-size:11px; font-weight:700; padding:2px 6px; border-radius:10px; min-width:18px; text-align:center;">${c.unread_count}</span>` : ''}
-          </div>
+        const item = document.createElement('div');
+        item.className = `chat-conv-item ${isActive ? 'active' : ''}`;
+        item.dataset.convId = c.id;
+        item.style.cssText = `
+          display:flex; gap:10px; padding:12px; border-radius:10px; cursor:pointer;
+          transition:background 0.15s; border:1px solid ${isActive ? 'var(--accent)' : 'transparent'};
+          background:${isActive ? 'rgba(31,200,195,0.1)' : 'rgba(255,255,255,0.02)'};
         `;
-      }).join('');
+
+        const iconWrap = document.createElement('div');
+        iconWrap.style.cssText = 'width:40px; height:40px; border-radius:50%; background:rgba(31,200,195,0.15); display:flex; align-items:center; justify-content:center; flex-shrink:0;';
+        iconWrap.innerHTML = platformIcon;
+
+        const contentWrap = document.createElement('div');
+        contentWrap.style.cssText = 'flex:1; min-width:0;';
+
+        const nameRow = document.createElement('div');
+        nameRow.style.cssText = 'display:flex; justify-content:space-between; gap:8px;';
+        const nameEl = document.createElement('span');
+        nameEl.style.cssText = 'font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+        nameEl.textContent = c.contact_name || 'Sin nombre';
+        const timeEl = document.createElement('span');
+        timeEl.style.cssText = 'font-size:11px; color:var(--text-dim); white-space:nowrap;';
+        timeEl.textContent = timeAgo;
+        nameRow.append(nameEl, timeEl);
+
+        const previewRow = document.createElement('div');
+        previewRow.style.cssText = 'display:flex; justify-content:space-between; gap:8px; margin-top:4px;';
+        const previewEl = document.createElement('span');
+        previewEl.style.cssText = 'font-size:12px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+        previewEl.textContent = c.last_message_preview || '';
+        const platformEl = document.createElement('span');
+        platformEl.style.cssText = 'font-size:10px; color:var(--text-dim); white-space:nowrap;';
+        platformEl.textContent = platformLabel;
+        previewRow.append(previewEl, platformEl);
+
+        contentWrap.append(nameRow, previewRow);
+        item.append(iconWrap, contentWrap);
+
+        if (unread > 0) {
+          const badge = document.createElement('span');
+          badge.className = 'chat-unread-badge';
+          badge.style.cssText = 'background:var(--accent); color:#fff; font-size:11px; font-weight:700; padding:2px 6px; border-radius:10px; min-width:18px; text-align:center;';
+          badge.textContent = String(unread);
+          item.append(badge);
+        }
+
+        frag.appendChild(item);
+      }
+      listEl.appendChild(frag);
 
       // Click handlers
       $$('#chatConversationsList .chat-conv-item').forEach(item => {
@@ -3576,9 +3607,18 @@ let dayCount = 1;
         composerTextarea.value = '';
       } catch (err) {
         showToast('Error enviando: ' + err.message, 'error');
-        // Marcar error en burbuja temporal
+        // Marcar error en burbuja temporal - usar DOM, no innerHTML
         const tempEl = messagesEl.querySelector('[data-temp-id]');
-        if (tempEl) tempEl.innerHTML = tempEl.innerHTML.replace('sending', 'failed') + ' <span style="color:var(--danger);">⚠</span>';
+        if (tempEl) {
+          const bubble = tempEl.querySelector('.chat-bubble div[style*="word-wrap"]') || tempEl.firstElementChild;
+          if (bubble && bubble.textContent.includes('sending')) {
+            bubble.textContent = bubble.textContent.replace('sending', 'failed');
+          }
+          const warnSpan = document.createElement('span');
+          warnSpan.style.cssText = 'color:var(--danger); margin-left:6px;';
+          warnSpan.textContent = '⚠';
+          tempEl.appendChild(warnSpan);
+        }
       }
     }
 

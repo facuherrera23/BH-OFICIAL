@@ -209,26 +209,34 @@ async function actListAccounts(): Promise<unknown> {
     const data = await res.json();
     const accounts = Array.isArray(data) ? data : (data.data ?? []);
 
-    // Upsert espejo
-    for (const acc of accounts) {
-        const platform = String(acc.platform ?? '');
-        if (!['instagram','facebook','whatsapp','telegram','twitter','bluesky','reddit','slack'].includes(platform)) continue;
-        await supabase.from('zernio_accounts').upsert({
-            zernio_account_id: String(acc.id ?? ''),
-            platform,
-            username: String(acc.username ?? acc.name ?? ''),
-            status: 'connected',
-            raw: acc,
-            last_synced_at: new Date().toISOString(),
-        }, { onConflict: 'zernio_account_id' });
+    // Upsert espejo — batch para evitar await en loop
+    const now = new Date().toISOString();
+    const validAccounts = accounts
+        .map(acc => {
+            const platform = String(acc.platform ?? '');
+            if (!['instagram','facebook','whatsapp','telegram','twitter','bluesky','reddit','slack'].includes(platform)) return null;
+            return {
+                zernio_account_id: String(acc.id ?? ''),
+                platform,
+                username: String(acc.username ?? acc.name ?? ''),
+                status: 'connected',
+                raw: acc,
+                last_synced_at: now,
+            };
+        })
+        .filter((a): a is NonNullable<typeof a> => a !== null);
+
+    if (validAccounts.length > 0) {
+        await supabase.from('zernio_accounts').upsert(validAccounts, { onConflict: 'zernio_account_id' });
     }
-    return { ok: true, count: accounts.length };
+    return { ok: true, count: validAccounts.length };
 }
 
 async function actBackfillConversations(): Promise<unknown> {
-    // Paginación simple: 50 por página, max 200
+    // Paginación simple: 50 por página, max 200 — batch upserts para evitar await en loop
     let cursor: string | null = null;
     let total = 0;
+    const validPlatforms = ['instagram','facebook','whatsapp','telegram','twitter','bluesky','reddit','slack'];
     for (let page = 0; page < 4; page++) {
         const url = `/inbox/conversations${cursor ? `?cursor=${cursor}` : ''}`;
         const res = await zernioRequest(url);
@@ -237,30 +245,47 @@ async function actBackfillConversations(): Promise<unknown> {
         const items = data.data ?? data ?? [];
         if (!Array.isArray(items) || items.length === 0) break;
 
-        for (const c of items) {
-            const platform = String(c.platform ?? '');
-            if (!['instagram','facebook','whatsapp','telegram','twitter','bluesky','reddit','slack'].includes(platform)) continue;
-            await supabase.from('zernio_accounts').upsert({
-                zernio_account_id: String(c.account_id ?? ''),
-                platform,
-                username: String(c.username ?? ''),
-                status: 'connected',
-            }, { onConflict: 'zernio_account_id' });
+        // Batch accounts
+        const accountsToUpsert = items
+            .map(c => {
+                const platform = String(c.platform ?? '');
+                if (!validPlatforms.includes(platform)) return null;
+                return {
+                    zernio_account_id: String(c.account_id ?? ''),
+                    platform,
+                    username: String(c.username ?? ''),
+                    status: 'connected',
+                };
+            })
+            .filter((a): a is NonNullable<typeof a> => a !== null);
 
-            await supabase.from('zernio_conversations').upsert({
-                id: String(c.id ?? ''),
-                account_id: String(c.account_id ?? ''),
-                contact_name: String(c.contact_name ?? c.name ?? ''),
-                contact_handle: String(c.contact_handle ?? c.handle ?? ''),
-                platform,
-                last_message_at: c.last_message_at ? new Date(c.last_message_at).toISOString() : null,
-                last_message_preview: String(c.last_message_preview ?? ''),
-                unread_count: c.unread_count ?? 0,
-                status: c.status ?? 'open',
-                raw: c,
-            }, { onConflict: 'id' });
-            total++;
+        // Batch conversations
+        const conversationsToUpsert = items
+            .map(c => {
+                const platform = String(c.platform ?? '');
+                if (!validPlatforms.includes(platform)) return null;
+                return {
+                    id: String(c.id ?? ''),
+                    account_id: String(c.account_id ?? ''),
+                    contact_name: String(c.contact_name ?? c.name ?? ''),
+                    contact_handle: String(c.contact_handle ?? c.handle ?? ''),
+                    platform,
+                    last_message_at: c.last_message_at ? new Date(c.last_message_at).toISOString() : null,
+                    last_message_preview: String(c.last_message_preview ?? ''),
+                    unread_count: c.unread_count ?? 0,
+                    status: c.status ?? 'open',
+                    raw: c,
+                };
+            })
+            .filter((a): a is NonNullable<typeof a> => a !== null);
+
+        if (accountsToUpsert.length > 0) {
+            await supabase.from('zernio_accounts').upsert(accountsToUpsert, { onConflict: 'zernio_account_id' });
         }
+        if (conversationsToUpsert.length > 0) {
+            await supabase.from('zernio_conversations').upsert(conversationsToUpsert, { onConflict: 'id' });
+        }
+        total += conversationsToUpsert.length;
 
         cursor = data.next_cursor ?? data.cursor ?? null;
         if (!cursor) break;
@@ -282,19 +307,22 @@ async function actBackfillMessages(body: Record<string, unknown>): Promise<unkno
         const items = data.data ?? data ?? [];
         if (!Array.isArray(items) || items.length === 0) break;
 
-        for (const m of items) {
-            await supabase.from('zernio_messages').upsert({
-                conversation_id: conversationId,
-                direction: String(m.direction ?? (m.from_me ? 'out' : 'in')),
-                platform_message_id: String(m.id ?? ''),
-                body: String(m.text ?? m.body ?? ''),
-                attachment: m.attachment ?? null,
-                status: String(m.status ?? 'received'),
-                zernio_event_id: null,
-                occurred_at: m.created_at ? new Date(m.created_at).toISOString() : new Date().toISOString(),
-            }, { onConflict: 'id' });
-            total++;
+        // Batch messages — evita await en loop
+        const messagesToUpsert = items.map(m => ({
+            conversation_id: conversationId,
+            direction: String(m.direction ?? (m.from_me ? 'out' : 'in')),
+            platform_message_id: String(m.id ?? ''),
+            body: String(m.text ?? m.body ?? ''),
+            attachment: m.attachment ?? null,
+            status: String(m.status ?? 'received'),
+            zernio_event_id: null,
+            occurred_at: m.created_at ? new Date(m.created_at).toISOString() : new Date().toISOString(),
+        }));
+
+        if (messagesToUpsert.length > 0) {
+            await supabase.from('zernio_messages').upsert(messagesToUpsert, { onConflict: 'id' });
         }
+        total += messagesToUpsert.length;
 
         cursor = data.next_cursor ?? data.cursor ?? null;
         if (!cursor) break;
