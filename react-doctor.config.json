@@ -1,0 +1,5 @@
+{
+  "rules": {
+    "deslop/unused-file": "off"
+  }
+}
