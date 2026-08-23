@@ -296,6 +296,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
       'tab-tasaciones': 'Tasaciones',
       'tab-sitio-web': 'Editor del Sitio Web',
       'tab-portales': 'Portales & APIs',
+      'tab-chat-redes': 'Chat Redes Sociales',
       'tab-agentes': 'Brokers & Asesores',
       'tab-propietarios': 'Padrón de Propietarios',
       'tab-usuarios': 'Usuarios & Permisos',
@@ -311,12 +312,13 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
 
     /* Load data */
     const loaders = {
-      'tab-dashboard': loadDashboard,
+'tab-dashboard': loadDashboard,
       'tab-propiedades': loadProperties,
       'tab-leads': loadCRM,
       'tab-agenda': loadVisits,
       'tab-tasaciones': loadTasaciones,
       'tab-sitio-web': loadCMS,
+      'tab-chat-redes': loadChatRedes,
       'tab-agentes': loadAgents,
       'tab-propietarios': loadOwners,
       'tab-usuarios': loadUsers,
@@ -1633,7 +1635,8 @@ let dayCount = 1;
     social_instagram: { section: 'social',  path: 'instagram' },
     social_facebook:  { section: 'social',  path: 'facebook' },
     social_linkedin:  { section: 'social',  path: 'linkedin' },
-    social_youtube:   { section: 'social',  path: 'youtube' }
+    social_youtube:   { section: 'social',  path: 'youtube' },
+    zernio_api_key:   { section: 'zernio',  path: 'api_key' }
   };
 
   function applyCfgGuard() {
@@ -1656,15 +1659,20 @@ let dayCount = 1;
   async function loadConfig() {
     if (!window.supabaseClient) return;
     try {
-      const [{ data: rows, error }, prefRes] = await Promise.all([
+      const [{ data: rows, error }, prefRes, zernioRes] = await Promise.all([
         window.supabaseClient.from('site_content').select('*').in('section_key', ['contact', 'footer', 'social']),
-        window.supabaseClient.from('app_settings').select('*')
+        window.supabaseClient.from('app_settings').select('*'),
+        window.supabaseClient.from('zernio_config').select('value').eq('key', 'api_key').maybeSingle()
       ]);
       if (error) throw error;
       if (!prefRes.error && Array.isArray(prefRes.data)) {
         const prefs = prefRes.data.find(r => r.key === 'preferences');
         const rateInput = $('#cfg_usd_rate');
         if (prefs?.value && typeof prefs.value.usd_rate === 'number' && rateInput) rateInput.value = prefs.value.usd_rate;
+      }
+      if (zernioRes.data?.value?.key) {
+        const keyInput = $('#cfg_zernio_api_key');
+        if (keyInput) keyInput.value = zernioRes.data.value.key;
       }
       cfgData = {};
       (rows || []).forEach(item => { cfgData[item.section_key] = item; });
@@ -1699,6 +1707,17 @@ let dayCount = 1;
       });
 
       await Promise.all(Object.entries(updatesBySection).map(async ([sectionKey, newFields]) => {
+        if (sectionKey === 'zernio') {
+          // Guardar Zernio API Key en zernio_config
+          const apiKey = newFields.api_key?.trim();
+          if (apiKey) {
+            const { error } = await window.supabaseClient
+              .from('zernio_config')
+              .upsert({ key: 'api_key', value: { key: apiKey }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+            if (error) throw error;
+          }
+          return;
+        }
         const existing = cfgData[sectionKey];
         const mergedContent = { ...(existing?.content || {}), ...newFields };
         if (existing) {
@@ -1752,9 +1771,48 @@ let dayCount = 1;
     info.innerHTML = '<strong style="color:#fff;">' + esc(currentUser?.email || '—') + '</strong> · rol: ' + esc(currentProfile?.role || '—');
   }
 
-  $('#cfgSignOutBtn')?.addEventListener('click', async () => {
-    if (!window.confirm('¿Cerrar la sesión actual?')) return;
-    await window.supabaseClient.auth.signOut();
+  /* Zernio Config UI helpers */
+  $('#toggleZernioKey')?.addEventListener('click', () => {
+    const input = $('#cfg_zernio_api_key');
+    const icon = $('#toggleZernioKey i');
+    if (!input || !icon) return;
+    if (input.type === 'password') {
+      input.type = 'text';
+      icon.classList.replace('fa-eye', 'fa-eye-slash');
+    } else {
+      input.type = 'password';
+      icon.classList.replace('fa-eye-slash', 'fa-eye');
+    }
+  });
+
+  $('#btnTestZernio')?.addEventListener('click', async () => {
+    const btn = $('#btnTestZernio');
+    const statusEl = $('#zernioTestStatus');
+    const keyInput = $('#cfg_zernio_api_key');
+    const apiKey = keyInput?.value?.trim();
+    if (!apiKey) { statusEl.textContent = '⚠ Ingresá tu API Key primero'; statusEl.style.color = 'var(--warning)'; return; }
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Probando...';
+    statusEl.textContent = 'Conectando...';
+    statusEl.style.color = 'var(--text-muted)';
+    try {
+      const session = await window.supabaseClient.auth.getSession();
+      const res = await fetch('/functions/v1/zernio-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.data.session?.access_token}` },
+        body: JSON.stringify({ action: 'list_accounts' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error en respuesta');
+      statusEl.textContent = '✓ Conectado · ' + data.count + ' cuenta(s) sincronizada(s)';
+      statusEl.style.color = 'var(--success)';
+    } catch (err) {
+      statusEl.textContent = '✗ ' + err.message;
+      statusEl.style.color = 'var(--danger)';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-plug"></i> Probar Conexión Zernio';
+    }
   });
 
   /* ------------------------------------------------
@@ -3203,6 +3261,443 @@ let dayCount = 1;
     });
   });
 
+  /* ------------------------------------------------
+     16.5. CHAT REDES SOCIALES (Zernio Inbox)
+     ------------------------------------------------ */
+  let _chatRealtimeChannel = null;
+  let _chatCurrentConv = null;
+  let _chatPlatformFilter = 'all';
+  let _chatSearchTerm = '';
+  let _chatUnreadTotal = 0;
+
+  async function loadChatRedes() {
+    if (!currentUser || !window.supabaseClient) return;
+    if (currentProfile?.role !== 'super_admin') {
+      showToast('Acceso denegado: solo super_admin', 'error');
+      navigateTo('tab-dashboard');
+      return;
+    }
+
+    // Referencias DOM
+    const searchEl = $('#chatSearch');
+    const listEl = $('#chatConversationsList');
+    const messagesEl = $('#chatMessages');
+    const headerEl = $('#chatHeader');
+    const composerEl = $('.chat-composer');
+    const contactNameEl = $('.chat-contact-name');
+    const platformBadgeEl = $('.chat-platform-badge');
+    const accountBadgeEl = $('.chat-account-badge');
+    const syncBtn = $('#btnSyncChat');
+    const syncStatusEl = $('#chatSyncStatus');
+    const markReadBtn = $('#btnMarkRead');
+    const composerTextarea = $('#chatComposer');
+    const sendBtn = $('#btnSendMessage');
+    const filterChips = $$('.filter-chip');
+    const composerHint = $('#composerPlatformHint');
+
+    // Reset estado
+    _chatCurrentConv = null;
+    headerEl.style.display = 'none';
+    composerEl.style.display = 'none';
+    messagesEl.innerHTML = '<div class="chat-empty" style="text-align:center; padding:60px 20px; color:var(--text-dim); flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;"><i class="fas fa-comments" style="font-size:48px; opacity:0.3;"></i><p>Selecciona una conversación para comenzar</p></div>';
+
+    // Cargar cuentas para filtro
+    const { data: accounts } = await window.supabaseClient
+      .from('zernio_accounts')
+      .select('zernio_account_id, platform, username, status')
+      .eq('status', 'connected');
+
+    // Eventos: búsqueda
+    searchEl?.addEventListener('input', debounce(() => {
+      _chatSearchTerm = searchEl.value.toLowerCase().trim();
+      renderConversations();
+    }, 150));
+
+    // Eventos: filtros plataforma
+    filterChips.forEach(chip => {
+      chip.addEventListener('click', () => {
+        filterChips.forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        _chatPlatformFilter = chip.dataset.platform;
+        renderConversations();
+      });
+    });
+
+    // Evento: sincronizar
+    syncBtn?.addEventListener('click', async () => {
+      syncBtn.disabled = true;
+      syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sincronizando...';
+      syncStatusEl.textContent = 'Sincronizando...';
+
+      try {
+        // 1. Listar cuentas desde Zernio
+        const accountsRes = await fetch('/functions/v1/zernio-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await window.supabaseClient.auth.getSession()).data.session?.access_token}` },
+          body: JSON.stringify({ action: 'list_accounts' })
+        });
+        const accountsData = await accountsRes.json();
+        if (!accountsRes.ok) throw new Error(accountsData.error || 'Error listando cuentas');
+
+        // 2. Backfill conversaciones
+        const convRes = await fetch('/functions/v1/zernio-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await window.supabaseClient.auth.getSession()).data.session?.access_token}` },
+          body: JSON.stringify({ action: 'backfill_conversations' })
+        });
+        const convData = await convRes.json();
+        if (!convRes.ok) throw new Error(convData.error || 'Error backfill conversaciones');
+
+        // 3. Backfill mensajes (opcional, más lento)
+        // TODO: podríamos backfill mensajes de conversaciones recientes
+
+        syncStatusEl.textContent = `OK: ${accountsData.count} cuentas, ${convData.total} conversaciones`;
+        showToast('Sincronización completada', 'success');
+        loadConversations();
+      } catch (err) {
+        syncStatusEl.textContent = 'Error: ' + err.message;
+        showToast('Error en sincronización: ' + err.message, 'error');
+      } finally {
+        syncBtn.disabled = false;
+        syncBtn.innerHTML = '<i class="fas fa-arrows-rotate"></i> Sincronizar Ahora';
+      }
+    });
+
+    // Cargar conversaciones inicial
+    await loadConversations();
+
+    // Realtime
+    setupRealtime();
+
+    // Eventos composer
+    composerTextarea?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    sendBtn?.addEventListener('click', sendMessage);
+    markReadBtn?.addEventListener('click', markReadCurrent);
+
+    // Funciones auxiliares
+    async function loadConversations() {
+      if (!listEl) return;
+      listEl.innerHTML = '<div class="chat-empty" style="text-align:center; padding:40px 20px; color:var(--text-dim);">Cargando conversaciones...</div>';
+      try {
+        const { data, error } = await window.supabaseClient
+          .from('zernio_conversations')
+          .select('id, account_id, contact_name, contact_handle, last_message_at, last_message_preview, unread_count, status')
+          .eq('status', 'open')
+          .order('last_message_at', { ascending: false, nullsFirst: false })
+          .limit(100);
+        if (error) throw error;
+        renderConversations(data || []);
+      } catch (err) {
+        console.error('loadConversations error:', err);
+        listEl.innerHTML = '<div class="chat-empty" style="text-align:center; padding:40px 20px; color:var(--danger);">Error al cargar conversaciones</div>';
+      }
+    }
+
+    function renderConversations(convs = null) {
+      if (!listEl) return;
+      let conversations = convs || [];
+      if (!conversations.length) {
+        listEl.innerHTML = '<div class="chat-empty" style="text-align:center; padding:40px 20px; color:var(--text-dim);">No hay conversaciones</div>';
+        return;
+      }
+
+      // Filtrar
+      if (_chatSearchTerm) {
+        conversations = conversations.filter(c =>
+          (c.contact_name || '').toLowerCase().includes(_chatSearchTerm) ||
+          (c.contact_handle || '').toLowerCase().includes(_chatSearchTerm)
+        );
+      }
+      if (_chatPlatformFilter !== 'all') {
+        conversations = conversations.filter(c => {
+          const acc = accounts?.find(a => a.zernio_account_id === c.account_id);
+          return acc?.platform === _chatPlatformFilter;
+        });
+      }
+
+      _chatUnreadTotal = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+      updateSidebarChatBadge();
+
+      listEl.innerHTML = conversations.map(c => {
+        const acc = accounts?.find(a => a.zernio_account_id === c.account_id);
+        const platformIcon = getPlatformIcon(acc?.platform);
+        const platformLabel = acc?.platform || '—';
+        const timeAgo = c.last_message_at ? formatRelativeTime(c.last_message_at) : '—';
+        const preview = esc(c.last_message_preview || '');
+        const unread = c.unread_count || 0;
+        const isActive = _chatCurrentConv?.id === c.id;
+
+        return `
+          <div class="chat-conv-item ${isActive ? 'active' : ''}" data-conv-id="${esc(c.id)}" style="
+            display:flex; gap:10px; padding:12px; border-radius:10px; cursor:pointer;
+            transition:background 0.15s; border:1px solid ${isActive ? 'var(--accent)' : 'transparent'};
+            background:${isActive ? 'rgba(31,200,195,0.1)' : 'rgba(255,255,255,0.02)'};
+          ">
+            <div style="width:40px; height:40px; border-radius:50%; background:rgba(31,200,195,0.15); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              ${platformIcon}
+            </div>
+            <div style="flex:1; min-width:0;">
+              <div style="display:flex; justify-content:space-between; gap:8px;">
+                <span style="font-weight:600; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(c.contact_name || 'Sin nombre')}</span>
+                <span style="font-size:11px; color:var(--text-dim); white-space:nowrap;">${timeAgo}</span>
+              </div>
+              <div style="display:flex; justify-content:space-between; gap:8px; margin-top:4px;">
+                <span style="font-size:12px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(c.last_message_preview || '')}</span>
+                <span style="font-size:10px; color:var(--text-dim); white-space:nowrap;">${platformLabel}</span>
+              </div>
+            </div>
+            ${c.unread_count > 0 ? `<span class="chat-unread-badge" style="background:var(--accent); color:#fff; font-size:11px; font-weight:700; padding:2px 6px; border-radius:10px; min-width:18px; text-align:center;">${c.unread_count}</span>` : ''}
+          </div>
+        `;
+      }).join('');
+
+      // Click handlers
+      $$('#chatConversationsList .chat-conv-item').forEach(item => {
+        item.addEventListener('click', () => openConversation(item.dataset.convId));
+      });
+    }
+
+    async function openConversation(convId) {
+      const { data, error } = await window.supabaseClient
+        .from('zernio_conversations')
+        .select('*, account:zernio_accounts(platform, username)')
+        .eq('id', convId)
+        .single();
+      if (error || !data) return;
+
+      _chatCurrentConv = data;
+
+      // UI
+      headerEl.style.display = 'flex';
+      composerEl.style.display = 'block';
+      document.querySelector('.chat-empty')?.remove();
+
+      const acc = data.account;
+      contactNameEl.textContent = data.contact_name || 'Sin nombre';
+      platformBadgeEl.innerHTML = getPlatformIcon(data.account?.platform) + ' ' + (data.account?.platform || '—');
+      accountBadgeEl.textContent = data.account?.username ? '@' + data.account.username : '—';
+
+      // Marcar leído
+      if (data.unread_count > 0) {
+        await markRead(convId);
+        data.unread_count = 0;
+      }
+
+      // Cargar mensajes
+      await loadMessages(convId);
+
+      // Actualizar lista visual
+      $$('#chatConversationsList .chat-conv-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.convId === convId);
+        const badge = el.querySelector('.chat-unread-badge');
+        if (badge) badge.remove();
+      });
+    }
+
+    async function loadMessages(convId) {
+      if (!messagesEl) return;
+      messagesEl.innerHTML = '<div class="chat-empty" style="text-align:center; padding:40px 20px; color:var(--text-dim);">Cargando mensajes...</div>';
+      try {
+        const { data, error } = await window.supabaseClient
+          .from('zernio_messages')
+          .select('*')
+          .eq('conversation_id', convId)
+          .order('occurred_at', { ascending: true })
+          .limit(100);
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+          messagesEl.innerHTML = '<div class="chat-empty" style="text-align:center; padding:60px 20px; color:var(--text-dim);"><i class="fas fa-comments" style="font-size:48px; opacity:0.3;"></i><p>Sin mensajes aún</p></div>';
+          return;
+        }
+
+        messagesEl.innerHTML = data.map(m => {
+          const isOut = m.direction === 'out';
+          const time = m.occurred_at ? new Date(m.occurred_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
+          const ticks = getTicks(m.status);
+          return `
+            <div class="chat-bubble ${isOut ? 'out' : 'in'}" style="
+              display:flex; flex-direction:column; max-width:75%; ${isOut ? 'align-self:flex-end; margin-left:auto;' : 'align-self:flex-start; margin-right:auto;'}
+            ">
+              <div style="background:${isOut ? 'var(--accent)' : 'rgba(255,255,255,0.05)'}; color:${isOut ? '#fff' : '#fff'}; padding:10px 14px; border-radius:${isOut ? '18px 18px 4px 18px' : '18px 18px 18px 4px'}; max-width:100%; word-wrap:break-word;">
+                ${esc(m.body || '')}
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; margin-top:4px; font-size:10px; color:var(--text-dim); ${isOut ? 'justify-content:flex-end;' : ''}">
+                <span>${new Date(m.occurred_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
+                ${isOut ? `<span class="tick-icon">${ticks}</span>` : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Scroll to bottom
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      } catch (err) {
+        console.error('loadMessages error:', err);
+        messagesEl.innerHTML = '<div class="chat-empty" style="text-align:center; padding:40px 20px; color:var(--danger);">Error cargando mensajes</div>';
+      }
+    }
+
+    async function sendMessage() {
+      if (!_chatCurrentConv || !composerTextarea) return;
+      const text = composerTextarea.value.trim();
+      if (!text) return;
+
+      composerTextarea.value = '';
+      composerTextarea.style.height = 'auto';
+
+      // Optimistic UI
+      const tempId = 'temp_' + Date.now();
+      appendMessage({ body: text, direction: 'out', occurred_at: new Date().toISOString(), status: 'sending', id: tempId });
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+
+      try {
+        const session = await window.supabaseClient.auth.getSession();
+        const res = await fetch('/functions/v1/zernio-proxy', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.data.session?.access_token}`
+          },
+          body: JSON.stringify({ action: 'send_message', conversationId: _chatCurrentConv.id, text })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error enviando');
+
+        // Reemplazar mensaje optimista por el real
+        const tempEl = messagesEl.querySelector('[data-temp-id="' + 'temp_' + ')');
+        // El mensaje real llegará via realtime; solo limpiamos
+        composerTextarea.value = '';
+      } catch (err) {
+        showToast('Error enviando: ' + err.message, 'error');
+        // Marcar error en burbuja temporal
+        const tempEl = messagesEl.querySelector('[data-temp-id]');
+        if (tempEl) tempEl.innerHTML = tempEl.innerHTML.replace('sending', 'failed') + ' <span style="color:var(--danger);">⚠</span>';
+      }
+    }
+
+    async function markReadCurrent() {
+      if (!_chatCurrentConv) return;
+      await markRead(_chatCurrentConv.id);
+    }
+
+    async function markRead(convId) {
+      try {
+        const session = await window.supabaseClient.auth.getSession();
+        await fetch('/functions/v1/zernio-proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await window.supabaseClient.auth.getSession()).data.session?.access_token}` },
+          body: JSON.stringify({ action: 'mark_read', conversationId: convId })
+        });
+        await window.supabaseClient.from('zernio_conversations').update({ unread_count: 0 }).eq('id', convId);
+        loadConversations();
+      } catch (err) {
+        console.error('markRead error:', err);
+      }
+    }
+
+    function appendMessage(m) {
+      if (!messagesEl) return;
+      const empty = messagesEl.querySelector('.chat-empty');
+      if (empty) empty.remove();
+      const isOut = m.direction === 'out';
+      const time = m.occurred_at ? new Date(m.occurred_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
+      const ticks = m.status === 'sent' ? '✓' : m.status === 'delivered' ? '✓✓' : m.status === 'read' ? '✓✓' : '⏳';
+      const div = document.createElement('div');
+      div.className = 'chat-bubble ' + (m.direction === 'out' ? 'out' : 'in');
+      div.dataset.tempId = m.id;
+      div.style.cssText = `display:flex; flex-direction:column; max-width:75%; ${m.direction === 'out' ? 'align-self:flex-end; margin-left:auto;' : 'align-self:flex-start; margin-right:auto;'}`;
+      div.innerHTML = `
+        <div style="background:${m.direction === 'out' ? 'var(--accent)' : 'rgba(255,255,255,0.05)'}; color:#fff; padding:10px 14px; border-radius:${m.direction === 'out' ? '18px 18px 4px 18px' : '18px 18px 18px 4px'}; max-width:100%; word-wrap:break-word;">
+          ${esc(m.body || '')}
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; margin-top:4px; font-size:10px; color:var(--text-dim); ${m.direction === 'out' ? 'justify-content:flex-end;' : ''}">
+          <span>${new Date(m.occurred_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
+          ${m.direction === 'out' ? `<span class="tick-icon">${ticks}</span>` : ''}
+        </div>
+      `;
+      messagesEl.appendChild(div);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function getTicks(status) {
+      if (status === 'read') return '✓✓';
+      if (status === 'delivered') return '✓✓';
+      if (status === 'sent') return '✓';
+      return '⏳';
+    }
+
+    function getPlatformIcon(platform) {
+      const icons = {
+        instagram: '<i class="fab fa-instagram" style="color:#E1306C; font-size:18px;"></i>',
+        facebook: '<i class="fab fa-facebook" style="color:#1877F2; font-size:18px;"></i>',
+        whatsapp: '<i class="fab fa-whatsapp" style="color:#25D366; font-size:18px;"></i>',
+        telegram: '<i class="fab fa-telegram" style="color:#0088CC; font-size:18px;"></i>',
+      };
+      return icons[platform] || '<i class="fas fa-comments" style="color:var(--accent); font-size:18px;"></i>';
+    }
+
+    function getPlatformLabel(platform) {
+      const labels = { instagram: 'Instagram', facebook: 'Facebook Messenger', whatsapp: 'WhatsApp', telegram: 'Telegram' };
+      return labels[platform] || platform || '—';
+    }
+
+    function formatRelativeTime(iso) {
+      const d = new Date(iso);
+      const diff = Date.now() - d.getTime();
+      const mins = Math.floor(diff / 60000);
+      const hours = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+      if (mins < 1) return 'ahora';
+      if (mins < 60) return `${mins}m`;
+      if (hours < 24) return `${hours}h`;
+      if (days < 7) return `${days}d`;
+      return d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+    }
+
+    function debounce(fn, ms) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); }; }
+
+    function setupRealtime() {
+      if (_chatRealtimeChannel) _chatRealtimeChannel.unsubscribe();
+      _chatRealtimeChannel = window.supabaseClient.channel('zernio-chat')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'zernio_messages' }, payload => {
+          const m = payload.new;
+          if (!_chatCurrentConv || m.conversation_id !== _chatCurrentConv.id) {
+            loadConversations(); // actualizar badge
+            return;
+          }
+          // Mensaje de esta conversación
+          // Evitar duplicados con optimista
+          if (document.querySelector(`[data-temp-id="${m.id}"]`)) return;
+          appendMessage(m);
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'zernio_messages' }, payload => {
+          const m = payload.new;
+          if (!_chatCurrentConv || m.conversation_id !== _chatCurrentConv.id) return;
+          // Actualizar ticks
+          const el = messagesEl.querySelector(`[data-temp-id="${m.id}"]`) || messagesEl.querySelector(`[data-msg-id="${m.id}"]`);
+          if (el) {
+            const ticksEl = el.querySelector('.tick-icon');
+            if (ticksEl) ticksEl.textContent = getTicks(m.status);
+          }
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'zernio_conversations' }, () => {
+          loadConversations();
+        })
+        .subscribe();
+    }
+
+    function updateSidebarChatBadge() {
+      const badge = $('#sideBadgeChatRedes');
+      if (badge) badge.textContent = _chatUnreadTotal || '0';
+    }
+
   /* Global search */
   let _searchCache = null;
 
@@ -3358,6 +3853,7 @@ let dayCount = 1;
     initCursorGlow();
   });
 
+}
 })();
 
 

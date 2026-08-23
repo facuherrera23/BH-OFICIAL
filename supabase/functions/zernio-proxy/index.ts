@@ -1,0 +1,382 @@
+// ============================================================
+// zernio-proxy — Proxy autenticado para la Inbox API de Zernio.
+//
+// DEPLOY: supabase functions deploy zernio-proxy --verify-jwt
+// Se requiere JWT válido de usuario super_admin (via header Authorization: Bearer <jwt>).
+//
+// Acciones (body.action):
+//   - send_message:     { conversationId, text }
+//   - mark_read:        { conversationId }
+//   - list_accounts:    (sync espejo cuentas)
+//   - backfill_conversations
+//   - backfill_messages: { conversationId? }
+//
+// API Key: variable de entorno ZERNIO_API_KEY con fallback a zernio_config (key='api_key').
+// ============================================================
+
+import { createClient } from 'npm:@supabase/supabase-js@2';
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SERVICE_ROLE_KEY') ?? '';
+const ZERNIO_BASE = 'https://zernio.com/api/v1';
+
+const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { persistSession: false },
+});
+
+const ALLOWED_ORIGINS = new Set([
+    'https://bienenhaus.com.ar',
+    'https://www.bienenhaus.com.ar',
+    'http://localhost:8788',
+    'http://127.0.0.1:8788',
+]);
+
+function corsHeaders(req: Request): Record<string, string> {
+    const origin = req.headers.get('origin');
+    if (origin && ALLOWED_ORIGINS.has(origin)) {
+        return {
+            'access-control-allow-origin': origin,
+            'access-control-allow-methods': 'POST, OPTIONS',
+            'access-control-allow-headers': 'authorization, content-type',
+            vary: 'Origin',
+        };
+    }
+    return {};
+}
+
+function respond(status: number, body: unknown, req: Request): Response {
+    return new Response(JSON.stringify(body), {
+        status,
+        headers: { ...corsHeaders(req), 'content-type': 'application/json' },
+    });
+}
+
+function optionsResponse(req: Request): Response {
+    return new Response('ok', {
+        headers: {
+            ...corsHeaders(req),
+            'access-control-allow-methods': 'POST, OPTIONS',
+            'access-control-allow-headers': 'authorization, content-type',
+        },
+    });
+}
+
+async function getZernioApiKey(): Promise<string> {
+    const envKey = Deno.env.get('ZERNIO_API_KEY');
+    if (envKey) return envKey;
+    const { data } = await supabase
+        .from('zernio_config')
+        .select('value')
+        .eq('key', 'api_key')
+        .maybeSingle();
+    const key = data?.value?.key;
+    return typeof key === 'string' ? key : '';
+}
+
+async function requireSuperAdmin(req: Request): Promise<string | null> {
+    const auth = req.headers.get('authorization') ?? '';
+    if (!auth.startsWith('Bearer ')) return null;
+    const token = auth.slice(7);
+
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) return null;
+
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, is_active')
+        .eq('id', user.id)
+        .maybeSingle();
+    if (!profile || !profile.is_active || profile.role !== 'super_admin') return null;
+
+    return token;
+}
+
+async function zernioRequest(path: string, options: RequestInit & { apiKey?: string } = {}): Promise<Response> {
+    const apiKey = options.apiKey ?? await getZernioApiKey();
+    if (!apiKey) throw new Error('ZERNIO_API_KEY no configurada');
+
+    const url = `${ZERNIO_BASE}${path}`;
+    const headers = {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        ...options.headers,
+    };
+
+    const res = await fetch(url, {
+        ...options,
+        headers,
+    });
+
+    // Manejo 429 con Retry-After
+    if (res.status === 429) {
+        const retryAfter = res.headers.get('retry-after');
+        const wait = retryAfter ? parseInt(retryAfter, 10) * 1000 : 60_000;
+        await new Promise(r => setTimeout(r, wait));
+        // Un reintento
+        return fetch(url, { ...options, headers });
+    }
+
+    return res;
+}
+
+// ============================================================
+// Acciones
+// ============================================================
+
+async function actSendMessage(body: Record<string, unknown>, userId: string): Promise<unknown> {
+    const conversationId = String(body.conversationId ?? '');
+    const text = String(body.text ?? '');
+    if (!conversationId || !text) throw new Error('conversationId y text requeridos');
+
+    // Cargar conversación para validar ventana 24h WhatsApp
+    const { data: conv } = await supabase
+        .from('zernio_conversations')
+        .select('id, account_id, platform, last_message_at')
+        .eq('id', conversationId)
+        .maybeSingle();
+
+    if (!conv) throw new Error('Conversación no encontrada');
+
+    // Verificar ventana 24h para WhatsApp (solo aviso, no bloqueo)
+    let windowClosed = false;
+    if (conv.platform === 'whatsapp' && conv.last_message_at) {
+        const lastIn = new Date(conv.last_message_at).getTime();
+        if (Date.now() - lastIn > 24 * 60 * 60 * 1000) {
+            windowClosed = true;
+        }
+    }
+
+    const res = await zernioRequest(`/inbox/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({
+            accountId: conv.account_id,
+            message: text,
+        }),
+    });
+
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Zernio send failed (${res.status}): ${errText.slice(0, 300)}`);
+    }
+
+    const zData = await res.json();
+    const platformMsgId = zData.id ?? zData.message_id ?? null;
+
+    // Registrar mensaje saliente en nuestra DB
+    const { error } = await supabase.from('zernio_messages').insert({
+        conversation_id: conversationId,
+        direction: 'out',
+        platform_message_id: platformMsgId,
+        body: text,
+        status: 'sent',
+        sent_by: userId,
+        occurred_at: new Date().toISOString(),
+    });
+    if (error) console.warn('insert out message:', error.message);
+
+    return { ok: true, platform_message_id: platformMsgId, window_closed: windowClosed };
+}
+
+async function actMarkRead(body: Record<string, unknown>): Promise<unknown> {
+    const conversationId = String(body.conversationId ?? '');
+    if (!conversationId) throw new Error('conversationId requerido');
+
+    const res = await zernioRequest(`/inbox/conversations/${conversationId}/read`, {
+        method: 'POST',
+    });
+
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Zernio mark_read failed (${res.status}): ${errText.slice(0, 300)}`);
+    }
+
+    // Actualizar local
+    await supabase
+        .from('zernio_conversations')
+        .update({ unread_count: 0 })
+        .eq('id', conversationId);
+
+    return { ok: true };
+}
+
+async function actListAccounts(): Promise<unknown> {
+    const res = await zernioRequest('/accounts');
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Zernio accounts failed (${res.status}): ${errText.slice(0, 300)}`);
+    }
+    const data = await res.json();
+    const accounts = Array.isArray(data) ? data : (data.data ?? []);
+
+    // Upsert espejo
+    for (const acc of accounts) {
+        const platform = String(acc.platform ?? '');
+        if (!['instagram','facebook','whatsapp','telegram','twitter','bluesky','reddit','slack'].includes(platform)) continue;
+        await supabase.from('zernio_accounts').upsert({
+            zernio_account_id: String(acc.id ?? ''),
+            platform,
+            username: String(acc.username ?? acc.name ?? ''),
+            status: 'connected',
+            raw: acc,
+            last_synced_at: new Date().toISOString(),
+        }, { onConflict: 'zernio_account_id' });
+    }
+    return { ok: true, count: accounts.length };
+}
+
+async function actBackfillConversations(): Promise<unknown> {
+    // Paginación simple: 50 por página, max 200
+    let cursor: string | null = null;
+    let total = 0;
+    for (let page = 0; page < 4; page++) {
+        const url = `/inbox/conversations${cursor ? `?cursor=${cursor}` : ''}`;
+        const res = await zernioRequest(url);
+        if (!res.ok) break;
+        const data = await res.json();
+        const items = data.data ?? data ?? [];
+        if (!Array.isArray(items) || items.length === 0) break;
+
+        for (const c of items) {
+            const platform = String(c.platform ?? '');
+            if (!['instagram','facebook','whatsapp','telegram','twitter','bluesky','reddit','slack'].includes(platform)) continue;
+            await supabase.from('zernio_accounts').upsert({
+                zernio_account_id: String(c.account_id ?? ''),
+                platform,
+                username: String(c.username ?? ''),
+                status: 'connected',
+            }, { onConflict: 'zernio_account_id' });
+
+            await supabase.from('zernio_conversations').upsert({
+                id: String(c.id ?? ''),
+                account_id: String(c.account_id ?? ''),
+                contact_name: String(c.contact_name ?? c.name ?? ''),
+                contact_handle: String(c.contact_handle ?? c.handle ?? ''),
+                platform,
+                last_message_at: c.last_message_at ? new Date(c.last_message_at).toISOString() : null,
+                last_message_preview: String(c.last_message_preview ?? ''),
+                unread_count: c.unread_count ?? 0,
+                status: c.status ?? 'open',
+                raw: c,
+            }, { onConflict: 'id' });
+            total++;
+        }
+
+        cursor = data.next_cursor ?? data.cursor ?? null;
+        if (!cursor) break;
+    }
+    return { ok: true, total };
+}
+
+async function actBackfillMessages(body: Record<string, unknown>): Promise<unknown> {
+    const conversationId = String(body.conversationId ?? '');
+    if (!conversationId) throw new Error('conversationId requerido');
+
+    let cursor: string | null = null;
+    let total = 0;
+    for (let page = 0; page < 10; page++) {
+        const url = `/inbox/conversations/${conversationId}/messages${cursor ? `?cursor=${cursor}&sortOrder=asc` : '?sortOrder=asc'}`;
+        const res = await zernioRequest(url);
+        if (!res.ok) break;
+        const data = await res.json();
+        const items = data.data ?? data ?? [];
+        if (!Array.isArray(items) || items.length === 0) break;
+
+        for (const m of items) {
+            await supabase.from('zernio_messages').upsert({
+                conversation_id: conversationId,
+                direction: String(m.direction ?? (m.from_me ? 'out' : 'in')),
+                platform_message_id: String(m.id ?? ''),
+                body: String(m.text ?? m.body ?? ''),
+                attachment: m.attachment ?? null,
+                status: String(m.status ?? 'received'),
+                zernio_event_id: null,
+                occurred_at: m.created_at ? new Date(m.created_at).toISOString() : new Date().toISOString(),
+            }, { onConflict: 'id' });
+            total++;
+        }
+
+        cursor = data.next_cursor ?? data.cursor ?? null;
+        if (!cursor) break;
+    }
+    return { ok: true, total };
+}
+
+// ============================================================
+// Entry point
+// ============================================================
+
+Deno.serve(async (req) => {
+    if (req.method === 'OPTIONS') return optionsResponse(req);
+    if (req.method !== 'POST') return respond(405, { error: 'Method not allowed' }, req);
+
+    const userToken = await requireSuperAdmin(req);
+    if (!userToken) return respond(401, { error: 'No autorizado (super_admin requerido)' }, req);
+
+    let body: Record<string, unknown>;
+    try {
+        body = await req.json();
+    } catch {
+        return respond(400, { error: 'JSON inválido' }, req);
+    }
+
+    const action = String(body.action ?? '');
+    try {
+        switch (action) {
+            case 'send_message': {
+                const result = await actSendMessage(body, '');
+                return respond(200, result, req);
+            }
+            case 'mark_read': {
+                const result = await actMarkRead(body);
+                return respond(200, result, req);
+            }
+            case 'list_accounts': {
+                const result = await actListAccounts();
+                return respond(200, result, req);
+            }
+            case 'backfill_conversations': {
+                const result = await actBackfillConversations();
+                return respond(200, result, req);
+            }
+            case 'backfill_messages': {
+                const result = await actBackfillMessages(body);
+                return respond(200, result, req);
+            }
+            default:
+                return respond(400, { error: `Acción desconocida: ${action}` }, req);
+        }
+    } catch (err) {
+        return respond(500, { error: (err as Error).message }, req);
+    }
+});
+
+function respond(status: number, body: unknown, req: Request): Response {
+    return new Response(JSON.stringify(body), {
+        status,
+        headers: { ...corsHeaders(req), 'content-type': 'application/json' },
+    });
+}
+
+function optionsResponse(req: Request): Response {
+    return new Response('ok', {
+        headers: {
+            ...corsHeaders(req),
+            'access-control-allow-methods': 'POST, OPTIONS',
+            'access-control-allow-headers': 'authorization, content-type',
+        },
+    });
+}
+
+function corsHeaders(req: Request): Record<string, string> {
+    const origin = req.headers.get('origin');
+    if (origin && ALLOWED_ORIGINS.has(origin)) {
+        return {
+            'access-control-allow-origin': origin,
+            'access-control-allow-methods': 'POST, OPTIONS',
+            'access-control-allow-headers': 'authorization, content-type',
+            vary: 'Origin',
+        };
+    }
+    return {};
+}

@@ -1,0 +1,448 @@
+- generic [active] [ref=e1]:
+  - status "Cargando" [ref=e2]:
+    - generic [ref=e3]: BIENENHAUS
+  - link "Ir al contenido principal" [ref=e5] [cursor=pointer]:
+    - /url: "#mainContent"
+  - navigation "Navegación principal" [ref=e6]:
+    - generic [ref=e7]:
+      - link "Bienenhaus — Inicio" [ref=e8] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e9]: BIENENHAUS
+        - generic [ref=e10]:
+          - generic [ref=e11]: PROPIEDADES
+          - generic [ref=e12]: ®
+      - generic [ref=e13]:
+        - text: +
+        - link "WhatsApp" [ref=e14] [cursor=pointer]:
+          - /url: https://wa.me/5491100000000
+          - generic [ref=e15]: 
+        - button "Abrir menú" [ref=e16] [cursor=pointer]
+  - banner [ref=e21]:
+    - img "Propiedad destacada" [ref=e22]
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e28]: Inmobiliaria Premium en Buenos Aires
+        - heading "Encontramos el hogar que merecés" [level=1] [ref=e30]
+        - paragraph [ref=e31]: Departamentos, casas y ph en las zonas más exclusivas de Buenos Aires. Asesoramiento personalizado y procesos transparentes.
+        - generic [ref=e35]:
+          - link "Ver Propiedades " [ref=e36] [cursor=pointer]:
+            - /url: "#propiedades"
+            - text: Ver Propiedades
+            - generic [ref=e37]: 
+          - button "Ver video institucional" [ref=e38] [cursor=pointer]:
+            - generic [ref=e39]: 
+            - text: Ver Video
+      - generic [ref=e42]:
+        - generic [ref=e43]:
+          - generic [ref=e44]: 
+          - generic [ref=e46]:
+            - generic [ref=e47]: "0"
+            - generic [ref=e48]: Propiedades Activas
+            - generic [ref=e49]: Departamentos, casas y ph
+        - generic [ref=e50]:
+          - generic [ref=e51]: 
+          - generic [ref=e53]:
+            - generic [ref=e54]: "0"
+            - generic [ref=e55]: Operaciones Cerradas
+            - generic [ref=e56]: Negocios realizados con éxito
+        - generic [ref=e57]:
+          - generic [ref=e58]: 
+          - generic [ref=e60]:
+            - generic [ref=e61]: "0"
+            - generic [ref=e62]: Agentes Activos
+            - generic [ref=e63]: Profesionales especializados
+        - generic [ref=e64]:
+          - generic [ref=e65]: 
+          - generic [ref=e67]:
+            - generic [ref=e68]: Excelencia Comprobada
+            - generic [ref=e69]: Calificaciones máximas de nuestros clientes.
+    - generic "Características" [ref=e70]:
+      - generic [ref=e71]:
+        - generic [ref=e72]: 
+        - generic [ref=e73]:
+          - generic [ref=e74]: Títulos Verificados
+          - generic [ref=e75]: Documentación legal revisada por expertos.
+      - generic [ref=e76]:
+        - generic [ref=e77]: 
+        - generic [ref=e78]:
+          - generic [ref=e79]: Llaves en el Día
+          - generic [ref=e80]: Trámites ágiles para tu tranquilidad.
+      - generic [ref=e81]:
+        - generic [ref=e82]: 
+        - generic [ref=e83]:
+          - generic [ref=e84]: Créditos Pre-Aprobados
+          - generic [ref=e85]: Financiación flexible y accesible.
+      - generic [ref=e86]:
+        - generic [ref=e87]: 
+        - generic [ref=e88]:
+          - generic [ref=e89]: Asesoramiento 24/7
+          - generic [ref=e90]: Siempre disponibles para vos.
+    - link "Ir a propiedades" [ref=e91] [cursor=pointer]:
+      - /url: "#propiedades"
+      - generic [ref=e92]: 
+  - main [ref=e93]:
+    - generic [ref=e95]:
+      - generic [ref=e96]:
+        - generic [ref=e97]:
+          - generic [ref=e98]: Catálogo
+          - heading "Propiedades disponibles" [level=2] [ref=e99]
+        - link "Contactar Asesor " [ref=e100] [cursor=pointer]:
+          - /url: "#contacto"
+          - text: Contactar Asesor
+          - generic [ref=e101]: 
+      - generic [ref=e102]:
+        - generic [ref=e103]:
+          - button "Todos" [ref=e104] [cursor=pointer]
+          - button "Departamentos" [ref=e105] [cursor=pointer]
+          - button "Casas" [ref=e106] [cursor=pointer]
+          - button "Terrenos" [ref=e107] [cursor=pointer]
+          - button "Locales" [ref=e108] [cursor=pointer]
+          - button "Oficinas" [ref=e109] [cursor=pointer]
+        - generic [ref=e110]: 0 Propiedades
+    - generic [ref=e113]:
+      - generic [ref=e114]:
+        - generic [ref=e115]: Servicios
+        - heading "¿Qué podemos hacer por vos?" [level=2] [ref=e116]
+        - paragraph [ref=e117]: Un equipo dedicado a brindarte la mejor experiencia inmobiliaria en Buenos Aires.
+      - generic [ref=e118]:
+        - generic [ref=e119]:
+          - generic [ref=e120]: 
+          - heading "Venta de Propiedades" [level=3] [ref=e122]
+          - paragraph [ref=e123]: Estrategia de marketing digital, fotos profesionales y publicación en los principales portales inmobiliarios para maximizar el valor de tu propiedad.
+          - link "Saber más " [ref=e124] [cursor=pointer]:
+            - /url: "#contacto"
+            - text: Saber más
+            - generic [ref=e125]: 
+        - generic [ref=e126]:
+          - generic [ref=e127]: 
+          - heading "Alquileres" [level=3] [ref=e129]
+          - paragraph [ref=e130]: "Gestión integral: selección de inquilinos con verificación crediticia, contratos jurídicos y administración del condominio."
+          - link "Saber más " [ref=e131] [cursor=pointer]:
+            - /url: "#contacto"
+            - text: Saber más
+            - generic [ref=e132]: 
+        - generic [ref=e133]:
+          - generic [ref=e134]: 
+          - heading "Inversión" [level=3] [ref=e136]
+          - paragraph [ref=e137]: Análisis de rentabilidad y tendencias del mercado para que cada inversión inmobiliaria rinda al máximo.
+          - link "Saber más " [ref=e138] [cursor=pointer]:
+            - /url: "#contacto"
+            - text: Saber más
+            - generic [ref=e139]: 
+        - generic [ref=e140]:
+          - generic [ref=e141]: 
+          - heading "Créditos Hipotecarios" [level=3] [ref=e143]
+          - paragraph [ref=e144]: Tramitación de tu crédito hipotecario con los mejores bancos. Te asesoramos en cada paso del proceso.
+          - link "Saber más " [ref=e145] [cursor=pointer]:
+            - /url: "#contacto"
+            - text: Saber más
+            - generic [ref=e146]: 
+        - generic [ref=e147]:
+          - generic [ref=e148]: 
+          - heading "Asesoramiento Legal" [level=3] [ref=e150]
+          - paragraph [ref=e151]: Equipo jurídico especializado que verifica documentación, títulos y sobrepasos para operaciones 100% seguras.
+          - link "Saber más " [ref=e152] [cursor=pointer]:
+            - /url: "#contacto"
+            - text: Saber más
+            - generic [ref=e153]: 
+        - generic [ref=e154]:
+          - generic [ref=e155]: 
+          - heading "Tasaciones" [level=3] [ref=e157]
+          - paragraph [ref=e158]: Valuaciones certificadas con metodología de mercado y datos comparativos para que tengas el precio justo.
+          - link "Saber más " [ref=e159] [cursor=pointer]:
+            - /url: "#contacto"
+            - text: Saber más
+            - generic [ref=e160]: 
+    - generic [ref=e163]:
+      - generic [ref=e164]:
+        - generic [ref=e165]: Nuestro Equipo
+        - heading "Conocé a nuestros asesores" [level=2] [ref=e166]
+      - link "Contactar " [ref=e167] [cursor=pointer]:
+        - /url: "#contacto"
+        - text: Contactar
+        - generic [ref=e168]: 
+    - generic [ref=e170]:
+      - generic [ref=e171]:
+        - generic [ref=e172]: Estadísticas
+        - heading "Números que hablan" [level=2] [ref=e173]
+        - paragraph [ref=e174]: Más de 15 años de trayectoria respaldados por resultados reales.
+      - generic [ref=e175]:
+        - generic [ref=e176]:
+          - generic [ref=e177]: 
+          - generic [ref=e179]: 150+
+          - generic [ref=e180]: Propiedades Vendidas
+          - generic [ref=e181]: Operaciones exitosas en los últimos años.
+        - generic [ref=e182]:
+          - generic [ref=e183]: 
+          - generic [ref=e185]: 300+
+          - generic [ref=e186]: Clientes Satisfechos
+          - generic [ref=e187]: Familias que confiaron en nosotros.
+        - generic [ref=e188]:
+          - generic [ref=e189]: 
+          - generic [ref=e191]: 15+
+          - generic [ref=e192]: Años de Experiencia
+          - generic [ref=e193]: Trayectoria en el mercado inmobiliario.
+        - generic [ref=e194]:
+          - generic [ref=e195]: 
+          - generic [ref=e197]: 4.9★
+          - generic [ref=e198]: Calificación Promedio
+          - generic [ref=e199]: Basada en reseñas de Google.
+      - generic [ref=e200]:
+        - generic [ref=e201]:
+          - generic [ref=e202]: 
+          - generic [ref=e203]: ¿Tenés alguna consulta?
+        - link "Contactar Ahora " [ref=e204] [cursor=pointer]:
+          - /url: "#contacto"
+          - text: Contactar Ahora
+          - generic [ref=e205]: 
+    - generic [ref=e207]:
+      - generic [ref=e208]:
+        - generic [ref=e209]:
+          - generic [ref=e210]: Proceso
+          - heading "¿Cómo trabajamos?" [level=2] [ref=e211]
+        - link "Empezar " [ref=e212] [cursor=pointer]:
+          - /url: "#contacto"
+          - text: Empezar
+          - generic [ref=e213]: 
+      - generic [ref=e215]:
+        - generic [ref=e216]:
+          - generic [ref=e217]: "01"
+          - generic [ref=e218]: 
+          - heading "Consulta Inicial" [level=3] [ref=e220]
+          - paragraph [ref=e221]: Nos reunimos para entender tus necesidades y presupuesto.
+        - generic [ref=e222]:
+          - generic [ref=e223]: "02"
+          - generic [ref=e224]: 
+          - heading "Búsqueda" [level=3] [ref=e226]
+          - paragraph [ref=e227]: Seleccionamos las mejores opciones para vos.
+        - generic [ref=e228]:
+          - generic [ref=e229]: "03"
+          - generic [ref=e230]: 
+          - heading "Visitas" [level=3] [ref=e232]
+          - paragraph [ref=e233]: Te acompañamos a conocer cada propiedad.
+        - generic [ref=e234]:
+          - generic [ref=e235]: "04"
+          - generic [ref=e236]: 
+          - heading "Documentación" [level=3] [ref=e238]
+          - paragraph [ref=e239]: Verificamos y preparamos toda la documentación.
+        - generic [ref=e240]:
+          - generic [ref=e241]: "05"
+          - generic [ref=e242]: 
+          - heading "Entrega" [level=3] [ref=e244]
+          - paragraph [ref=e245]: Cerramos la operación y te entregamos las llaves.
+      - generic [ref=e246]:
+        - generic [ref=e247]:
+          - generic [ref=e248]: 
+          - generic [ref=e249]: Compromiso Total
+        - paragraph [ref=e250]: Tu satisfacción es nuestra prioridad. Trabajamos con transparencia, honestidad y profesionalismo en cada operación.
+        - generic [ref=e251]: Bienenhaus
+    - generic [ref=e253]:
+      - generic [ref=e254]:
+        - generic [ref=e255]: Contacto
+        - heading "Hablemos de tu próximo hogar" [level=2] [ref=e256]
+      - generic [ref=e257]:
+        - generic [ref=e258]:
+          - heading "Información de Contacto" [level=3] [ref=e259]
+          - generic [ref=e260]:
+            - generic [ref=e261]: 
+            - generic [ref=e263]:
+              - generic [ref=e264]: Teléfono
+              - generic [ref=e265]: +54 11 0000-0000
+          - generic [ref=e266]:
+            - generic [ref=e267]: 
+            - generic [ref=e269]:
+              - generic [ref=e270]: Email
+              - generic [ref=e271]: info@bienenhaus.com.ar
+          - generic [ref=e272]:
+            - generic [ref=e273]: 
+            - generic [ref=e275]:
+              - generic [ref=e276]: Horario
+              - generic [ref=e277]: "Lun - Vie: 9:00 - 18:00"
+          - generic [ref=e278]:
+            - generic [ref=e279]:
+              - generic [ref=e280]: 
+              - text: Tiempo de Respuesta
+            - generic [ref=e281]:
+              - generic [ref=e282]:
+                - generic [ref=e283]: Lunes a Viernes
+                - generic [ref=e284]: Menos de 2 horas
+              - generic [ref=e285]:
+                - generic [ref=e286]: Sábados
+                - generic [ref=e287]: Menos de 4 horas
+          - generic [ref=e288]:
+            - link "Instagram" [ref=e289] [cursor=pointer]:
+              - /url: https://instagram.com/
+              - generic [ref=e290]: 
+            - link "Facebook" [ref=e291] [cursor=pointer]:
+              - /url: https://facebook.com/
+              - generic [ref=e292]: 
+            - link "LinkedIn" [ref=e293] [cursor=pointer]:
+              - /url: https://linkedin.com/
+              - generic [ref=e294]: 
+            - link "YouTube" [ref=e295] [cursor=pointer]:
+              - /url: https://youtube.com/
+              - generic [ref=e296]: 
+        - generic [ref=e297]:
+          - generic [ref=e298]:
+            - generic [ref=e299]:
+              - generic [ref=e300]: 
+              - text: Datos seguros
+            - generic [ref=e301]:
+              - generic [ref=e302]: 
+              - text: Respuesta rápida
+            - generic [ref=e303]:
+              - generic [ref=e304]: 
+              - text: Sin spam
+          - generic [ref=e305]:
+            - generic [ref=e306]: ¿Qué estás buscando?
+            - generic [ref=e307]:
+              - button "Comprar" [ref=e308] [cursor=pointer]
+              - button "Vender" [ref=e309] [cursor=pointer]
+              - button "Alquilar" [ref=e310] [cursor=pointer]
+              - button "Invertir" [ref=e311] [cursor=pointer]
+            - generic [ref=e312]:
+              - generic [ref=e313]: Nombre completo *
+              - generic [ref=e314]:
+                - generic: 
+                - textbox "Nombre completo *" [ref=e315]:
+                  - /placeholder: Tu nombre
+            - generic [ref=e316]:
+              - generic [ref=e317]: Email *
+              - generic [ref=e318]:
+                - generic: 
+                - textbox "Email *" [ref=e319]:
+                  - /placeholder: tu@email.com
+            - generic [ref=e320]:
+              - generic [ref=e321]: Teléfono
+              - generic [ref=e322]:
+                - generic: 
+                - textbox "Teléfono" [ref=e323]:
+                  - /placeholder: +54 11 0000-0000
+            - generic [ref=e324]:
+              - generic [ref=e325]: Tipo de propiedad
+              - generic [ref=e326]:
+                - generic: 
+                - combobox "Tipo de propiedad" [ref=e327]:
+                  - option "Seleccionar..." [selected]
+                  - option "Departamento"
+                  - option "Casa"
+                  - option "PH"
+                  - option "Terreno"
+                  - option "Local Comercial"
+            - generic [ref=e328]:
+              - generic [ref=e329]: Presupuesto estimado (USD)
+              - generic [ref=e330]:
+                - generic: $
+                - textbox "Presupuesto estimado (USD)" [ref=e331]:
+                  - /placeholder: "Ej: 150000"
+            - generic [ref=e332]:
+              - generic [ref=e333]: Mensaje
+              - textbox "Mensaje" [ref=e335]:
+                - /placeholder: Contanos sobre lo que buscás...
+            - generic [ref=e336]:
+              - checkbox "Acepto la política de privacidad y el tratamiento de mis datos." [ref=e337]
+              - generic [ref=e338]: Acepto la política de privacidad y el tratamiento de mis datos.
+            - button "Enviar Consulta " [ref=e339] [cursor=pointer]:
+              - generic [ref=e340]: Enviar Consulta
+              - generic [ref=e341]: 
+          - text: 
+    - generic [ref=e342]: Tu nuevo hogar está a un clic de distancia
+  - contentinfo [ref=e345]:
+    - generic: BIENENHAUS
+    - generic [ref=e346]:
+      - generic [ref=e347]:
+        - generic [ref=e348]: Bienenhaus Propiedades
+        - heading "Encontramos el hogar que merecés" [level=2] [ref=e349]: Encontramos elhogar que merecés
+        - paragraph [ref=e350]: Departamentos, casas y ph en las zonas más exclusivas de Buenos Aires.
+        - generic [ref=e351]:
+          - link "Ver Propiedades " [ref=e352] [cursor=pointer]:
+            - /url: "#propiedades"
+            - text: Ver Propiedades
+            - generic [ref=e353]: 
+          - link "Contactar Asesor" [ref=e354] [cursor=pointer]:
+            - /url: "#contacto"
+      - generic [ref=e356]:
+        - generic [ref=e357]:
+          - generic [ref=e358]: BIENENHAUS PROPIEDADES ®
+          - text: BIENENHAUS
+          - paragraph [ref=e359]: Inmobiliaria premium en Buenos Aires. Más de 15 años de experiencia brindando asesoramiento personalizado.
+          - generic [ref=e360]:
+            - link "Instagram" [ref=e361] [cursor=pointer]:
+              - /url: https://instagram.com/
+              - generic [ref=e362]: 
+            - link "Facebook" [ref=e363] [cursor=pointer]:
+              - /url: https://facebook.com/
+              - generic [ref=e364]: 
+            - link "LinkedIn" [ref=e365] [cursor=pointer]:
+              - /url: https://linkedin.com/
+              - generic [ref=e366]: 
+        - generic [ref=e367]:
+          - heading "Navegación" [level=4] [ref=e368]
+          - list [ref=e369]:
+            - listitem [ref=e370]:
+              - link "Propiedades" [ref=e371] [cursor=pointer]:
+                - /url: "#propiedades"
+            - listitem [ref=e372]:
+              - link "Servicios" [ref=e373] [cursor=pointer]:
+                - /url: "#servicios"
+            - listitem [ref=e374]:
+              - link "Equipo" [ref=e375] [cursor=pointer]:
+                - /url: "#equipo"
+            - listitem [ref=e376]:
+              - link "Proceso" [ref=e377] [cursor=pointer]:
+                - /url: "#proceso"
+            - listitem [ref=e378]:
+              - link "Contacto" [ref=e379] [cursor=pointer]:
+                - /url: "#contacto"
+        - generic [ref=e380]:
+          - heading "Servicios" [level=4] [ref=e381]
+          - list [ref=e382]:
+            - listitem [ref=e383]:
+              - link "Venta" [ref=e384] [cursor=pointer]:
+                - /url: "#servicios"
+            - listitem [ref=e385]:
+              - link "Alquiler" [ref=e386] [cursor=pointer]:
+                - /url: "#servicios"
+            - listitem [ref=e387]:
+              - link "Inversión" [ref=e388] [cursor=pointer]:
+                - /url: "#servicios"
+            - listitem [ref=e389]:
+              - link "Créditos" [ref=e390] [cursor=pointer]:
+                - /url: "#servicios"
+            - listitem [ref=e391]:
+              - link "Tasaciones" [ref=e392] [cursor=pointer]:
+                - /url: "#servicios"
+        - generic [ref=e393]:
+          - heading "Contacto" [level=4] [ref=e394]
+          - generic [ref=e395]:
+            - generic [ref=e396]: 
+            - text: +54 11 0000-0000
+          - generic [ref=e397]:
+            - generic [ref=e398]: 
+            - text: info@bienenhaus.com.ar
+          - generic [ref=e399]:
+            - generic [ref=e400]: 
+            - text: "Lun - Vie: 9:00 - 18:00"
+          - generic [ref=e401]:
+            - generic [ref=e402]: 
+            - text: CUIT
+        - generic [ref=e403]:
+          - heading "Newsletter" [level=4] [ref=e404]
+          - paragraph [ref=e405]: Recibí las mejores opciones en tu email.
+          - generic [ref=e406]:
+            - textbox "Tu email" [ref=e407]
+            - button "Suscribirse " [ref=e408] [cursor=pointer]:
+              - text: Suscribirse
+              - generic [ref=e409]: 
+      - generic [ref=e410]:
+        - generic [ref=e411]: © 2025 Bienenhaus Propiedades. Todos los derechos reservados.
+        - generic [ref=e412]:
+          - link "Política de Privacidad" [ref=e413] [cursor=pointer]:
+            - /url: "#"
+          - link "Términos y Condiciones" [ref=e414] [cursor=pointer]:
+            - /url: "#"
+          - link "FAQ" [ref=e415] [cursor=pointer]:
+            - /url: "#"
+  - link "Contactar por WhatsApp" [ref=e416] [cursor=pointer]:
+    - /url: https://wa.me/5491100000000
+    - generic [ref=e417]: 

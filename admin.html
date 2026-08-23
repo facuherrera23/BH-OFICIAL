@@ -1,1213 +1,1497 @@
-﻿<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BIENENHAUS PROPIEDADES | Panel de Control &amp; CRM</title>
-    <meta name="robots" content="noindex, nofollow" />
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <meta http-equiv="Pragma" content="no-cache">
-    <meta http-equiv="Expires" content="0">
-    <meta name="theme-color" content="#020305" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23020305'/><text x='50' y='68' font-size='50' font-family='serif' font-weight='bold' fill='%231FC8C3' text-anchor='middle'>BH</text></svg>" type="image/svg+xml" />
-
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-
-    <link rel="stylesheet" href="assets/css/admin.css?v=19" />
-</head>
-<body class="is-loading">
-
-    <!-- PRELOADER LUXURY -->
-    <div class="preloader" id="preloader">
-        <div class="preloader-mark">
-            <span>BIENENHAUS</span>
-            <div class="preloader-bar"></div>
-        </div>
-    </div>
-
-    <!-- OVERLAYS GLOBALES -->
-    <div class="grain-overlay"></div>
-    <div class="cursor-glow" id="cursorGlow"></div>
-    <div class="cursor-dot" id="cursorDot"></div>
-
-    <!-- ============================================================
-         PANTALLA DE LOGIN
-         ============================================================ -->
-    <div class="login-screen" id="loginScreen">
-        <div class="login-card">
-            <div class="login-logo">BIENENHAUS</div>
-            <div class="login-sub">ACCESO ADMINISTRATIVO &amp; CRM</div>
-
-            <div class="login-error" id="loginError"></div>
-
-            <form id="loginForm">
-                <div class="login-input-group">
-                    <label>Correo Corporativo</label>
-                    <div class="login-input-wrapper">
-                        <i class="fas fa-envelope"></i>
-                        <input type="email" id="loginEmail" placeholder="admin@bienenhaus.com.ar" required />
-                    </div>
-                </div>
-
-                <div class="login-input-group">
-                    <label>ContraseÃ±a de Seguridad</label>
-                    <div class="login-input-wrapper">
-                        <i class="fas fa-lock"></i>
-                        <input type="password" id="loginPassword" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" required />
-                    </div>
-                </div>
-
-                <div class="login-options">
-                    <label>
-                        <input type="checkbox" checked style="accent-color:var(--accent);" /> Recordar credenciales
-                    </label>
-                    <a href="index.html">â† Volver al sitio</a>
-                </div>
-
-                <button type="submit" class="btn-login" id="btnLoginSubmit">
-                    <span>Ingresar al Panel</span>
-                    <i class="fas fa-arrow-right"></i>
-                </button>
-            </form>
-        </div>
-    </div>
-
-    <!-- ============================================================
-         LAYOUT PRINCIPAL
-         ============================================================ -->
-    <div class="app-layout" id="appLayout" style="display:none;">
-
-        <!-- SIDEBAR -->
-        <aside class="sidebar" id="sidebar">
-            <div class="sidebar-brand">
-                <div class="brand-logo">
-                    <span class="brand-title">BIENENHAUS</span>
-                    <span class="brand-subtitle">ADMIN &amp; CRM</span>
-                </div>
-                <span class="badge-env">PRO</span>
-            </div>
-
-            <nav class="sidebar-menu">
-                <div class="menu-category">Principal</div>
-                <div class="nav-item is-active" data-tab="tab-dashboard">
-                    <div class="nav-item-left">
-                        <i class="fas fa-chart-pie"></i>
-                        <span>Dashboard</span>
-                    </div>
-                </div>
-
-                <div class="menu-category">GestiÃ³n &amp; CRM</div>
-                <div class="nav-item" data-tab="tab-propiedades">
-                    <div class="nav-item-left">
-                        <i class="fas fa-home"></i>
-                        <span>Propiedades</span>
-                    </div>
-                    <span class="nav-badge active-badge" id="sideBadgeProps">0</span>
-                </div>
-
-                <div class="nav-item" data-tab="tab-leads">
-                    <div class="nav-item-left">
-                        <i class="fas fa-users-line"></i>
-                        <span>Leads &amp; CRM</span>
-                    </div>
-                    <span class="nav-badge" id="sideBadgeLeads">0 Activos</span>
-                </div>
-
-                <div class="nav-item" data-tab="tab-agenda">
-                    <div class="nav-item-left">
-                        <i class="fas fa-calendar-check"></i>
-                        <span>Agenda de Visitas</span>
-                    </div>
-                    <span class="nav-badge" id="sideBadgeVisits">0 Citas</span>
-                </div>
-
-                <div class="nav-item" data-tab="tab-tasaciones">
-                    <div class="nav-item-left">
-                        <i class="fas fa-calculator"></i>
-                        <span>Tasaciones</span>
-                    </div>
-                    <span class="nav-badge" id="sideBadgeTasaciones">0</span>
-                </div>
-
-                <div class="menu-category">Red &amp; DifusiÃ³n</div>
-                <div class="nav-item" data-tab="tab-sitio-web">
-                    <div class="nav-item-left">
-                        <i class="fas fa-desktop" style="color:var(--accent);"></i>
-                        <span style="font-weight:700; color:#fff;">Sitio Web (CMS)</span>
-                    </div>
-                    <span class="nav-badge" style="background:rgba(31,200,195,0.2); color:var(--accent);">Live</span>
-                </div>
-
-                <div class="nav-item" data-tab="tab-portales">
-                    <div class="nav-item-left">
-                        <i class="fas fa-globe"></i>
-                        <span>Portales &amp; APIs</span>
-                    </div>
-                    <span class="nav-badge" style="color:var(--success);"><i class="fas fa-circle" style="font-size:8px;"></i> Sync</span>
-                </div>
-
-                <div class="nav-item" data-tab="tab-agentes">
-                    <div class="nav-item-left">
-                        <i class="fas fa-user-tie"></i>
-                        <span>Agentes &amp; Brokers</span>
-                    </div>
-                </div>
-
-                <div class="nav-item" data-tab="tab-propietarios">
-                    <div class="nav-item-left">
-                        <i class="fas fa-handshake" style="color:var(--accent);"></i>
-                        <span style="font-weight:600;">Propietarios</span>
-                    </div>
-                    <span class="nav-badge" id="sideBadgeOwners" style="background:rgba(31,200,195,0.2); color:var(--accent);">0 Activos</span>
-                </div>
-
-                <div class="menu-category">Sistema</div>
-                <div class="nav-item" data-tab="tab-usuarios">
-                    <div class="nav-item-left">
-                        <i class="fas fa-shield-halved"></i>
-                        <span>Usuarios &amp; Permisos</span>
-                    </div>
-                </div>
-
-                <div class="nav-item" data-tab="tab-configuracion">
-                    <div class="nav-item-left">
-                        <i class="fas fa-sliders"></i>
-                        <span>ConfiguraciÃ³n</span>
-                    </div>
-                </div>
-            </nav>
-
-            <div class="sidebar-footer">
-                <div class="user-card" id="sidebarUserProfile" title="Editar mi usuario" style="cursor:pointer;">
-                    <div class="user-avatar-placeholder" id="sidebarUserAvatar">A</div>
-                    <div class="user-info">
-                        <span class="user-name" id="sidebarUserName">Admin</span>
-                        <span class="user-role" id="sidebarUserRole">Administrador</span>
-                    </div>
-                    <button style="color:var(--text-dim); padding:6px;" title="Cambiar mi contraseña" id="changePasswordBtn">
-                        <i class="fas fa-key"></i>
-                    </button>
-                    <button style="color:var(--text-dim); padding:6px;" title="Cerrar sesiÃ³n" id="logoutBtn">
-                        <i class="fas fa-arrow-right-from-bracket"></i>
-                    </button>
-                </div>
-            </div>
-        </aside>
-
-        <!-- MAIN CONTENT -->
-        <main class="main-wrapper">
-            <header class="topbar">
-                <div class="topbar-left">
-                    <button id="mobileMenuToggle" class="icon-badge-btn" style="display:none;" aria-label="Abrir MenÃº">
-                        <i class="fas fa-bars"></i>
-                    </button>
-                    <h1 class="page-title" id="moduleTitle">Dashboard Principal</h1>
-                    <div class="quick-search">
-                        <i class="fas fa-search"></i>
-                        <input type="text" id="globalSearchInput" placeholder="Buscar en el sistema..." />
-                    </div>
-                </div>
-
-                <div class="topbar-right">
-                    <button class="icon-badge-btn" title="Notificaciones" id="notifBtn">
-                        <i class="far fa-bell"></i>
-                        <span class="ping-badge"></span>
-                    </button>
-
-                    <button class="btn-luxury-action" id="topbarNewProp">
-                        <i class="fas fa-plus"></i>
-                        <span>Nueva Propiedad</span>
-                    </button>
-                </div>
-            </header>
-
-            <div class="content-area">
-
-                <!-- 1. DASHBOARD PRINCIPAL -->
-                <section class="tab-module is-active" id="tab-dashboard">
-                    <div class="quick-actions-bar">
-                        <div class="quick-action-chip" data-action="openPropertyModal"><i class="fas fa-plus-circle"></i> + Nueva Propiedad</div>
-                        <div class="quick-action-chip" data-action="openLeadModal"><i class="fas fa-user-plus"></i> + Cargar Lead</div>
-                        <div class="quick-action-chip" data-action="openVisitModal"><i class="fas fa-calendar-plus"></i> + Agendar Visita</div>
-                        <div class="quick-action-chip" data-action="openOwnerModal"><i class="fas fa-handshake"></i> + Registrar Propietario</div>
-                        <div class="quick-action-chip" data-action="goToCMS"><i class="fas fa-desktop"></i> Editar Sitio Web</div>
-                    </div>
-
-                    <div class="kpi-grid-6">
-                        <div class="kpi-card">
-                            <div class="kpi-top"><span class="kpi-title">Volumen de Cartera</span><div class="kpi-icon"><i class="fas fa-gem"></i></div></div>
-                            <div class="kpi-value" id="kpiVolumen">USD 0</div>
-                            <div class="kpi-trend"><i class="fas fa-arrow-trend-up"></i> Calculado en tiempo real</div>
-                        </div>
-                        <div class="kpi-card">
-                            <div class="kpi-top"><span class="kpi-title">Propiedades Activas</span><div class="kpi-icon"><i class="fas fa-building"></i></div></div>
-                            <div class="kpi-value" id="kpiActivas">0</div>
-                            <div class="kpi-trend"><i class="fas fa-circle-check"></i> En cartera activa</div>
-                        </div>
-                        <div class="kpi-card">
-                            <div class="kpi-top"><span class="kpi-title">Ticket Promedio</span><div class="kpi-icon"><i class="fas fa-tag"></i></div></div>
-                            <div class="kpi-value" id="kpiTicket">USD 0</div>
-                            <div class="kpi-trend"><i class="fas fa-arrow-trend-up"></i> Promedio por inmueble</div>
-                        </div>
-                        <div class="kpi-card">
-                            <div class="kpi-top"><span class="kpi-title">Leads Calificados</span><div class="kpi-icon"><i class="fas fa-users"></i></div></div>
-                            <div class="kpi-value" id="kpiLeads">0</div>
-                            <div class="kpi-trend"><i class="fas fa-fire" style="color:#FFB800;"></i> En proceso CRM</div>
-                        </div>
-                        <div class="kpi-card">
-                            <div class="kpi-top"><span class="kpi-title">Visitas Registradas</span><div class="kpi-icon"><i class="fas fa-calendar-days"></i></div></div>
-                            <div class="kpi-value" id="kpiVisitas">0</div>
-                            <div class="kpi-trend"><i class="fas fa-clock"></i> En agenda</div>
-                        </div>
-                        <div class="kpi-card">
-                            <div class="kpi-top"><span class="kpi-title">Brokers Asignados</span><div class="kpi-icon"><i class="fas fa-user-tie"></i></div></div>
-                            <div class="kpi-value" id="kpiBrokers">0</div>
-                            <div class="kpi-trend"><i class="fas fa-shield-check"></i> MatrÃ­culas C.R.I. activas</div>
-                        </div>
-                    </div>
-
-                    <div class="dashboard-analytics-grid">
-                        <div class="glass-panel" style="margin-bottom:0;">
-                            <div class="panel-header">
-                                <div>
-                                    <h2 class="panel-title">EvoluciÃ³n de Consultas &amp; Ventas</h2>
-                                    <p style="color:var(--text-muted); font-size:12px;">Comportamiento mensual de interesados vs operaciones.</p>
-                                </div>
-                                <span class="status-pill active"><i class="fas fa-calendar"></i> 2026</span>
-                            </div>
-                            <div class="chart-mock-bar-container">
-                                <div class="chart-col"><div class="chart-bar-fill" style="height:45%;"></div><span class="chart-label">Ene</span></div>
-                                <div class="chart-col"><div class="chart-bar-fill" style="height:60%;"></div><span class="chart-label">Feb</span></div>
-                                <div class="chart-col"><div class="chart-bar-fill" style="height:55%;"></div><span class="chart-label">Mar</span></div>
-                                <div class="chart-col"><div class="chart-bar-fill" style="height:75%;"></div><span class="chart-label">Abr</span></div>
-                                <div class="chart-col"><div class="chart-bar-fill" style="height:70%;"></div><span class="chart-label">May</span></div>
-                                <div class="chart-col"><div class="chart-bar-fill" style="height:85%;"></div><span class="chart-label">Jun</span></div>
-                                <div class="chart-col"><div class="chart-bar-fill" style="height:95%;"></div><span class="chart-label">Jul</span></div>
-                                <div class="chart-col"><div class="chart-bar-fill" style="height:100%; background:linear-gradient(180deg, var(--glow), var(--accent));"></div><span class="chart-label" style="color:var(--accent); font-weight:700;">Ago</span></div>
-                            </div>
-                        </div>
-
-                        <div class="glass-panel" style="margin-bottom:0;">
-                            <div class="panel-header">
-                                <h2 class="panel-title" style="font-size:16px;">Cartera por Zonas</h2>
-                            </div>
-                            <div id="zoneProgressContainer">
-                                <p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Las zonas se actualizarÃ¡n al cargar propiedades.</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="dashboard-widgets-3col" style="margin-top:24px;">
-                        <div class="glass-panel" style="margin-bottom:0;">
-                            <div class="panel-header">
-                                <h3 class="panel-title" style="font-size:15px;"><i class="fas fa-clock" style="color:var(--accent);"></i> Visitas Agendadas</h3>
-                                <button class="status-pill active" data-action="goToAgenda">Ver Todas</button>
-                            </div>
-                            <div id="dashVisitsList"><p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Sin visitas registradas</p></div>
-                        </div>
-
-                        <div class="glass-panel" style="margin-bottom:0;">
-                            <div class="panel-header">
-                                <h3 class="panel-title" style="font-size:15px;"><i class="fas fa-fire" style="color:#FFB800;"></i> Leads Prioritarios</h3>
-                                <button class="status-pill active" data-action="goToLeads">Ver CRM</button>
-                            </div>
-                            <div id="dashLeadsList"><p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Sin leads registrados</p></div>
-                        </div>
-
-                        <div class="glass-panel" style="margin-bottom:0;">
-                            <div class="panel-header">
-                                <h3 class="panel-title" style="font-size:15px;"><i class="fas fa-trophy" style="color:#FFE600;"></i> Top Brokers</h3>
-                                <button class="status-pill active" data-action="goToAgents">Equipo</button>
-                            </div>
-                            <div id="dashBrokersList"><p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Sin brokers registrados</p></div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- 2. PROPIEDADES -->
-                <section class="tab-module" id="tab-propiedades">
-                    <div class="glass-panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2 class="panel-title">Inventario de Propiedades</h2>
-                                <p style="color:var(--text-muted); font-size:12.5px;">GestiÃ³n en tiempo real de fichas tÃ©cnicas y precios.</p>
-                            </div>
-                            <div style="display:flex; gap:10px;">
-                                <input type="text" id="propSearchInput" placeholder="Filtrar por tÃ­tulo o zona..." style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); padding:8px 14px; border-radius:var(--radius-sm); font-size:13px; outline:none; color:#fff;" />
-                                <button class="btn-luxury-action" onclick="exportPropertiesCSV()" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
-                                <button class="btn-luxury-action" id="btnNewProp"><i class="fas fa-plus"></i> Publicar</button>
-                            </div>
-                        </div>
-
-                        <div class="table-responsive">
-                            <table class="luxury-table">
-<thead>
-                                    <tr>
-                                        <th>Código</th>
-                                        <th>Inmueble</th>
-                                        <th>Superficie</th>
-                                        <th>Ambientes</th>
-                                        <th>Precio (USD)</th>
-                                        <th>Operación</th>
-                                        <th>Estado</th>
-                                        <th>Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="propertiesTableBody">
-                                    <tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando propiedades...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- 3. CRM LEADS -->
-                <section class="tab-module" id="tab-leads">
-                    <div class="panel-header" style="margin-bottom:18px;">
-                        <div>
-                            <h2 class="panel-title">Pipeline de Prospectos &amp; Compradores</h2>
-                            <p style="color:var(--text-muted); font-size:12.5px;">GestiÃ³n de etapas comerciales con guardado automÃ¡tico.</p>
-                        </div>
-                        <div style="display:flex; gap:10px;">
-                            <button class="btn-luxury-action" onclick="exportLeadsCSV()" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
-                            <button class="btn-luxury-action" id="btnNewLead">+ Agregar Lead</button>
-                        </div>
-                    </div>
-
-                    <div class="leads-pipeline">
-                        <div class="pipeline-col" id="col-nuevos">
-                            <div class="pipeline-header"><span>1. Nuevos</span><span class="nav-badge" id="badge-nuevos">0</span></div>
-                            <div class="pipeline-cards" id="cards-nuevos"></div>
-                        </div>
-                        <div class="pipeline-col" id="col-contactados">
-                            <div class="pipeline-header"><span>2. Contactados</span><span class="nav-badge" id="badge-contactados">0</span></div>
-                            <div class="pipeline-cards" id="cards-contactados"></div>
-                        </div>
-                        <div class="pipeline-col" id="col-visita">
-                            <div class="pipeline-header"><span>3. Visita Agendada</span><span class="nav-badge" id="badge-visita">0</span></div>
-                            <div class="pipeline-cards" id="cards-visita"></div>
-                        </div>
-                        <div class="pipeline-col" id="col-oferta">
-                            <div class="pipeline-header"><span>4. Oferta / Cierre</span><span class="nav-badge" id="badge-oferta" style="background:var(--success); color:#000;">0</span></div>
-                            <div class="pipeline-cards" id="cards-oferta"></div>
-                        </div>
-                    </div>
-                </section>
-
-<!-- 4. AGENDA DE VISITAS -->
-                <section class="tab-module" id="tab-agenda">
-                    <div class="glass-panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2 class="panel-title">Agenda de Visitas</h2>
-                                <p style="color:var(--text-muted); font-size:12.5px;">CoordinaciÃ³n de recorridos presenciales con prospectos.</p>
-                            </div>
-                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                                <button class="btn-luxury-action" id="btnNewVisit">+ Agendar Visita</button>
-                                <div style="display:flex; gap:6px; margin-left:auto;">
-                                    <button class="status-pill" id="viewCalendarBtn" title="Vista Calendario"><i class="fas fa-calendar-alt"></i> Calendario</button>
-                                    <button class="status-pill active" id="viewTableBtn" title="Vista Tabla"><i class="fas fa-table"></i> Tabla</button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Vista Calendario -->
-                        <div id="visitsCalendarView" style="display:none;">
-                            <div class="calendar-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
-                                <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                                    <button class="btn-action" id="calPrevMonth" title="Mes anterior" style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;"><i class="fas fa-chevron-left"></i></button>
-                                    <h3 id="calCurrentMonth" style="font-family:var(--font-heading); font-size:20px; color:#fff; margin:0; min-width:180px; text-align:center;">Mes Año</h3>
-                                    <button class="btn-action" id="calNextMonth" title="Mes siguiente" style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;"><i class="fas fa-chevron-right"></i></button>
-                                    <button class="status-pill" id="calTodayBtn" style="margin-left:auto;"><i class="fas fa-calendar-day"></i> Hoy</button>
-                                </div>
-                                <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                                    <select id="calStatusFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
-                                        <option value="">Todos los estados</option>
-                                        <option value="pendiente">Pendiente</option>
-                                        <option value="confirmada">Confirmada</option>
-                                        <option value="completada">Completada</option>
-                                        <option value="cancelada">Cancelada</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="calendar-grid" id="calendarGrid" style="display:grid; grid-template-columns:repeat(7, 1fr); gap:4px;">
-                                <!-- Días de la semana -->
-                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Dom</div>
-                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Lun</div>
-                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Mar</div>
-                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Mié</div>
-                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Jue</div>
-                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Vie</div>
-                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Sáb</div>
-                                <!-- Los días se insertan aquí via JS -->
-                            </div>
-                        </div>
-
-                        <!-- Vista Tabla (existente) -->
-                        <div id="visitsTableView">
-                            <div class="table-responsive">
-                                <table class="luxury-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Fecha & Hora</th>
-                                            <th>Cliente / Prospecto</th>
-                                            <th>Lead (CRM)</th>
-                                            <th>Propiedad</th>
-                                            <th>Estado</th>
-                                            <th>Vinculado</th>
-                                            <th>Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="visitsTableBody">
-                                        <tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando visitas...</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- 5. PADRÃ“N DE PROPIETARIOS -->
-                <section class="tab-module" id="tab-propietarios">
-                    <div class="kpi-grid-6" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
-                        <div class="kpi-card">
-                            <div class="kpi-top"><span class="kpi-title">Propietarios Titulares</span><div class="kpi-icon"><i class="fas fa-handshake"></i></div></div>
-                            <div class="kpi-value" id="ownerKpiTotal">0</div>
-                            <div class="kpi-trend"><i class="fas fa-circle-check"></i> En cartera activa</div>
-                        </div>
-                        <div class="kpi-card">
-                            <div class="kpi-top"><span class="kpi-title">Valor en Exclusividad</span><div class="kpi-icon"><i class="fas fa-gem"></i></div></div>
-                            <div class="kpi-value" id="ownerKpiValue">USD 0</div>
-                            <div class="kpi-trend"><i class="fas fa-shield-alt"></i> Contratos vigentes</div>
-                        </div>
-                        <div class="kpi-card">
-                            <div class="kpi-top"><span class="kpi-title">ComisiÃ³n Promedio</span><div class="kpi-icon"><i class="fas fa-percent"></i></div></div>
-                            <div class="kpi-value">3.0% + IVA</div>
-                            <div class="kpi-trend"><i class="fas fa-tag"></i> Honorarios pactados</div>
-                        </div>
-                        <div class="kpi-card">
-                            <div class="kpi-top"><span class="kpi-title">Exclusividades por Vencer</span><div class="kpi-icon"><i class="fas fa-stopwatch"></i></div></div>
-                            <div class="kpi-value" id="ownerKpiExpiring" style="color:var(--warning);">0</div>
-                            <div class="kpi-trend" style="color:var(--warning);"><i class="fas fa-bell"></i> Requieren renovaciÃ³n</div>
-                        </div>
-                    </div>
-
-                    <div class="glass-panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2 class="panel-title">PadrÃ³n de Propietarios &amp; Contratos de Venta</h2>
-                                <p style="color:var(--text-muted); font-size:12.5px;">GestiÃ³n de expedientes legales, cuentas bancarias, seguimiento y reportes automÃ¡ticos.</p>
-                            </div>
-                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                                <input type="text" id="ownerSearchInput" placeholder="Buscar por nombre, CUIT o inmueble..." style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); padding:8px 14px; border-radius:var(--radius-sm); font-size:13px; outline:none; min-width:240px; color:#fff;" />
-                                <button class="btn-luxury-action" id="btnNewOwner"><i class="fas fa-user-plus"></i> Registrar Propietario</button>
-                            </div>
-                        </div>
-
-                        <div class="table-responsive">
-                            <table class="luxury-table">
-                                <thead>
-                                    <tr>
-                                        <th>Titular / CUIT</th>
-                                        <th>Contacto &amp; WhatsApp</th>
-                                        <th>Estado</th>
-                                        <th>Banco / CBU</th>
-                                        <th>Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="ownersTableBody">
-                                    <tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando propietarios...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- 6. SITIO WEB (CMS) -->
-                <section class="tab-module" id="tab-sitio-web">
-                    <div class="glass-panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2 class="panel-title">Editor en Vivo del Sitio Web</h2>
-                                <p style="color:var(--text-muted); font-size:12.5px;">ModificÃ¡ todos los contenidos de la landing page con guardado reactivo.</p>
-                            </div>
-                            <div style="display:flex; gap:10px;">
-                                <button class="status-pill pending" id="cmsResetBtn">Restaurar Original</button>
-                                <button class="btn-luxury-action" id="cmsSaveBtn"><i class="fas fa-floppy-disk"></i> Guardar Cambios Web</button>
-                            </div>
-                        </div>
-
-                        <div class="cms-nav-tabs">
-                            <button class="cms-tab-btn is-active" data-cms="cms-hero">1. Hero &amp; Portada</button>
-                            <button class="cms-tab-btn" data-cms="cms-servicios">2. Servicios</button>
-                            <button class="cms-tab-btn" data-cms="cms-equipo">3. Equipo</button>
-                            <button class="cms-tab-btn" data-cms="cms-stats">4. EstadÃ­sticas</button>
-                            <button class="cms-tab-btn" data-cms="cms-proceso">5. CÃ³mo Trabajamos</button>
-                        </div>
-
-                        <div class="cms-section-content is-active" id="cms-hero">
-                            <div class="form-grid-2">
-                                <div class="form-field"><label>TÃ­tulo Principal - LÃ­nea 1</label><input type="text" id="cms_hero_line1" class="cms-field" data-key="hero_line1" /></div>
-                                <div class="form-field"><label>TÃ­tulo Principal - LÃ­nea 2 (Destacada)</label><input type="text" id="cms_hero_line2" class="cms-field" data-key="hero_line2" /></div>
-                            </div>
-                            <div class="form-field"><label>Badge Superior (Eyebrow)</label><input type="text" id="cms_hero_eyebrow" class="cms-field" data-key="hero_eyebrow" /></div>
-                            <div class="form-field"><label>DescripciÃ³n del Hero</label><textarea id="cms_hero_desc" class="cms-field" data-key="hero_desc"></textarea></div>
-                            <div class="form-grid-2">
-                                <div class="form-field">
-                                    <label>Imagen de Fondo</label>
-                                    <div class="cms-image-upload">
-                                        <div class="cms-image-preview" id="cmsHeroBgPreview">
-                                            <i class="fas fa-cloud-arrow-up"></i>
-                                            <span>Sin imagen</span>
-                                        </div>
-                                        <input type="file" id="cmsHeroBgFile" accept="image/*" style="display:none;" />
-                                        <input type="hidden" id="cms_hero_bg" class="cms-field" data-key="hero_bg" />
-                                        <button type="button" class="btn-luxury-action btn-sm" id="cmsHeroBgUpload"><i class="fas fa-upload"></i> Seleccionar Imagen</button>
-                                    </div>
-                                </div>
-                                <div class="form-field"><label>URL Video Modal</label><input type="text" id="cms_hero_video" class="cms-field" data-key="hero_video" placeholder="https://www.youtube.com/watch?v=..." /></div>
-                            </div>
-                        </div>
-
-                        <div class="cms-section-content" id="cms-servicios">
-                            <div class="form-grid-2">
-                                <div class="form-field"><label>TÃ­tulo SecciÃ³n Servicios</label><input type="text" id="cms_serv_title" class="cms-field" data-key="serv_title" /></div>
-                                <div class="form-field"><label>Badge SecciÃ³n</label><input type="text" id="cms_serv_badge" class="cms-field" data-key="serv_badge" /></div>
-                            </div>
-                            <div class="form-field"><label>DescripciÃ³n General</label><textarea id="cms_serv_desc" class="cms-field" data-key="serv_desc"></textarea></div>
-                        </div>
-
-                        <div class="cms-section-content" id="cms-equipo">
-                            <div class="form-field"><label>TÃ­tulo SecciÃ³n Equipo</label><input type="text" id="cms_team_title" class="cms-field" data-key="team_title" /></div>
-                        </div>
-
-                        <div class="cms-section-content" id="cms-stats">
-                            <div class="form-grid-2">
-                                <div class="form-field"><label>MÃ©trica 1: Valor Objetivo</label><input type="number" id="cms_stat1_val" class="cms-field" data-key="stat1_val" /></div>
-                                <div class="form-field"><label>MÃ©trica 1: TÃ­tulo</label><input type="text" id="cms_stat1_title" class="cms-field" data-key="stat1_title" /></div>
-                            </div>
-                        </div>
-
-                        <div class="cms-section-content" id="cms-proceso">
-                            <div class="form-field"><label>TÃ­tulo SecciÃ³n Proceso</label><input type="text" id="cms_proc_title" class="cms-field" data-key="proc_title" /></div>
-                        </div>
-
-                    </div>
-                </section>
-
-                <!-- 7. PORTALES & APIS -->
-                <section class="tab-module" id="tab-portales">
-                    <div class="panel-header" style="margin-bottom:20px;">
-                        <div>
-                            <h2 class="panel-title">SincronizaciÃ³n Multi-Portal &amp; ConexiÃ³n de Cuentas</h2>
-                            <p style="color:var(--text-muted); font-size:12.5px;">GestiÃ³n de integraciones API y credenciales.</p>
-                        </div>
-                        <button class="btn-luxury-action" id="syncAllBtn"><i class="fas fa-arrows-rotate"></i> Sincronizar Todo</button>
-                    </div>
-
-                    <div class="portals-grid" id="portalsContainer"></div>
-
-                    <div class="glass-panel">
-                        <h3 class="panel-title" style="font-size:16px; margin-bottom:16px;">Historial de Sincronizaciones</h3>
-                        <table class="luxury-table">
-                            <thead><tr><th>Fecha y Hora</th><th>Portal</th><th>Inmuebles Enviados</th><th>Estado</th></tr></thead>
-                            <tbody id="syncLogsTableBody">
-                                <tr><td colspan="4" style="text-align:center; padding:30px; color:var(--text-dim);">Sin sincronizaciones recientes</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <!-- 8. AGENTES -->
-                <section class="tab-module" id="tab-agentes">
-                    <div class="glass-panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2 class="panel-title">Brokers &amp; Asesores Comerciales</h2>
-                                <p style="color:var(--text-muted); font-size:12.5px;">PadrÃ³n de asesores matriculados.</p>
-                            </div>
-                            <button class="btn-luxury-action" id="btnNewAgent">+ Registrar Agente</button>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="luxury-table">
-                                <thead><tr><th>Agente</th><th>MatrÃ­cula</th><th>Estado</th><th>TelÃ©fono</th><th>AcciÃ³n</th></tr></thead>
-                                <tbody id="agentsTableBody">
-                                    <tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando agentes...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- 9. TASACIONES -->
-                <section class="tab-module" id="tab-tasaciones">
-                    <div id="tasacionesListView">
-                        <div class="glass-panel">
-                            <div class="panel-header">
-                                <div>
-                                    <h2 class="panel-title">AnÃ¡lisis Comparativo de Mercado</h2>
-                                    <p style="color:var(--text-muted); font-size:12.5px;">Listado de tasaciones realizadas.</p>
-                                </div>
-                                <div style="display:flex; gap:10px;">
-                                    <button class="btn-luxury-action" onclick="exportTasacionesCSV()" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
-                                    <button class="btn-luxury-action" id="btnNewTasacion"><i class="fas fa-plus"></i> Nueva TasaciÃ³n</button>
-                                </div>
-                            </div>
-                            <div class="table-responsive">
-                                <table class="luxury-table">
-                                    <thead><tr><th>TÃ­tulo</th><th>Estado</th><th>Fecha</th><th>AcciÃ³n</th></tr></thead>
-                                    <tbody id="tasacionesTableBody">
-                                        <tr><td colspan="4" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando tasaciones...</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="tasacionesEditorView" style="display:none;">
-                        <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
-                            <button class="btn-luxury-action" id="btnBackToList"><i class="fas fa-arrow-left"></i> Volver al listado</button>
-                            <span style="color:var(--text-muted); font-size:13px;" id="tasacionesEditorTitle"></span>
-                        </div>
-                        <div style="border-radius:12px; overflow:hidden; border:1px solid var(--border-subtle); background:#000;">
-                            <iframe id="tasacionesIframe" src="" style="width:100%; height:calc(100vh - 180px); border:none;"></iframe>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- 10. USUARIOS -->
-                <section class="tab-module" id="tab-usuarios">
-                    <div class="glass-panel">
-                        <div class="panel-header">
-                            <div>
-                                <h2 class="panel-title">Usuarios del Sistema</h2>
-                                <p style="color:var(--text-muted); font-size:12.5px;">Roles y credenciales de acceso administrativo.</p>
-                            </div>
-                            <button class="btn-luxury-action" id="btnNewUser">+ Invitar Usuario</button>
-                        </div>
-                        <div class="table-responsive">
-                            <table class="luxury-table">
-                                <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Estado</th><th>Creado</th><th>Cambiar Rol</th><th>Acciones</th></tr></thead>
-                                <tbody id="usersTableBody">
-                                    <tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando usuarios...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- 11. CONFIGURACIÓN -->
-                <section class="tab-module" id="tab-configuracion">
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BIENENHAUS PROPIEDADES | Panel de Control &amp; CRM</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="theme-color" content="#020305" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23020305'/><text x='50' y='68' font-size='50' font-family='serif' font-weight='bold' fill='%231FC8C3' text-anchor='middle'>BH</text></svg>" type="image/svg+xml" />
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+    <link rel="stylesheet" href="assets/css/admin.css?v=21" />
+</head>
+<body class="is-loading">
+
+    <!-- PRELOADER LUXURY -->
+    <div class="preloader" id="preloader">
+        <div class="preloader-mark">
+            <span>BIENENHAUS</span>
+            <div class="preloader-bar"></div>
+        </div>
+    </div>
+
+    <!-- OVERLAYS GLOBALES -->
+    <div class="grain-overlay"></div>
+    <div class="cursor-glow" id="cursorGlow"></div>
+    <div class="cursor-dot" id="cursorDot"></div>
+
+    <!-- ============================================================
+         PANTALLA DE LOGIN
+         ============================================================ -->
+    <div class="login-screen" id="loginScreen">
+        <div class="login-card">
+            <div class="login-logo">BIENENHAUS</div>
+            <div class="login-sub">ACCESO ADMINISTRATIVO &amp; CRM</div>
+
+            <div class="login-error" id="loginError"></div>
+
+            <form id="loginForm">
+                <div class="login-input-group">
+                    <label>Correo Corporativo</label>
+                    <div class="login-input-wrapper">
+                        <i class="fas fa-envelope"></i>
+                        <input type="email" id="loginEmail" placeholder="admin@bienenhaus.com.ar" required />
+                    </div>
+                </div>
+
+                <div class="login-input-group">
+                    <label>ContraseÃ±a de Seguridad</label>
+                    <div class="login-input-wrapper">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" id="loginPassword" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" required />
+                    </div>
+                </div>
+
+                <div class="login-options">
+                    <label>
+                        <input type="checkbox" checked style="accent-color:var(--accent);" /> Recordar credenciales
+                    </label>
+                    <a href="index.html">â† Volver al sitio</a>
+                </div>
+
+                <button type="submit" class="btn-login" id="btnLoginSubmit">
+                    <span>Ingresar al Panel</span>
+                    <i class="fas fa-arrow-right"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         LAYOUT PRINCIPAL
+         ============================================================ -->
+    <div class="app-layout" id="appLayout" style="display:none;">
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <div class="brand-logo">
+                    <span class="brand-title">BIENENHAUS</span>
+                    <span class="brand-subtitle">ADMIN &amp; CRM</span>
+                </div>
+                <span class="badge-env">PRO</span>
+            </div>
+
+            <nav class="sidebar-menu">
+                <div class="menu-category">Principal</div>
+                <div class="nav-item is-active" data-tab="tab-dashboard">
+                    <div class="nav-item-left">
+                        <i class="fas fa-chart-pie"></i>
+                        <span>Dashboard</span>
+                    </div>
+                </div>
+
+                <div class="menu-category">GestiÃ³n &amp; CRM</div>
+                <div class="nav-item" data-tab="tab-propiedades">
+                    <div class="nav-item-left">
+                        <i class="fas fa-home"></i>
+                        <span>Propiedades</span>
+                    </div>
+                    <span class="nav-badge active-badge" id="sideBadgeProps">0</span>
+                </div>
+
+                <div class="nav-item" data-tab="tab-leads">
+                    <div class="nav-item-left">
+                        <i class="fas fa-users-line"></i>
+                        <span>Leads &amp; CRM</span>
+                    </div>
+                    <span class="nav-badge" id="sideBadgeLeads">0 Activos</span>
+                </div>
+
+                <div class="nav-item" data-tab="tab-agenda">
+                    <div class="nav-item-left">
+                        <i class="fas fa-calendar-check"></i>
+                        <span>Agenda de Visitas</span>
+                    </div>
+                    <span class="nav-badge" id="sideBadgeVisits">0 Citas</span>
+                </div>
+
+                <div class="nav-item" data-tab="tab-tasaciones">
+                    <div class="nav-item-left">
+                        <i class="fas fa-calculator"></i>
+                        <span>Tasaciones</span>
+                    </div>
+                    <span class="nav-badge" id="sideBadgeTasaciones">0</span>
+                </div>
+
+                <div class="menu-category">Red &amp; DifusiÃ³n</div>
+                <div class="nav-item" data-tab="tab-sitio-web">
+                    <div class="nav-item-left">
+                        <i class="fas fa-desktop" style="color:var(--accent);"></i>
+                        <span style="font-weight:700; color:#fff;">Sitio Web (CMS)</span>
+                    </div>
+                    <span class="nav-badge" style="background:rgba(31,200,195,0.2); color:var(--accent);">Live</span>
+                </div>
+
+                <div class="nav-item" data-tab="tab-portales">
+                    <div class="nav-item-left">
+                        <i class="fas fa-globe"></i>
+                        <span>Portales &amp; APIs</span>
+                    </div>
+                    <span class="nav-badge" style="color:var(--success);"><i class="fas fa-circle" style="font-size:8px;"></i> Sync</span>
+                </div>                <div class="nav-item" data-tab="tab-chat-redes">                    <div class="nav-item-left">                        <i class="fas fa-comments" style="color:var(--accent);"></i>                        <span>Chat Redes</span>                    </div>                    <span class="nav-badge" id="sideBadgeChatRedes" style="background:rgba(31,200,195,0.2); color:var(--accent);">0</span>                </div><div class="nav-item" data-tab="tab-agentes">
+                    <div class="nav-item-left">
+                        <i class="fas fa-user-tie"></i>
+                        <span>Agentes &amp; Brokers</span>
+                    </div>
+                </div>
+
+                <div class="nav-item" data-tab="tab-propietarios">
+                    <div class="nav-item-left">
+                        <i class="fas fa-handshake" style="color:var(--accent);"></i>
+                        <span style="font-weight:600;">Propietarios</span>
+                    </div>
+                    <span class="nav-badge" id="sideBadgeOwners" style="background:rgba(31,200,195,0.2); color:var(--accent);">0 Activos</span>
+                </div>
+
+                <div class="menu-category">Sistema</div>
+                <div class="nav-item" data-tab="tab-usuarios">
+                    <div class="nav-item-left">
+                        <i class="fas fa-shield-halved"></i>
+                        <span>Usuarios &amp; Permisos</span>
+                    </div>
+                </div>
+
+                <div class="nav-item" data-tab="tab-configuracion">
+                    <div class="nav-item-left">
+                        <i class="fas fa-sliders"></i>
+                        <span>ConfiguraciÃ³n</span>
+                    </div>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-card" id="sidebarUserProfile" title="Editar mi usuario" style="cursor:pointer;">
+                    <div class="user-avatar-placeholder" id="sidebarUserAvatar">A</div>
+                    <div class="user-info">
+                        <span class="user-name" id="sidebarUserName">Admin</span>
+                        <span class="user-role" id="sidebarUserRole">Administrador</span>
+                    </div>
+                    <button style="color:var(--text-dim); padding:6px;" title="Cambiar mi contraseña" id="changePasswordBtn">
+                        <i class="fas fa-key"></i>
+                    </button>
+                    <button style="color:var(--text-dim); padding:6px;" title="Cerrar sesiÃ³n" id="logoutBtn">
+                        <i class="fas fa-arrow-right-from-bracket"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-wrapper">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button id="mobileMenuToggle" class="icon-badge-btn" style="display:none;" aria-label="Abrir MenÃº">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <h1 class="page-title" id="moduleTitle">Dashboard Principal</h1>
+                    <div class="quick-search">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="globalSearchInput" placeholder="Buscar en el sistema..." />
+                    </div>
+                </div>
+
+                <div class="topbar-right">
+                    <button class="icon-badge-btn" title="Notificaciones" id="notifBtn">
+                        <i class="far fa-bell"></i>
+                        <span class="ping-badge"></span>
+                    </button>
+
+                    <button class="btn-luxury-action" id="topbarNewProp">
+                        <i class="fas fa-plus"></i>
+                        <span>Nueva Propiedad</span>
+                    </button>
+                </div>
+            </header>
+
+            <div class="content-area">
+
+                <!-- 1. DASHBOARD PRINCIPAL -->
+                <section class="tab-module is-active" id="tab-dashboard">
+                    <div class="quick-actions-bar">
+                        <div class="quick-action-chip" data-action="openPropertyModal"><i class="fas fa-plus-circle"></i> + Nueva Propiedad</div>
+                        <div class="quick-action-chip" data-action="openLeadModal"><i class="fas fa-user-plus"></i> + Cargar Lead</div>
+                        <div class="quick-action-chip" data-action="openVisitModal"><i class="fas fa-calendar-plus"></i> + Agendar Visita</div>
+                        <div class="quick-action-chip" data-action="openOwnerModal"><i class="fas fa-handshake"></i> + Registrar Propietario</div>
+                        <div class="quick-action-chip" data-action="goToCMS"><i class="fas fa-desktop"></i> Editar Sitio Web</div>
+                    </div>
+
+                    <div class="kpi-grid-6">
+                        <div class="kpi-card">
+                            <div class="kpi-top"><span class="kpi-title">Volumen de Cartera</span><div class="kpi-icon"><i class="fas fa-gem"></i></div></div>
+                            <div class="kpi-value" id="kpiVolumen">USD 0</div>
+                            <div class="kpi-trend"><i class="fas fa-arrow-trend-up"></i> Calculado en tiempo real</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-top"><span class="kpi-title">Propiedades Activas</span><div class="kpi-icon"><i class="fas fa-building"></i></div></div>
+                            <div class="kpi-value" id="kpiActivas">0</div>
+                            <div class="kpi-trend"><i class="fas fa-circle-check"></i> En cartera activa</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-top"><span class="kpi-title">Ticket Promedio</span><div class="kpi-icon"><i class="fas fa-tag"></i></div></div>
+                            <div class="kpi-value" id="kpiTicket">USD 0</div>
+                            <div class="kpi-trend"><i class="fas fa-arrow-trend-up"></i> Promedio por inmueble</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-top"><span class="kpi-title">Leads Calificados</span><div class="kpi-icon"><i class="fas fa-users"></i></div></div>
+                            <div class="kpi-value" id="kpiLeads">0</div>
+                            <div class="kpi-trend"><i class="fas fa-fire" style="color:#FFB800;"></i> En proceso CRM</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-top"><span class="kpi-title">Visitas Registradas</span><div class="kpi-icon"><i class="fas fa-calendar-days"></i></div></div>
+                            <div class="kpi-value" id="kpiVisitas">0</div>
+                            <div class="kpi-trend"><i class="fas fa-clock"></i> En agenda</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-top"><span class="kpi-title">Brokers Asignados</span><div class="kpi-icon"><i class="fas fa-user-tie"></i></div></div>
+                            <div class="kpi-value" id="kpiBrokers">0</div>
+                            <div class="kpi-trend"><i class="fas fa-shield-check"></i> MatrÃ­culas C.R.I. activas</div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-analytics-grid">
+                        <div class="glass-panel" style="margin-bottom:0;">
+                            <div class="panel-header">
+                                <div>
+                                    <h2 class="panel-title">EvoluciÃ³n de Consultas &amp; Ventas</h2>
+                                    <p style="color:var(--text-muted); font-size:12px;">Comportamiento mensual de interesados vs operaciones.</p>
+                                </div>
+                                <span class="status-pill active"><i class="fas fa-calendar"></i> 2026</span>
+                            </div>
+                            <div class="chart-mock-bar-container">
+                                <div class="chart-col"><div class="chart-bar-fill" style="height:45%;"></div><span class="chart-label">Ene</span></div>
+                                <div class="chart-col"><div class="chart-bar-fill" style="height:60%;"></div><span class="chart-label">Feb</span></div>
+                                <div class="chart-col"><div class="chart-bar-fill" style="height:55%;"></div><span class="chart-label">Mar</span></div>
+                                <div class="chart-col"><div class="chart-bar-fill" style="height:75%;"></div><span class="chart-label">Abr</span></div>
+                                <div class="chart-col"><div class="chart-bar-fill" style="height:70%;"></div><span class="chart-label">May</span></div>
+                                <div class="chart-col"><div class="chart-bar-fill" style="height:85%;"></div><span class="chart-label">Jun</span></div>
+                                <div class="chart-col"><div class="chart-bar-fill" style="height:95%;"></div><span class="chart-label">Jul</span></div>
+                                <div class="chart-col"><div class="chart-bar-fill" style="height:100%; background:linear-gradient(180deg, var(--glow), var(--accent));"></div><span class="chart-label" style="color:var(--accent); font-weight:700;">Ago</span></div>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel" style="margin-bottom:0;">
+                            <div class="panel-header">
+                                <h2 class="panel-title" style="font-size:16px;">Cartera por Zonas</h2>
+                            </div>
+                            <div id="zoneProgressContainer">
+                                <p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Las zonas se actualizarÃ¡n al cargar propiedades.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-widgets-3col" style="margin-top:24px;">
+                        <div class="glass-panel" style="margin-bottom:0;">
+                            <div class="panel-header">
+                                <h3 class="panel-title" style="font-size:15px;"><i class="fas fa-clock" style="color:var(--accent);"></i> Visitas Agendadas</h3>
+                                <button class="status-pill active" data-action="goToAgenda">Ver Todas</button>
+                            </div>
+                            <div id="dashVisitsList"><p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Sin visitas registradas</p></div>
+                        </div>
+
+                        <div class="glass-panel" style="margin-bottom:0;">
+                            <div class="panel-header">
+                                <h3 class="panel-title" style="font-size:15px;"><i class="fas fa-fire" style="color:#FFB800;"></i> Leads Prioritarios</h3>
+                                <button class="status-pill active" data-action="goToLeads">Ver CRM</button>
+                            </div>
+                            <div id="dashLeadsList"><p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Sin leads registrados</p></div>
+                        </div>
+
+                        <div class="glass-panel" style="margin-bottom:0;">
+                            <div class="panel-header">
+                                <h3 class="panel-title" style="font-size:15px;"><i class="fas fa-trophy" style="color:#FFE600;"></i> Top Brokers</h3>
+                                <button class="status-pill active" data-action="goToAgents">Equipo</button>
+                            </div>
+                            <div id="dashBrokersList"><p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Sin brokers registrados</p></div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 2. PROPIEDADES -->
+                <section class="tab-module" id="tab-propiedades">
+                    <div class="glass-panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2 class="panel-title">Inventario de Propiedades</h2>
+                                <p style="color:var(--text-muted); font-size:12.5px;">GestiÃ³n en tiempo real de fichas tÃ©cnicas y precios.</p>
+                            </div>
+                            <div style="display:flex; gap:10px;">
+                                <input type="text" id="propSearchInput" placeholder="Filtrar por tÃ­tulo o zona..." style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); padding:8px 14px; border-radius:var(--radius-sm); font-size:13px; outline:none; color:#fff;" />
+                                <button class="btn-luxury-action" onclick="exportPropertiesCSV()" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
+                                <button class="btn-luxury-action" id="btnNewProp"><i class="fas fa-plus"></i> Publicar</button>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="luxury-table">
+<thead>
+                                    <tr>
+                                        <th>Código</th>
+                                        <th>Inmueble</th>
+                                        <th>Superficie</th>
+                                        <th>Ambientes</th>
+                                        <th>Precio (USD)</th>
+                                        <th>Operación</th>
+                                        <th>Estado</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="propertiesTableBody">
+                                    <tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando propiedades...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 3. CRM LEADS -->
+                <section class="tab-module" id="tab-leads">
+                    <div class="panel-header" style="margin-bottom:18px;">
+                        <div>
+                            <h2 class="panel-title">Pipeline de Prospectos &amp; Compradores</h2>
+                            <p style="color:var(--text-muted); font-size:12.5px;">GestiÃ³n de etapas comerciales con guardado automÃ¡tico.</p>
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <button class="btn-luxury-action" onclick="exportLeadsCSV()" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
+                            <button class="btn-luxury-action" id="btnNewLead">+ Agregar Lead</button>
+                        </div>
+                    </div>
+
+                    <div class="leads-pipeline">
+                        <div class="pipeline-col" id="col-nuevos">
+                            <div class="pipeline-header"><span>1. Nuevos</span><span class="nav-badge" id="badge-nuevos">0</span></div>
+                            <div class="pipeline-cards" id="cards-nuevos"></div>
+                        </div>
+                        <div class="pipeline-col" id="col-contactados">
+                            <div class="pipeline-header"><span>2. Contactados</span><span class="nav-badge" id="badge-contactados">0</span></div>
+                            <div class="pipeline-cards" id="cards-contactados"></div>
+                        </div>
+                        <div class="pipeline-col" id="col-visita">
+                            <div class="pipeline-header"><span>3. Visita Agendada</span><span class="nav-badge" id="badge-visita">0</span></div>
+                            <div class="pipeline-cards" id="cards-visita"></div>
+                        </div>
+                        <div class="pipeline-col" id="col-oferta">
+                            <div class="pipeline-header"><span>4. Oferta / Cierre</span><span class="nav-badge" id="badge-oferta" style="background:var(--success); color:#000;">0</span></div>
+                            <div class="pipeline-cards" id="cards-oferta"></div>
+                        </div>
+                    </div>
+                </section>
+
+<!-- 4. AGENDA DE VISITAS -->
+                <section class="tab-module" id="tab-agenda">
+                    <div class="glass-panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2 class="panel-title">Agenda de Visitas</h2>
+                                <p style="color:var(--text-muted); font-size:12.5px;">CoordinaciÃ³n de recorridos presenciales con prospectos.</p>
+                            </div>
+                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                                <button class="btn-luxury-action" id="btnNewVisit">+ Agendar Visita</button>
+                                <div style="display:flex; gap:6px; margin-left:auto;">
+                                    <button class="status-pill" id="viewCalendarBtn" title="Vista Calendario"><i class="fas fa-calendar-alt"></i> Calendario</button>
+                                    <button class="status-pill active" id="viewTableBtn" title="Vista Tabla"><i class="fas fa-table"></i> Tabla</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Vista Calendario -->
+                        <div id="visitsCalendarView" style="display:none;">
+                            <div class="calendar-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+                                <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                                    <button class="btn-action" id="calPrevMonth" title="Mes anterior" style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;"><i class="fas fa-chevron-left"></i></button>
+                                    <h3 id="calCurrentMonth" style="font-family:var(--font-heading); font-size:20px; color:#fff; margin:0; min-width:180px; text-align:center;">Mes Año</h3>
+                                    <button class="btn-action" id="calNextMonth" title="Mes siguiente" style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;"><i class="fas fa-chevron-right"></i></button>
+                                    <button class="status-pill" id="calTodayBtn" style="margin-left:auto;"><i class="fas fa-calendar-day"></i> Hoy</button>
+                                </div>
+                                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                    <select id="calStatusFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
+                                        <option value="">Todos los estados</option>
+                                        <option value="pendiente">Pendiente</option>
+                                        <option value="confirmada">Confirmada</option>
+                                        <option value="completada">Completada</option>
+                                        <option value="cancelada">Cancelada</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="calendar-grid" id="calendarGrid" style="display:grid; grid-template-columns:repeat(7, 1fr); gap:4px;">
+                                <!-- Días de la semana -->
+                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Dom</div>
+                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Lun</div>
+                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Mar</div>
+                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Mié</div>
+                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Jue</div>
+                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Vie</div>
+                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Sáb</div>
+                                <!-- Los días se insertan aquí via JS -->
+                            </div>
+                        </div>
+
+                        <!-- Vista Tabla (existente) -->
+                        <div id="visitsTableView">
+                            <div class="table-responsive">
+                                <table class="luxury-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha & Hora</th>
+                                            <th>Cliente / Prospecto</th>
+                                            <th>Lead (CRM)</th>
+                                            <th>Propiedad</th>
+                                            <th>Estado</th>
+                                            <th>Vinculado</th>
+                                            <th>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="visitsTableBody">
+                                        <tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando visitas...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 5. PADRÃ“N DE PROPIETARIOS -->
+                <section class="tab-module" id="tab-propietarios">
+                    <div class="kpi-grid-6" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
+                        <div class="kpi-card">
+                            <div class="kpi-top"><span class="kpi-title">Propietarios Titulares</span><div class="kpi-icon"><i class="fas fa-handshake"></i></div></div>
+                            <div class="kpi-value" id="ownerKpiTotal">0</div>
+                            <div class="kpi-trend"><i class="fas fa-circle-check"></i> En cartera activa</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-top"><span class="kpi-title">Valor en Exclusividad</span><div class="kpi-icon"><i class="fas fa-gem"></i></div></div>
+                            <div class="kpi-value" id="ownerKpiValue">USD 0</div>
+                            <div class="kpi-trend"><i class="fas fa-shield-alt"></i> Contratos vigentes</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-top"><span class="kpi-title">ComisiÃ³n Promedio</span><div class="kpi-icon"><i class="fas fa-percent"></i></div></div>
+                            <div class="kpi-value">3.0% + IVA</div>
+                            <div class="kpi-trend"><i class="fas fa-tag"></i> Honorarios pactados</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-top"><span class="kpi-title">Exclusividades por Vencer</span><div class="kpi-icon"><i class="fas fa-stopwatch"></i></div></div>
+                            <div class="kpi-value" id="ownerKpiExpiring" style="color:var(--warning);">0</div>
+                            <div class="kpi-trend" style="color:var(--warning);"><i class="fas fa-bell"></i> Requieren renovaciÃ³n</div>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2 class="panel-title">PadrÃ³n de Propietarios &amp; Contratos de Venta</h2>
+                                <p style="color:var(--text-muted); font-size:12.5px;">GestiÃ³n de expedientes legales, cuentas bancarias, seguimiento y reportes automÃ¡ticos.</p>
+                            </div>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                <input type="text" id="ownerSearchInput" placeholder="Buscar por nombre, CUIT o inmueble..." style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); padding:8px 14px; border-radius:var(--radius-sm); font-size:13px; outline:none; min-width:240px; color:#fff;" />
+                                <button class="btn-luxury-action" id="btnNewOwner"><i class="fas fa-user-plus"></i> Registrar Propietario</button>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="luxury-table">
+                                <thead>
+                                    <tr>
+                                        <th>Titular / CUIT</th>
+                                        <th>Contacto &amp; WhatsApp</th>
+                                        <th>Estado</th>
+                                        <th>Banco / CBU</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ownersTableBody">
+                                    <tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando propietarios...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 6. SITIO WEB (CMS) -->
+                <section class="tab-module" id="tab-sitio-web">
+                    <div class="glass-panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2 class="panel-title">Editor en Vivo del Sitio Web</h2>
+                                <p style="color:var(--text-muted); font-size:12.5px;">ModificÃ¡ todos los contenidos de la landing page con guardado reactivo.</p>
+                            </div>
+                            <div style="display:flex; gap:10px;">
+                                <button class="status-pill pending" id="cmsResetBtn">Restaurar Original</button>
+                                <button class="btn-luxury-action" id="cmsSaveBtn"><i class="fas fa-floppy-disk"></i> Guardar Cambios Web</button>
+                            </div>
+                        </div>
+
+                        <div class="cms-nav-tabs">
+                            <button class="cms-tab-btn is-active" data-cms="cms-hero">1. Hero &amp; Portada</button>
+                            <button class="cms-tab-btn" data-cms="cms-servicios">2. Servicios</button>
+                            <button class="cms-tab-btn" data-cms="cms-equipo">3. Equipo</button>
+                            <button class="cms-tab-btn" data-cms="cms-stats">4. EstadÃ­sticas</button>
+                            <button class="cms-tab-btn" data-cms="cms-proceso">5. CÃ³mo Trabajamos</button>
+                        </div>
+
+                        <div class="cms-section-content is-active" id="cms-hero">
+                            <div class="form-grid-2">
+                                <div class="form-field"><label>TÃ­tulo Principal - LÃ­nea 1</label><input type="text" id="cms_hero_line1" class="cms-field" data-key="hero_line1" /></div>
+                                <div class="form-field"><label>TÃ­tulo Principal - LÃ­nea 2 (Destacada)</label><input type="text" id="cms_hero_line2" class="cms-field" data-key="hero_line2" /></div>
+                            </div>
+                            <div class="form-field"><label>Badge Superior (Eyebrow)</label><input type="text" id="cms_hero_eyebrow" class="cms-field" data-key="hero_eyebrow" /></div>
+                            <div class="form-field"><label>DescripciÃ³n del Hero</label><textarea id="cms_hero_desc" class="cms-field" data-key="hero_desc"></textarea></div>
+                            <div class="form-grid-2">
+                                <div class="form-field">
+                                    <label>Imagen de Fondo</label>
+                                    <div class="cms-image-upload">
+                                        <div class="cms-image-preview" id="cmsHeroBgPreview">
+                                            <i class="fas fa-cloud-arrow-up"></i>
+                                            <span>Sin imagen</span>
+                                        </div>
+                                        <input type="file" id="cmsHeroBgFile" accept="image/*" style="display:none;" />
+                                        <input type="hidden" id="cms_hero_bg" class="cms-field" data-key="hero_bg" />
+                                        <button type="button" class="btn-luxury-action btn-sm" id="cmsHeroBgUpload"><i class="fas fa-upload"></i> Seleccionar Imagen</button>
+                                    </div>
+                                </div>
+                                <div class="form-field"><label>URL Video Modal</label><input type="text" id="cms_hero_video" class="cms-field" data-key="hero_video" placeholder="https://www.youtube.com/watch?v=..." /></div>
+                            </div>
+                        </div>
+
+                        <div class="cms-section-content" id="cms-servicios">
+                            <div class="form-grid-2">
+                                <div class="form-field"><label>TÃ­tulo SecciÃ³n Servicios</label><input type="text" id="cms_serv_title" class="cms-field" data-key="serv_title" /></div>
+                                <div class="form-field"><label>Badge SecciÃ³n</label><input type="text" id="cms_serv_badge" class="cms-field" data-key="serv_badge" /></div>
+                            </div>
+                            <div class="form-field"><label>DescripciÃ³n General</label><textarea id="cms_serv_desc" class="cms-field" data-key="serv_desc"></textarea></div>
+                        </div>
+
+                        <div class="cms-section-content" id="cms-equipo">
+                            <div class="form-field"><label>TÃ­tulo SecciÃ³n Equipo</label><input type="text" id="cms_team_title" class="cms-field" data-key="team_title" /></div>
+                        </div>
+
+                        <div class="cms-section-content" id="cms-stats">
+                            <div class="form-grid-2">
+                                <div class="form-field"><label>MÃ©trica 1: Valor Objetivo</label><input type="number" id="cms_stat1_val" class="cms-field" data-key="stat1_val" /></div>
+                                <div class="form-field"><label>MÃ©trica 1: TÃ­tulo</label><input type="text" id="cms_stat1_title" class="cms-field" data-key="stat1_title" /></div>
+                            </div>
+                        </div>
+
+                        <div class="cms-section-content" id="cms-proceso">
+                            <div class="form-field"><label>TÃ­tulo SecciÃ³n Proceso</label><input type="text" id="cms_proc_title" class="cms-field" data-key="proc_title" /></div>
+                        </div>
+
+                    </div>
+                </section>
+
+                <!-- 7. PORTALES & APIS -->
+                <section class="tab-module" id="tab-portales">
+                    <div class="panel-header" style="margin-bottom:20px;">
+                        <div>
+                            <h2 class="panel-title">SincronizaciÃ³n Multi-Portal &amp; ConexiÃ³n de Cuentas</h2>
+                            <p style="color:var(--text-muted); font-size:12.5px;">GestiÃ³n de integraciones API y credenciales.</p>
+                        </div>
+                        <button class="btn-luxury-action" id="syncAllBtn"><i class="fas fa-arrows-rotate"></i> Sincronizar Todo</button>
+                    </div>
+
+                    <div class="portals-grid" id="portalsContainer"></div>
+
+                    <div class="glass-panel">
+                        <h3 class="panel-title" style="font-size:16px; margin-bottom:16px;">Historial de Sincronizaciones</h3>
+                        <table class="luxury-table">
+                            <thead><tr><th>Fecha y Hora</th><th>Portal</th><th>Inmuebles Enviados</th><th>Estado</th></tr></thead>
+                            <tbody id="syncLogsTableBody">
+                                <tr><td colspan="4" style="text-align:center; padding:30px; color:var(--text-dim);">Sin sincronizaciones recientes</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section
+
+
+
+                <!-- 7.5. CHAT REDES -->
+
+
+
+                <section class="tab-module" id="tab-chat-redes">
+
+
+
                     <div class="glass-panel">
+
+
+
                         <div class="panel-header">
+
+
+
                             <div>
-                                <h2 class="panel-title">Configuración General</h2>
-                                <p style="color:var(--text-muted); font-size:12.5px;">Identidad corporativa, contacto digital y redes del sitio web.</p>
+
+
+
+                                <h2 class="panel-title">Chat Redes Sociales</h2>
+
+
+
+                                <p style="color:var(--text-muted); font-size:12.5px;">Inbox unificado para Instagram, Facebook y WhatsApp via Zernio.</p>
+
+
+
                             </div>
-                            <button class="btn-luxury-action" id="cfgSaveBtn"><i class="fas fa-floppy-disk"></i> Guardar Cambios</button>
+
+
+
+                            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+
+
+
+                                <button class="btn-luxury-action" id="btnSyncChat"><i class="fas fa-arrows-rotate"></i> Sincronizar Ahora</button>
+
+
+
+                                <span id="chatSyncStatus" style="font-size:12px; color:var(--text-muted);"></span>
+
+
+
+                            </div>
+
+
+
                         </div>
 
-                        <p id="cfgGuardNote" style="display:none; margin-bottom:14px; padding:10px 14px; border-radius:var(--radius-sm); background:rgba(201,169,110,0.08); border:1px solid rgba(201,169,110,0.25); color:#c9a96e; font-size:12.5px;"><i class="fas fa-lock"></i> Solo los usuarios con rol Super Admin pueden modificar estos valores.</p>
 
-                        <div style="border:1px solid var(--border-subtle); border-radius:10px; padding:18px; margin-bottom:16px;">
-                            <h3 style="font-size:15px; color:#fff; margin-bottom:14px;"><i class="fas fa-building-columns" style="color:var(--accent); margin-right:8px;"></i>Identidad Corporativa</h3>
-                            <div class="form-grid-2">
-                                <div class="form-field"><label>Razón Social</label><input type="text" id="cfg_razon_social" class="cfg-field" data-key="razon_social" placeholder="BIENENHAUS PROPIEDADES S.A.S." /></div>
-                                <div class="form-field"><label>Matrícula C.R.I.</label><input type="text" id="cfg_matricula" class="cfg-field" data-key="matricula" placeholder="C.R.I. 183944" /></div>
+
+                        <div style="display:grid; grid-template-columns: 380px 1fr; gap:16px; height:calc(100vh - 260px); min-height:500px;">
+
+
+
+                            <div class="chat-sidebar">
+
+
+
+                                <div class="chat-filters">
+
+
+
+                                    <input type="text" id="chatSearch" placeholder="Buscar contacto..." style="width:100%; padding:10px 14px; background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:10px; color:#fff; font-size:13.5px;">
+
+
+
+                                    <div class="chat-platform-filter" style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">
+
+
+
+                                        <button class="filter-chip active" data-platform="all">Todas</button>
+
+
+
+                                        <button class="filter-chip" data-platform="instagram"><i class="fab fa-instagram"></i> IG</button>
+
+
+
+                                        <button class="filter-chip" data-platform="facebook"><i class="fab fa-facebook"></i> FB</button>
+
+
+
+                                        <button class="filter-chip" data-platform="whatsapp"><i class="fab fa-whatsapp"></i> WA</button>
+
+
+
+                                    </div>
+
+
+
+                                </div>
+
+
+
+                                <div class="chat-conversations" id="chatConversationsList" style="overflow-y:auto; flex:1; margin-top:12px;">
+
+
+
+                                    <div class="chat-empty" style="text-align:center; padding:40px 20px; color:var(--text-dim);">Cargando conversaciones...</div>
+
+
+
+                                </div>
+
+
+
                             </div>
-                            <div class="form-grid-2">
-                                <div class="form-field"><label>Copyright / Watermark</label><input type="text" id="cfg_watermark" class="cfg-field" data-key="watermark" placeholder="Bienenhaus Propiedades" /></div>
-                                <div class="form-field"><label>CUIT</label><input type="text" id="cfg_cuit" class="cfg-field" data-key="cuit" placeholder="30-00000000-0" /></div>
+
+
+
+                            <div class="chat-main">
+
+
+
+                                <div class="chat-header" id="chatHeader" style="display:none; padding:16px; border-bottom:1px solid var(--border-input); background:rgba(0,0,0,0.2);">
+
+
+
+                                    <div class="chat-header-info">
+
+
+
+                                        <div class="chat-contact-name" style="font-weight:700; font-size:15px; color:#fff;"></div>
+
+
+
+                                        <div class="chat-contact-meta" style="font-size:12px; color:var(--text-muted); display:flex; gap:12px; margin-top:4px;">
+
+
+
+                                            <span class="chat-platform-badge"></span>
+
+
+
+                                            <span class="chat-account-badge"></span>
+
+
+
+                                        </div>
+
+
+
+                                    </div>
+
+
+
+                                    <div class="chat-header-actions" style="display:flex; gap:8px;">
+
+
+
+                                        <button class="status-pill" id="btnMarkRead" style="font-size:12px; padding:6px 12px;"><i class="fas fa-check"></i> Marcar leído</button>
+
+
+
+                                    </div>
+
+
+
+                                </div>
+
+
+
+                                <div class="chat-messages" id="chatMessages" style="flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px;">
+
+
+
+                                    <div class="chat-empty" style="text-align:center; padding:60px 20px; color:var(--text-dim); flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;">
+
+
+
+                                        <i class="fas fa-comments" style="font-size:48px; opacity:0.3;"></i>
+
+
+
+                                        <p>Selecciona una conversación para comenzar</p>
+
+
+
+                                    </div>
+
+
+
+                                </div>
+
+
+
+                                <div class="chat-composer" style="padding:16px; border-top:1px solid var(--border-input); background:rgba(0,0,0,0.15); display:none;">
+
+
+
+                                    <div class="composer-row" style="display:flex; gap:8px; align-items:flex-end;">
+
+
+
+                                        <textarea id="chatComposer" placeholder="Escribe tu respuesta..." rows="1" style="flex:1; min-height:44px; max-height:120px; padding:12px 16px; background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:22px; color:#fff; font-size:14px; line-height:1.5; resize:none; font-family:inherit;"></textarea>
+
+
+
+                                        <button class="btn-luxury-action" id="btnSendMessage" style="width:44px; height:44px; border-radius:50%; padding:0; display:flex; align-items:center; justify-content:center;"><i class="fas fa-paper-plane"></i></button>
+
+
+
+                                    </div>
+
+
+
+                                    <div class="composer-hint" style="margin-top:6px; font-size:11px; color:var(--text-dim); display:flex; gap:16px; flex-wrap:wrap;">
+
+
+
+                                        <span id="composerPlatformHint"></span>
+
+
+
+                                        <span>Enter para enviar · Shift+Enter para salto de línea</span>
+
+
+
+                                    </div>
+
+
+
+                                </div>
+
+
+
                             </div>
+
+
+
                         </div>
 
-                        <div style="border:1px solid var(--border-subtle); border-radius:10px; padding:18px; margin-bottom:16px;">
-                            <h3 style="font-size:15px; color:#fff; margin-bottom:14px;"><i class="fas fa-address-book" style="color:var(--accent); margin-right:8px;"></i>Contacto Digital</h3>
-                            <div class="form-grid-2">
-                                <div class="form-field"><label>WhatsApp (formato internacional)</label><input type="text" id="cfg_whatsapp" class="cfg-field" data-key="whatsapp" placeholder="+54 11 0000-0000" /></div>
-                                <div class="form-field"><label>Email Corporativo</label><input type="email" id="cfg_email" class="cfg-field" data-key="email" placeholder="info@bienenhaus.com.ar" /></div>
-                            </div>
-                            <div class="form-grid-2">
-                                <div class="form-field"><label>Teléfono</label><input type="text" id="cfg_phone" class="cfg-field" data-key="phone" placeholder="+54 11 0000-0000" /></div>
-                                <div class="form-field"><label>Dirección / Sucursal</label><input type="text" id="cfg_address" class="cfg-field" data-key="address" placeholder="Av. Corrientes 1234, CABA" /></div>
-                            </div>
-                            <div class="form-field"><label>Horario de Atención</label><input type="text" id="cfg_schedule" class="cfg-field" data-key="schedule" placeholder="Lun - Vie: 9:00 - 18:00" /></div>
-                        </div>
-                        <div style="border:1px solid var(--border-subtle); border-radius:10px; padding:18px; margin-bottom:16px;">
-                            <h3 style="font-size:15px; color:#fff; margin-bottom:14px;"><i class="fas fa-share-nodes" style="color:var(--accent); margin-right:8px;"></i>Redes Sociales</h3>
-                            <p style="color:var(--text-dim); font-size:11.5px; margin:-8px 0 14px;">URLs completas (ej.: https://instagram.com/bienenhaus). Dejar vacío oculta el ícono en la web.</p>
-                            <div class="form-grid-2">
-                                <div class="form-field"><label>Instagram</label><input type="url" id="cfg_social_instagram" class="cfg-field" data-key="social_instagram" placeholder="https://instagram.com/..." /></div>
-                                <div class="form-field"><label>Facebook</label><input type="url" id="cfg_social_facebook" class="cfg-field" data-key="social_facebook" placeholder="https://facebook.com/..." /></div>
-                            </div>
-                            <div class="form-grid-2">
-                                <div class="form-field"><label>LinkedIn</label><input type="url" id="cfg_social_linkedin" class="cfg-field" data-key="social_linkedin" placeholder="https://linkedin.com/company/..." /></div>
-                                <div class="form-field"><label>YouTube</label><input type="url" id="cfg_social_youtube" class="cfg-field" data-key="social_youtube" placeholder="https://youtube.com/@..." /></div>
-                            </div>
-                        </div>
 
-                        <div style="border:1px solid var(--border-subtle); border-radius:10px; padding:18px; margin-bottom:16px;">
-                            <h3 style="font-size:15px; color:#fff; margin-bottom:14px;"><i class="fas fa-sliders" style="color:var(--accent); margin-right:8px;"></i>Preferencias</h3>
-                            <div class="form-grid-2">
-                                <div class="form-field"><label>Cotización USD de referencia (estimaciones en ARS)</label><input type="number" step="0.01" min="0" id="cfg_usd_rate" class="cfg-field-pref" placeholder="Ej.: 1200" /></div>
-                            </div>
-                        </div>
-                        <div style="border:1px solid var(--border-subtle); border-radius:10px; padding:18px; margin-bottom:16px;">
-                            <h3 style="font-size:15px; color:#fff; margin-bottom:14px;"><i class="fas fa-server" style="color:var(--accent); margin-right:8px;"></i>Sistema e Integraciones</h3>
-                            <div class="form-grid-2">
-                                <div class="form-field"><label>URL del Sitio</label><input type="text" value="https://bienenhaus.com.ar" disabled /></div>
-                                <div class="form-field"><label>Supabase URL</label><input type="text" value="https://rnldqiwwzhjnurkguihu.supabase.co" disabled /></div>
-                            </div>
-                            <div id="cfgStatusRow" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:6px;"></div>
-                        </div>
 
-                        <div style="border:1px solid var(--border-subtle); border-radius:10px; padding:18px;">
-                            <h3 style="font-size:15px; color:#fff; margin-bottom:14px;"><i class="fas fa-user-shield" style="color:var(--accent); margin-right:8px;"></i>Sesión Activa</h3>
-                            <p id="cfgSessionInfo" style="color:var(--text-muted); font-size:13px; margin-bottom:12px;">Cargando...</p>
-                            <button type="button" class="status-pill pending" id="cfgSignOutBtn"><i class="fas fa-arrow-right-from-bracket"></i> Cerrar sesión</button>
-                        </div>
                     </div>
+
+
+
                 </section>
+
+
+
+                <!-- 8. AGENTES -->>
+
+                <!-- 8. AGENTES -->
+                <section class="tab-module" id="tab-agentes">
+                    <div class="glass-panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2 class="panel-title">Brokers &amp; Asesores Comerciales</h2>
+                                <p style="color:var(--text-muted); font-size:12.5px;">PadrÃ³n de asesores matriculados.</p>
+                            </div>
+                            <button class="btn-luxury-action" id="btnNewAgent">+ Registrar Agente</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="luxury-table">
+                                <thead><tr><th>Agente</th><th>MatrÃ­cula</th><th>Estado</th><th>TelÃ©fono</th><th>AcciÃ³n</th></tr></thead>
+                                <tbody id="agentsTableBody">
+                                    <tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando agentes...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 9. TASACIONES -->
+                <section class="tab-module" id="tab-tasaciones">
+                    <div id="tasacionesListView">
+                        <div class="glass-panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h2 class="panel-title">AnÃ¡lisis Comparativo de Mercado</h2>
+                                    <p style="color:var(--text-muted); font-size:12.5px;">Listado de tasaciones realizadas.</p>
+                                </div>
+                                <div style="display:flex; gap:10px;">
+                                    <button class="btn-luxury-action" onclick="exportTasacionesCSV()" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
+                                    <button class="btn-luxury-action" id="btnNewTasacion"><i class="fas fa-plus"></i> Nueva TasaciÃ³n</button>
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="luxury-table">
+                                    <thead><tr><th>TÃ­tulo</th><th>Estado</th><th>Fecha</th><th>AcciÃ³n</th></tr></thead>
+                                    <tbody id="tasacionesTableBody">
+                                        <tr><td colspan="4" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando tasaciones...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="tasacionesEditorView" style="display:none;">
+                        <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+                            <button class="btn-luxury-action" id="btnBackToList"><i class="fas fa-arrow-left"></i> Volver al listado</button>
+                            <span style="color:var(--text-muted); font-size:13px;" id="tasacionesEditorTitle"></span>
+                        </div>
+                        <div style="border-radius:12px; overflow:hidden; border:1px solid var(--border-subtle); background:#000;">
+                            <iframe id="tasacionesIframe" src="" style="width:100%; height:calc(100vh - 180px); border:none;"></iframe>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 10. USUARIOS -->
+                <section class="tab-module" id="tab-usuarios">
+                    <div class="glass-panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2 class="panel-title">Usuarios del Sistema</h2>
+                                <p style="color:var(--text-muted); font-size:12.5px;">Roles y credenciales de acceso administrativo.</p>
+                            </div>
+                            <button class="btn-luxury-action" id="btnNewUser">+ Invitar Usuario</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="luxury-table">
+                                <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Estado</th><th>Creado</th><th>Cambiar Rol</th><th>Acciones</th></tr></thead>
+                                <tbody id="usersTableBody">
+                                    <tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando usuarios...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 11. CONFIGURACIÓN -->
+                <section class="tab-module" id="tab-configuracion">
+                    <div class="glass-panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2 class="panel-title">Configuración General</h2>
+                                <p style="color:var(--text-muted); font-size:12.5px;">Identidad corporativa, contacto digital y redes del sitio web.</p>
+                            </div>
+                            <button class="btn-luxury-action" id="cfgSaveBtn"><i class="fas fa-floppy-disk"></i> Guardar Cambios</button>
+                        </div>
+
+                        <p id="cfgGuardNote" style="display:none; margin-bottom:14px; padding:10px 14px; border-radius:var(--radius-sm); background:rgba(201,169,110,0.08); border:1px solid rgba(201,169,110,0.25); color:#c9a96e; font-size:12.5px;"><i class="fas fa-lock"></i> Solo los usuarios con rol Super Admin pueden modificar estos valores.</p>
+
+                        <div style="border:1px solid var(--border-subtle); border-radius:10px; padding:18px; margin-bottom:16px;">
+                            <h3 style="font-size:15px; color:#fff; margin-bottom:14px;"><i class="fas fa-building-columns" style="color:var(--accent); margin-right:8px;"></i>Identidad Corporativa</h3>
+                            <div class="form-grid-2">
+                                <div class="form-field"><label>Razón Social</label><input type="text" id="cfg_razon_social" class="cfg-field" data-key="razon_social" placeholder="BIENENHAUS PROPIEDADES S.A.S." /></div>
+                                <div class="form-field"><label>Matrícula C.R.I.</label><input type="text" id="cfg_matricula" class="cfg-field" data-key="matricula" placeholder="C.R.I. 183944" /></div>
+                            </div>
+                            <div class="form-grid-2">
+                                <div class="form-field"><label>Copyright / Watermark</label><input type="text" id="cfg_watermark" class="cfg-field" data-key="watermark" placeholder="Bienenhaus Propiedades" /></div>
+                                <div class="form-field"><label>CUIT</label><input type="text" id="cfg_cuit" class="cfg-field" data-key="cuit" placeholder="30-00000000-0" /></div>
+                            </div>
+                        </div>
+
+                        <div style="border:1px solid var(--border-subtle); border-radius:10px; padding:18px; margin-bottom:16px;">
+                            <h3 style="font-size:15px; color:#fff; margin-bottom:14px;"><i class="fas fa-address-book" style="color:var(--accent); margin-right:8px;"></i>Contacto Digital</h3>
+                            <div class="form-grid-2">
+                                <div class="form-field"><label>WhatsApp (formato internacional)</label><input type="text" id="cfg_whatsapp" class="cfg-field" data-key="whatsapp" placeholder="+54 11 0000-0000" /></div>
+                                <div class="form-field"><label>Email Corporativo</label><input type="email" id="cfg_email" class="cfg-field" data-key="email" placeholder="info@bienenhaus.com.ar" /></div>
+                            </div>
+                            <div class="form-grid-2">
+                                <div class="form-field"><label>Teléfono</label><input type="text" id="cfg_phone" class="cfg-field" data-key="phone" placeholder="+54 11 0000-0000" /></div>
+                                <div class="form-field"><label>Dirección / Sucursal</label><input type="text" id="cfg_address" class="cfg-field" data-key="address" placeholder="Av. Corrientes 1234, CABA" /></div>
+                            </div>
+                            <div class="form-field"><label>Horario de Atención</label><input type="text" id="cfg_schedule" class="cfg-field" data-key="schedule" placeholder="Lun - Vie: 9:00 - 18:00" /></div>
+                        </div>
+                        <div style="border:1px solid var(--border-subtle); border-radius:10px; padding:18px; margin-bottom:16px;">
+                            <h3 style="font-size:15px; color:#fff; margin-bottom:14px;"><i class="fas fa-share-nodes" style="color:var(--accent); margin-right:8px;"></i>Redes Sociales</h3>
+                            <p style="color:var(--text-dim); font-size:11.5px; margin:-8px 0 14px;">URLs completas (ej.: https://instagram.com/bienenhaus). Dejar vacío oculta el ícono en la web.</p>
+                            <div class="form-grid-2">
+                                <div class="form-field"><label>Instagram</label><input type="url" id="cfg_social_instagram" class="cfg-field" data-key="social_instagram" placeholder="https://instagram.com/..." /></div>
+                                <div class="form-field"><label>Facebook</label><input type="url" id="cfg_social_facebook" class="cfg-field" data-key="social_facebook" placeholder="https://facebook.com/..." /></div>
+                            </div>
+                            <div class="form-grid-2">
+                                <div class="form-field"><label>LinkedIn</label><input type="url" id="cfg_social_linkedin" class="cfg-field" data-key="social_linkedin" placeholder="https://linkedin.com/company/..." /></div>
+                                <div class="form-field"><label>YouTube</label><input type="url" id="cfg_social_youtube" class="cfg-field" data-key="social_youtube" placeholder="https://youtube.com/@..." /></div>
+                            </div>
+                        </div>
+
+                        <div style="border:1px solid var(--border-subtle); border-radius:10px; padding:18px; margin-bottom:16px;">
+                            <h3 style="font-size:15px; color:#fff; margin-bottom:14px;"><i class="fas fa-sliders" style="color:var(--accent); margin-right:8px;"></i>Preferencias</h3>
+                            <div class="form-grid-2">
+                                <div class="form-field"><label>Cotización USD de referencia (estimaciones en ARS)</label><input type="number" step="0.01" min="0" id="cfg_usd_rate" class="cfg-field-pref" placeholder="Ej.: 1200" /></div>
+                            </div>
+                        </div>
+                        <div style="border:1px solid var(--border-subtle); border-radius:10px; padding:18px; margin-bottom:16px;">
+                            <h3 style="font-size:15px; color:#fff; margin-bottom:14px;"><i class="fas fa-server" style="color:var(--accent); margin-right:8px;"></i>Sistema e Integraciones</h3>
+
+                            <div class="form-grid-2">
+
+                                <div class="form-field"><label>URL del Sitio</label><input type="text" value="https://bienenhaus.com.ar" disabled /></div>
+
+                                <div class="form-field"><label>Supabase URL</label><input type="text" value="https://rnldqiwwzhjnurkguihu.supabase.co" disabled /></div>
+
+                            </div>
+
+                            <div class="form-grid-2">
+
+                                <div class="form-field">
+                                    <label>Zernio API Key (Chat Redes Sociales)</label>
+                                    <div style="position:relative;">
+                                        <input type="password" id="cfg_zernio_api_key" class="cfg-field-pref" placeholder="sk_..." autocomplete="off" />
+                                        <button type="button" class="toggle-pwd" id="toggleZernioKey" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:14px;" title="Mostrar/ocultar"><i class="fas fa-eye"></i></button>
+                                    </div>
+                                    <p style="color:var(--text-dim); font-size:11px; margin:6px 0 0;">Obtén tu API Key en <a href="https://zernio.com/dashboard" target="_blank" style="color:var(--accent);">zernio.com/dashboard</a> → Settings → API Key.</p>
+                                </div>
+
+                                <div class="form-field" style="display:flex; flex-direction:column; justify-content:flex-end;">
+                                    <button type="button" class="btn-luxury-action" id="btnTestZernio" style="width:100%;"><i class="fas fa-plug"></i> Probar Conexión Zernio</button>
+                                    <span id="zernioTestStatus" style="margin-top:8px; font-size:12px; color:var(--text-muted);"></span>
+                                </div>
+
+                            </div>
+
+                            <div id="cfgStatusRow" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:6px;"></div>
+
+                        </div>
+
+                        <div style="border:1px solid var(--border-subtle); border-radius:10px; padding:18px;">
+                            <h3 style="font-size:15px; color:#fff; margin-bottom:14px;"><i class="fas fa-user-shield" style="color:var(--accent); margin-right:8px;"></i>Sesión Activa</h3>
+                            <p id="cfgSessionInfo" style="color:var(--text-muted); font-size:13px; margin-bottom:12px;">Cargando...</p>
+                            <button type="button" class="status-pill pending" id="cfgSignOutBtn"><i class="fas fa-arrow-right-from-bracket"></i> Cerrar sesión</button>
+                        </div>
+                    </div>
+                </section>
+
+            </div><!-- /content-area -->
+        </main>
+    </div><!-- /app-layout -->
+
+    <!-- ============================================================
+         MODALES
+         ============================================================ -->
+
+    <!-- MODAL PROPIEDAD -->
+    <div class="admin-modal" id="propertyModal">
+        <div class="modal-box">
+            <h3 id="propModalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Nueva Propiedad</h3>
+            <form id="propertyForm">
+                <input type="hidden" id="propId" />
+                <div class="form-field">
+                    <label>Código</label>
+                    <input type="text" id="propCode" name="property_code" readonly placeholder="Se genera automáticamente" style="background:rgba(255,255,255,0.03); color:var(--accent); font-weight:600; font-family:monospace; font-size:13px;" title="Se genera automáticamente al guardar" />
+                    <span style="font-size:11px; color:var(--text-dim); margin-top:4px; display:block;">Formato: FH-P0001 (iniciales + secuencia) / ML-P0001 (Mercado Libre)</span>
+                </div>
+                <div class="form-field"><label>TÃ­tulo del Inmueble *</label><input type="text" name="title" required placeholder="Ej: Departamento en Palermo" /></div>
+                <div class="form-grid-2">
+                    <div class="form-field">
+                        <label>Tipo de Propiedad *</label>
+                        <select name="property_type" required>
+                            <option value="">Seleccionar...</option>
+                            <option value="casa">Casa</option>
+                            <option value="departamento">Departamento</option>
+                            <option value="terreno">Terreno</option>
+                            <option value="local">Local</option>
+                            <option value="oficina">Oficina</option>
+                            <option value="galpon">GalpÃ³n</option>
+                            <option value="quinta">Quinta</option>
+                            <option value="otro">Otro</option>
+                        </select>
+                    </div>
+                    <div class="form-field"><label>Precio en USD *</label><input type="number" name="price_usd" required placeholder="150000" /></div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-field">
+                        <label>OperaciÃ³n</label>
+                        <select name="status">
+                            <option value="venta">Venta</option>
+                            <option value="alquiler">Alquiler</option>
+                        </select>
+                    </div>
+                    <div class="form-field"><label>Zona / Barrio</label><input type="text" name="zone" placeholder="Palermo, Villa Belgrano..." /></div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-field"><label>DirecciÃ³n</label><input type="text" name="address" placeholder="Av. Santa Fe 1234" /></div>
+                    <div class="form-field"><label>Superficie (mÂ²)</label><input type="number" name="area_m2" placeholder="75" /></div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-field"><label>Ambientes</label><input type="number" name="rooms" placeholder="3" /></div>
+                    <div class="form-field"><label>Dormitorios</label><input type="number" name="bedrooms" placeholder="2" /></div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-field"><label>BaÃ±os</label><input type="number" name="bathrooms" placeholder="1" /></div>
+                    <div class="form-field"><label>Cocheras</label><input type="number" name="garage_spaces" placeholder="1" /></div>
+                </div>
+                <div class="form-field"><label>DescripciÃ³n</label><textarea name="description" placeholder="DescripciÃ³n de la propiedad" rows="3"></textarea></div>
+                <div class="form-field">
+                    <label>ImÃ¡genes</label>
+                    <input type="file" name="image_files" accept="image/*" multiple style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:12px; padding:12px 16px; color:#fff; font-size:13.5px; width:100%;" />
+                </div>
+                <div id="imagePreviewGrid" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;"></div>
+                <div class="form-grid-2">
+                    <div class="form-field" style="margin-top:14px;">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; font-weight:500; color:var(--text-secondary);">
+                            <input type="checkbox" name="is_published" style="accent-color:var(--accent); width:16px; height:16px;" /> Publicada en el sitio
+                        </label>
+                    </div>
+                    <div class="form-field" style="margin-top:14px;">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; font-weight:500; color:var(--text-secondary);">
+                            <input type="checkbox" name="featured" style="accent-color:var(--accent); width:16px; height:16px;" /> Propiedad destacada
+                        </label>
+                    </div>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+                    <button type="submit" class="btn-luxury-action" id="propertySaveBtn">Guardar Inmueble</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL LEAD -->
+    <div class="admin-modal" id="leadModal">
+        <div class="modal-box">
+            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Nuevo Prospecto / Lead</h3>
+            <form id="leadForm">
+                <div class="form-field"><label>Nombre y Apellido *</label><input type="text" name="full_name" required placeholder="Dr. Carlos Varela" /></div>
+                <div class="form-grid-2">
+                    <div class="form-field"><label>TelÃ©fono / WhatsApp *</label><input type="text" name="phone" required placeholder="+54 9 387 000-0000" /></div>
+                    <div class="form-field"><label>Email</label><input type="email" name="email" placeholder="cliente@email.com" /></div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-field"><label>Presupuesto MÃ¡ximo (USD)</label><input type="number" name="budget_usd" placeholder="750000" /></div>
+                    <div class="form-field">
+                        <label>Etapa Inicial</label>
+                        <select name="stage">
+                            <option value="nuevo">1. Nuevo</option>
+                            <option value="contactado">2. Contactado</option>
+                            <option value="visita">3. Visita Agendada</option>
+                            <option value="oferta">4. Oferta / Cierre</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-field">
+                        <label>Tipo Preferido</label>
+                        <select name="preferred_type">
+                            <option value="">Sin preferencia</option>
+                            <option value="casa">Casa</option>
+                            <option value="departamento">Departamento</option>
+                            <option value="terreno">Terreno</option>
+                            <option value="local">Local</option>
+                            <option value="oficina">Oficina</option>
+                        </select>
+                    </div>
+                    <div class="form-field"><label>Zona Preferida</label><input type="text" name="preferred_zone" placeholder="Villa Belgrano..." /></div>
+                </div>
+                <div class="form-field"><label>Notas / InterÃ©s</label><textarea name="notes" placeholder="InterÃ©s en casas en Villa Belgrano..."></textarea></div>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+                    <button type="submit" class="btn-luxury-action" id="leadSaveBtn">Registrar Lead</button>
+                </div>
+            </form>
+        <div id="leadVisitsContainer" style="margin-top:16px;"></div>
+        </div>
+    </div>
+
+    <!-- MODAL VISITA -->
+    <div class="admin-modal" id="visitModal">
+        <div class="modal-box">
+            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Agendar Nueva Visita</h3>
+            <form id="visitForm">
+                <input type="hidden" name="property_id" id="visitPropertyId" />
+                <div class="form-grid-2">
+                    <div class="form-field"><label>Fecha y Hora *</label><input type="datetime-local" name="visit_date" required /></div>
+                    <div class="form-field"><label>Estado</label>
+                        <select name="status">
+                            <option value="pendiente">Pendiente</option>
+                            <option value="confirmada">Confirmada</option>
+                            <option value="completada">Completada</option>
+                            <option value="cancelada">Cancelada</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-field"><label>Nombre del Cliente *</label><input type="text" name="client_name" required placeholder="Dr. Carlos Varela" /></div>
+                <div class="form-field"><label>TelÃ©fono del Cliente</label><input type="text" name="client_phone" placeholder="+54 9 387 000-0000" /></div>
+                <div class="form-field"><label>Notas</label><textarea name="notes" placeholder="Detalles de la visita..."></textarea></div>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+                    <button type="submit" class="btn-luxury-action" id="visitSaveBtn">Confirmar Cita</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL AGENTE -->
+    <div class="admin-modal" id="agentModal">
+        <div class="modal-box">
+            <h3 id="agentModalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Registrar Asesor / Broker</h3>
+            <form id="agentForm">
+                <div class="form-field"><label>Nombre Completo *</label><input type="text" name="full_name" required placeholder="Lic. SofÃ­a MartÃ­nez" /></div>
+                <div class="form-grid-2">
+                    <div class="form-field"><label>Email</label><input type="email" name="email" placeholder="agente@bienenhaus.com.ar" /></div>
+                    <div class="form-field"><label>TelÃ©fono</label><input type="text" name="phone" placeholder="+54 11 0000-0000" /></div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-field"><label>MatrÃ­cula C.R.I.</label><input type="text" name="matricula" placeholder="C.R.I. 9941" /></div>
+                    <div class="form-field">
+                        <label>Estado</label>
+                        <select name="status">
+                            <option value="activo">Activo</option>
+                            <option value="inactivo">Inactivo</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-field">
+                    <label>Foto</label>
+                    <input type="file" name="photo_file" accept="image/*" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:12px; padding:12px 16px; color:#fff; font-size:13.5px; width:100%;" />
+                </div>
+                <div class="form-field"><label>Bio</label><textarea name="bio" placeholder="Breve biografÃ­a del agente" rows="3"></textarea></div>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+                    <button type="submit" class="btn-luxury-action" id="agentSaveBtn">Guardar Broker</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL PROPIETARIO -->
+    <div class="admin-modal" id="ownerModal">
+        <div class="modal-box">
+            <h3 id="ownerModalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Expediente de Propietario</h3>
+            <form id="ownerForm">
+                <input type="hidden" name="id" id="ownerId" />
+                <div class="form-grid-2">
+                    <div class="form-field"><label>Nombre Completo / Titular *</label><input type="text" name="full_name" required placeholder="Ing. Roberto GÃ³mez" /></div>
+                    <div class="form-field"><label>DNI / CUIT / CUIL</label><input type="text" name="dni_cuit" placeholder="20-24891002-4" /></div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-field"><label>TelÃ©fono / WhatsApp *</label><input type="text" name="phone" required placeholder="+54 9 387 488-1290" /></div>
+                    <div class="form-field"><label>Email de Notificaciones</label><input type="email" name="email" placeholder="propietario@email.com" /></div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-field"><label>DirecciÃ³n</label><input type="text" name="address" placeholder="DirecciÃ³n del propietario" /></div>
+                    <div class="form-field"><label>Preferencia de Contacto</label>
+                        <select name="preferred_contact">
+                            <option value="whatsapp">WhatsApp</option>
+                            <option value="telefono">TelÃ©fono</option>
+                            <option value="email">Email</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-field"><label>Banco / Billetera</label><input type="text" name="bank_name" placeholder="Banco Galicia / Mercado Pago" /></div>
+                    <div class="form-field"><label>CBU / CVU</label><input type="text" name="cbu_cvu" placeholder="000000000000000000" /></div>
+                </div>
+                <div class="form-grid-2">
+                    <div class="form-field"><label>Alias CBU</label><input type="text" name="alias_cbu" placeholder="GOMEZ.PROPIEDADES" /></div>
+                    <div class="form-field" style="margin-top:14px;">
+                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; font-weight:500; color:var(--text-secondary);">
+                            <input type="checkbox" name="exclusive" style="accent-color:var(--accent); width:16px; height:16px;" /> Exclusividad vigente
+                        </label>
+                    </div>
+                </div>
+                <div class="form-field"><label>Notas Privadas / Preferencias</label><textarea name="notes" placeholder="Prefiere comunicarse por WhatsApp. Acepta permuta..."></textarea></div>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+                    <button type="submit" class="btn-luxury-action" id="ownerSaveBtn">Guardar Expediente</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL USUARIO -->
+    <div class="admin-modal" id="userModal">
+        <div class="modal-box">
+            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Invitar Usuario</h3>
+            <form id="userForm">
+                <div class="form-field"><label>Nombre Completo *</label><input type="text" name="full_name" required placeholder="Juan PÃ©rez" /></div>
+                <div class="form-grid-2">
+                    <div class="form-field"><label>Email Corporativo *</label><input type="email" name="email" required placeholder="juan@bienenhaus.com.ar" /></div>
+                    <div class="form-field"><label>Teléfono (opcional)</label><input type="tel" name="phone" placeholder="+54 9 387 000-0000" /></div>
+                    <div class="form-field">
+                        <label>Rol de Acceso</label>
+                        <select name="role">
+                            <option value="agente">Agente</option>
+                            <option value="broker">Broker</option>
+                            <option value="super_admin">Super Admin</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-field" style="margin-top:14px;">
+                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:var(--text-muted); font-size:12.5px;">
+                        <input type="checkbox" name="no_email" style="width:auto;" />
+                        Crear sin email (genera contraseña temporal)
+                    </label>
+                </div>
+                <div class="form-field" id="userTempPassBox" style="display:none;">
+                    <label>Contraseña Temporal (se muestra una sola vez)</label>
+                    <input type="text" id="userTempPass" readonly onclick="this.select()" />
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+                    <button type="submit" class="btn-luxury-action" id="userSaveBtn">Enviar Invitación</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL DEFINIR CONTRASEÑA (ACEPTACIÓN DE INVITACIÓN) -->
+    <div class="admin-modal" id="inviteSetupModal">
+        <div class="modal-box">
+            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:6px;">Definí tu Contraseña</h3>
+            <p style="color:var(--text-muted); font-size:12.5px; margin-bottom:18px;">Fuiste invitado al panel de BIENENHAUS. Elegí una contraseña para <span id="inviteSetupEmail" style="color:var(--accent);"></span>.</p>
+            <form id="inviteSetupForm">
+                <div class="form-field"><label>Contraseña *</label><input type="password" name="password" required minlength="6" placeholder="Mínimo 6 caracteres" /></div>
+                <div class="form-field"><label>Repetir Contraseña *</label><input type="password" name="password2" required minlength="6" placeholder="Repetí la contraseña" /></div>
+                <p id="inviteSetupError" style="display:none; color:#f87171; font-size:12px; margin-top:10px;"></p>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+                    <button type="button" class="status-pill pending modal-close-btn">Ahora no</button>
+                    <button type="submit" class="btn-luxury-action" id="inviteSetupBtn">Guardar Contraseña</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL EDITAR USUARIO -->
+    <div class="admin-modal" id="userEditModal">
+        <div class="modal-box">
+            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Editar Usuario</h3>
+            <form id="userEditForm">
+                <input type="hidden" name="userId" />
+                <div class="form-field"><label>Nombre Completo *</label><input type="text" name="full_name" required placeholder="Juan Pérez" /></div>
+                <div class="form-grid-2">
+                    <div class="form-field"><label>Email *</label><input type="email" name="email" required placeholder="juan@bienenhaus.com.ar" /></div>
+                    <div class="form-field"><label>Teléfono</label><input type="tel" name="phone" placeholder="+54 9 387 000-0000" /></div>
+                    <div class="form-field">
+                        <label>Rol de Acceso</label>
+                        <select name="role">
+                            <option value="agente">Agente</option>
+                            <option value="broker">Broker</option>
+                            <option value="super_admin">Super Admin</option>
+                        </select>
+                        <span id="userEditRoleHint" style="display:none; font-size:11px; color:var(--text-dim); margin-top:4px;">No podés cambiar tu propio rol.</span>
+                    </div>
+                    <div class="form-field">
+                        <label>Estado</label>
+                        <select name="is_active">
+                            <option value="true">Activo</option>
+                            <option value="false">Inactivo</option>
+                        </select>
+                        <span id="userEditStatusHint" style="display:none; font-size:11px; color:var(--text-dim); margin-top:4px;">No podés cambiar tu propio estado.</span>
+                    </div>
+                </div>
+                <p id="userEditEmailNote" style="display:none; font-size:11px; color:var(--text-dim); margin-top:12px;"></p>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+                    <button type="submit" class="btn-luxury-action" id="userEditSaveBtn">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL CAMBIAR CONTRASEÑA PROPIA -->
+    <div class="admin-modal" id="passwordModal">
+        <div class="modal-box">
+            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:6px;">Cambiar mi Contraseña</h3>
+            <p style="color:var(--text-muted); font-size:12.5px; margin-bottom:18px;">Por seguridad, confirmá tu contraseña actual antes de definir la nueva. Cada usuario solo puede cambiar la suya.</p>
+            <form id="passwordChangeForm">
+                <div class="form-field"><label>Contraseña Actual *</label><input type="password" name="current_password" required autocomplete="current-password" placeholder="Tu contraseña actual" /></div>
+                <div class="form-field"><label>Nueva Contraseña *</label><input type="password" name="password" required minlength="6" autocomplete="new-password" placeholder="Mínimo 6 caracteres" /></div>
+                <div class="form-field"><label>Repetir Nueva Contraseña *</label><input type="password" name="password2" required minlength="6" autocomplete="new-password" placeholder="Repetí la nueva contraseña" /></div>
+                <p id="passwordChangeError" style="display:none; color:#f87171; font-size:12px; margin-top:10px;"></p>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+                    <button type="submit" class="btn-luxury-action" id="passwordChangeBtn">Actualizar Contraseña</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL PORTAL API -->
+    <div class="admin-modal" id="portalModal">
+        <div class="modal-box">
+            <h3 id="modalPortalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:6px;">Configurar Portal</h3>
+            <p style="color:var(--text-muted); font-size:12.5px; margin-bottom:22px;">GestiÃ³n de claves API y sincronizaciÃ³n.</p>
+            <form id="portalApiForm">
+                <input type="hidden" id="portalIndex" />
+                <div class="form-field"><label>API Key / Client ID *</label><input type="text" id="portalApiKey" required /></div>
+                <div class="form-field"><label>Client Secret / Access Token</label><input type="password" id="portalApiSecret" value="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" /></div>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+                    <button type="submit" class="btn-luxury-action">Guardar Credenciales</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div class="toast-msg" id="toastMsg">
+        <i class="fas fa-circle-check" style="color:var(--accent); font-size:18px;"></i>
+        <span id="toastText">OperaciÃ³n exitosa.</span>
+    </div>
+
+    <!-- ============================================================
+         SCRIPTS
+         ============================================================ -->
+    <!-- Fallback banner (hidden by default, shown if CDN blocked) -->
+    <style>
+        #cdnWarningBanner {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 1000001;
+            background: linear-gradient(135deg, #DC2626, #B91C1C);
+            color: #fff;
+            padding: 14px 24px;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(220, 38, 38, 0.4);
+        }
+        #cdnWarningBanner a { color: #FEE2E2; text-decoration: underline; margin-left: 8px; }
+    </style>
+    <div id="cdnWarningBanner">
+        <i class="fas fa-exclamation-triangle"></i>
+        Tu bloqueador de anuncios estÃ¡ impidiendo que el panel cargue correctamente.
+        <strong>DesactivÃ¡ las extensiones</strong> para este sitio o abrÃ­ en ventana incÃ³gnita.
+        <a href="#" onclick="document.getElementById('cdnWarningBanner').style.display='none'; return false;">Cerrar</a>
+    </div>
+
+    <!-- CDN timeout fallback: detect if external scripts fail to load -->
+    <script>
+        (function() {
+            function checkCDN() {
+                var missing = [];
+                if (!window.supabase) missing.push('Supabase JS');
+                if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');
+                var testEl = document.createElement('i');
+                testEl.className = 'fas fa-check';
+                testEl.style.position = 'absolute';
+                testEl.style.left = '-9999px';
+                document.body.appendChild(testEl);
+                var computed = window.getComputedStyle(testEl);
+                if (computed.fontFamily.indexOf('Font Awesome') === -1) {
+                    missing.push('Font Awesome');
+                }
+                document.body.removeChild(testEl);
+                if (missing.length) {
+                    var banner = document.getElementById('cdnWarningBanner');
+                    if (banner) {
+                        banner.style.display = 'block';
+                        banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Bloqueador de anuncios detectado.</strong> DesactivÃ¡ las extensiones para este sitio o abrÃ­ en ventana incÃ³gnita. Faltan: ' + missing.join(', ') + '.';
+                    }
+                    return false;
+                }
+                return true;
+            }
+            setTimeout(function() { checkCDN(); }, 3000);
+            setTimeout(function() { checkCDN(); }, 6000);
+        })();
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="assets/js/utils.js?v=1"></script>
+<script src="assets/js/config.js?v=5"></script>
+<script src="assets/js/supabase-client.js?v=4"></script>
+<script src="assets/js/cloudinary.js?v=6"></script>
+<script src="assets/js/admin-app.js?v=23"></script>
+</body>
+</html>
+
+
 
-            </div><!-- /content-area -->
-        </main>
-    </div><!-- /app-layout -->
-
-    <!-- ============================================================
-         MODALES
-         ============================================================ -->
-
-    <!-- MODAL PROPIEDAD -->
-    <div class="admin-modal" id="propertyModal">
-        <div class="modal-box">
-            <h3 id="propModalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Nueva Propiedad</h3>
-            <form id="propertyForm">
-                <input type="hidden" id="propId" />
-                <div class="form-field">
-                    <label>Código</label>
-                    <input type="text" id="propCode" name="property_code" readonly placeholder="Se genera automáticamente" style="background:rgba(255,255,255,0.03); color:var(--accent); font-weight:600; font-family:monospace; font-size:13px;" title="Se genera automáticamente al guardar" />
-                    <span style="font-size:11px; color:var(--text-dim); margin-top:4px; display:block;">Formato: FH-P0001 (iniciales + secuencia) / ML-P0001 (Mercado Libre)</span>
-                </div>
-                <div class="form-field"><label>TÃ­tulo del Inmueble *</label><input type="text" name="title" required placeholder="Ej: Departamento en Palermo" /></div>
-                <div class="form-grid-2">
-                    <div class="form-field">
-                        <label>Tipo de Propiedad *</label>
-                        <select name="property_type" required>
-                            <option value="">Seleccionar...</option>
-                            <option value="casa">Casa</option>
-                            <option value="departamento">Departamento</option>
-                            <option value="terreno">Terreno</option>
-                            <option value="local">Local</option>
-                            <option value="oficina">Oficina</option>
-                            <option value="galpon">GalpÃ³n</option>
-                            <option value="quinta">Quinta</option>
-                            <option value="otro">Otro</option>
-                        </select>
-                    </div>
-                    <div class="form-field"><label>Precio en USD *</label><input type="number" name="price_usd" required placeholder="150000" /></div>
-                </div>
-                <div class="form-grid-2">
-                    <div class="form-field">
-                        <label>OperaciÃ³n</label>
-                        <select name="status">
-                            <option value="venta">Venta</option>
-                            <option value="alquiler">Alquiler</option>
-                        </select>
-                    </div>
-                    <div class="form-field"><label>Zona / Barrio</label><input type="text" name="zone" placeholder="Palermo, Villa Belgrano..." /></div>
-                </div>
-                <div class="form-grid-2">
-                    <div class="form-field"><label>DirecciÃ³n</label><input type="text" name="address" placeholder="Av. Santa Fe 1234" /></div>
-                    <div class="form-field"><label>Superficie (mÂ²)</label><input type="number" name="area_m2" placeholder="75" /></div>
-                </div>
-                <div class="form-grid-2">
-                    <div class="form-field"><label>Ambientes</label><input type="number" name="rooms" placeholder="3" /></div>
-                    <div class="form-field"><label>Dormitorios</label><input type="number" name="bedrooms" placeholder="2" /></div>
-                </div>
-                <div class="form-grid-2">
-                    <div class="form-field"><label>BaÃ±os</label><input type="number" name="bathrooms" placeholder="1" /></div>
-                    <div class="form-field"><label>Cocheras</label><input type="number" name="garage_spaces" placeholder="1" /></div>
-                </div>
-                <div class="form-field"><label>DescripciÃ³n</label><textarea name="description" placeholder="DescripciÃ³n de la propiedad" rows="3"></textarea></div>
-                <div class="form-field">
-                    <label>ImÃ¡genes</label>
-                    <input type="file" name="image_files" accept="image/*" multiple style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:12px; padding:12px 16px; color:#fff; font-size:13.5px; width:100%;" />
-                </div>
-                <div id="imagePreviewGrid" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;"></div>
-                <div class="form-grid-2">
-                    <div class="form-field" style="margin-top:14px;">
-                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; font-weight:500; color:var(--text-secondary);">
-                            <input type="checkbox" name="is_published" style="accent-color:var(--accent); width:16px; height:16px;" /> Publicada en el sitio
-                        </label>
-                    </div>
-                    <div class="form-field" style="margin-top:14px;">
-                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; font-weight:500; color:var(--text-secondary);">
-                            <input type="checkbox" name="featured" style="accent-color:var(--accent); width:16px; height:16px;" /> Propiedad destacada
-                        </label>
-                    </div>
-                </div>
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
-                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
-                    <button type="submit" class="btn-luxury-action" id="propertySaveBtn">Guardar Inmueble</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- MODAL LEAD -->
-    <div class="admin-modal" id="leadModal">
-        <div class="modal-box">
-            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Nuevo Prospecto / Lead</h3>
-            <form id="leadForm">
-                <div class="form-field"><label>Nombre y Apellido *</label><input type="text" name="full_name" required placeholder="Dr. Carlos Varela" /></div>
-                <div class="form-grid-2">
-                    <div class="form-field"><label>TelÃ©fono / WhatsApp *</label><input type="text" name="phone" required placeholder="+54 9 387 000-0000" /></div>
-                    <div class="form-field"><label>Email</label><input type="email" name="email" placeholder="cliente@email.com" /></div>
-                </div>
-                <div class="form-grid-2">
-                    <div class="form-field"><label>Presupuesto MÃ¡ximo (USD)</label><input type="number" name="budget_usd" placeholder="750000" /></div>
-                    <div class="form-field">
-                        <label>Etapa Inicial</label>
-                        <select name="stage">
-                            <option value="nuevo">1. Nuevo</option>
-                            <option value="contactado">2. Contactado</option>
-                            <option value="visita">3. Visita Agendada</option>
-                            <option value="oferta">4. Oferta / Cierre</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-grid-2">
-                    <div class="form-field">
-                        <label>Tipo Preferido</label>
-                        <select name="preferred_type">
-                            <option value="">Sin preferencia</option>
-                            <option value="casa">Casa</option>
-                            <option value="departamento">Departamento</option>
-                            <option value="terreno">Terreno</option>
-                            <option value="local">Local</option>
-                            <option value="oficina">Oficina</option>
-                        </select>
-                    </div>
-                    <div class="form-field"><label>Zona Preferida</label><input type="text" name="preferred_zone" placeholder="Villa Belgrano..." /></div>
-                </div>
-                <div class="form-field"><label>Notas / InterÃ©s</label><textarea name="notes" placeholder="InterÃ©s en casas en Villa Belgrano..."></textarea></div>
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
-                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
-                    <button type="submit" class="btn-luxury-action" id="leadSaveBtn">Registrar Lead</button>
-                </div>
-            </form>
-        <div id="leadVisitsContainer" style="margin-top:16px;"></div>
-        </div>
-    </div>
-
-    <!-- MODAL VISITA -->
-    <div class="admin-modal" id="visitModal">
-        <div class="modal-box">
-            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Agendar Nueva Visita</h3>
-            <form id="visitForm">
-                <input type="hidden" name="property_id" id="visitPropertyId" />
-                <div class="form-grid-2">
-                    <div class="form-field"><label>Fecha y Hora *</label><input type="datetime-local" name="visit_date" required /></div>
-                    <div class="form-field"><label>Estado</label>
-                        <select name="status">
-                            <option value="pendiente">Pendiente</option>
-                            <option value="confirmada">Confirmada</option>
-                            <option value="completada">Completada</option>
-                            <option value="cancelada">Cancelada</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-field"><label>Nombre del Cliente *</label><input type="text" name="client_name" required placeholder="Dr. Carlos Varela" /></div>
-                <div class="form-field"><label>TelÃ©fono del Cliente</label><input type="text" name="client_phone" placeholder="+54 9 387 000-0000" /></div>
-                <div class="form-field"><label>Notas</label><textarea name="notes" placeholder="Detalles de la visita..."></textarea></div>
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
-                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
-                    <button type="submit" class="btn-luxury-action" id="visitSaveBtn">Confirmar Cita</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- MODAL AGENTE -->
-    <div class="admin-modal" id="agentModal">
-        <div class="modal-box">
-            <h3 id="agentModalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Registrar Asesor / Broker</h3>
-            <form id="agentForm">
-                <div class="form-field"><label>Nombre Completo *</label><input type="text" name="full_name" required placeholder="Lic. SofÃ­a MartÃ­nez" /></div>
-                <div class="form-grid-2">
-                    <div class="form-field"><label>Email</label><input type="email" name="email" placeholder="agente@bienenhaus.com.ar" /></div>
-                    <div class="form-field"><label>TelÃ©fono</label><input type="text" name="phone" placeholder="+54 11 0000-0000" /></div>
-                </div>
-                <div class="form-grid-2">
-                    <div class="form-field"><label>MatrÃ­cula C.R.I.</label><input type="text" name="matricula" placeholder="C.R.I. 9941" /></div>
-                    <div class="form-field">
-                        <label>Estado</label>
-                        <select name="status">
-                            <option value="activo">Activo</option>
-                            <option value="inactivo">Inactivo</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-field">
-                    <label>Foto</label>
-                    <input type="file" name="photo_file" accept="image/*" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:12px; padding:12px 16px; color:#fff; font-size:13.5px; width:100%;" />
-                </div>
-                <div class="form-field"><label>Bio</label><textarea name="bio" placeholder="Breve biografÃ­a del agente" rows="3"></textarea></div>
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
-                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
-                    <button type="submit" class="btn-luxury-action" id="agentSaveBtn">Guardar Broker</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- MODAL PROPIETARIO -->
-    <div class="admin-modal" id="ownerModal">
-        <div class="modal-box">
-            <h3 id="ownerModalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Expediente de Propietario</h3>
-            <form id="ownerForm">
-                <input type="hidden" name="id" id="ownerId" />
-                <div class="form-grid-2">
-                    <div class="form-field"><label>Nombre Completo / Titular *</label><input type="text" name="full_name" required placeholder="Ing. Roberto GÃ³mez" /></div>
-                    <div class="form-field"><label>DNI / CUIT / CUIL</label><input type="text" name="dni_cuit" placeholder="20-24891002-4" /></div>
-                </div>
-                <div class="form-grid-2">
-                    <div class="form-field"><label>TelÃ©fono / WhatsApp *</label><input type="text" name="phone" required placeholder="+54 9 387 488-1290" /></div>
-                    <div class="form-field"><label>Email de Notificaciones</label><input type="email" name="email" placeholder="propietario@email.com" /></div>
-                </div>
-                <div class="form-grid-2">
-                    <div class="form-field"><label>DirecciÃ³n</label><input type="text" name="address" placeholder="DirecciÃ³n del propietario" /></div>
-                    <div class="form-field"><label>Preferencia de Contacto</label>
-                        <select name="preferred_contact">
-                            <option value="whatsapp">WhatsApp</option>
-                            <option value="telefono">TelÃ©fono</option>
-                            <option value="email">Email</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-grid-2">
-                    <div class="form-field"><label>Banco / Billetera</label><input type="text" name="bank_name" placeholder="Banco Galicia / Mercado Pago" /></div>
-                    <div class="form-field"><label>CBU / CVU</label><input type="text" name="cbu_cvu" placeholder="000000000000000000" /></div>
-                </div>
-                <div class="form-grid-2">
-                    <div class="form-field"><label>Alias CBU</label><input type="text" name="alias_cbu" placeholder="GOMEZ.PROPIEDADES" /></div>
-                    <div class="form-field" style="margin-top:14px;">
-                        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; letter-spacing:0; font-weight:500; color:var(--text-secondary);">
-                            <input type="checkbox" name="exclusive" style="accent-color:var(--accent); width:16px; height:16px;" /> Exclusividad vigente
-                        </label>
-                    </div>
-                </div>
-                <div class="form-field"><label>Notas Privadas / Preferencias</label><textarea name="notes" placeholder="Prefiere comunicarse por WhatsApp. Acepta permuta..."></textarea></div>
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
-                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
-                    <button type="submit" class="btn-luxury-action" id="ownerSaveBtn">Guardar Expediente</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- MODAL USUARIO -->
-    <div class="admin-modal" id="userModal">
-        <div class="modal-box">
-            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Invitar Usuario</h3>
-            <form id="userForm">
-                <div class="form-field"><label>Nombre Completo *</label><input type="text" name="full_name" required placeholder="Juan PÃ©rez" /></div>
-                <div class="form-grid-2">
-                    <div class="form-field"><label>Email Corporativo *</label><input type="email" name="email" required placeholder="juan@bienenhaus.com.ar" /></div>
-                    <div class="form-field"><label>Teléfono (opcional)</label><input type="tel" name="phone" placeholder="+54 9 387 000-0000" /></div>
-                    <div class="form-field">
-                        <label>Rol de Acceso</label>
-                        <select name="role">
-                            <option value="agente">Agente</option>
-                            <option value="broker">Broker</option>
-                            <option value="super_admin">Super Admin</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-field" style="margin-top:14px;">
-                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:var(--text-muted); font-size:12.5px;">
-                        <input type="checkbox" name="no_email" style="width:auto;" />
-                        Crear sin email (genera contraseña temporal)
-                    </label>
-                </div>
-                <div class="form-field" id="userTempPassBox" style="display:none;">
-                    <label>Contraseña Temporal (se muestra una sola vez)</label>
-                    <input type="text" id="userTempPass" readonly onclick="this.select()" />
-                </div>
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
-                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
-                    <button type="submit" class="btn-luxury-action" id="userSaveBtn">Enviar Invitación</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- MODAL DEFINIR CONTRASEÑA (ACEPTACIÓN DE INVITACIÓN) -->
-    <div class="admin-modal" id="inviteSetupModal">
-        <div class="modal-box">
-            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:6px;">Definí tu Contraseña</h3>
-            <p style="color:var(--text-muted); font-size:12.5px; margin-bottom:18px;">Fuiste invitado al panel de BIENENHAUS. Elegí una contraseña para <span id="inviteSetupEmail" style="color:var(--accent);"></span>.</p>
-            <form id="inviteSetupForm">
-                <div class="form-field"><label>Contraseña *</label><input type="password" name="password" required minlength="6" placeholder="Mínimo 6 caracteres" /></div>
-                <div class="form-field"><label>Repetir Contraseña *</label><input type="password" name="password2" required minlength="6" placeholder="Repetí la contraseña" /></div>
-                <p id="inviteSetupError" style="display:none; color:#f87171; font-size:12px; margin-top:10px;"></p>
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
-                    <button type="button" class="status-pill pending modal-close-btn">Ahora no</button>
-                    <button type="submit" class="btn-luxury-action" id="inviteSetupBtn">Guardar Contraseña</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- MODAL EDITAR USUARIO -->
-    <div class="admin-modal" id="userEditModal">
-        <div class="modal-box">
-            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Editar Usuario</h3>
-            <form id="userEditForm">
-                <input type="hidden" name="userId" />
-                <div class="form-field"><label>Nombre Completo *</label><input type="text" name="full_name" required placeholder="Juan Pérez" /></div>
-                <div class="form-grid-2">
-                    <div class="form-field"><label>Email *</label><input type="email" name="email" required placeholder="juan@bienenhaus.com.ar" /></div>
-                    <div class="form-field"><label>Teléfono</label><input type="tel" name="phone" placeholder="+54 9 387 000-0000" /></div>
-                    <div class="form-field">
-                        <label>Rol de Acceso</label>
-                        <select name="role">
-                            <option value="agente">Agente</option>
-                            <option value="broker">Broker</option>
-                            <option value="super_admin">Super Admin</option>
-                        </select>
-                        <span id="userEditRoleHint" style="display:none; font-size:11px; color:var(--text-dim); margin-top:4px;">No podés cambiar tu propio rol.</span>
-                    </div>
-                    <div class="form-field">
-                        <label>Estado</label>
-                        <select name="is_active">
-                            <option value="true">Activo</option>
-                            <option value="false">Inactivo</option>
-                        </select>
-                        <span id="userEditStatusHint" style="display:none; font-size:11px; color:var(--text-dim); margin-top:4px;">No podés cambiar tu propio estado.</span>
-                    </div>
-                </div>
-                <p id="userEditEmailNote" style="display:none; font-size:11px; color:var(--text-dim); margin-top:12px;"></p>
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
-                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
-                    <button type="submit" class="btn-luxury-action" id="userEditSaveBtn">Guardar Cambios</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- MODAL CAMBIAR CONTRASEÑA PROPIA -->
-    <div class="admin-modal" id="passwordModal">
-        <div class="modal-box">
-            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:6px;">Cambiar mi Contraseña</h3>
-            <p style="color:var(--text-muted); font-size:12.5px; margin-bottom:18px;">Por seguridad, confirmá tu contraseña actual antes de definir la nueva. Cada usuario solo puede cambiar la suya.</p>
-            <form id="passwordChangeForm">
-                <div class="form-field"><label>Contraseña Actual *</label><input type="password" name="current_password" required autocomplete="current-password" placeholder="Tu contraseña actual" /></div>
-                <div class="form-field"><label>Nueva Contraseña *</label><input type="password" name="password" required minlength="6" autocomplete="new-password" placeholder="Mínimo 6 caracteres" /></div>
-                <div class="form-field"><label>Repetir Nueva Contraseña *</label><input type="password" name="password2" required minlength="6" autocomplete="new-password" placeholder="Repetí la nueva contraseña" /></div>
-                <p id="passwordChangeError" style="display:none; color:#f87171; font-size:12px; margin-top:10px;"></p>
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
-                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
-                    <button type="submit" class="btn-luxury-action" id="passwordChangeBtn">Actualizar Contraseña</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- MODAL PORTAL API -->
-    <div class="admin-modal" id="portalModal">
-        <div class="modal-box">
-            <h3 id="modalPortalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:6px;">Configurar Portal</h3>
-            <p style="color:var(--text-muted); font-size:12.5px; margin-bottom:22px;">GestiÃ³n de claves API y sincronizaciÃ³n.</p>
-            <form id="portalApiForm">
-                <input type="hidden" id="portalIndex" />
-                <div class="form-field"><label>API Key / Client ID *</label><input type="text" id="portalApiKey" required /></div>
-                <div class="form-field"><label>Client Secret / Access Token</label><input type="password" id="portalApiSecret" value="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" /></div>
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
-                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
-                    <button type="submit" class="btn-luxury-action">Guardar Credenciales</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- TOAST NOTIFICATION -->
-    <div class="toast-msg" id="toastMsg">
-        <i class="fas fa-circle-check" style="color:var(--accent); font-size:18px;"></i>
-        <span id="toastText">OperaciÃ³n exitosa.</span>
-    </div>
-
-    <!-- ============================================================
-         SCRIPTS
-         ============================================================ -->
-    <!-- Fallback banner (hidden by default, shown if CDN blocked) -->
-    <style>
-        #cdnWarningBanner {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; right: 0;
-            z-index: 1000001;
-            background: linear-gradient(135deg, #DC2626, #B91C1C);
-            color: #fff;
-            padding: 14px 24px;
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            font-size: 14px;
-            font-weight: 600;
-            text-align: center;
-            box-shadow: 0 4px 20px rgba(220, 38, 38, 0.4);
-        }
-        #cdnWarningBanner a { color: #FEE2E2; text-decoration: underline; margin-left: 8px; }
-    </style>
-    <div id="cdnWarningBanner">
-        <i class="fas fa-exclamation-triangle"></i>
-        Tu bloqueador de anuncios estÃ¡ impidiendo que el panel cargue correctamente.
-        <strong>DesactivÃ¡ las extensiones</strong> para este sitio o abrÃ­ en ventana incÃ³gnita.
-        <a href="#" onclick="document.getElementById('cdnWarningBanner').style.display='none'; return false;">Cerrar</a>
-    </div>
-
-    <!-- CDN timeout fallback: detect if external scripts fail to load -->
-    <script>
-        (function() {
-            function checkCDN() {
-                var missing = [];
-                if (!window.supabase) missing.push('Supabase JS');
-                if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');
-                var testEl = document.createElement('i');
-                testEl.className = 'fas fa-check';
-                testEl.style.position = 'absolute';
-                testEl.style.left = '-9999px';
-                document.body.appendChild(testEl);
-                var computed = window.getComputedStyle(testEl);
-                if (computed.fontFamily.indexOf('Font Awesome') === -1) {
-                    missing.push('Font Awesome');
-                }
-                document.body.removeChild(testEl);
-                if (missing.length) {
-                    var banner = document.getElementById('cdnWarningBanner');
-                    if (banner) {
-                        banner.style.display = 'block';
-                        banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Bloqueador de anuncios detectado.</strong> DesactivÃ¡ las extensiones para este sitio o abrÃ­ en ventana incÃ³gnita. Faltan: ' + missing.join(', ') + '.';
-                    }
-                    return false;
-                }
-                return true;
-            }
-            setTimeout(function() { checkCDN(); }, 3000);
-            setTimeout(function() { checkCDN(); }, 6000);
-        })();
-    </script>
-
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="assets/js/utils.js?v=1"></script>
-<script src="assets/js/config.js?v=5"></script>
-<script src="assets/js/supabase-client.js?v=4"></script>
-<script src="assets/js/cloudinary.js?v=6"></script>
-<script src="assets/js/admin-app.js?v=21"></script>
-</body>
-</html>
-
+
+
+
+
+
+
+
+
+
+
+
+
