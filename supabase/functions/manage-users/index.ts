@@ -6,7 +6,7 @@
 // - verify_jwt=true (plataforma): rechaza requests sin JWT valido.
 // - Chequeo interno: JWT debe ser de usuario autenticado Y con
 //   perfil role='super_admin' (via service role key).
-// - Acciones: invite | create-direct | set-role
+// - Acciones: invite | create-direct | set-role | update-user | update-self
 // - El service role key NUNCA sale del entorno del servidor.
 //
 // Notas de flujo:
@@ -247,6 +247,208 @@ async function actionCreateDirect(
   return json({ ok: true, userId: user.id, email, tempPassword });
 }
 
+async function fetchProfileRow(
+  userId: string,
+  supabaseUrl: string,
+  serviceKey: string,
+): Promise<Record<string, unknown> | null> {
+  const res = await fetch(
+    `${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=*`,
+    { headers: serviceHeaders(serviceKey) },
+  );
+  if (!res.ok) return null;
+  const rows = await res.json();
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+async function patchAuthUser(
+  userId: string,
+  payloadBody: Record<string, unknown>,
+  supabaseUrl: string,
+  serviceKey: string,
+): Promise<boolean> {
+  const res = await fetch(
+    `${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`,
+    {
+      method: 'PUT',
+      headers: { ...serviceHeaders(serviceKey), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payloadBody),
+    },
+  );
+  return res.ok;
+}
+
+async function countOtherActiveSuperAdmins(
+  excludeId: string,
+  supabaseUrl: string,
+  serviceKey: string,
+): Promise<number> {
+  const res = await fetch(
+    `${supabaseUrl}/rest/v1/profiles?role=eq.super_admin&is_active=eq.true&id=neq.${encodeURIComponent(excludeId)}&select=id`,
+    { headers: serviceHeaders(serviceKey) },
+  );
+  const rows = res.ok ? await res.json() : [];
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
+/* Edicion por super_admin: datos de contacto de cualquier usuario; rol y
+   estado de cualquiera menos de si mismo; nunca deja el sistema sin un
+   super_admin activo. Espeja email/ban/metadata en auth.users: el ban
+   bloquea el login real, no solo la etiqueta. */
+async function actionUpdateUser(
+  body: Record<string, unknown>,
+  callerId: string,
+  supabaseUrl: string,
+  serviceKey: string,
+) {
+  const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
+  if (!userId) return json({ error: 'Falta el usuario a modificar' }, 400);
+
+  const target = await fetchProfileRow(userId, supabaseUrl, serviceKey);
+  if (!target) return json({ error: 'Usuario no encontrado' }, 404);
+  const currentRole = typeof target.role === 'string' ? target.role : 'agente';
+  const currentActive = target.is_active !== false;
+  const selfEdit = userId === callerId;
+
+  const profilePatch: Record<string, unknown> = {};
+  if (typeof body.full_name === 'string') {
+    const fullName = body.full_name.trim();
+    if (!fullName) return json({ error: 'El nombre completo es obligatorio' }, 400);
+    profilePatch.full_name = fullName;
+  }
+  if (typeof body.phone === 'string') {
+    profilePatch.phone = body.phone.trim();
+  }
+  let newEmail = '';
+  if (typeof body.email === 'string') {
+    newEmail = body.email.trim().toLowerCase();
+    if (!EMAIL_RE.test(newEmail)) return json({ error: 'Email invalido' }, 400);
+    profilePatch.email = newEmail;
+  }
+
+  let nextRole = '';
+  if (body.role !== undefined && body.role !== null && body.role !== '') {
+    if (typeof body.role !== 'string' || !VALID_ROLES.has(body.role)) {
+      return json({ error: 'Rol invalido' }, 400);
+    }
+    nextRole = body.role;
+    if (selfEdit && nextRole !== currentRole) {
+      return json({ error: 'No podes cambiar tu propio rol' }, 400);
+    }
+    profilePatch.role = nextRole;
+  }
+
+  let banChange: boolean | null = null;
+  if (body.is_active !== undefined && body.is_active !== null) {
+    if (typeof body.is_active !== 'boolean') return json({ error: 'Estado invalido' }, 400);
+    if (selfEdit && body.is_active !== currentActive) {
+      return json({ error: 'No podes cambiar tu propio estado' }, 400);
+    }
+    if (body.is_active !== currentActive) {
+      profilePatch.is_active = body.is_active;
+      banChange = !body.is_active;
+    }
+  }
+
+  if (Object.keys(profilePatch).length === 0) {
+    return json({ error: 'No hay cambios para aplicar' }, 400);
+  }
+
+  if (currentRole === 'super_admin') {
+    const demoting = typeof profilePatch.role === 'string' && profilePatch.role !== 'super_admin';
+    const deactivating = profilePatch.is_active === false;
+    if (demoting || deactivating) {
+      const others = await countOtherActiveSuperAdmins(userId, supabaseUrl, serviceKey);
+      if (others === 0) {
+        return json({ error: 'No podes dejar el sistema sin un super_admin activo' }, 400);
+      }
+    }
+  }
+
+  const patchRes = await fetch(
+    `${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`,
+    {
+      method: 'PATCH',
+      headers: { ...serviceHeaders(serviceKey), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify(profilePatch),
+    },
+  );
+  if (!patchRes.ok) return json({ error: 'No se pudo actualizar el perfil' }, 500);
+
+  const authPatch: Record<string, unknown> = {};
+  if (newEmail) {
+    authPatch.email = newEmail;
+    authPatch.email_confirm = true;
+  }
+  if (banChange === true) authPatch.ban_duration = '876000h';
+  if (banChange === false) authPatch.ban_duration = 'none';
+  const meta: Record<string, string> = {};
+  if (typeof profilePatch.full_name === 'string') meta.full_name = profilePatch.full_name;
+  if (typeof profilePatch.phone === 'string') meta.phone = profilePatch.phone;
+  if (nextRole) meta.role = nextRole;
+  if (Object.keys(meta).length > 0) authPatch.user_metadata = meta;
+
+  let authMirror = true;
+  if (Object.keys(authPatch).length > 0) {
+    authMirror = await patchAuthUser(userId, authPatch, supabaseUrl, serviceKey);
+  }
+
+  return json({ ok: true, userId, authMirror });
+}
+
+/* Autogestion: cualquier usuario del panel actualiza su nombre y telefono.
+   Rol/estado jamas (validacion explicita + trigger trg_profiles_guard_self
+   en DB como segunda capa). El email propio de un no-admin se cambia desde
+   el cliente con supabase.auth.updateUser (flujo con confirmacion). */
+async function actionUpdateSelf(
+  body: Record<string, unknown>,
+  callerId: string,
+  supabaseUrl: string,
+  serviceKey: string,
+) {
+  if (body.role !== undefined || body.is_active !== undefined) {
+    return json({ error: 'Tu rol y estado solo puede cambiarlos un super_admin' }, 400);
+  }
+
+  const target = await fetchProfileRow(callerId, supabaseUrl, serviceKey);
+  if (!target) return json({ error: 'Usuario no encontrado' }, 404);
+
+  const profilePatch: Record<string, unknown> = {};
+  if (typeof body.full_name === 'string') {
+    const fullName = body.full_name.trim();
+    if (!fullName) return json({ error: 'El nombre completo es obligatorio' }, 400);
+    profilePatch.full_name = fullName;
+  }
+  if (typeof body.phone === 'string') {
+    profilePatch.phone = body.phone.trim();
+  }
+  if (Object.keys(profilePatch).length === 0) {
+    return json({ error: 'No hay cambios para aplicar' }, 400);
+  }
+
+  const patchRes = await fetch(
+    `${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(callerId)}`,
+    {
+      method: 'PATCH',
+      headers: { ...serviceHeaders(serviceKey), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify(profilePatch),
+    },
+  );
+  if (!patchRes.ok) return json({ error: 'No se pudo actualizar tu perfil' }, 500);
+
+  const meta: Record<string, string> = {};
+  if (typeof profilePatch.full_name === 'string') meta.full_name = profilePatch.full_name;
+  if (typeof profilePatch.phone === 'string') meta.phone = profilePatch.phone;
+  const authMirror = await patchAuthUser(
+    callerId,
+    { user_metadata: meta },
+    supabaseUrl,
+    serviceKey,
+  );
+
+  return json({ ok: true, userId: callerId, authMirror });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS });
@@ -264,11 +466,6 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'No autorizado' }, 401);
     }
 
-    const admin = await isAdminUser(payload.sub);
-    if (!admin) {
-      return json({ error: 'Solo super_admin pueden gestionar usuarios' }, 403);
-    }
-
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     if (!serviceKey || !supabaseUrl) {
@@ -282,6 +479,17 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Body invalido' }, 400);
     }
 
+    /* Autogestion basica disponible para cualquier usuario autenticado;
+       debe resolverse antes del gate super_admin. */
+    if (body.action === 'update-self') {
+      return await actionUpdateSelf(body, payload.sub, supabaseUrl, serviceKey);
+    }
+
+    const admin = await isAdminUser(payload.sub);
+    if (!admin) {
+      return json({ error: 'Solo super_admin pueden gestionar usuarios' }, 403);
+    }
+
     if (body.action === 'invite') {
       const origin = (req.headers.get('origin') || '').replace(/\/+$/, '');
       return await actionInvite(body, supabaseUrl, serviceKey, origin);
@@ -291,6 +499,9 @@ Deno.serve(async (req: Request) => {
     }
     if (body.action === 'set-role') {
       return await actionSetRole(body, payload.sub, supabaseUrl, serviceKey);
+    }
+    if (body.action === 'update-user') {
+      return await actionUpdateUser(body, payload.sub, supabaseUrl, serviceKey);
     }
     return json({ error: 'Accion desconocida' }, 400);
   } catch (err) {

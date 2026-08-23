@@ -19,7 +19,7 @@
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 
-    <link rel="stylesheet" href="assets/css/admin.css?v=17" />
+    <link rel="stylesheet" href="assets/css/admin.css?v=19" />
 </head>
 <body class="is-loading">
 
@@ -184,12 +184,15 @@
             </nav>
 
             <div class="sidebar-footer">
-                <div class="user-card">
+                <div class="user-card" id="sidebarUserProfile" title="Editar mi usuario" style="cursor:pointer;">
                     <div class="user-avatar-placeholder" id="sidebarUserAvatar">A</div>
                     <div class="user-info">
                         <span class="user-name" id="sidebarUserName">Admin</span>
                         <span class="user-role" id="sidebarUserRole">Administrador</span>
                     </div>
+                    <button style="color:var(--text-dim); padding:6px;" title="Cambiar mi contraseña" id="changePasswordBtn">
+                        <i class="fas fa-key"></i>
+                    </button>
                     <button style="color:var(--text-dim); padding:6px;" title="Cerrar sesiÃ³n" id="logoutBtn">
                         <i class="fas fa-arrow-right-from-bracket"></i>
                     </button>
@@ -709,9 +712,9 @@
                         </div>
                         <div class="table-responsive">
                             <table class="luxury-table">
-                                <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Estado</th><th>Creado</th><th>Cambiar Rol</th></tr></thead>
+                                <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Estado</th><th>Creado</th><th>Cambiar Rol</th><th>Acciones</th></tr></thead>
                                 <tbody id="usersTableBody">
-                                    <tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando usuarios...</td></tr>
+                                    <tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando usuarios...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -1028,6 +1031,61 @@
         </div>
     </div>
 
+    <!-- MODAL EDITAR USUARIO -->
+    <div class="admin-modal" id="userEditModal">
+        <div class="modal-box">
+            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Editar Usuario</h3>
+            <form id="userEditForm">
+                <input type="hidden" name="userId" />
+                <div class="form-field"><label>Nombre Completo *</label><input type="text" name="full_name" required placeholder="Juan Pérez" /></div>
+                <div class="form-grid-2">
+                    <div class="form-field"><label>Email *</label><input type="email" name="email" required placeholder="juan@bienenhaus.com.ar" /></div>
+                    <div class="form-field"><label>Teléfono</label><input type="tel" name="phone" placeholder="+54 9 387 000-0000" /></div>
+                    <div class="form-field">
+                        <label>Rol de Acceso</label>
+                        <select name="role">
+                            <option value="agente">Agente</option>
+                            <option value="broker">Broker</option>
+                            <option value="super_admin">Super Admin</option>
+                        </select>
+                        <span id="userEditRoleHint" style="display:none; font-size:11px; color:var(--text-dim); margin-top:4px;">No podés cambiar tu propio rol.</span>
+                    </div>
+                    <div class="form-field">
+                        <label>Estado</label>
+                        <select name="is_active">
+                            <option value="true">Activo</option>
+                            <option value="false">Inactivo</option>
+                        </select>
+                        <span id="userEditStatusHint" style="display:none; font-size:11px; color:var(--text-dim); margin-top:4px;">No podés cambiar tu propio estado.</span>
+                    </div>
+                </div>
+                <p id="userEditEmailNote" style="display:none; font-size:11px; color:var(--text-dim); margin-top:12px;"></p>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+                    <button type="submit" class="btn-luxury-action" id="userEditSaveBtn">Guardar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL CAMBIAR CONTRASEÑA PROPIA -->
+    <div class="admin-modal" id="passwordModal">
+        <div class="modal-box">
+            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:6px;">Cambiar mi Contraseña</h3>
+            <p style="color:var(--text-muted); font-size:12.5px; margin-bottom:18px;">Por seguridad, confirmá tu contraseña actual antes de definir la nueva. Cada usuario solo puede cambiar la suya.</p>
+            <form id="passwordChangeForm">
+                <div class="form-field"><label>Contraseña Actual *</label><input type="password" name="current_password" required autocomplete="current-password" placeholder="Tu contraseña actual" /></div>
+                <div class="form-field"><label>Nueva Contraseña *</label><input type="password" name="password" required minlength="6" autocomplete="new-password" placeholder="Mínimo 6 caracteres" /></div>
+                <div class="form-field"><label>Repetir Nueva Contraseña *</label><input type="password" name="password2" required minlength="6" autocomplete="new-password" placeholder="Repetí la nueva contraseña" /></div>
+                <p id="passwordChangeError" style="display:none; color:#f87171; font-size:12px; margin-top:10px;"></p>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+                    <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+                    <button type="submit" class="btn-luxury-action" id="passwordChangeBtn">Actualizar Contraseña</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- MODAL PORTAL API -->
     <div class="admin-modal" id="portalModal">
         <div class="modal-box">
@@ -1116,7 +1174,7 @@
 <script src="assets/js/config.js?v=5"></script>
 <script src="assets/js/supabase-client.js?v=4"></script>
 <script src="assets/js/cloudinary.js?v=6"></script>
-<script src="assets/js/admin-app.js?v=17"></script>
+<script src="assets/js/admin-app.js?v=19"></script>
 </body>
 </html>
 

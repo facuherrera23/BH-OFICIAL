@@ -107,6 +107,27 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
         .single();
       if (error) throw error;
       currentProfile = data;
+
+      /* El estado is_active es real: la edge function espeja el ban de
+         GoTrue al desactivar, pero si la sesion ya estaba abierta sigue
+         siendo valida hasta que expire; la corto aca tambien. */
+      if (currentProfile.is_active === false) {
+        showToast('Tu usuario está desactivado. Contactá a un administrador.', 'error');
+        setTimeout(() => { window.supabaseClient.auth.signOut(); }, 2000);
+        return;
+      }
+
+      /* Auto-sync del email: un admin pudo cambiarlo directo en auth.
+         El trigger trg_profiles_guard_self solo bloquea rol/estado,
+         asi que este update propio de email esta permitido. */
+      const sessionEmail = currentUser?.email || '';
+      if (sessionEmail && currentProfile.email !== sessionEmail) {
+        const { error: syncErr } = await window.supabaseClient
+          .from('profiles')
+          .update({ email: sessionEmail })
+          .eq('id', currentUser.id);
+        if (!syncErr) currentProfile.email = sessionEmail;
+      }
     } catch (err) {
       console.error('Error loading profile:', err);
       currentProfile = null;
@@ -1916,6 +1937,7 @@ let dayCount = 1;
      ------------------------------------------------ */
   const USER_ROLE_LABELS = { super_admin: 'Super Admin', broker: 'Broker', agente: 'Agente' };
   const USER_ROLE_ORDER = ['super_admin', 'broker', 'agente'];
+  let usersCache = [];
 
   function buildRoleSelect(userId, currentRole) {
     const isSelf = currentUser && userId === currentUser.id;
@@ -1926,6 +1948,27 @@ let dayCount = 1;
       `<option value="${r}" ${currentRole === r ? 'selected' : ''}>${USER_ROLE_LABELS[r]}</option>`
     ).join('');
     return `<select class="user-role-select" data-id="${esc(userId)}" data-current="${esc(currentRole || 'agente')}" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:10px; padding:7px 12px; color:#fff; font-size:12.5px;">${options}</select>`;
+  }
+
+  function canManageUsers() {
+    return !!currentProfile && currentProfile.role === 'super_admin';
+  }
+
+  function userStatusCellHtml(u) {
+    const isSelf = !!(currentUser && u.id === currentUser.id);
+    const active = u.is_active !== false;
+    if (!canManageUsers() || isSelf) {
+      return '<span class="nav-badge" style="background:' + (active ? 'rgba(0,200,120,0.15)' : 'rgba(255,60,60,0.15)') + '; color:' + (active ? 'var(--success)' : 'var(--danger)') + '; font-size:11px;">' + (active ? 'Activo' : 'Inactivo') + '</span>';
+    }
+    return '<button type="button" class="nav-badge user-status-toggle" data-id="' + esc(u.id) + '" title="' + (active ? 'Desactivar acceso' : 'Reactivar acceso') + '" style="background:' + (active ? 'rgba(0,200,120,0.15)' : 'rgba(255,60,60,0.15)') + '; color:' + (active ? 'var(--success)' : 'var(--danger)') + '; font-size:11px; border:none; cursor:pointer;">' + (active ? 'Activo' : 'Inactivo') + '</button>';
+  }
+
+  function userEditCellHtml(u) {
+    const isSelf = !!(currentUser && u.id === currentUser.id);
+    if (!(canManageUsers() || isSelf)) {
+      return '<span style="color:var(--text-dim); font-size:12px;">-</span>';
+    }
+    return '<button type="button" class="user-edit-btn" data-id="' + esc(u.id) + '" title="' + (isSelf ? 'Editar mi usuario' : 'Editar usuario') + '" style="background:rgba(255,255,255,0.05); border:1px solid var(--border-input); border-radius:8px; padding:6px 10px; color:var(--accent); cursor:pointer;"><i class="fas fa-pen-to-square"></i></button>';
   }
 
   async function loadUsers() {
@@ -1940,20 +1983,22 @@ let dayCount = 1;
         .order('created_at', { ascending: true });
 
       if (error) throw error;
+      usersCache = data || [];
 
-      if (!data?.length) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-dim);">No hay usuarios</td></tr>';
+      if (!usersCache.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">No hay usuarios</td></tr>';
         return;
       }
 
-      tbody.innerHTML = data.map(u => `
+      tbody.innerHTML = data.map((u) => `
         <tr>
           <td style="font-weight:500; color:#fff; font-size:13px;">${esc(u.full_name || u.email || 'Sin nombre')}</td>
           <td style="font-size:13px; color:var(--text-dim);">${esc(u.email || '-')}</td>
           <td><span class="nav-badge" style="background:${u.role === 'super_admin' ? 'rgba(31,200,195,0.15)' : 'rgba(255,255,255,0.06)'}; color:${u.role === 'super_admin' ? 'var(--accent)' : 'var(--text-dim)'}; font-size:11px;">${esc(USER_ROLE_LABELS[u.role] || u.role || 'agente')}</span></td>
-          <td><span class="nav-badge" style="background:${u.is_active !== false ? 'rgba(0,200,120,0.15)' : 'rgba(255,60,60,0.15)'}; color:${u.is_active !== false ? 'var(--success)' : 'var(--danger)'}; font-size:11px;">${u.is_active !== false ? 'Activo' : 'Inactivo'}</span></td>
+          <td>${userStatusCellHtml(u)}</td>
           <td style="color:var(--text-dim); font-size:12px;">${u.created_at ? new Date(u.created_at).toLocaleDateString('es-AR') : '-'}</td>
           <td>${buildRoleSelect(u.id, u.role)}</td>
+          <td>${userEditCellHtml(u)}</td>
         </tr>`).join('');
     } catch (err) {
       console.error('Users error:', err);
@@ -2067,6 +2112,221 @@ let dayCount = 1;
       showToast(err.message || 'No se pudo cambiar el rol', 'error');
     } finally {
       select.disabled = false;
+    }
+  });
+
+  $('#usersTableBody')?.addEventListener('click', async (e) => {
+    const editBtn = e.target.closest('.user-edit-btn');
+    if (editBtn) {
+      openUserEditor(editBtn.dataset.id);
+      return;
+    }
+    const toggleBtn = e.target.closest('.user-status-toggle');
+    if (toggleBtn && !toggleBtn.disabled) await toggleUserActive(toggleBtn.dataset.id);
+  });
+
+  $('#sidebarUserProfile')?.addEventListener('click', (e) => {
+    /* Logout y cambio de contraseña viven dentro de la tarjeta:
+       ninguno de los dos debe abrir el editor. */
+    if (e.target.closest('#logoutBtn')) return;
+    if (e.target.closest('#changePasswordBtn')) return;
+    if (currentProfile?.id) openUserEditor(currentProfile.id);
+  });
+
+  function openPasswordModal() {
+    $('#passwordChangeForm')?.reset();
+    const errEl = $('#passwordChangeError');
+    if (errEl) { errEl.style.display = 'none'; }
+    openModal('passwordModal');
+  }
+
+  $('#changePasswordBtn')?.addEventListener('click', () => {
+    if (!currentUser || !window.supabaseClient) return;
+    openPasswordModal();
+  });
+
+  function openUserEditor(userId) {
+    const row = usersCache.find((u) => u.id === userId);
+    const form = $('#userEditForm');
+    if (!row || !form || !currentProfile) return;
+
+    form.reset();
+    form.elements.userId.value = row.id;
+    form.elements.full_name.value = row.full_name || '';
+    form.elements.email.value = row.email || '';
+    form.elements.phone.value = row.phone || '';
+    form.elements.role.value = USER_ROLE_ORDER.includes(row.role) ? row.role : 'agente';
+    form.elements.is_active.value = row.is_active === false ? 'false' : 'true';
+
+    const isSelf = row.id === currentProfile.id;
+    const lockPrivileged = isSelf || !canManageUsers();
+
+    /* Rol y estado propios bloqueados en UI y backend: nadie se auto-degrada
+       ni auto-desactiva, y nunca queda el sistema sin super_admin activo. */
+    form.elements.role.disabled = lockPrivileged;
+    form.elements.is_active.disabled = lockPrivileged;
+    const roleHint = $('#userEditRoleHint');
+    const statusHint = $('#userEditStatusHint');
+    if (roleHint) roleHint.style.display = isSelf ? '' : 'none';
+    if (statusHint) statusHint.style.display = isSelf ? '' : 'none';
+
+    const note = $('#userEditEmailNote');
+    if (note) {
+      const showNote = isSelf && !canManageUsers();
+      note.style.display = showNote ? '' : 'none';
+      note.textContent = showNote
+        ? 'Si cambiás tu email vas a recibir una confirmación en la casilla nueva para aplicar el cambio.'
+        : '';
+    }
+
+    openModal('userEditModal');
+  }
+
+  async function toggleUserActive(userId) {
+    if (!canManageUsers() || userId === currentProfile?.id) return;
+    const row = usersCache.find((u) => u.id === userId);
+    if (!row) return;
+
+    const nextActive = row.is_active === false;
+    const label = row.full_name || row.email || 'este usuario';
+    if (
+      !window.confirm(
+        nextActive
+          ? `¿Reactivar el acceso de ${label}?`
+          : `¿Desactivar el acceso de ${label}? No podrá volver a iniciar sesión.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await callManageUsers({ action: 'update-user', userId, is_active: nextActive });
+      showToast(nextActive ? 'Usuario reactivado' : 'Usuario desactivado', 'success');
+      loadUsers();
+    } catch (err) {
+      showToast(err.message || 'No se pudo cambiar el estado', 'error');
+    }
+  }
+
+  $('#userEditForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const btn = $('#userEditSaveBtn');
+    if (!btn || !currentProfile) return;
+
+    const fd = new FormData(form);
+    const userId = String(fd.get('userId') || '');
+    const fullName = String(fd.get('full_name') || '').trim();
+    const email = String(fd.get('email') || '').trim().toLowerCase();
+    const phone = String(fd.get('phone') || '').trim();
+    const row = usersCache.find((u) => u.id === userId);
+    if (!userId || !row) return;
+
+    const isSelf = userId === currentProfile.id;
+    const isAdmin = canManageUsers();
+
+    /* Sin rol admin solo hay autogestion: defensa extra junto al backend. */
+    if (!isAdmin && !isSelf) {
+      showToast('Solo podés editar tu propio usuario.', 'error');
+      return;
+    }
+    if (!fullName) {
+      showToast('El nombre completo es obligatorio', 'error');
+      return;
+    }
+
+    const emailChanged = !!email && email !== String(row.email || '').toLowerCase();
+
+    btn.disabled = true;
+    try {
+      let emailNotice = '';
+
+      /* Email propio sin rol admin: flujo estandar de Supabase con
+         confirmacion por mail en ambas casillas. */
+      if (!isAdmin && emailChanged) {
+        const { error: emailErr } = await window.supabaseClient.auth.updateUser({ email });
+        if (emailErr) throw emailErr;
+        emailNotice = ' Cambio de email pendiente: revisá la casilla nueva para confirmarlo.';
+      }
+
+      const payload = isAdmin
+        ? { action: 'update-user', userId, full_name: fullName, phone }
+        : { action: 'update-self', full_name: fullName, phone };
+
+      if (isAdmin && emailChanged) payload.email = email;
+
+      if (isAdmin && !isSelf) {
+        const nextRole = String(fd.get('role') || '');
+        if (nextRole && nextRole !== row.role) {
+          if (row.role === 'super_admin' && !window.confirm('¿Quitar el rol Super Admin a este usuario?')) {
+            return;
+          }
+          payload.role = nextRole;
+        }
+        const nextActive = fd.get('is_active') !== 'false';
+        if (nextActive !== (row.is_active !== false)) {
+          if (row.role === 'super_admin' && !nextActive && !window.confirm(`¿Desactivar a ${row.full_name || 'este Super Admin'}? No podrá volver a iniciar sesión.`)) {
+            return;
+          }
+          payload.is_active = nextActive;
+        }
+      }
+
+      await callManageUsers(payload);
+
+      closeModal('userEditModal');
+      showToast(`Usuario actualizado.${emailNotice}`, 'success');
+      await loadUsers();
+      if (isSelf) {
+        currentProfile = { ...currentProfile, full_name: fullName, phone };
+        updateUserInfo();
+      }
+    } catch (err) {
+      showToast(err.message || 'No se pudo actualizar el usuario', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /* Cambio de contraseña propia: único flujo permitido. Se re-autentica con
+     la contraseña actual antes de aplicar el cambio; Supabase solo actualiza
+     la del usuario de la sesión, así nadie puede cambiar la de un tercero. */
+  $('#passwordChangeForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const currentPwd = String(fd.get('current_password') || '');
+    const pwd = String(fd.get('password') || '');
+    const pwd2 = String(fd.get('password2') || '');
+    const errEl = $('#passwordChangeError');
+    const btn = $('#passwordChangeBtn');
+    const fail = (msg) => { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } };
+
+    if (!currentUser || !window.supabaseClient) return;
+    if (!currentPwd) return fail('Ingresá tu contraseña actual.');
+    if (pwd.length < 6) return fail('La nueva contraseña debe tener al menos 6 caracteres.');
+    if (pwd !== pwd2) return fail('Las contraseñas nuevas no coinciden.');
+
+    btn.disabled = true;
+    try {
+      /* Verificación de identidad: si la actual no coincide, no se cambia nada. */
+      const { error: verifyErr } = await window.supabaseClient.auth.signInWithPassword({
+        email: currentUser.email,
+        password: currentPwd,
+      });
+      if (verifyErr) {
+        fail('La contraseña actual es incorrecta.');
+        return;
+      }
+
+      const { error } = await window.supabaseClient.auth.updateUser({ password: pwd });
+      if (error) throw error;
+
+      closeModal('passwordModal');
+      showToast('Contraseña actualizada correctamente', 'success');
+    } catch (err) {
+      fail(err.message || 'No se pudo cambiar la contraseña.');
+    } finally {
+      btn.disabled = false;
     }
   });
 
