@@ -128,6 +128,9 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
           .eq('id', currentUser.id);
         if (!syncErr) currentProfile.email = sessionEmail;
       }
+
+      /* Con perfil y rol ya resueltos: el guard de Configuración evalúa contra el rol real. */
+      loadConfig();
     } catch (err) {
       console.error('Error loading profile:', err);
       currentProfile = null;
@@ -1484,14 +1487,7 @@ let dayCount = 1;
     team_title:    { section: 'team', path: 'title' },
     stat1_val:     { section: 'stats', path: 'properties_sold' },
     stat1_title:   { section: 'stats', path: 'stat1_label' },
-    proc_title:    { section: 'process', path: 'title' },
-    cont_wpp:      { section: 'contact', path: 'whatsapp' },
-    cont_email:    { section: 'contact', path: 'email' },
-    cont_phone:    { section: 'contact', path: 'phone' },
-    cont_address:  { section: 'contact', path: 'address' },
-    foot_wm:       { section: 'footer', path: 'copyright' },
-    foot_cri:      { section: 'footer', path: 'matricula' },
-    foot_cuit:     { section: 'footer', path: 'cuit' },
+    proc_title:    { section: 'process', path: 'title' }
   };
 
   async function loadCMS() {
@@ -1617,6 +1613,148 @@ let dayCount = 1;
       heroBgPreview.innerHTML = '<i class="fas fa-cloud-arrow-up"></i><span>Error al subir</span>';
       showToast('Error al subir imagen: ' + err.message, 'error');
     }
+  });
+
+  /* ------------------------------------------------
+     9b. CONFIGURACIÓN GENERAL (site_content + app_settings)
+     ------------------------------------------------ */
+  let cfgData = {};
+
+  const CFG_FIELD_MAP = {
+    razon_social:     { section: 'footer',  path: 'razon_social' },
+    matricula:        { section: 'footer',  path: 'matricula' },
+    watermark:        { section: 'footer',  path: 'copyright' },
+    cuit:             { section: 'footer',  path: 'cuit' },
+    whatsapp:         { section: 'contact', path: 'whatsapp' },
+    email:            { section: 'contact', path: 'email' },
+    phone:            { section: 'contact', path: 'phone' },
+    address:          { section: 'contact', path: 'address' },
+    schedule:         { section: 'contact', path: 'schedule' },
+    social_instagram: { section: 'social',  path: 'instagram' },
+    social_facebook:  { section: 'social',  path: 'facebook' },
+    social_linkedin:  { section: 'social',  path: 'linkedin' },
+    social_youtube:   { section: 'social',  path: 'youtube' }
+  };
+
+  function applyCfgGuard() {
+    const editable = canManageUsers();
+    $$('.cfg-field, .cfg-field-pref').forEach(i => { i.disabled = !editable; });
+    const saveBtn = $('#cfgSaveBtn');
+    if (saveBtn) saveBtn.disabled = !editable;
+    const note = $('#cfgGuardNote');
+    if (note) note.style.display = editable ? 'none' : 'block';
+  }
+
+  function populateCfgFields() {
+    $$('.cfg-field[data-key]').forEach(input => {
+      const m = CFG_FIELD_MAP[input.dataset.key];
+      if (!m || !cfgData[m.section]) return;
+      input.value = (cfgData[m.section].content || {})[m.path] || '';
+    });
+  }
+
+  async function loadConfig() {
+    if (!window.supabaseClient) return;
+    try {
+      const [{ data: rows, error }, prefRes] = await Promise.all([
+        window.supabaseClient.from('site_content').select('*').in('section_key', ['contact', 'footer', 'social']),
+        window.supabaseClient.from('app_settings').select('*')
+      ]);
+      if (error) throw error;
+      if (!prefRes.error && Array.isArray(prefRes.data)) {
+        const prefs = prefRes.data.find(r => r.key === 'preferences');
+        const rateInput = $('#cfg_usd_rate');
+        if (prefs?.value && typeof prefs.value.usd_rate === 'number' && rateInput) rateInput.value = prefs.value.usd_rate;
+      }
+      cfgData = {};
+      (rows || []).forEach(item => { cfgData[item.section_key] = item; });
+      populateCfgFields();
+      applyCfgGuard();
+      renderCfgStatus();
+      renderCfgSession();
+    } catch (err) {
+      console.error('Config error:', err);
+      showToast('Error al cargar configuración: ' + err.message, 'error');
+    }
+  }
+
+  $('#cfgSaveBtn')?.addEventListener('click', async () => {
+    const btn = $('#cfgSaveBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+    try {
+      const rateRaw = ($('#cfg_usd_rate')?.value ?? '').trim();
+      let rateVal = null;
+      if (rateRaw !== '') {
+        rateVal = Number(rateRaw);
+        if (!Number.isFinite(rateVal) || rateVal <= 0) throw new Error('La cotización USD debe ser un número positivo.');
+      }
+
+      const updatesBySection = {};
+      $$('.cfg-field[data-key]').forEach(field => {
+        const m = CFG_FIELD_MAP[field.dataset.key];
+        if (!m) return;
+        if (!updatesBySection[m.section]) updatesBySection[m.section] = {};
+        updatesBySection[m.section][m.path] = field.value.trim();
+      });
+
+      await Promise.all(Object.entries(updatesBySection).map(async ([sectionKey, newFields]) => {
+        const existing = cfgData[sectionKey];
+        const mergedContent = { ...(existing?.content || {}), ...newFields };
+        if (existing) {
+          const { error } = await window.supabaseClient
+            .from('site_content').update({ content: mergedContent }).eq('id', existing.id);
+          if (error) throw error;
+          existing.content = mergedContent;
+        } else {
+          const { data, error } = await window.supabaseClient
+            .from('site_content').insert([{ section_key: sectionKey, content: mergedContent }]).select().single();
+          if (error) throw error;
+          cfgData[sectionKey] = data;
+        }
+      }));
+
+      const { error: upErr } = await window.supabaseClient
+        .from('app_settings')
+        .upsert({ key: 'preferences', value: { usd_rate: rateVal }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      if (upErr) throw upErr;
+
+      showToast('Configuración guardada correctamente', 'success');
+    } catch (err) {
+      showToast('Error al guardar: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar Cambios';
+    }
+  });
+
+  function statusChip(label, ok, detail) {
+    const color = ok ? '#4ade80' : '#f87171';
+    return '<span style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.03); font-size:12px; color:#ddd;">'
+      + '<span style="width:8px; height:8px; border-radius:50%; background:' + color + '; box-shadow:0 0 6px ' + color + ';"></span>'
+      + esc(label)
+      + (detail ? '&nbsp;<span style="color:var(--text-dim);">· ' + esc(detail) + '</span>' : '')
+      + '</span>';
+  }
+
+  function renderCfgStatus() {
+    const row = $('#cfgStatusRow');
+    if (!row || !window.supabaseClient) return;
+    row.innerHTML = statusChip('Supabase', true, 'conectado')
+      + statusChip('Cloudinary', !!window.BH_Cloudinary, window.BH_Cloudinary ? 'listo' : 'no disponible')
+      + statusChip('Brevo SMTP', true, 'límite 30 envíos/hora')
+      + statusChip('Mercado Libre', !!ml_connected, ml_configured ? 'credenciales OK' : 'sin configurar');
+  }
+
+  function renderCfgSession() {
+    const info = $('#cfgSessionInfo');
+    if (!info) return;
+    info.innerHTML = '<strong style="color:#fff;">' + esc(currentUser?.email || '—') + '</strong> · rol: ' + esc(currentProfile?.role || '—');
+  }
+
+  $('#cfgSignOutBtn')?.addEventListener('click', async () => {
+    if (!window.confirm('¿Cerrar la sesión actual?')) return;
+    await window.supabaseClient.auth.signOut();
   });
 
   /* ------------------------------------------------

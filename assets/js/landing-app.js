@@ -742,6 +742,29 @@ const _usdFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
           setFooterValue('.fa-id-card', 'CUIT: ' + c.cuit);
         }
         break;
+
+      case 'social': {
+        const platforms = [
+          { cls: 'fa-instagram', url: c.instagram },
+          { cls: 'fa-facebook-f', url: c.facebook },
+          { cls: 'fa-linkedin-in', url: c.linkedin },
+          { cls: 'fa-youtube', url: c.youtube }
+        ];
+        document.querySelectorAll('a.social-circle').forEach(a => {
+          const icon = a.querySelector('i.fab');
+          const match = icon ? platforms.find(p => icon.classList.contains(p.cls)) : null;
+          const raw = match ? String(match.url || '').trim() : '';
+          if (!raw) {
+            a.style.display = 'none';
+            return;
+          }
+          a.style.display = '';
+          a.href = /^https?:\/\//i.test(raw) ? raw : 'https://' + raw;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+        });
+        break;
+      }
     }
   }
 
