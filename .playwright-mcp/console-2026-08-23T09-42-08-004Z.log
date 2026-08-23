@@ -1,0 +1,20 @@
+[     151ms] [LOG] [BH] IIFE STARTED @ http://localhost:8788/assets/js/admin-app.js?v=49:10
+[     152ms] [LOG] [BH] MIDPOINT REACHED - LEADS section @ http://localhost:8788/assets/js/admin-app.js?v=49:767
+[     152ms] [LOG] [BH] CHECKPOINT - CHAT section @ http://localhost:8788/assets/js/admin-app.js?v=49:3281
+[     153ms] [LOG] [BH] AFTER CHAT SECTION - about to define search/utility/init @ http://localhost:8788/assets/js/admin-app.js?v=49:3759
+[     153ms] [LOG] [BH] Before if/else block, readyState: loading @ http://localhost:8788/assets/js/admin-app.js?v=49:3948
+[     153ms] [LOG] [BH] IIFE END REACHED @ http://localhost:8788/assets/js/admin-app.js?v=49:3954
+[     153ms] [LOG] [BH] startApp() called, readyState: interactive @ http://localhost:8788/assets/js/admin-app.js?v=49:3833
+[     154ms] [LOG] [BH] initAuth: checking session... @ http://localhost:8788/assets/js/admin-app.js?v=49:56
+[     154ms] [LOG] [BH] initAuth: session exists = true @ http://localhost:8788/assets/js/admin-app.js?v=49:66
+[     154ms] [LOG] [BH] initAuth: calling showApp() @ http://localhost:8788/assets/js/admin-app.js?v=49:73
+[     154ms] [LOG] [BH] showApp() called @ http://localhost:8788/assets/js/admin-app.js?v=49:158
+[     154ms] [LOG] [BH] hidePreloader() called @ http://localhost:8788/assets/js/admin-app.js?v=49:173
+[     154ms] [LOG] [BH] hidePreloader() finished {bodyClasses: , preloaderClasses: preloader is-hidden} @ http://localhost:8788/assets/js/admin-app.js?v=49:177
+[     155ms] [LOG] [BH] showApp() finished, preloader hidden @ http://localhost:8788/assets/js/admin-app.js?v=49:165
+[     176ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[     176ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[     176ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[     176ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[     176ms] [VERBOSE] [DOM] Password forms should have (optionally hidden) username fields for accessibility: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[     177ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) @ http://localhost:8788/admin.html:0

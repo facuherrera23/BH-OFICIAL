@@ -1,0 +1,68 @@
+- generic [ref=f206e1]:
+  - generic [ref=f206e2]: BIENENHAUS
+  - generic [ref=f206e7]:
+    - generic [ref=f206e8]: BIENENHAUS
+    - generic [ref=f206e9]: ACCESO ADMINISTRATIVO & CRM
+    - generic [ref=f206e10]:
+      - generic [ref=f206e11]:
+        - generic [ref=f206e12]: Correo Corporativo
+        - generic [ref=f206e13]:
+          - generic [ref=f206e14]: 
+          - textbox "admin@bienenhaus.com.ar" [ref=f206e15]: hfacundo45@gmail.com
+      - generic [ref=f206e16]:
+        - generic [ref=f206e17]: Contraseña de Seguridad
+        - generic [ref=f206e18]:
+          - generic [ref=f206e19]: 
+          - textbox "••••••••" [ref=f206e20]: facundo12
+      - generic [ref=f206e21]:
+        - generic [ref=f206e22] [cursor=pointer]:
+          - checkbox "Recordar credenciales" [checked] [ref=f206e23]
+          - text: Recordar credenciales
+        - link "← Volver al sitio" [ref=f206e24] [cursor=pointer]:
+          - /url: index.html
+      - button "Ingresar al Panel " [ref=f206e25] [cursor=pointer]:
+        - generic [ref=f206e26]: Ingresar al Panel
+        - generic [ref=f206e27]: 
+  - text:                   +                      +           %                 +            
+  - option "Seleccionar..." [selected]
+  - option "Casa"
+  - option "Departamento"
+  - option "Terreno"
+  - option "Local"
+  - option "Oficina"
+  - option "Galpón"
+  - option "Quinta"
+  - option "Otro"
+  - option "Venta" [selected]
+  - option "Alquiler"
+  - option "1. Nuevo" [selected]
+  - option "2. Contactado"
+  - option "3. Visita Agendada"
+  - option "4. Oferta / Cierre"
+  - option "Sin preferencia" [selected]
+  - option "Casa"
+  - option "Departamento"
+  - option "Terreno"
+  - option "Local"
+  - option "Oficina"
+  - option "Pendiente" [selected]
+  - option "Confirmada"
+  - option "Completada"
+  - option "Cancelada"
+  - option "Activo" [selected]
+  - option "Inactivo"
+  - option "WhatsApp" [selected]
+  - option "Teléfono"
+  - option "Email"
+  - option "Agente" [selected]
+  - option "Broker"
+  - option "Super Admin"
+  - option "Agente" [selected]
+  - option "Broker"
+  - option "Super Admin"
+  - option "Activo" [selected]
+  - option "Inactivo"
+  - generic [ref=f206e28]:
+    - generic [ref=f206e29]: 
+    - generic [ref=f206e30]: Operación exitosa.
+  - text: 

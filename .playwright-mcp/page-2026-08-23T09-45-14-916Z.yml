@@ -1,0 +1,261 @@
+- generic [active] [ref=f348e1]:
+  - generic: BIENENHAUS
+  - generic:
+    - generic:
+      - generic: BIENENHAUS
+      - generic: ACCESO ADMINISTRATIVO & CRM
+      - generic:
+        - generic:
+          - generic: Correo Corporativo
+          - generic:
+            - generic: 
+            - textbox "admin@bienenhaus.com.ar": hfacundo45@gmail.com
+        - generic:
+          - generic: Contraseña de Seguridad
+          - generic:
+            - generic: 
+            - textbox "••••••••": facundo12
+        - generic:
+          - generic:
+            - checkbox "Recordar credenciales" [checked]
+            - text: Recordar credenciales
+          - link "← Volver al sitio":
+            - /url: index.html
+        - button "Ingresar al Panel ":
+          - generic: Ingresar al Panel
+          - generic: 
+  - generic [ref=f348e2]:
+    - complementary [ref=f348e3]:
+      - generic [ref=f348e4]:
+        - generic [ref=f348e5]: BIENENHAUS ADMIN & CRM
+        - generic [ref=f348e6]: PRO
+      - navigation [ref=f348e7]:
+        - generic [ref=f348e8]: Principal
+        - generic [ref=f348e10] [cursor=pointer]:
+          - generic [ref=f348e11]: 
+          - generic [ref=f348e12]: Dashboard
+        - generic [ref=f348e13]: Gestión & CRM
+        - generic [ref=f348e14] [cursor=pointer]:
+          - generic [ref=f348e15]:
+            - generic [ref=f348e16]: 
+            - generic [ref=f348e17]: Propiedades
+          - generic [ref=f348e18]: "0"
+        - generic [ref=f348e19] [cursor=pointer]:
+          - generic [ref=f348e20]:
+            - generic [ref=f348e21]: 
+            - generic [ref=f348e22]: Leads & CRM
+          - generic [ref=f348e23]: 0 Activos
+        - generic [ref=f348e24] [cursor=pointer]:
+          - generic [ref=f348e25]:
+            - generic [ref=f348e26]: 
+            - generic [ref=f348e27]: Agenda de Visitas
+          - generic [ref=f348e28]: 0 Citas
+        - generic [ref=f348e29] [cursor=pointer]:
+          - generic [ref=f348e30]:
+            - generic [ref=f348e31]: 
+            - generic [ref=f348e32]: Tasaciones
+          - generic [ref=f348e33]: "0"
+        - generic [ref=f348e34]: Red & Difusión
+        - generic [ref=f348e35] [cursor=pointer]:
+          - generic [ref=f348e36]:
+            - generic [ref=f348e37]: 
+            - generic [ref=f348e38]: Sitio Web (CMS)
+          - generic [ref=f348e39]: Live
+        - generic [ref=f348e40] [cursor=pointer]:
+          - generic [ref=f348e41]:
+            - generic [ref=f348e42]: 
+            - generic [ref=f348e43]: Portales & APIs
+          - generic [ref=f348e44]:
+            - generic [ref=f348e45]: 
+            - text: Sync
+        - generic [ref=f348e46] [cursor=pointer]:
+          - generic [ref=f348e47]:
+            - generic [ref=f348e48]: 
+            - generic [ref=f348e49]: Chat Redes
+          - generic [ref=f348e50]: "0"
+        - generic [ref=f348e52] [cursor=pointer]:
+          - generic [ref=f348e53]: 
+          - generic [ref=f348e54]: Agentes & Brokers
+        - generic [ref=f348e55] [cursor=pointer]:
+          - generic [ref=f348e56]:
+            - generic [ref=f348e57]: 
+            - generic [ref=f348e58]: Propietarios
+          - generic [ref=f348e59]: 0 Activos
+        - generic [ref=f348e60]: Sistema
+        - generic [ref=f348e62] [cursor=pointer]:
+          - generic [ref=f348e63]: 
+          - generic [ref=f348e64]: Usuarios & Permisos
+        - generic [ref=f348e66] [cursor=pointer]:
+          - generic [ref=f348e67]: 
+          - generic [ref=f348e68]: Configuración
+      - generic "Editar mi usuario" [ref=f348e70] [cursor=pointer]:
+        - generic [ref=f348e71]: H
+        - generic [ref=f348e72]:
+          - generic [ref=f348e73]: hfacundo45@gmail.com
+          - generic [ref=f348e74]: Administrador
+        - button "" [ref=f348e75]
+        - button "" [ref=f348e77]
+    - main [ref=f348e79]:
+      - generic [ref=f348e80]:
+        - generic [ref=f348e81]:
+          - text: 
+          - heading "Dashboard Principal" [level=1] [ref=f348e82]
+          - generic [ref=f348e83]:
+            - generic [ref=f348e84]: 
+            - textbox "Buscar en el sistema..." [ref=f348e85]: hfacundo45@gmail.com
+        - generic [ref=f348e86]:
+          - button "" [ref=f348e87] [cursor=pointer]
+          - button "+ Nueva Propiedad" [ref=f348e90] [cursor=pointer]:
+            - generic [ref=f348e91]: +
+            - generic [ref=f348e92]: Nueva Propiedad
+      - generic [ref=f348e93]:
+        - generic [ref=f348e94]:
+          - generic [ref=f348e95]:
+            - generic [ref=f348e96] [cursor=pointer]:
+              - generic [ref=f348e97]: 
+              - text: + Nueva Propiedad
+            - generic [ref=f348e98] [cursor=pointer]:
+              - generic [ref=f348e99]: 
+              - text: + Cargar Lead
+            - generic [ref=f348e100] [cursor=pointer]:
+              - generic [ref=f348e101]: 
+              - text: + Agendar Visita
+            - generic [ref=f348e102] [cursor=pointer]:
+              - generic [ref=f348e103]: 
+              - text: + Registrar Propietario
+            - generic [ref=f348e104] [cursor=pointer]:
+              - generic [ref=f348e105]: 
+              - text: Editar Sitio Web
+          - generic [ref=f348e106]:
+            - generic [ref=f348e107]:
+              - generic [ref=f348e108]:
+                - generic [ref=f348e109]: Volumen de Cartera
+                - generic [ref=f348e110]: 
+              - generic [ref=f348e112]: USD 0
+              - generic [ref=f348e113]:
+                - generic [ref=f348e114]: 
+                - text: Calculado en tiempo real
+            - generic [ref=f348e115]:
+              - generic [ref=f348e116]:
+                - generic [ref=f348e117]: Propiedades Activas
+                - generic [ref=f348e118]: 
+              - generic [ref=f348e120]: "0"
+              - generic [ref=f348e121]:
+                - generic [ref=f348e122]: 
+                - text: En cartera activa
+            - generic [ref=f348e123]:
+              - generic [ref=f348e124]:
+                - generic [ref=f348e125]: Ticket Promedio
+                - generic [ref=f348e126]: 
+              - generic [ref=f348e128]: USD 0
+              - generic [ref=f348e129]:
+                - generic [ref=f348e130]: 
+                - text: Promedio por inmueble
+            - generic [ref=f348e131]:
+              - generic [ref=f348e132]:
+                - generic [ref=f348e133]: Leads Calificados
+                - generic [ref=f348e134]: 
+              - generic [ref=f348e136]: "0"
+              - generic [ref=f348e137]:
+                - generic [ref=f348e138]: 
+                - text: En proceso CRM
+            - generic [ref=f348e139]:
+              - generic [ref=f348e140]:
+                - generic [ref=f348e141]: Visitas Registradas
+                - generic [ref=f348e142]: 
+              - generic [ref=f348e144]: "0"
+              - generic [ref=f348e145]:
+                - generic [ref=f348e146]: 
+                - text: En agenda
+            - generic [ref=f348e147]:
+              - generic [ref=f348e148]:
+                - generic [ref=f348e149]: Brokers Asignados
+                - generic [ref=f348e150]: 
+              - generic [ref=f348e152]: "0"
+              - generic [ref=f348e153]: Matrículas C.R.I. activas
+          - generic [ref=f348e154]:
+            - generic [ref=f348e155]:
+              - generic [ref=f348e156]:
+                - generic [ref=f348e157]:
+                  - heading "Evolución de Consultas & Ventas" [level=2] [ref=f348e158]
+                  - paragraph [ref=f348e159]: Comportamiento mensual de interesados vs operaciones.
+                - generic [ref=f348e160] [cursor=pointer]:
+                  - generic [ref=f348e161]: 
+                  - text: "2026"
+              - generic [ref=f348e162]:
+                - generic [ref=f348e163]: Ene
+                - generic [ref=f348e166]: Feb
+                - generic [ref=f348e169]: Mar
+                - generic [ref=f348e172]: Abr
+                - generic [ref=f348e175]: May
+                - generic [ref=f348e178]: Jun
+                - generic [ref=f348e181]: Jul
+                - generic [ref=f348e184]: Ago
+            - generic [ref=f348e187]:
+              - heading "Cartera por Zonas" [level=2] [ref=f348e189]
+              - paragraph [ref=f348e191]: Las zonas se actualizarán al cargar propiedades.
+          - generic [ref=f348e192]:
+            - generic [ref=f348e193]:
+              - generic [ref=f348e194]:
+                - heading " Visitas Agendadas" [level=3] [ref=f348e195]:
+                  - generic [ref=f348e196]: 
+                  - text: Visitas Agendadas
+                - button "Ver Todas" [ref=f348e197] [cursor=pointer]
+              - paragraph [ref=f348e199]: Sin visitas registradas
+            - generic [ref=f348e200]:
+              - generic [ref=f348e201]:
+                - heading " Leads Prioritarios" [level=3] [ref=f348e202]:
+                  - generic [ref=f348e203]: 
+                  - text: Leads Prioritarios
+                - button "Ver CRM" [ref=f348e204] [cursor=pointer]
+              - paragraph [ref=f348e206]: Sin leads registrados
+            - generic [ref=f348e207]:
+              - generic [ref=f348e208]:
+                - heading " Top Brokers" [level=3] [ref=f348e209]:
+                  - generic [ref=f348e210]: 
+                  - text: Top Brokers
+                - button "Equipo" [ref=f348e211] [cursor=pointer]
+              - paragraph [ref=f348e213]: Sin brokers registrados
+        - text:  +           %                >  +            
+  - option "Seleccionar..." [selected]
+  - option "Casa"
+  - option "Departamento"
+  - option "Terreno"
+  - option "Local"
+  - option "Oficina"
+  - option "Galpón"
+  - option "Quinta"
+  - option "Otro"
+  - option "Venta" [selected]
+  - option "Alquiler"
+  - option "1. Nuevo" [selected]
+  - option "2. Contactado"
+  - option "3. Visita Agendada"
+  - option "4. Oferta / Cierre"
+  - option "Sin preferencia" [selected]
+  - option "Casa"
+  - option "Departamento"
+  - option "Terreno"
+  - option "Local"
+  - option "Oficina"
+  - option "Pendiente" [selected]
+  - option "Confirmada"
+  - option "Completada"
+  - option "Cancelada"
+  - option "Activo" [selected]
+  - option "Inactivo"
+  - option "WhatsApp" [selected]
+  - option "Teléfono"
+  - option "Email"
+  - option "Agente" [selected]
+  - option "Broker"
+  - option "Super Admin"
+  - option "Agente" [selected]
+  - option "Broker"
+  - option "Super Admin"
+  - option "Activo" [selected]
+  - option "Inactivo"
+  - generic [ref=f348e214]:
+    - generic [ref=f348e215]: 
+    - generic [ref=f348e216]: Operación exitosa.
+  - text: 

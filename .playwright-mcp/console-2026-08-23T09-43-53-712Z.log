@@ -1,0 +1,42 @@
+[     180ms] [LOG] [BH] IIFE STARTED @ http://localhost:8788/assets/js/admin-app.js?v=50:10
+[     181ms] [LOG] [BH] MIDPOINT REACHED - LEADS section @ http://localhost:8788/assets/js/admin-app.js?v=50:767
+[     182ms] [LOG] [BH] CHECKPOINT - CHAT section @ http://localhost:8788/assets/js/admin-app.js?v=50:3281
+[     182ms] [LOG] [BH] AFTER CHAT SECTION - about to define search/utility/init @ http://localhost:8788/assets/js/admin-app.js?v=50:3759
+[     182ms] [LOG] [BH] Before if/else block, readyState: loading @ http://localhost:8788/assets/js/admin-app.js?v=50:3948
+[     182ms] [LOG] [BH] IIFE END REACHED @ http://localhost:8788/assets/js/admin-app.js?v=50:3954
+[     184ms] [LOG] [BH] startApp() called, readyState: interactive @ http://localhost:8788/assets/js/admin-app.js?v=50:3833
+[     185ms] [LOG] [BH] initAuth: checking session... @ http://localhost:8788/assets/js/admin-app.js?v=50:56
+[     185ms] [LOG] [BH] initAuth: session exists = true @ http://localhost:8788/assets/js/admin-app.js?v=50:66
+[     185ms] [LOG] [BH] initAuth: calling showApp() @ http://localhost:8788/assets/js/admin-app.js?v=50:73
+[     185ms] [LOG] [BH] showApp() called @ http://localhost:8788/assets/js/admin-app.js?v=50:158
+[     185ms] [LOG] [BH] hidePreloader() called @ http://localhost:8788/assets/js/admin-app.js?v=50:173
+[     185ms] [LOG] [BH] hidePreloader() finished {bodyClasses: , preloaderClasses: preloader is-hidden} @ http://localhost:8788/assets/js/admin-app.js?v=50:177
+[     186ms] [LOG] [BH] showApp() finished, preloader hidden @ http://localhost:8788/assets/js/admin-app.js?v=50:165
+[     209ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[     209ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[     209ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[     209ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[     209ms] [VERBOSE] [DOM] Password forms should have (optionally hidden) username fields for accessibility: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[     209ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) @ http://localhost:8788/admin.html:0
+[   46395ms] [LOG] [BH] IIFE STARTED @ http://localhost:8788/assets/js/admin-app.js?v=50:10
+[   46396ms] [LOG] [BH] MIDPOINT REACHED - LEADS section @ http://localhost:8788/assets/js/admin-app.js?v=50:767
+[   46397ms] [LOG] [BH] CHECKPOINT - CHAT section @ http://localhost:8788/assets/js/admin-app.js?v=50:3281
+[   46397ms] [LOG] [BH] AFTER CHAT SECTION - about to define search/utility/init @ http://localhost:8788/assets/js/admin-app.js?v=50:3759
+[   46397ms] [LOG] [BH] Before if/else block, readyState: loading @ http://localhost:8788/assets/js/admin-app.js?v=50:3918
+[   46397ms] [LOG] [BH] IIFE END REACHED @ http://localhost:8788/assets/js/admin-app.js?v=50:3924
+[   46400ms] [LOG] [BH] startApp() called, readyState: interactive @ http://localhost:8788/assets/js/admin-app.js?v=50:3833
+[   46400ms] [LOG] [BH] initAuth: checking session... @ http://localhost:8788/assets/js/admin-app.js?v=50:56
+[   46400ms] [LOG] [BH] initAuth: session exists = true @ http://localhost:8788/assets/js/admin-app.js?v=50:66
+[   46400ms] [LOG] [BH] initAuth: calling showApp() @ http://localhost:8788/assets/js/admin-app.js?v=50:73
+[   46400ms] [LOG] [BH] showApp() called @ http://localhost:8788/assets/js/admin-app.js?v=50:158
+[   46401ms] [LOG] [BH] hidePreloader() called @ http://localhost:8788/assets/js/admin-app.js?v=50:173
+[   46401ms] [LOG] [BH] hidePreloader() finished {bodyClasses: , preloaderClasses: preloader is-hidden} @ http://localhost:8788/assets/js/admin-app.js?v=50:177
+[   46401ms] [LOG] [BH] showApp() finished, preloader hidden @ http://localhost:8788/assets/js/admin-app.js?v=50:165
+[   46423ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[   46423ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[   46423ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[   46423ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[   46423ms] [VERBOSE] [DOM] Password forms should have (optionally hidden) username fields for accessibility: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[   46424ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) @ http://localhost:8788/admin.html:0
+[   51870ms] [ERROR] Access to fetch at 'https://rnldqiwwzhjnurkguihu.supabase.co/functions/v1/zernio-proxy' from origin 'http://localhost:8788' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: It does not have HTTP ok status. @ http://localhost:8788/admin.html:0
+[   51871ms] [ERROR] Failed to load resource: net::ERR_FAILED @ https://rnldqiwwzhjnurkguihu.supabase.co/functions/v1/zernio-proxy:0

@@ -8,6 +8,8 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
 
 (function () {
   'use strict';
+  console.log('[BH] IIFE STARTED');
+  document.body.dataset.bhIifeStarted = 'true';
 
   /* ------------------------------------------------
      0. STATE & REFS
@@ -52,6 +54,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
     }
 
     try {
+      console.log('[BH] initAuth: checking session...');
       /* Link de invitacion: #access_token=..&type=invite. Capturo el
          fragmento ANTES de getSession porque supabase-js lo consume y
          crea la sesion durante su inicializacion; el hash se limpia
@@ -61,12 +64,14 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
       const inviteError = hashParams.get('error_description');
 
       const { data: { session } } = await window.supabaseClient.auth.getSession();
+      console.log('[BH] initAuth: session exists =', !!session);
 
       if (hashParams.get('access_token') || inviteError) {
         window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
       }
 
       if (session) {
+        console.log('[BH] initAuth: calling showApp()');
         currentUser = session.user;
         showApp();
         loadProfile().then(updateUserInfo).catch(() => {});
@@ -74,6 +79,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
           openInvitePasswordModal(session.user?.email || '');
         }
       } else {
+        console.log('[BH] initAuth: calling showLogin() - no session');
         showLogin();
         if (inviteError) {
           showToast('El enlace de invitación es inválido o ya expiró.', 'error');
@@ -140,20 +146,24 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   }
 
   function showLogin() {
+    console.log('[BH] showLogin() called');
     const loginScreen = $('#loginScreen');
     const appLayout = $('#appLayout');
     if (loginScreen) loginScreen.classList.remove('is-hidden');
     if (appLayout) appLayout.style.display = 'none';
     hidePreloader();
+    console.log('[BH] showLogin() finished, preloader hidden');
   }
 
   function showApp() {
+    console.log('[BH] showApp() called');
     const loginScreen = $('#loginScreen');
     const appLayout = $('#appLayout');
     const wasHidden = !appLayout || appLayout.style.display === 'none' || appLayout.style.display === '';
     if (loginScreen) loginScreen.classList.add('is-hidden');
     if (appLayout) appLayout.style.display = 'flex';
     hidePreloader();
+    console.log('[BH] showApp() finished, preloader hidden');
     updateUserInfo();
     updateSidebarBadges();
     mlCheckStatus().catch(() => {});
@@ -161,9 +171,13 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   }
 
   function hidePreloader() {
+    console.log('[BH] hidePreloader() called');
     document.body.classList.remove('is-loading');
     const preloader = $('#preloader');
     if (preloader) preloader.classList.add('is-hidden');
+    console.log('[BH] hidePreloader() finished', { bodyClasses: document.body.className, preloaderClasses: preloader?.className });
+    // Debug: add marker to page
+    document.body.dataset.bhPreloaderHidden = 'true';
   }
 
   function updateUserInfo() {
@@ -751,6 +765,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   /* ------------------------------------------------
      7. CRM — LEADS PIPELINE
      ------------------------------------------------ */
+  console.log('[BH] MIDPOINT REACHED - LEADS section');
   async function loadCRM() {
     if (!window.supabaseClient) return;
     try {
@@ -1797,7 +1812,7 @@ let dayCount = 1;
     statusEl.style.color = 'var(--text-muted)';
     try {
       const session = await window.supabaseClient.auth.getSession();
-      const res = await fetch('/functions/v1/zernio-proxy', {
+      const res = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/zernio-proxy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.data.session?.access_token}` },
         body: JSON.stringify({ action: 'list_accounts' })
@@ -3264,13 +3279,16 @@ let dayCount = 1;
   /* ------------------------------------------------
      16.5. CHAT REDES SOCIALES (Zernio Inbox)
      ------------------------------------------------ */
+  console.log('[BH] CHECKPOINT - CHAT section');
+  document.body.dataset.bhChatVarsStart = 'true';
   let _chatRealtimeChannel = null;
   let _chatCurrentConv = null;
   let _chatPlatformFilter = 'all';
   let _chatSearchTerm = '';
   let _chatUnreadTotal = 0;
+  document.body.dataset.bhBeforeLoadChatRedes = 'true';
 
-  async function loadChatRedes() {
+async function loadChatRedes() {
     if (!currentUser || !window.supabaseClient) return;
     if (currentProfile?.role !== 'super_admin') {
       showToast('Acceso denegado: solo super_admin', 'error');
@@ -3331,7 +3349,7 @@ let dayCount = 1;
 
       try {
         // 1. Listar cuentas desde Zernio
-        const accountsRes = await fetch('/functions/v1/zernio-proxy', {
+        const accountsRes = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/zernio-proxy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await window.supabaseClient.auth.getSession()).data.session?.access_token}` },
           body: JSON.stringify({ action: 'list_accounts' })
@@ -3340,7 +3358,7 @@ let dayCount = 1;
         if (!accountsRes.ok) throw new Error(accountsData.error || 'Error listando cuentas');
 
         // 2. Backfill conversaciones
-        const convRes = await fetch('/functions/v1/zernio-proxy', {
+        const convRes = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/zernio-proxy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await window.supabaseClient.auth.getSession()).data.session?.access_token}` },
           body: JSON.stringify({ action: 'backfill_conversations' })
@@ -3590,7 +3608,7 @@ let dayCount = 1;
 
       try {
         const session = await window.supabaseClient.auth.getSession();
-        const res = await fetch('/functions/v1/zernio-proxy', {
+        const res = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/zernio-proxy`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -3630,7 +3648,7 @@ let dayCount = 1;
     async function markRead(convId) {
       try {
         const session = await window.supabaseClient.auth.getSession();
-        await fetch('/functions/v1/zernio-proxy', {
+        await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/zernio-proxy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await window.supabaseClient.auth.getSession()).data.session?.access_token}` },
           body: JSON.stringify({ action: 'mark_read', conversationId: convId })
@@ -3737,6 +3755,9 @@ let dayCount = 1;
       const badge = $('#sideBadgeChatRedes');
       if (badge) badge.textContent = _chatUnreadTotal || '0';
     }
+  }
+  document.body.dataset.bhAfterChat = 'true';
+  console.log('[BH] AFTER CHAT SECTION - about to define search/utility/init');
 
   /* Global search */
   let _searchCache = null;
@@ -3763,85 +3784,6 @@ let dayCount = 1;
   }
 
   function invalidateSearchCache() { _searchCache = null; }
-
-  const _origLoadProperties = loadProperties;
-  loadProperties = function () { invalidateSearchCache(); return _origLoadProperties.apply(this, arguments); };
-
-  $('#globalSearchInput')?.addEventListener('input', async (e) => {
-    const q = e.target.value.toLowerCase().trim();
-    const resultsContainer = $('#globalSearchResults');
-    if (!resultsContainer) return;
-    if (!q || q.length < 2) { resultsContainer.innerHTML = ''; resultsContainer.style.display = 'none'; return; }
-
-    const cache = await getSearchCache();
-    const results = [];
-
-    const matches = (fields) => fields.some(f => f && f.toLowerCase().includes(q));
-
-    for (const p of cache.properties) {
-      if (!matches([p.title, p.zone, p.address])) continue;
-      results.push({ icon: 'fas fa-home', text: p.title || 'Sin título', sub: [p.zone, p.address].filter(Boolean).join(', '), tab: 'tab-propiedades', color: 'var(--accent)' });
-    }
-    for (const l of cache.leads) {
-      if (!matches([l.full_name, l.email, l.phone])) continue;
-      results.push({ icon: 'fas fa-user', text: l.full_name || 'Sin nombre', sub: l.email || l.phone || '', tab: 'tab-leads', color: '#3B82F6' });
-    }
-    for (const a of cache.agents) {
-      if (!matches([a.full_name, a.email, a.matricula])) continue;
-      results.push({ icon: 'fas fa-id-badge', text: a.full_name || 'Sin nombre', sub: a.matricula || a.email || '', tab: 'tab-agentes', color: '#10B981' });
-    }
-    for (const o of cache.owners) {
-      if (!matches([o.full_name, o.email, o.phone])) continue;
-      results.push({ icon: 'fas fa-user-tie', text: o.full_name || 'Sin nombre', sub: o.email || o.phone || '', tab: 'tab-propietarios', color: '#F97316' });
-    }
-
-    if (!results.length) {
-      resultsContainer.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-dim); font-size:13px;">Sin resultados para "' + esc(q) + '"</div>';
-      resultsContainer.style.display = 'block';
-      return;
-    }
-
-    resultsContainer.innerHTML = results.slice(0, 10).map(r => `
-      <div class="gs-result" data-tab="${esc(r.tab)}" style="display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--border-subtle); transition:background 0.15s;">
-        <i class="${esc(r.icon)}" style="font-size:14px; color:${r.color}; min-width:18px; text-align:center;"></i>
-        <div style="flex:1; min-width:0;">
-          <div style="color:#fff; font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(r.text)}</div>
-          <div style="color:var(--text-dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(r.sub)}</div>
-        </div>
-      </div>
-    `).join('');
-    resultsContainer.style.display = 'block';
-  });
-
-  document.addEventListener('click', (e) => {
-    const results = $('#globalSearchResults');
-    const input = $('#globalSearchInput');
-    if (results && !results.contains(e.target) && e.target !== input) {
-      results.style.display = 'none';
-    }
-  });
-
-  /* Security: resultados de busqueda sin handlers inline (CSP-safe) */
-  (() => {
-    const gsResults = $('#globalSearchResults');
-    if (!gsResults) return;
-    gsResults.addEventListener('click', (e) => {
-      const item = e.target.closest('.gs-result');
-      if (!item) return;
-      if (item.dataset.tab) navigateTo(item.dataset.tab);
-      gsResults.style.display = 'none';
-      const input = $('#globalSearchInput');
-      if (input) input.value = '';
-    });
-    gsResults.addEventListener('mouseover', (e) => {
-      const item = e.target.closest('.gs-result');
-      if (item) item.style.background = 'rgba(255,255,255,0.04)';
-    });
-    gsResults.addEventListener('mouseout', (e) => {
-      const item = e.target.closest('.gs-result');
-      if (item) item.style.background = '';
-    });
-  })();
 
   /* ------------------------------------------------
      17. SIDEBAR BADGES
@@ -3888,38 +3830,98 @@ let dayCount = 1;
   /* ------------------------------------------------
      19. INIT
      ------------------------------------------------ */
-  document.addEventListener('DOMContentLoaded', () => {
+  function startApp() {
+    console.log('[BH] startApp() called, readyState:', document.readyState);
+
+    // Deferred initialization - runs after DOM is ready
+    const _origLoadProperties = loadProperties;
+    loadProperties = function () { invalidateSearchCache(); return _origLoadProperties.apply(this, arguments); };
+
+    $('#globalSearchInput')?.addEventListener('input', async (e) => {
+      const q = e.target.value.toLowerCase().trim();
+      const resultsContainer = $('#globalSearchResults');
+      if (!resultsContainer) return;
+      if (!q || q.length < 2) { resultsContainer.innerHTML = ''; resultsContainer.style.display = 'none'; return; }
+
+      const cache = await getSearchCache();
+      const results = [];
+
+      const matches = (fields) => fields.some(f => f && f.toLowerCase().includes(q));
+
+      for (const p of cache.properties) {
+        if (!matches([p.title, p.zone, p.address])) continue;
+        results.push({ icon: 'fas fa-home', text: p.title || 'Sin título', sub: [p.zone, p.address].filter(Boolean).join(', '), tab: 'tab-propiedades', color: 'var(--accent)' });
+      }
+      for (const l of cache.leads) {
+        if (!matches([l.full_name, l.email, l.phone])) continue;
+        results.push({ icon: 'fas fa-user', text: l.full_name || 'Sin nombre', sub: l.email || l.phone || '', tab: 'tab-leads', color: '#3B82F6' });
+      }
+      for (const a of cache.agents) {
+        if (!matches([a.full_name, a.email, a.matricula])) continue;
+        results.push({ icon: 'fas fa-id-badge', text: a.full_name || 'Sin nombre', sub: a.matricula || a.email || '', tab: 'tab-agentes', color: '#10B981' });
+      }
+      for (const o of cache.owners) {
+        if (!matches([o.full_name, o.email, o.phone])) continue;
+        results.push({ icon: 'fas fa-user-tie', text: o.full_name || 'Sin nombre', sub: o.email || o.phone || '', tab: 'tab-propietarios', color: '#F97316' });
+      }
+
+      if (!results.length) {
+        resultsContainer.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-dim); font-size:13px;">Sin resultados para "' + esc(q) + '"</div>';
+        resultsContainer.style.display = 'block';
+        return;
+      }
+
+      resultsContainer.innerHTML = results.slice(0, 10).map(r => `
+        <div class="gs-result" data-tab="${esc(r.tab)}" style="display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--border-subtle); transition:background 0.15s;">
+          <i class="${esc(r.icon)}" style="font-size:14px; color:${r.color}; min-width:18px; text-align:center;"></i>
+          <div style="flex:1; min-width:0;">
+            <div style="color:#fff; font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(r.text)}</div>
+            <div style="color:var(--text-dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(r.sub)}</div>
+          </div>
+        </div>
+      `).join('');
+      resultsContainer.style.display = 'block';
+    });
+
+    document.addEventListener('click', (e) => {
+      const results = $('#globalSearchResults');
+      const input = $('#globalSearchInput');
+      if (results && !results.contains(e.target) && e.target !== input) {
+        results.style.display = 'none';
+      }
+    });
+
+    /* Security: resultados de busqueda sin handlers inline (CSP-safe) */
+    (() => {
+      const gsResults = $('#globalSearchResults');
+      if (!gsResults) return;
+      gsResults.addEventListener('click', (e) => {
+        const item = e.target.closest('.gs-result');
+        if (!item) return;
+        if (item.dataset.tab) navigateTo(item.dataset.tab);
+        gsResults.style.display = 'none';
+        const input = $('#globalSearchInput');
+        if (input) input.value = '';
+      });
+      gsResults.addEventListener('mouseover', (e) => {
+        const item = e.target.closest('.gs-result');
+        if (item) item.style.background = 'rgba(255,255,255,0.04)';
+      });
+      gsResults.addEventListener('mouseout', (e) => {
+        const item = e.target.closest('.gs-result');
+        if (item) item.style.background = '';
+      });
+    })();
+
     initAuth();
     initCursorGlow();
-  });
-
-}
-})();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  }
+  console.log('[BH] Before if/else block, readyState:', document.readyState);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startApp);
+  } else {
+    startApp(); // DOM already ready
+  }
+  console.log('[BH] IIFE END REACHED');
+})
+();

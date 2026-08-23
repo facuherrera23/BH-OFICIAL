@@ -1,0 +1,76 @@
+[      71ms] await is only valid in async functions and the top level bodies of modules
+[      91ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[      92ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[      92ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[      92ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[      92ms] [VERBOSE] [DOM] Password forms should have (optionally hidden) username fields for accessibility: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[      92ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) @ http://localhost:8788/admin.html:0
+[  767488ms] await is only valid in async functions and the top level bodies of modules
+[  767494ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  767495ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  767495ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  767495ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  767495ms] [VERBOSE] [DOM] Password forms should have (optionally hidden) username fields for accessibility: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  767495ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) @ http://localhost:8788/admin.html:0
+[  908706ms] await is only valid in async functions and the top level bodies of modules
+[  908714ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  908714ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  908715ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  908715ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  908715ms] [VERBOSE] [DOM] Password forms should have (optionally hidden) username fields for accessibility: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  908715ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) @ http://localhost:8788/admin.html:0
+[  931524ms] await is only valid in async functions and the top level bodies of modules
+[  931529ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  931529ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  931529ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  931529ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  931529ms] [VERBOSE] [DOM] Password forms should have (optionally hidden) username fields for accessibility: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[  931530ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) @ http://localhost:8788/admin.html:0
+[ 1143727ms] Unexpected token ')'
+[ 1143735ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[ 1143736ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[ 1143736ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[ 1143736ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[ 1143736ms] [VERBOSE] [DOM] Password forms should have (optionally hidden) username fields for accessibility: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[ 1143736ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) @ http://localhost:8788/admin.html:0
+[ 1513937ms] [LOG] [BH] IIFE STARTED @ http://localhost:8788/assets/js/admin-app.js?v=49:10
+[ 1513938ms] [LOG] [BH] MIDPOINT REACHED - LEADS section @ http://localhost:8788/assets/js/admin-app.js?v=49:767
+[ 1513939ms] [LOG] [BH] CHECKPOINT - CHAT section @ http://localhost:8788/assets/js/admin-app.js?v=49:3281
+[ 1513939ms] [LOG] [BH] AFTER CHAT SECTION - about to define search/utility/init @ http://localhost:8788/assets/js/admin-app.js?v=49:3759
+[ 1513939ms] [LOG] [BH] Before if/else block, readyState: loading @ http://localhost:8788/assets/js/admin-app.js?v=49:3888
+[ 1513939ms] [LOG] [BH] IIFE END REACHED @ http://localhost:8788/assets/js/admin-app.js?v=49:3894
+[ 1513940ms] [LOG] [BH] startApp() called, readyState: interactive @ http://localhost:8788/assets/js/admin-app.js?v=49:3803
+[ 1513940ms] [LOG] [BH] initAuth: checking session... @ http://localhost:8788/assets/js/admin-app.js?v=49:56
+[ 1513941ms] [LOG] [BH] initAuth: session exists = true @ http://localhost:8788/assets/js/admin-app.js?v=49:66
+[ 1513941ms] [LOG] [BH] initAuth: calling showApp() @ http://localhost:8788/assets/js/admin-app.js?v=49:73
+[ 1513941ms] [LOG] [BH] showApp() called @ http://localhost:8788/assets/js/admin-app.js?v=49:158
+[ 1513941ms] [LOG] [BH] hidePreloader() called @ http://localhost:8788/assets/js/admin-app.js?v=49:173
+[ 1513942ms] [LOG] [BH] hidePreloader() finished {bodyClasses: , preloaderClasses: preloader is-hidden} @ http://localhost:8788/assets/js/admin-app.js?v=49:177
+[ 1513942ms] [LOG] [BH] showApp() finished, preloader hidden @ http://localhost:8788/assets/js/admin-app.js?v=49:165
+[ 1513942ms] [ERROR] Auth init error: ReferenceError: updateSidebarBadges is not defined
+    at showApp (http://localhost:8788/assets/js/admin-app.js?v=49:168:5)
+    at initAuth (http://localhost:8788/assets/js/admin-app.js?v=49:76:9) @ http://localhost:8788/assets/js/admin-app.js?v=49:88
+[ 1513942ms] [LOG] [BH] showLogin() called @ http://localhost:8788/assets/js/admin-app.js?v=49:148
+[ 1513942ms] [LOG] [BH] hidePreloader() called @ http://localhost:8788/assets/js/admin-app.js?v=49:173
+[ 1513942ms] [LOG] [BH] hidePreloader() finished {bodyClasses: , preloaderClasses: preloader is-hidden} @ http://localhost:8788/assets/js/admin-app.js?v=49:177
+[ 1513942ms] [LOG] [BH] showLogin() finished, preloader hidden @ http://localhost:8788/assets/js/admin-app.js?v=49:154
+[ 1513947ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[ 1513947ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[ 1513947ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[ 1513947ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[ 1513947ms] [VERBOSE] [DOM] Password forms should have (optionally hidden) username fields for accessibility: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[ 1513947ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) @ http://localhost:8788/admin.html:0
+[ 1517015ms] [LOG] [BH] showApp() called @ http://localhost:8788/assets/js/admin-app.js?v=49:158
+[ 1517015ms] [LOG] [BH] hidePreloader() called @ http://localhost:8788/assets/js/admin-app.js?v=49:173
+[ 1517015ms] [LOG] [BH] hidePreloader() finished {bodyClasses: , preloaderClasses: preloader is-hidden} @ http://localhost:8788/assets/js/admin-app.js?v=49:177
+[ 1517015ms] [LOG] [BH] showApp() finished, preloader hidden @ http://localhost:8788/assets/js/admin-app.js?v=49:165
+[ 1517019ms] [ERROR] ReferenceError: updateSidebarBadges is not defined
+    at showApp (http://localhost:8788/assets/js/admin-app.js?v=49:168:5)
+    at Object.callback (http://localhost:8788/assets/js/admin-app.js?v=49:96:9)
+    at https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2:17:24933
+    at Array.map (<anonymous>)
+    at Gi._notifyAllSubscribers (https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2:17:24907)
+    at Gi.signInWithPassword (https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2:16:20973)
+    at async HTMLFormElement.<anonymous> (http://localhost:8788/assets/js/admin-app.js?v=49:208:25) @ https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2:16
+[ 1566735ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
+[ 1574552ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
