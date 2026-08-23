@@ -974,38 +974,15 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
 
       if (error) throw error;
 
+      calVisitsCache = data || [];
+      renderCalendar();
+
       if (!data?.length) {
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">No hay visitas programadas</td></tr>';
         return;
       }
 
-      tbody.innerHTML = data.map(v => {
-        const dateStr = v.visit_date
-          ? new Date(v.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
-          : '-';
-        const lead = v.leads;
-        const leadLink = lead
-          ? `<button class="btn-action" style="font-size:10px; color:var(--accent);" title="Ver en CRM" onclick="event.stopPropagation(); window.adminApp.editLead('${lead.id}')">
-               <i class="fas fa-user"></i> ${esc(lead.full_name)} <i class="fas fa-external-link-alt" style="font-size:9px; margin-left:2px;"></i>
-             </button>`
-          : '<span style="color:var(--text-dim); font-size:12px;">—</span>';
-
-        return `
-        <tr>
-          <td style="font-size:13px;">${dateStr}</td>
-          <td style="font-size:13px; font-weight:500;">${esc(v.client_name || 'Sin cliente')}</td>
-          <td style="font-size:13px; color:var(--text-dim);">${leadLink}</td>
-          <td style="font-size:13px; color:var(--text-dim);">${v.property_id ? '✓' : '—'}</td>
-          <td><span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : v.status === 'completada' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : v.status === 'completada' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${esc(v.status || 'pendiente')}</span></td>
-          <td style="font-size:12px; color:var(--text-dim);">${v.lead_id ? '✓' : '—'}</td>
-          <td>
-            <div style="display:flex; gap:6px;">
-              <button class="btn-action" title="Editar" onclick="window.adminApp.editVisit('${v.id}')"><i class="fas fa-pen"></i></button>
-              <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteVisit('${v.id}')"><i class="fas fa-trash"></i></button>
-            </div>
-          </td>
-        </tr>`;
-      }).join('');
+      tbody.innerHTML = data.map(visitRowHtml).join('');
 
       /* Actualizar header de la tabla si existe */
       const thead = tbody.closest('table').querySelector('thead');
@@ -1025,6 +1002,202 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
       console.error('Visits error:', err);
       tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar visitas</td></tr>';
     }
+  }
+
+  /* ========== CALENDARIO AGENDA ========== */
+  let calCurrentDate = new Date();
+  let calVisitsCache = [];
+  let calViewMode = 'table';
+
+  function renderCalendar() {
+    const grid = $('#calendarGrid');
+    if (!grid) return;
+
+    const year = calCurrentDate.getFullYear();
+    const month = calCurrentDate.getMonth();
+    const today = new Date();
+    const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const startDay = firstDay.getDay();
+    const daysInMonth = lastDay.getDate();
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+
+    const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const monthEl = $('#calCurrentMonth');
+    if (monthEl) monthEl.textContent = monthNames[calCurrentDate.getMonth()] + ' ' + calCurrentDate.getFullYear();
+
+    const statusFilter = $('#calStatusFilter')?.value || '';
+    const monthVisits = calVisitsCache.filter(v => {
+      if (!v.visit_date) return false;
+      const d = new Date(v.visit_date);
+      if (d.getFullYear() !== calCurrentDate.getFullYear() || d.getMonth() !== calCurrentDate.getMonth()) return false;
+      if (statusFilter && v.status !== statusFilter) return false;
+      return true;
+    });
+
+    const visitsByDay = {};
+    monthVisits.forEach(v => {
+      const dv = new Date(v.visit_date);
+      const dayStr = dv.getFullYear() + '-' + String(dv.getMonth() + 1).padStart(2, '0') + '-' + String(dv.getDate()).padStart(2, '0');
+      if (!visitsByDay[dayStr]) visitsByDay[dayStr] = [];
+      visitsByDay[dayStr].push(v);
+    });
+
+let html = '';
+let dayCount = 1;
+    let nextMonthDay = 1;
+
+    for (let week = 0; week < 6; week++) {
+      for (let dow = 0; dow < 7; dow++) {
+        let isCurrentMonth = false;
+        let dayNum = 0;
+        let dateStr = '';
+
+        if (week === 0 && dow < startDay) {
+          const prevMonthLastDay = new Date(year, month, 0).getDate();
+          dayNum = prevMonthLastDay - (startDay - dow - 1);
+          const prevMonth = month === 0 ? 11 : month - 1;
+          const prevYear = month === 0 ? year - 1 : year;
+          dateStr = prevYear + '-' + String(prevMonth + 1).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
+          isCurrentMonth = false;
+        } else if (dayCount <= daysInMonth) {
+          dayNum = dayCount++;
+          dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
+          isCurrentMonth = true;
+        } else {
+          dayNum = nextMonthDay++;
+          const nextMonth = month === 11 ? 0 : month + 1;
+          const nextYear = month === 11 ? year + 1 : year;
+          dateStr = nextYear + '-' + String(nextMonth + 1).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
+          isCurrentMonth = false;
+        }
+
+        const isToday = dateStr === todayStr;
+        const dayVisits = visitsByDay[dateStr] || [];
+
+        let eventsHtml = '';
+        if (dayVisits.length > 0) {
+          const filteredEvents = dayVisits.filter(v => !statusFilter || v.status === statusFilter);
+          const maxShow = 3;
+          filteredEvents.slice(0, maxShow).forEach(v => {
+            const timeStr = v.visit_date ? new Date(v.visit_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
+            const leadName = v.leads?.full_name ? ' · ' + v.leads.full_name : '';
+            eventsHtml += '<div class="cal-event ' + v.status + '" data-visit-id="' + v.id + '" style="cursor:pointer;" onclick="event.stopPropagation(); window.adminApp.editVisit(\'' + v.id + '\')">' + esc(timeStr) + ' ' + esc(v.client_name || 'Sin cliente') + leadName + '</div>';
+          });
+          if (filteredEvents.length > 3) {
+            eventsHtml += '<div class="cal-event-more" onclick="event.stopPropagation(); filterVisitsByDate(\'' + dateStr + '\')">+' + (filteredEvents.length - 3) + ' más</div>';
+          }
+        }
+
+        const otherMonthClass = isCurrentMonth ? '' : ' other-month';
+        const todayClass = isCurrentMonth && dateStr === todayStr ? ' today' : '';
+
+        html += '<div class="cal-day' + otherMonthClass + todayClass + '" data-date="' + dateStr + '" data-current-month="' + isCurrentMonth + '">' +
+          '<div class="cal-day-number">' + dayNum + '</div>' +
+          '<div class="cal-events">' + eventsHtml + '</div>' +
+        '</div>';
+      }
+    }
+
+    const gridEl = document.getElementById('calendarGrid');
+    if (gridEl) {
+      const headers = gridEl.querySelectorAll('.cal-day-header');
+      gridEl.innerHTML = '';
+      headers.forEach(h => gridEl.appendChild(h));
+      gridEl.insertAdjacentHTML('beforeend', html);
+    }
+  }
+
+  function updateViewToggle() {
+    const calView = $('#visitsCalendarView');
+    const tableView = $('#visitsTableView');
+    const calBtn = $('#viewCalendarBtn');
+    const tableBtn = $('#viewTableBtn');
+    if (calView && tableView) {
+      if (calViewMode === 'calendar') {
+        calView.style.display = 'block';
+        tableView.style.display = 'none';
+        calBtn?.classList.add('active');
+        tableBtn?.classList.remove('active');
+      } else {
+        calView.style.display = 'none';
+        tableView.style.display = 'block';
+        calBtn?.classList.remove('active');
+        tableBtn?.classList.add('active');
+      }
+    }
+  }
+
+  $('#viewCalendarBtn')?.addEventListener('click', function() {
+    calViewMode = 'calendar';
+    updateViewToggle();
+  });
+  $('#viewTableBtn')?.addEventListener('click', function() {
+    calViewMode = 'table';
+    updateViewToggle();
+    loadVisits();
+  });
+
+  $('#calPrevMonth')?.addEventListener('click', function() {
+    calCurrentDate.setMonth(calCurrentDate.getMonth() - 1);
+    renderCalendar();
+  });
+  $('#calNextMonth')?.addEventListener('click', function() {
+    calCurrentDate.setMonth(calCurrentDate.getMonth() + 1);
+    renderCalendar(calVisitsCache);
+  });
+  $('#calTodayBtn')?.addEventListener('click', function() {
+    calCurrentDate = new Date();
+    renderCalendar(calVisitsCache);
+  });
+  $('#calStatusFilter')?.addEventListener('change', function() {
+    renderCalendar(calVisitsCache);
+  });
+
+  function visitRowHtml(v) {
+    const dateStr = v.visit_date
+      ? new Date(v.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : '-';
+    const lead = v.leads;
+    const leadLink = lead
+      ? `<button class="btn-action" style="font-size:10px; color:var(--accent);" title="Ver en CRM" onclick="event.stopPropagation(); window.adminApp.editLead('${lead.id}')">
+           <i class="fas fa-user"></i> ${esc(lead.full_name)} <i class="fas fa-external-link-alt" style="font-size:9px; margin-left:2px;"></i>
+         </button>`
+      : '<span style="color:var(--text-dim); font-size:12px;">—</span>';
+
+    return `
+      <tr>
+        <td style="font-size:13px;">${dateStr}</td>
+        <td style="font-size:13px; font-weight:500;">${esc(v.client_name || 'Sin cliente')}</td>
+        <td style="font-size:13px; color:var(--text-dim);">${leadLink}</td>
+        <td style="font-size:13px; color:var(--text-dim);">${v.property_id ? '✓' : '—'}</td>
+        <td><span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : v.status === 'completada' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : v.status === 'completada' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${esc(v.status || 'pendiente')}</span></td>
+        <td style="font-size:12px; color:var(--text-dim);">${v.lead_id ? '✓' : '—'}</td>
+        <td>
+          <div style="display:flex; gap:6px;">
+            <button class="btn-action" title="Editar" onclick="window.adminApp.editVisit('${v.id}')"><i class="fas fa-pen"></i></button>
+            <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteVisit('${v.id}')"><i class="fas fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>`;
+  }
+
+  function filterVisitsByDate(dateStr) {
+    const tbody = $('#visitsTableBody');
+    if (!tbody) return;
+    const dayVisits = calVisitsCache.filter(v => {
+      if (!v.visit_date) return false;
+      const dv = new Date(v.visit_date);
+      const ds = dv.getFullYear() + '-' + String(dv.getMonth() + 1).padStart(2, '0') + '-' + String(dv.getDate()).padStart(2, '0');
+      return ds === dateStr;
+    });
+    tbody.innerHTML = dayVisits.length
+      ? dayVisits.map(visitRowHtml).join('')
+      : '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">No hay visitas en esta fecha</td></tr>';
+    calViewMode = 'table';
+    updateViewToggle();
   }
 
   /* Create visit */

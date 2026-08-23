@@ -397,7 +397,7 @@
                     </div>
                 </section>
 
-                <!-- 4. AGENDA DE VISITAS -->
+<!-- 4. AGENDA DE VISITAS -->
                 <section class="tab-module" id="tab-agenda">
                     <div class="glass-panel">
                         <div class="panel-header">
@@ -405,25 +405,67 @@
                                 <h2 class="panel-title">Agenda de Visitas</h2>
                                 <p style="color:var(--text-muted); font-size:12.5px;">CoordinaciÃ³n de recorridos presenciales con prospectos.</p>
                             </div>
-                            <button class="btn-luxury-action" id="btnNewVisit">+ Agendar Visita</button>
+                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                                <button class="btn-luxury-action" id="btnNewVisit">+ Agendar Visita</button>
+                                <div style="display:flex; gap:6px; margin-left:auto;">
+                                    <button class="status-pill" id="viewCalendarBtn" title="Vista Calendario"><i class="fas fa-calendar-alt"></i> Calendario</button>
+                                    <button class="status-pill active" id="viewTableBtn" title="Vista Tabla"><i class="fas fa-table"></i> Tabla</button>
+                                </div>
+                            </div>
                         </div>
 
-                        <div class="table-responsive">
-                            <table class="luxury-table">
-                                <thead>
-                                    <tr>
-                                        <th>Fecha &amp; Hora</th>
-                                        <th>Propiedad</th>
-                                        <th>Cliente / Prospecto</th>
-                                        <th>Broker Asignado</th>
-                                        <th>Estado</th>
-                                        <th>AcciÃ³n</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="visitsTableBody">
-                                    <tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando visitas...</td></tr>
-                                </tbody>
-                            </table>
+                        <!-- Vista Calendario -->
+                        <div id="visitsCalendarView" style="display:none;">
+                            <div class="calendar-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+                                <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                                    <button class="btn-action" id="calPrevMonth" title="Mes anterior" style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;"><i class="fas fa-chevron-left"></i></button>
+                                    <h3 id="calCurrentMonth" style="font-family:var(--font-heading); font-size:20px; color:#fff; margin:0; min-width:180px; text-align:center;">Mes Año</h3>
+                                    <button class="btn-action" id="calNextMonth" title="Mes siguiente" style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;"><i class="fas fa-chevron-right"></i></button>
+                                    <button class="status-pill" id="calTodayBtn" style="margin-left:auto;"><i class="fas fa-calendar-day"></i> Hoy</button>
+                                </div>
+                                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                    <select id="calStatusFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
+                                        <option value="">Todos los estados</option>
+                                        <option value="pendiente">Pendiente</option>
+                                        <option value="confirmada">Confirmada</option>
+                                        <option value="completada">Completada</option>
+                                        <option value="cancelada">Cancelada</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="calendar-grid" id="calendarGrid" style="display:grid; grid-template-columns:repeat(7, 1fr); gap:4px;">
+                                <!-- Días de la semana -->
+                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Dom</div>
+                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Lun</div>
+                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Mar</div>
+                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Mié</div>
+                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Jue</div>
+                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Vie</div>
+                                <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Sáb</div>
+                                <!-- Los días se insertan aquí via JS -->
+                            </div>
+                        </div>
+
+                        <!-- Vista Tabla (existente) -->
+                        <div id="visitsTableView">
+                            <div class="table-responsive">
+                                <table class="luxury-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha & Hora</th>
+                                            <th>Cliente / Prospecto</th>
+                                            <th>Lead (CRM)</th>
+                                            <th>Propiedad</th>
+                                            <th>Estado</th>
+                                            <th>Vinculado</th>
+                                            <th>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="visitsTableBody">
+                                        <tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando visitas...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -1074,7 +1116,7 @@
 <script src="assets/js/config.js?v=5"></script>
 <script src="assets/js/supabase-client.js?v=4"></script>
 <script src="assets/js/cloudinary.js?v=6"></script>
-<script src="assets/js/admin-app.js?v=16"></script>
+<script src="assets/js/admin-app.js?v=17"></script>
 </body>
 </html>
 
