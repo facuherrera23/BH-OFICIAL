@@ -73,7 +73,7 @@ async function getZernioApiKey(): Promise<string> {
     return typeof key === 'string' ? key : '';
 }
 
-async function requireSuperAdmin(req: Request): Promise<string | null> {
+async function requireSuperAdmin(req: Request): Promise<{ token: string; userId: string } | null> {
     const auth = req.headers.get('authorization') ?? '';
     if (!auth.startsWith('Bearer ')) return null;
     const token = auth.slice(7);
@@ -88,7 +88,7 @@ async function requireSuperAdmin(req: Request): Promise<string | null> {
         .maybeSingle();
     if (!profile || !profile.is_active || profile.role !== 'super_admin') return null;
 
-    return token;
+    return { token, userId: user.id };
 }
 
 async function zernioRequest(path: string, options: RequestInit & { apiKey?: string } = {}): Promise<Response> {
@@ -297,6 +297,16 @@ async function actBackfillMessages(body: Record<string, unknown>): Promise<unkno
     const conversationId = String(body.conversationId ?? '');
     if (!conversationId) throw new Error('conversationId requerido');
 
+    // `id` es uuid autogenerado (no lo mandamos), así que un upsert con onConflict:'id'
+    // nunca detecta colisiones y duplica todo en cada backfill. Deduplicamos nosotros
+    // contra lo ya guardado por platform_message_id antes de insertar.
+    const { data: existingRows } = await supabase
+        .from('zernio_messages')
+        .select('platform_message_id')
+        .eq('conversation_id', conversationId)
+        .not('platform_message_id', 'is', null);
+    const existingIds = new Set((existingRows ?? []).map(r => r.platform_message_id));
+
     let cursor: string | null = null;
     let total = 0;
     for (let page = 0; page < 10; page++) {
@@ -307,22 +317,37 @@ async function actBackfillMessages(body: Record<string, unknown>): Promise<unkno
         const items = data.data ?? data ?? [];
         if (!Array.isArray(items) || items.length === 0) break;
 
-        // Batch messages — evita await en loop
-        const messagesToUpsert = items.map(m => ({
-            conversation_id: conversationId,
-            direction: String(m.direction ?? (m.from_me ? 'out' : 'in')),
-            platform_message_id: String(m.id ?? ''),
-            body: String(m.text ?? m.body ?? ''),
-            attachment: m.attachment ?? null,
-            status: String(m.status ?? 'received'),
-            zernio_event_id: null,
-            occurred_at: m.created_at ? new Date(m.created_at).toISOString() : new Date().toISOString(),
-        }));
-
-        if (messagesToUpsert.length > 0) {
-            await supabase.from('zernio_messages').upsert(messagesToUpsert, { onConflict: 'id' });
+        // Batch messages — single pass reduce to avoid chained filter+map
+        const messagesToInsert: Array<{
+            conversation_id: string;
+            direction: string;
+            platform_message_id: string;
+            body: string;
+            attachment: unknown;
+            status: string;
+            zernio_event_id: null;
+            occurred_at: string;
+        }> = [];
+        for (const m of items) {
+            const pid = String(m.id ?? '');
+            if (!pid || existingIds.has(pid)) continue;
+            existingIds.add(pid);
+            messagesToInsert.push({
+                conversation_id: conversationId,
+                direction: String(m.direction ?? (m.from_me ? 'out' : 'in')),
+                platform_message_id: pid,
+                body: String(m.text ?? m.body ?? ''),
+                attachment: m.attachment ?? null,
+                status: String(m.status ?? 'received'),
+                zernio_event_id: null,
+                occurred_at: m.created_at ? new Date(m.created_at).toISOString() : new Date().toISOString(),
+            });
         }
-        total += messagesToUpsert.length;
+
+        if (messagesToInsert.length > 0) {
+            await supabase.from('zernio_messages').insert(messagesToInsert);
+        }
+        total += messagesToInsert.length;
 
         cursor = data.next_cursor ?? data.cursor ?? null;
         if (!cursor) break;
@@ -338,8 +363,8 @@ Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') return optionsResponse(req);
     if (req.method !== 'POST') return respond(405, { error: 'Method not allowed' }, req);
 
-    const userToken = await requireSuperAdmin(req);
-    if (!userToken) return respond(401, { error: 'No autorizado (super_admin requerido)' }, req);
+    const auth = await requireSuperAdmin(req);
+    if (!auth) return respond(401, { error: 'No autorizado (super_admin requerido)' }, req);
 
     let body: Record<string, unknown>;
     try {
@@ -352,7 +377,7 @@ Deno.serve(async (req) => {
     try {
         switch (action) {
             case 'send_message': {
-                const result = await actSendMessage(body, '');
+                const result = await actSendMessage(body, auth.userId);
                 return respond(200, result, req);
             }
             case 'mark_read': {
@@ -378,33 +403,3 @@ Deno.serve(async (req) => {
         return respond(500, { error: (err as Error).message }, req);
     }
 });
-
-function respond(status: number, body: unknown, req: Request): Response {
-    return new Response(JSON.stringify(body), {
-        status,
-        headers: { ...corsHeaders(req), 'content-type': 'application/json' },
-    });
-}
-
-function optionsResponse(req: Request): Response {
-    return new Response('ok', {
-        headers: {
-            ...corsHeaders(req),
-            'access-control-allow-methods': 'POST, OPTIONS',
-            'access-control-allow-headers': 'authorization, content-type',
-        },
-    });
-}
-
-function corsHeaders(req: Request): Record<string, string> {
-    const origin = req.headers.get('origin');
-    if (origin && ALLOWED_ORIGINS.has(origin)) {
-        return {
-            'access-control-allow-origin': origin,
-            'access-control-allow-methods': 'POST, OPTIONS',
-            'access-control-allow-headers': 'authorization, content-type',
-            vary: 'Origin',
-        };
-    }
-    return {};
-}
