@@ -299,6 +299,19 @@ const _usdFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
   async function loadLandingData() {
     if (!window.supabaseClient) {
       console.warn('[BH Landing] Supabase client not available — data will not load');
+      const grid = document.getElementById('propertyGrid');
+      if (grid) renderEmptyState(grid, 'No pudimos cargar las propiedades', 'Recargá la página o intentá de nuevo en unos minutos.');
+      // Mostrar banner visible de error
+      const banner = document.createElement('div');
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#dc2626;color:#fff;padding:12px;text-align:center;z-index:10000;font-weight:600;';
+      banner.append('No se pudo conectar con el servidor. ');
+      const retry = document.createElement('a');
+      retry.href = '#';
+      retry.textContent = 'Recargar página';
+      retry.style.cssText = 'color:#fff;text-decoration:underline;';
+      retry.addEventListener('click', (e) => { e.preventDefault(); location.reload(); });
+      banner.appendChild(retry);
+      document.body.appendChild(banner);
       return;
     }
     await Promise.all([
@@ -371,8 +384,20 @@ const _usdFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
 
       if (p.featured) {
         const badge = document.createElement('span');
-        badge.className = 'card-badge';
+        badge.className = 'card-badge card-badge--featured';
         badge.textContent = 'Destacada';
+        imageWrapper.appendChild(badge);
+      }
+      if (p.is_retasada) {
+        const badge = document.createElement('span');
+        badge.className = 'card-badge card-badge--retasada';
+        badge.textContent = 'Retasada';
+        imageWrapper.appendChild(badge);
+      }
+      if (p.is_oportunidad) {
+        const badge = document.createElement('span');
+        badge.className = 'card-badge card-badge--oportunidad';
+        badge.textContent = 'Oportunidad';
         imageWrapper.appendChild(badge);
       }
 
@@ -786,7 +811,7 @@ const _usdFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
           .from('leads')
           .insert([{
             email: email,
-            full_name: '',
+            full_name: 'Suscriptor Newsletter',
             source: 'newsletter',
             notes: 'Suscripción al newsletter desde la landing page',
           }]);

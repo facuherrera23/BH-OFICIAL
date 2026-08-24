@@ -8,7 +8,6 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
 
 (function () {
   'use strict';
-  console.log('[BH] IIFE STARTED');
   document.body.dataset.bhIifeStarted = 'true';
 
   /* ------------------------------------------------
@@ -54,7 +53,6 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
     }
 
     try {
-      console.log('[BH] initAuth: checking session...');
       /* Link de invitacion: #access_token=..&type=invite. Capturo el
          fragmento ANTES de getSession porque supabase-js lo consume y
          crea la sesion durante su inicializacion; el hash se limpia
@@ -64,14 +62,12 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
       const inviteError = hashParams.get('error_description');
 
       const { data: { session } } = await window.supabaseClient.auth.getSession();
-      console.log('[BH] initAuth: session exists =', !!session);
 
       if (hashParams.get('access_token') || inviteError) {
         window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
       }
 
       if (session) {
-        console.log('[BH] initAuth: calling showApp()');
         currentUser = session.user;
         showApp();
         loadProfile().then(updateUserInfo).catch(() => {});
@@ -79,7 +75,6 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
           openInvitePasswordModal(session.user?.email || '');
         }
       } else {
-        console.log('[BH] initAuth: calling showLogin() - no session');
         showLogin();
         if (inviteError) {
           showToast('El enlace de invitación es inválido o ya expiró.', 'error');
@@ -146,24 +141,20 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   }
 
   function showLogin() {
-    console.log('[BH] showLogin() called');
     const loginScreen = $('#loginScreen');
     const appLayout = $('#appLayout');
     if (loginScreen) loginScreen.classList.remove('is-hidden');
     if (appLayout) appLayout.style.display = 'none';
     hidePreloader();
-    console.log('[BH] showLogin() finished, preloader hidden');
   }
 
   function showApp() {
-    console.log('[BH] showApp() called');
     const loginScreen = $('#loginScreen');
     const appLayout = $('#appLayout');
     const wasHidden = !appLayout || appLayout.style.display === 'none' || appLayout.style.display === '';
     if (loginScreen) loginScreen.classList.add('is-hidden');
     if (appLayout) appLayout.style.display = 'flex';
     hidePreloader();
-    console.log('[BH] showApp() finished, preloader hidden');
     updateUserInfo();
     updateSidebarBadges();
     mlCheckStatus().catch(() => {});
@@ -171,11 +162,9 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   }
 
   function hidePreloader() {
-    console.log('[BH] hidePreloader() called');
     document.body.classList.remove('is-loading');
     const preloader = $('#preloader');
     if (preloader) preloader.classList.add('is-hidden');
-    console.log('[BH] hidePreloader() finished', { bodyClasses: document.body.className, preloaderClasses: preloader?.className });
     // Debug: add marker to page
     document.body.dataset.bhPreloaderHidden = 'true';
   }
@@ -216,7 +205,12 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
 
   /* Logout */
   $('#logoutBtn')?.addEventListener('click', async () => {
-    await window.supabaseClient.auth.signOut();
+    try {
+      await window.supabaseClient.auth.signOut();
+    } catch (err) {
+      console.error('Logout error:', err);
+      showToast('No se pudo cerrar sesión, intentá de nuevo', 'error');
+    }
   });
 
   /* Aceptación de invitación: definir contraseña del usuario invitado */
@@ -503,6 +497,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
      5. PROPERTIES CRUD
      ------------------------------------------------ */
   async function loadProperties() {
+    invalidateSearchCache();
     const tbody = $('#propertiesTableBody');
     if (!tbody) return;
     if (!window.supabaseClient) return;
@@ -520,7 +515,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
       if (error) throw error;
 
       const mlMap = {};
-      (listingsRes.data || []).forEach(l => { mlMap[l.property_id] = l; });
+      (listingsRes.data || []).forEach(l => { if (l.property_id) mlMap[l.property_id] = l; });
 
       if (!data?.length) {
         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-dim);">No hay propiedades cargadas</td></tr>';
@@ -543,7 +538,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
               <button class="btn-action" style="font-size:11px; color:#FFE600;" title="Actualizar en ML" data-ml-update-prop="${esc(p.id)}" data-ml-listing="${esc(mlInfo.ml_listing_id)}"><i class="fas fa-arrows-rotate"></i></button>
               <button class="btn-action danger" style="font-size:11px;" title="Quitar de ML" data-ml-remove data-ml-listing="${esc(mlInfo.ml_listing_id)}"><i class="fas fa-link-slash"></i></button>`;
         } else if (ml_connected) {
-          mlButtons = `<button class="btn-action" style="font-size:11px; color:#FFE600;" title="Publicar en ML" data-ml-publish="${esc(p.id)}"><i class="fab fa-mercarto-libre"></i></button>`;
+          mlButtons = `<button class="btn-action" style="font-size:11px; color:#FFE600;" title="Publicar en ML" data-ml-publish="${esc(p.id)}"><i class="fas fa-shopping-cart"></i></button>`;
         }
 
         const codeBadge = p.property_code 
@@ -566,8 +561,15 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
           <td style="font-size:13px;">${p.rooms || '-'}</td>
           <td style="font-weight:600; color:var(--accent); font-size:13.5px;">${formatPrice(p.price_usd)}</td>
           <td><span class="nav-badge" style="background:${p.status === 'venta' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${p.status === 'venta' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${esc(p.status || 'venta')}</span></td>
-          <td><span class="nav-badge" style="background:${p.is_published ? 'rgba(0,200,120,0.15)' : 'rgba(255,255,255,0.06)'}; color:${p.is_published ? 'var(--success)' : 'var(--text-dim)'}; font-size:11px;">${p.is_published ? 'Publicada' : 'Borrador'}</span></td>
           <td>
+              <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                <span class="nav-badge" style="background:${p.is_published ? 'rgba(0,200,120,0.15)' : 'rgba(255,255,255,0.06)'}; color:${p.is_published ? 'var(--success)' : 'var(--text-dim)'}; font-size:11px;">${p.is_published ? 'Publicada' : 'Borrador'}</span>
+                ${p.featured ? '<span class="nav-badge" style="background:rgba(255,184,0,0.15); color:var(--warning); font-size:11px;"><i class="fas fa-star" style="margin-right:4px;"></i>Destacada</span>' : ''}
+                ${p.is_retasada ? '<span class="nav-badge" style="background:rgba(139,92,246,0.15); color:#8b5cf6; font-size:11px;"><i class="fas fa-tag" style="margin-right:4px;"></i>Retasada</span>' : ''}
+                ${p.is_oportunidad ? '<span class="nav-badge" style="background:rgba(239,68,68,0.15); color:#ef4444; font-size:11px;"><i class="fas fa-bolt" style="margin-right:4px;"></i>Oportunidad</span>' : ''}
+              </div>
+            </td>
+            <td>
             <div style="display:flex; gap:6px; align-items:center;">
               ${mlButtons}
               <button class="btn-action" title="Editar" onclick="window.adminApp.editProperty('${p.id}')"><i class="fas fa-pen"></i></button>
@@ -607,6 +609,30 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
     if (title) title.textContent = 'Nueva Propiedad';
   }
 
+  /* Vista previa inmediata de las imágenes nuevas seleccionadas (antes de guardar) */
+  $('#propImageFilesInput')?.addEventListener('change', (e) => {
+    const previews = $('#imagePreviewGrid');
+    if (!previews) return;
+
+    /* Sacar las previews de una selección anterior (mantener las de imágenes
+       ya existentes, que sí tienen su input hidden existing_image_urls) */
+    previews.querySelectorAll('.image-preview-item[data-new-file]').forEach(el => el.remove());
+
+    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'));
+    files.forEach(file => {
+      const objectUrl = URL.createObjectURL(file);
+      const item = document.createElement('div');
+      item.className = 'image-preview-item';
+      item.dataset.newFile = 'true';
+      item.style.cssText = 'position:relative; width:80px; height:80px; border-radius:8px; overflow:hidden; border:1px solid var(--accent);';
+      item.innerHTML = `
+        <img src="${objectUrl}" alt="" style="width:100%; height:100%; object-fit:cover;" />
+        <span style="position:absolute; bottom:0; left:0; right:0; background:rgba(31,200,195,0.85); color:#04121a; font-size:8px; font-weight:700; text-align:center; padding:1px 0; text-transform:uppercase; letter-spacing:0.5px;">Nueva</span>
+      `;
+      previews.appendChild(item);
+    });
+  });
+
   /* Save property */
   $('#propertyForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -632,6 +658,9 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
         status: formData.get('status') || 'venta',
         is_published: formData.get('is_published') === 'on',
         featured: formData.get('featured') === 'on',
+        is_retasada: formData.get('is_retasada') === 'on',
+        is_oportunidad: formData.get('is_oportunidad') === 'on',
+        video_url: formData.get('video_url') || '',
         created_by: currentUser?.id || null, // para trigger property_code
       };
 
@@ -688,6 +717,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
       editingPropertyId = id;
       const form = $('#propertyForm');
       if (form) {
+        form.reset(); /* limpia cualquier archivo de imagen que hubiera quedado seleccionado de un uso anterior del modal */
         form.elements.title.value = data.title || '';
         form.elements.description.value = data.description || '';
         form.elements.price_usd.value = data.price_usd || '';
@@ -702,6 +732,9 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
         form.elements.rooms.value = data.rooms || '';
         form.elements.is_published.checked = data.is_published || false;
         form.elements.featured.checked = data.featured || false;
+        form.elements.is_retasada.checked = data.is_retasada || false;
+        form.elements.is_oportunidad.checked = data.is_oportunidad || false;
+        form.elements.video_url.value = data.video_url || '';
 
         // Código de propiedad (solo lectura en edición)
         const codeInput = $('#propCode');
@@ -711,14 +744,16 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
         }
 
         const previews = $('#imagePreviewGrid');
-        if (previews && data.image_urls?.length) {
-          previews.innerHTML = data.image_urls.map(url => `
+        if (previews) {
+          previews.innerHTML = data.image_urls?.length
+            ? data.image_urls.map(url => `
             <div class="image-preview-item" style="position:relative; width:80px; height:80px; border-radius:8px; overflow:hidden; border:1px solid var(--border-subtle);">
               <img src="${esc(url)}" alt="" style="width:100%; height:100%; object-fit:cover;" />
               <input type="hidden" name="existing_image_urls" value="${esc(url)}" />
               <button type="button" class="preview-remove" style="position:absolute; top:4px; right:4px; width:20px; height:20px; border-radius:50%; background:rgba(0,0,0,0.7); color:#fff; border:none; cursor:pointer; font-size:10px; display:flex; align-items:center; justify-content:center;"><i class="fas fa-times"></i></button>
             </div>
-          `).join('');
+          `).join('')
+            : '';
         }
       }
 
@@ -765,8 +800,8 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   /* ------------------------------------------------
      7. CRM — LEADS PIPELINE
      ------------------------------------------------ */
-  console.log('[BH] MIDPOINT REACHED - LEADS section');
   async function loadCRM() {
+    invalidateSearchCache();
     if (!window.supabaseClient) return;
     try {
       /* Traer leads y sus visitas (próximas y última) en una sola query */
@@ -1002,6 +1037,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
      8. VISITS / AGENDA
      ------------------------------------------------ */
   async function loadVisits() {
+    invalidateSearchCache();
     const tbody = $('#visitsTableBody');
     if (!tbody) return;
     if (!window.supabaseClient) return;
@@ -1010,7 +1046,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
       /* JOIN con leads para mostrar nombre del lead y link a CRM */
       const { data, error } = await window.supabaseClient
         .from('visits')
-        .select('*, leads!left(id, full_name, stage)')
+        .select('*, leads(id, full_name, stage)')
         .order('visit_date', { ascending: true });
 
       if (error) throw error;
@@ -1050,7 +1086,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   let calVisitsCache = [];
   let calViewMode = 'table';
 
-  function renderCalendar() {
+  function renderCalendar(visitsCache = calVisitsCache) {
     const grid = $('#calendarGrid');
     if (!grid) return;
 
@@ -1070,7 +1106,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
     if (monthEl) monthEl.textContent = monthNames[calCurrentDate.getMonth()] + ' ' + calCurrentDate.getFullYear();
 
     const statusFilter = $('#calStatusFilter')?.value || '';
-    const monthVisits = calVisitsCache.filter(v => {
+    const monthVisits = visitsCache.filter(v => {
       if (!v.visit_date) return false;
       const d = new Date(v.visit_date);
       if (d.getFullYear() !== calCurrentDate.getFullYear() || d.getMonth() !== calCurrentDate.getMonth()) return false;
@@ -1187,14 +1223,14 @@ let dayCount = 1;
   });
   $('#calNextMonth')?.addEventListener('click', function() {
     calCurrentDate.setMonth(calCurrentDate.getMonth() + 1);
-    renderCalendar(calVisitsCache);
+    renderCalendar();
   });
   $('#calTodayBtn')?.addEventListener('click', function() {
     calCurrentDate = new Date();
-    renderCalendar(calVisitsCache);
+    renderCalendar();
   });
   $('#calStatusFilter')?.addEventListener('change', function() {
-    renderCalendar(calVisitsCache);
+    renderCalendar();
   });
 
   function visitRowHtml(v) {
@@ -1240,6 +1276,7 @@ let dayCount = 1;
     calViewMode = 'table';
     updateViewToggle();
   }
+  window.filterVisitsByDate = filterVisitsByDate;
 
   /* Create visit */
   $('#btnNewVisit')?.addEventListener('click', () => {
@@ -1302,22 +1339,20 @@ let dayCount = 1;
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
 
     try {
-      const formData = new FormData(e.target);
-      const oldStatus = editingVisitId
-        ? (await window.supabaseClient.from('visits').select('status, lead_id').eq('id', editingVisitId).single()).data?.status
+      const oldVisit = editingVisitId
+        ? (await window.supabaseClient.from('visits').select('status, lead_id').eq('id', editingVisitId).single()).data
         : null;
-      const oldLeadId = editingVisitId
-        ? (await window.supabaseClient.from('visits').select('lead_id').eq('id', editingVisitId).single()).data?.lead_id
-        : null;
+      const oldStatus = oldVisit?.status ?? null;
+      const oldLeadId = oldVisit?.lead_id ?? null;
 
-      const formDataObj = new FormData(e.target);
+      const formData = new FormData(e.target);
       const data = {
-        visit_date: formDataObj.get('visit_date') || null,
-        status: formDataObj.get('status') || 'pendiente',
-        client_name: formDataObj.get('client_name') || '',
-        client_phone: formDataObj.get('client_phone') || '',
-        notes: formDataObj.get('notes') || '',
-        lead_id: formDataObj.get('lead_id') || null,
+        visit_date: formData.get('visit_date') || null,
+        status: formData.get('status') || 'pendiente',
+        client_name: formData.get('client_name') || '',
+        client_phone: formData.get('client_phone') || '',
+        notes: formData.get('notes') || '',
+        lead_id: formData.get('lead_id') || null,
       };
 
       const newStatus = data.status;
@@ -1612,24 +1647,26 @@ let dayCount = 1;
 
   $('#cmsHeroBgUpload')?.addEventListener('click', () => heroBgFile?.click());
 
-  heroBgFile?.addEventListener('change', async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) { showToast('Solo se permiten imágenes', 'error'); return; }
+  heroBgFile?.addEventListener('change', (e) => {
+    (async () => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) { showToast('Solo se permiten imágenes', 'error'); return; }
 
-    try {
-      heroBgPreview.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Subiendo...</span>';
-      if (!window.BH_Cloudinary) { showToast('Cloudinary no disponible', 'error'); return; }
-      const url = await window.BH_Cloudinary.uploadImage(file, 'bienenhaus/hero');
-      if (heroBgHidden) heroBgHidden.value = url;
-      heroBgPreview.innerHTML = '<img src="' + esc(url) + '" alt="Hero background" /><span style="position:absolute;bottom:2px;right:2px;font-size:9px;background:rgba(0,0,0,.7);padding:2px 5px;border-radius:3px;">Cloudinary ✓</span>';
-      heroBgPreview.style.position = 'relative';
-      showToast('Imagen subida a Cloudinary', 'success');
-    } catch (err) {
-      console.error('Upload error:', err);
-      heroBgPreview.innerHTML = '<i class="fas fa-cloud-arrow-up"></i><span>Error al subir</span>';
-      showToast('Error al subir imagen: ' + err.message, 'error');
-    }
+      try {
+        heroBgPreview.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Subiendo...</span>';
+        if (!window.BH_Cloudinary) { showToast('Cloudinary no disponible', 'error'); return; }
+        const url = await window.BH_Cloudinary.uploadImage(file, 'bienenhaus/hero');
+        if (heroBgHidden) heroBgHidden.value = url;
+        heroBgPreview.innerHTML = '<img src="' + esc(url) + '" alt="Hero background" /><span style="position:absolute;bottom:2px;right:2px;font-size:9px;background:rgba(0,0,0,.7);padding:2px 5px;border-radius:3px;">Cloudinary ✓</span>';
+        heroBgPreview.style.position = 'relative';
+        showToast('Imagen subida a Cloudinary', 'success');
+      } catch (err) {
+        console.error('Upload error:', err);
+        heroBgPreview.innerHTML = '<i class="fas fa-cloud-arrow-up"></i><span>Error al subir</span>';
+        showToast('Error al subir imagen: ' + err.message, 'error');
+      }
+    })();
   });
 
   /* ------------------------------------------------
@@ -1834,6 +1871,7 @@ let dayCount = 1;
      10. AGENTS CRUD
      ------------------------------------------------ */
   async function loadAgents() {
+    invalidateSearchCache();
     const tbody = $('#agentsTableBody');
     if (!tbody) return;
     if (!window.supabaseClient) return;
@@ -1974,6 +2012,7 @@ let dayCount = 1;
      11. OWNERS CRUD
      ------------------------------------------------ */
   async function loadOwners() {
+    invalidateSearchCache();
     const tbody = $('#ownersTableBody');
     if (!tbody) return;
     if (!window.supabaseClient) return;
@@ -1992,16 +2031,24 @@ let dayCount = 1;
         .select('owner_id, price_usd, is_published');
 
       const ownerProps = {};
+      const ownerPublishedValue = {};
       (props || []).forEach(p => {
         if (p.owner_id) {
           ownerProps[p.owner_id] = (ownerProps[p.owner_id] || 0) + 1;
+          if (p.is_published) {
+            ownerPublishedValue[p.owner_id] = (ownerPublishedValue[p.owner_id] || 0) + (p.price_usd || 0);
+          }
         }
       });
 
       /* KPIs */
       const totalCount = (owners || []).length;
       const exclusiveCount = (owners || []).filter(o => o.exclusive).length;
+      const exclusiveValue = (owners || [])
+        .filter(o => o.exclusive)
+        .reduce((sum, o) => sum + (ownerPublishedValue[o.id] || 0), 0);
       setKPI('ownerKpiTotal', totalCount);
+      setKPI('ownerKpiValue', 'USD ' + formatNumber(exclusiveValue));
       setKPI('ownerKpiExpiring', exclusiveCount);
 
       if (!owners?.length) {
@@ -2183,6 +2230,7 @@ let dayCount = 1;
   }
 
   async function loadUsers() {
+    invalidateSearchCache();
     const tbody = $('#usersTableBody');
     if (!tbody) return;
     if (!window.supabaseClient) return;
@@ -2252,6 +2300,8 @@ let dayCount = 1;
     }
     showToast(`Usuario creado: ${email}. Copiá la contraseña temporal y pasásela al usuario.`, 'warning');
   }
+
+  $('#userTempPass')?.addEventListener('click', function () { this.select(); });
 
   $('#btnNewUser')?.addEventListener('click', () => {
     $('#userForm')?.reset();
@@ -2711,24 +2761,41 @@ let dayCount = 1;
   /* ------------------------------------------------
      13B. MERCADO LIBRE INTEGRATION
      ------------------------------------------------ */
-  const ML_FUNCTIONS_BASE = (window.BH_CONFIG?.SUPABASE_URL || '') + '/functions/v1';
+  const ML_FUNCTIONS_BASE = (() => {
+    const url = window.BH_CONFIG?.SUPABASE_URL;
+    if (!url) throw new Error('BH_CONFIG.SUPABASE_URL no configurado');
+    return url + '/functions/v1';
+  })();
+
+  const ML_API_TIMEOUT_MS = 15000;
 
   async function mlApiCall(action, body = {}) {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (!session) throw new Error('No hay sesión activa');
+    if (!window.BH_CONFIG?.SUPABASE_URL) throw new Error('Configuración de Supabase no disponible (BH_CONFIG)');
 
-    const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-api?action=${encodeURIComponent(action)}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify(body),
-    });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ML_API_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-api?action=${encodeURIComponent(action)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
 
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || `Error ML API (${res.status})`);
-    return json;
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `Error ML API (${res.status})`);
+      return json;
+    } catch (err) {
+      if (err.name === 'AbortError') throw new Error('Tiempo de espera agotado al contactar Mercado Libre');
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async function mlCheckStatus() {
@@ -2798,12 +2865,14 @@ let dayCount = 1;
 
   /* Disconnect from Mercado Libre */
   window.adminApp.mlDisconnect = async function () {
+    if (!ml_connected) { showToast('No hay una cuenta de Mercado Libre conectada', 'warning'); return; }
     if (!confirm('¿Desconectar la cuenta de Mercado Libre? Se perderán las credenciales de acceso.')) return;
     try {
       await mlApiCall('disconnect');
       ml_connected = false;
       ml_user = null;
       ml_listings = [];
+      ml_configured = false;
       showToast('Cuenta de Mercado Libre desconectada', 'success');
       loadPortals();
     } catch (err) {
@@ -2817,6 +2886,29 @@ let dayCount = 1;
     if (!confirm('¿Publicar esta propiedad en Mercado Libre?')) return;
 
     try {
+      /* Validación previa */
+      const { data: prop, error: propErr } = await window.supabaseClient
+        .from('properties')
+        .select('title, description, image_urls, zone, price_usd, broker_id, status')
+        .eq('id', propertyId)
+        .single();
+      if (propErr) throw propErr;
+
+      const errors = [];
+      if (!prop.image_urls || prop.image_urls.length < 3) errors.push('Mínimo 3 imágenes requeridas');
+      if (!prop.description || prop.description.length < 100) errors.push('Descripción debe tener al menos 100 caracteres');
+      if (!prop.zone) errors.push('Zona/barrio requerido');
+      if (!prop.price_usd || prop.price_usd <= 0) errors.push('Precio USD válido requerido');
+      if (!prop.broker_id) errors.push('Broker asignado requerido');
+      if (prop.status !== 'publicada') errors.push('La propiedad debe estar en estado "publicada"');
+
+      if (errors.length) {
+        showToast('Validación fallida: ' + errors.join('; '), 'error');
+        return;
+      }
+
+      if (!confirm('¿Publicar esta propiedad en Mercado Libre?')) return;
+
       showToast('Publicando en Mercado Libre...', 'info');
       const result = await mlApiCall('publish', { property_id: propertyId });
       showToast('¡Propiedad publicada en Mercado Libre! ID: ' + (result.listing_id || ''), 'success');
@@ -2871,7 +2963,7 @@ let dayCount = 1;
   /* --- ML Config: get/save credentials from portal_settings --- */
   async function mlConfigGet() {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
-    if (!session) throw new Error('No hay sesión activa');
+    if (!session || !session.access_token) throw new Error('No hay sesión activa o token inválido');
     const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-config`, {
       method: 'GET',
       headers: { 'Authorization': `Bearer ${session.access_token}` },
@@ -2883,7 +2975,7 @@ let dayCount = 1;
 
   async function mlConfigSave(appId, secretKey) {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
-    if (!session) throw new Error('No hay sesión activa');
+    if (!session || !session.access_token) throw new Error('No hay sesión activa o token inválido');
     const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-config`, {
       method: 'POST',
       headers: {
@@ -3279,13 +3371,14 @@ let dayCount = 1;
   /* ------------------------------------------------
      16.5. CHAT REDES SOCIALES (Zernio Inbox)
      ------------------------------------------------ */
-  console.log('[BH] CHECKPOINT - CHAT section');
   document.body.dataset.bhChatVarsStart = 'true';
   let _chatRealtimeChannel = null;
   let _chatCurrentConv = null;
   let _chatPlatformFilter = 'all';
   let _chatSearchTerm = '';
   let _chatUnreadTotal = 0;
+  let _pendingSendTempId = null;
+  let _chatListenersBound = false;
   document.body.dataset.bhBeforeLoadChatRedes = 'true';
 
 async function loadChatRedes() {
@@ -3315,6 +3408,7 @@ async function loadChatRedes() {
 
     // Reset estado
     _chatCurrentConv = null;
+    _pendingSendTempId = null;
     headerEl.style.display = 'none';
     composerEl.style.display = 'none';
     messagesEl.innerHTML = '<div class="chat-empty" style="text-align:center; padding:60px 20px; color:var(--text-dim); flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;"><i class="fas fa-comments" style="font-size:48px; opacity:0.3;"></i><p>Selecciona una conversación para comenzar</p></div>';
@@ -3325,78 +3419,82 @@ async function loadChatRedes() {
       .select('zernio_account_id, platform, username, status')
       .eq('status', 'connected');
 
-    // Eventos: búsqueda
-    searchEl?.addEventListener('input', debounce(() => {
-      _chatSearchTerm = searchEl.value.toLowerCase().trim();
-      renderConversations();
-    }, 150));
-
-    // Eventos: filtros plataforma
-    filterChips.forEach(chip => {
-      chip.addEventListener('click', () => {
-        filterChips.forEach(c => c.classList.remove('active'));
-        chip.classList.add('active');
-        _chatPlatformFilter = chip.dataset.platform;
+    // Eventos: búsqueda (solo se enganchan una vez; loadChatRedes se re-ejecuta cada vez que se entra a la pestaña)
+    if (!_chatListenersBound) {
+      searchEl?.addEventListener('input', debounce(() => {
+        _chatSearchTerm = searchEl.value.toLowerCase().trim();
         renderConversations();
+      }, 150));
+
+      // Eventos: filtros plataforma
+      filterChips.forEach(chip => {
+        chip.addEventListener('click', () => {
+          filterChips.forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+          _chatPlatformFilter = chip.dataset.platform;
+          renderConversations();
+        });
       });
-    });
 
-    // Evento: sincronizar
-    syncBtn?.addEventListener('click', async () => {
-      syncBtn.disabled = true;
-      syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sincronizando...';
-      syncStatusEl.textContent = 'Sincronizando...';
+      // Evento: sincronizar
+      syncBtn?.addEventListener('click', async () => {
+        syncBtn.disabled = true;
+        syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sincronizando...';
+        syncStatusEl.textContent = 'Sincronizando...';
 
-      try {
-        // 1. Listar cuentas desde Zernio
-        const accountsRes = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/zernio-proxy`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await window.supabaseClient.auth.getSession()).data.session?.access_token}` },
-          body: JSON.stringify({ action: 'list_accounts' })
-        });
-        const accountsData = await accountsRes.json();
-        if (!accountsRes.ok) throw new Error(accountsData.error || 'Error listando cuentas');
+        try {
+          // 1. Listar cuentas desde Zernio
+          const accountsRes = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/zernio-proxy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await window.supabaseClient.auth.getSession()).data.session?.access_token}` },
+            body: JSON.stringify({ action: 'list_accounts' })
+          });
+          const accountsData = await accountsRes.json();
+          if (!accountsRes.ok) throw new Error(accountsData.error || 'Error listando cuentas');
 
-        // 2. Backfill conversaciones
-        const convRes = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/zernio-proxy`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await window.supabaseClient.auth.getSession()).data.session?.access_token}` },
-          body: JSON.stringify({ action: 'backfill_conversations' })
-        });
-        const convData = await convRes.json();
-        if (!convRes.ok) throw new Error(convData.error || 'Error backfill conversaciones');
+          // 2. Backfill conversaciones
+          const convRes = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/zernio-proxy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await window.supabaseClient.auth.getSession()).data.session?.access_token}` },
+            body: JSON.stringify({ action: 'backfill_conversations' })
+          });
+          const convData = await convRes.json();
+          if (!convRes.ok) throw new Error(convData.error || 'Error backfill conversaciones');
 
-        // 3. Backfill mensajes (opcional, más lento)
-        // TODO: podríamos backfill mensajes de conversaciones recientes
+          // 3. Backfill mensajes (opcional, más lento)
+          // TODO: podríamos backfill mensajes de conversaciones recientes
 
-        syncStatusEl.textContent = `OK: ${accountsData.count} cuentas, ${convData.total} conversaciones`;
-        showToast('Sincronización completada', 'success');
-        loadConversations();
-      } catch (err) {
-        syncStatusEl.textContent = 'Error: ' + err.message;
-        showToast('Error en sincronización: ' + err.message, 'error');
-      } finally {
-        syncBtn.disabled = false;
-        syncBtn.innerHTML = '<i class="fas fa-arrows-rotate"></i> Sincronizar Ahora';
-      }
-    });
+          syncStatusEl.textContent = `OK: ${accountsData.count} cuentas, ${convData.total} conversaciones`;
+          showToast('Sincronización completada', 'success');
+          loadConversations();
+        } catch (err) {
+          syncStatusEl.textContent = 'Error: ' + err.message;
+          showToast('Error en sincronización: ' + err.message, 'error');
+        } finally {
+          syncBtn.disabled = false;
+          syncBtn.innerHTML = '<i class="fas fa-arrows-rotate"></i> Sincronizar Ahora';
+        }
+      });
+
+      // Eventos composer
+      composerTextarea?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+      sendBtn?.addEventListener('click', sendMessage);
+      markReadBtn?.addEventListener('click', markReadCurrent);
+
+      _chatListenersBound = true;
+    }
 
     // Cargar conversaciones inicial
     await loadConversations();
 
     // Realtime
     setupRealtime();
-
-    // Eventos composer
-    composerTextarea?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-      }
-    });
-
-    sendBtn?.addEventListener('click', sendMessage);
-    markReadBtn?.addEventListener('click', markReadCurrent);
 
     // Funciones auxiliares
     async function loadConversations() {
@@ -3603,6 +3701,7 @@ async function loadChatRedes() {
 
       // Optimistic UI
       const tempId = 'temp_' + Date.now();
+      _pendingSendTempId = tempId;
       appendMessage({ body: text, direction: 'out', occurred_at: new Date().toISOString(), status: 'sending', id: tempId });
       messagesEl.scrollTop = messagesEl.scrollHeight;
 
@@ -3619,23 +3718,27 @@ async function loadChatRedes() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Error enviando');
 
-        // Reemplazar mensaje optimista por el real
-        const tempEl = messagesEl.querySelector('[data-temp-id="' + 'temp_' + ')');
-        // El mensaje real llegará via realtime; solo limpiamos
-        composerTextarea.value = '';
+        if (data.window_closed) {
+          showToast('Ventana de 24h de WhatsApp cerrada: puede requerir plantilla aprobada', 'warning');
+        }
+        // El mensaje real (con su id definitivo y ticks) llega vía Realtime,
+        // que reemplaza esta burbuja optimista — ver setupRealtime().
       } catch (err) {
+        _pendingSendTempId = null;
         showToast('Error enviando: ' + err.message, 'error');
-        // Marcar error en burbuja temporal - usar DOM, no innerHTML
-        const tempEl = messagesEl.querySelector('[data-temp-id]');
+        // Marcar error en la burbuja temporal correcta (por su tempId real) - usar DOM, no innerHTML
+        const tempEl = messagesEl.querySelector(`[data-temp-id="${tempId}"]`);
         if (tempEl) {
-          const bubble = tempEl.querySelector('.chat-bubble div[style*="word-wrap"]') || tempEl.firstElementChild;
-          if (bubble && bubble.textContent.includes('sending')) {
-            bubble.textContent = bubble.textContent.replace('sending', 'failed');
+          let ticksEl = tempEl.querySelector('.tick-icon');
+          if (!ticksEl) {
+            ticksEl = document.createElement('span');
+            ticksEl.className = 'tick-icon';
+            const footerRow = tempEl.querySelector('div:last-child');
+            footerRow?.appendChild(ticksEl);
           }
-          const warnSpan = document.createElement('span');
-          warnSpan.style.cssText = 'color:var(--danger); margin-left:6px;';
-          warnSpan.textContent = '⚠';
-          tempEl.appendChild(warnSpan);
+          ticksEl.style.color = 'var(--danger)';
+          ticksEl.textContent = '⚠';
+          tempEl.title = err.message;
         }
       }
     }
@@ -3647,10 +3750,10 @@ async function loadChatRedes() {
 
     async function markRead(convId) {
       try {
-        const session = await window.supabaseClient.auth.getSession();
+        const { data: { session } } = await window.supabaseClient.auth.getSession();
         await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/zernio-proxy`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await window.supabaseClient.auth.getSession()).data.session?.access_token}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
           body: JSON.stringify({ action: 'mark_read', conversationId: convId })
         });
         await window.supabaseClient.from('zernio_conversations').update({ unread_count: 0 }).eq('id', convId);
@@ -3722,7 +3825,10 @@ async function loadChatRedes() {
     function debounce(fn, ms) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); }; }
 
     function setupRealtime() {
-      if (_chatRealtimeChannel) _chatRealtimeChannel.unsubscribe();
+      if (_chatRealtimeChannel) {
+        _chatRealtimeChannel.unsubscribe();
+        _chatRealtimeChannel = null;
+      }
       _chatRealtimeChannel = window.supabaseClient.channel('zernio-chat')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'zernio_messages' }, payload => {
           const m = payload.new;
@@ -3730,9 +3836,15 @@ async function loadChatRedes() {
             loadConversations(); // actualizar badge
             return;
           }
-          // Mensaje de esta conversación
-          // Evitar duplicados con optimista
-          if (document.querySelector(`[data-temp-id="${m.id}"]`)) return;
+          // Si es el eco del mensaje que acabamos de enviar de forma optimista,
+          // sacamos la burbuja temporal y dejamos que se agregue la real (con ticks reales).
+          if (m.direction === 'out' && _pendingSendTempId) {
+            const tempEl = messagesEl.querySelector(`[data-temp-id="${_pendingSendTempId}"]`);
+            if (tempEl) tempEl.remove();
+            _pendingSendTempId = null;
+          }
+          // Evitar duplicados si el mensaje ya está renderizado
+          if (messagesEl.querySelector(`[data-temp-id="${m.id}"]`)) return;
           appendMessage(m);
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'zernio_messages' }, payload => {
@@ -3757,13 +3869,14 @@ async function loadChatRedes() {
     }
   }
   document.body.dataset.bhAfterChat = 'true';
-  console.log('[BH] AFTER CHAT SECTION - about to define search/utility/init');
 
   /* Global search */
   let _searchCache = null;
+  let _searchCacheExpiresAt = 0;
+  const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min — evita datos desactualizados de leads/agents/owners
 
   async function getSearchCache() {
-    if (_searchCache) return _searchCache;
+    if (_searchCache && Date.now() < _searchCacheExpiresAt) return _searchCache;
     try {
       const [props, leads, agents, owners] = await Promise.all([
         window.supabaseClient.from('properties').select('id, title, zone, address, price_usd, status').order('created_at', { ascending: false }).limit(200),
@@ -3777,13 +3890,14 @@ async function loadChatRedes() {
         agents: agents.data || [],
         owners: owners.data || [],
       };
+      _searchCacheExpiresAt = Date.now() + SEARCH_CACHE_TTL_MS;
       return _searchCache;
     } catch (_) {
       return { properties: [], leads: [], agents: [], owners: [] };
     }
   }
 
-  function invalidateSearchCache() { _searchCache = null; }
+  function invalidateSearchCache() { _searchCache = null; _searchCacheExpiresAt = 0; }
 
   /* ------------------------------------------------
      17. SIDEBAR BADGES
@@ -3813,6 +3927,189 @@ async function loadChatRedes() {
     } catch (err) {
       console.error('Badge update error:', err);
     }
+    loadNotifications();
+  }
+
+  /* ------------------------------------------------
+     17.5 NOTIFICATIONS (Campanita)
+     ------------------------------------------------ */
+  let _notifItems = [];
+  const NOTIF_SEEN_KEY = 'bh_notif_last_seen';
+
+  function getNotifLastSeen() {
+    const v = localStorage.getItem(NOTIF_SEEN_KEY);
+    return v ? parseInt(v, 10) || 0 : 0;
+  }
+
+  function setNotifLastSeen(ts) {
+    try { localStorage.setItem(NOTIF_SEEN_KEY, String(ts)); } catch (_) {}
+  }
+
+  function timeAgo(dateStr) {
+    const diffMin = Math.round((Date.now() - new Date(dateStr).getTime()) / 60000);
+    if (diffMin < 1) return 'ahora mismo';
+    if (diffMin < 60) return `hace ${diffMin} min`;
+    const diffH = Math.round(diffMin / 60);
+    if (diffH < 24) return `hace ${diffH} h`;
+    const diffD = Math.round(diffH / 24);
+    if (diffD < 7) return `hace ${diffD} d`;
+    return new Date(dateStr).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+  }
+
+  function timeUntil(dateStr) {
+    const diffMin = Math.round((new Date(dateStr).getTime() - Date.now()) / 60000);
+    if (diffMin <= 0) return 'en curso';
+    if (diffMin < 60) return `en ${diffMin} min`;
+    const diffH = Math.round(diffMin / 60);
+    if (diffH < 24) return `en ${diffH} h`;
+    const diffD = Math.round(diffH / 24);
+    return `en ${diffD} d`;
+  }
+
+  async function loadNotifications() {
+    if (!currentUser || !window.supabaseClient) return;
+    try {
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const nowIso = new Date().toISOString();
+      const soonIso = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+
+      const [leadsRes, visitsRes, tasRes] = await Promise.all([
+        window.supabaseClient.from('leads').select('id, full_name, created_at').eq('stage', 'nuevo').gte('created_at', since).order('created_at', { ascending: false }).limit(5),
+        window.supabaseClient.from('visits').select('id, client_name, visit_date').eq('status', 'pendiente').gte('visit_date', nowIso).lte('visit_date', soonIso).order('visit_date', { ascending: true }).limit(5),
+        window.supabaseClient.from('tasaciones').select('id, title, created_at').neq('status', 'finalized').gte('created_at', since).order('created_at', { ascending: false }).limit(5),
+      ]);
+
+      const items = [];
+
+      (leadsRes.data || []).forEach(l => {
+        items.push({
+          id: 'lead-' + l.id,
+          icon: 'fas fa-user-plus',
+          color: '#3B82F6',
+          title: `Nuevo prospecto: ${l.full_name || 'Sin nombre'}`,
+          sub: timeAgo(l.created_at),
+          tab: 'tab-leads',
+          ts: new Date(l.created_at).getTime(),
+        });
+      });
+
+      (visitsRes.data || []).forEach(v => {
+        items.push({
+          id: 'visit-' + v.id,
+          icon: 'fas fa-calendar-check',
+          color: '#1FC8C3',
+          title: `Visita con ${v.client_name || 'cliente'} ${timeUntil(v.visit_date)}`,
+          sub: new Date(v.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+          tab: 'tab-agenda',
+          ts: new Date(v.visit_date).getTime(),
+        });
+      });
+
+      (tasRes.data || []).forEach(t => {
+        items.push({
+          id: 'tas-' + t.id,
+          icon: 'fas fa-calculator',
+          color: '#F97316',
+          title: `Tasación pendiente: ${t.title || 'Sin título'}`,
+          sub: timeAgo(t.created_at),
+          tab: 'tab-tasaciones',
+          ts: new Date(t.created_at).getTime(),
+        });
+      });
+
+      if (_chatUnreadTotal > 0) {
+        items.push({
+          id: 'chat-unread',
+          icon: 'fas fa-comments',
+          color: '#8B5CF6',
+          title: `${_chatUnreadTotal} mensaje${_chatUnreadTotal === 1 ? '' : 's'} sin leer`,
+          sub: 'Chat Redes Sociales',
+          tab: 'tab-chat-redes',
+          ts: Date.now(),
+        });
+      }
+
+      items.sort((a, b) => b.ts - a.ts);
+      _notifItems = items.slice(0, 10);
+      renderNotifications();
+    } catch (err) {
+      console.error('Notifications load error:', err);
+    }
+  }
+
+  function renderNotifications() {
+    const listEl = $('#notifList');
+    const pingEl = $('#notifPingBadge');
+    if (!listEl) return;
+
+    const lastSeen = getNotifLastSeen();
+    const unseenCount = _notifItems.filter(n => n.ts > lastSeen).length;
+    if (pingEl) pingEl.style.display = unseenCount > 0 ? 'block' : 'none';
+
+    if (!_notifItems.length) {
+      listEl.innerHTML = '<div class="notif-empty"><i class="far fa-bell-slash"></i><span>Sin novedades por ahora</span></div>';
+      return;
+    }
+
+    listEl.innerHTML = _notifItems.map(n => {
+      const isUnread = n.ts > lastSeen;
+      const bg = n.color.startsWith('#') ? n.color + '20' : 'rgba(31,200,195,0.15)';
+      return `
+        <div class="notif-item${isUnread ? ' is-unread' : ''}" data-tab="${esc(n.tab)}">
+          <div class="notif-item-icon" style="color:${n.color}; background:${bg};"><i class="${esc(n.icon)}"></i></div>
+          <div class="notif-item-body">
+            <div class="notif-item-title">${esc(n.title)}</div>
+            <div class="notif-item-sub">${esc(n.sub)}</div>
+          </div>
+          ${isUnread ? '<span class="notif-dot"></span>' : ''}
+        </div>`;
+    }).join('');
+  }
+
+  function initNotifications() {
+    const btn = $('#notifBtn');
+    const wrapper = $('#notifWrapper');
+    const panel = $('#notifPanel');
+    const markAllBtn = $('#notifMarkAllRead');
+    if (!btn || !panel || !wrapper) return;
+
+    function closePanel() {
+      panel.classList.remove('is-open');
+      btn.setAttribute('aria-expanded', 'false');
+    }
+
+    function togglePanel() {
+      const willOpen = !panel.classList.contains('is-open');
+      panel.classList.toggle('is-open', willOpen);
+      btn.setAttribute('aria-expanded', String(willOpen));
+      if (willOpen) loadNotifications();
+    }
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePanel();
+    });
+
+    markAllBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setNotifLastSeen(Date.now());
+      renderNotifications();
+    });
+
+    panel.addEventListener('click', (e) => {
+      const item = e.target.closest('.notif-item');
+      if (!item) return;
+      if (item.dataset.tab) navigateTo(item.dataset.tab);
+      closePanel();
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!wrapper.contains(e.target)) closePanel();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closePanel();
+    });
   }
 
   /* ------------------------------------------------
@@ -3831,7 +4128,6 @@ async function loadChatRedes() {
      19. INIT
      ------------------------------------------------ */
   function startApp() {
-    console.log('[BH] startApp() called, readyState:', document.readyState);
 
     // Deferred initialization - runs after DOM is ready
     const _origLoadProperties = loadProperties;
@@ -3913,15 +4209,16 @@ async function loadChatRedes() {
       });
     })();
 
+    initNotifications();
+    setInterval(() => { if (currentUser) loadNotifications(); }, 90000);
+
     initAuth();
     initCursorGlow();
   }
-  console.log('[BH] Before if/else block, readyState:', document.readyState);
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', startApp);
   } else {
     startApp(); // DOM already ready
   }
-  console.log('[BH] IIFE END REACHED');
 })
 ();
