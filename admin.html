@@ -16,7 +16,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 <!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-<link rel="stylesheet" href="assets/css/admin.css?v=28" />
+<link rel="stylesheet" href="assets/css/admin.css?v=29" />
 </head>
 <body class="is-loading">
 <!-- PRELOADER LUXURY -->
@@ -798,9 +798,9 @@ LAYOUT PRINCIPAL
 <div class="ficha-brand">
 <div class="ficha-brand-mark">
 <div class="ficha-bh">BH</div>
-<div>
+<div class="ficha-brand-name-wrap">
 <div class="ficha-brand-name">Bienenhaus</div>
-<div>Propiedades</div>
+<div class="ficha-brand-sub">Propiedades</div>
 </div>
 </div>
 <small>Generador de fichas</small>
@@ -809,7 +809,7 @@ LAYOUT PRINCIPAL
 <form id="fichaForm" autocomplete="off">
 <div class="ficha-field ficha-field-search">
 <label for="fichaPropertySearch">Autocompletar desde el CRM</label>
-<input type="text" id="fichaPropertySearch" placeholder="Buscar por título, zona o código...">
+<input type="search" id="fichaPropertySearch" placeholder="Buscar por título, zona o código..." autocomplete="off">
 <div class="ficha-suggestions" id="fichaSuggestions"></div>
 <p class="ficha-hint">Elegí una propiedad para cargar sus datos y fotos, o completá los campos manualmente.</p>
 </div>
@@ -843,18 +843,21 @@ LAYOUT PRINCIPAL
 </div>
 <div class="ficha-field ficha-file-box">
 <label for="fichaPhotos">Fotos adicionales</label>
-<input type="file" id="fichaPhotos" accept="image/*" multiple>
-<p class="ficha-hint">Se suman a las fotos de la propiedad seleccionada. La primera imagen queda como portada.</p>
+<div class="file-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+<div class="file-text">Arrastrá fotos o hacé click para seleccionar</div>
+<div class="file-sub">Se suman a las fotos de la propiedad seleccionada. La primera imagen queda como portada.</div>
+<input type="file" id="fichaPhotos" accept="image/*" multiple style="display: none;">
+<div class="ficha-file-preview" id="fichaFilePreview"></div>
 </div>
 <div class="ficha-field">
 <label for="fichaContact">Contacto</label>
 <input type="text" id="fichaContact" placeholder="Asesor, teléfono o mail">
 </div>
 <div class="ficha-actions">
-<button class="ficha-btn ficha-btn-primary" type="button" id="fichaShareBtn">Compartir texto</button>
-<button class="ficha-btn ficha-btn-dark" type="button" id="fichaPrintBtn">Guardar PDF</button>
-<button class="ficha-btn ficha-btn-light" type="button" id="fichaDownloadBtn">Descargar HTML</button>
-<button class="ficha-btn ficha-btn-light" type="reset">Limpiar</button>
+<button class="ficha-btn ficha-btn-primary" type="button" id="fichaShareBtn"><i class="fas fa-share-nodes"></i> Compartir texto</button>
+<button class="ficha-btn ficha-btn-dark" type="button" id="fichaPrintBtn"><i class="fas fa-file-pdf"></i> Guardar PDF</button>
+<button class="ficha-btn ficha-btn-light" type="button" id="fichaDownloadBtn"><i class="fas fa-code"></i> Descargar HTML</button>
+<button class="ficha-btn ficha-btn-light" type="reset"><i class="fas fa-eraser"></i> Limpiar</button>
 </div>
 </form>
 </aside>
@@ -1356,6 +1359,6 @@ setTimeout(function() { checkCDN(); }, 6000);
 <script src="assets/js/config.js?v=5"></script>
 <script src="assets/js/supabase-client.js?v=4"></script>
 <script src="assets/js/cloudinary.js?v=6"></script>
-<script src="assets/js/admin-app.js?v=58"></script>
+<script src="assets/js/admin-app.js?v=60"></script>
 </body>
 </html>

@@ -4541,26 +4541,74 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
   });
 
   $('#fichaPhotos')?.addEventListener('change', e => {
-    const files = Array.from(e.target.files || []);
+    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'));
     if (!files.length) return;
     Promise.all(files.map(file => new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
+      reader.onload = () => resolve({ url: String(reader.result), file });
       reader.onerror = reject;
       reader.readAsDataURL(file);
-    }))).then(dataUrls => {
-      _fichaPhotos = _fichaPhotos.concat(dataUrls);
+    }))).then(results => {
+      _fichaPhotos = _fichaPhotos.concat(results.map(r => r.url));
       fichaUpdatePreview();
+      renderFichaFilePreviews(results.map(r => r.url));
     }).catch(err => {
       console.error('Ficha fotos:', err);
       showToast('No se pudieron cargar las fotos', 'error');
     });
   });
 
+  const fichaFileBox = $('.ficha-file-box');
+  if (fichaFileBox) {
+    ['dragenter', 'dragover'].forEach(ev => {
+      fichaFileBox.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); fichaFileBox.classList.add('is-dragover'); });
+    });
+    ['dragleave', 'drop'].forEach(ev => {
+      fichaFileBox.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); fichaFileBox.classList.remove('is-dragover'); });
+    });
+    fichaFileBox.addEventListener('drop', e => {
+      const files = Array.from(e.dataTransfer.files || []).filter(f => f.type.startsWith('image/'));
+      if (files.length) {
+        const dt = new DataTransfer();
+        files.forEach(f => dt.items.add(f));
+        const input = $('#fichaPhotos');
+        input.files = dt.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+    fichaFileBox.addEventListener('click', e => {
+      if (e.target === fichaFileBox || e.target.closest('.file-icon') || e.target.closest('.file-text') || e.target.closest('.file-sub')) {
+        $('#fichaPhotos')?.click();
+      }
+    });
+  }
+
+  function renderFichaFilePreviews(urls) {
+    const preview = $('#fichaFilePreview');
+    if (!preview) return;
+    preview.innerHTML = urls.map((url, i) => `
+      <div class="ficha-file-preview-item" data-index="${i}">
+        <img src="${url}" alt="Preview ${i + 1}" />
+        <button type="button" class="remove" aria-label="Eliminar foto"><i class="fas fa-times"></i></button>
+      </div>
+    `).join('');
+    preview.querySelectorAll('.remove').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const idx = parseInt(btn.closest('.ficha-file-preview-item').dataset.index, 10);
+        _fichaPhotos.splice(idx, 1);
+        fichaUpdatePreview();
+        renderFichaFilePreviews(_fichaPhotos);
+      });
+    });
+  }
+
   $('#fichaForm')?.addEventListener('reset', () => {
     setTimeout(() => {
       _fichaPhotos = [];
       fichaUpdatePreview();
+      const preview = $('#fichaFilePreview');
+      if (preview) preview.innerHTML = '';
     }, 0);
   });
 
@@ -4725,6 +4773,38 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
         const item = e.target.closest('.gs-result');
         if (item) item.style.background = '';
       });
+
+    /* ------------------------------------------------
+       FIX: Robust navigation event listeners + Ficha HTML loader
+       ------------------------------------------------ */
+    (function attachNavListeners() {
+      $$('.nav-item[data-tab]').forEach(item => {
+        if (!item.dataset.bhNavBound) {
+          item.dataset.bhNavBound = 'true';
+          item.addEventListener('click', () => navigateTo(item.dataset.tab));
+        }
+      });
+      if ($('#tab-ficha-html')) {
+        window.loadFichaHtml = async function() {
+          if (!window.supabaseClient) return;
+          try {
+            const [propsRes, agentsRes] = await Promise.all([
+              window.supabaseClient.from('properties').select('id, title, property_code, zone, address, price_usd, rooms, area_m2, description, image_urls, agent_id').order('created_at', { ascending: false }),
+              window.supabaseClient.from('agents').select('id, full_name, phone, email').eq('status', 'activo')
+            ]);
+            if (propsRes.error) throw propsRes.error;
+            if (agentsRes.error) throw agentsRes.error;
+            window._fichaPropsCache = propsRes.data || [];
+            window._fichaAgentsCache = agentsRes.data || [];
+            window.startFichaFooterRotator();
+            console.log('[Ficha HTML] CRM data loaded:', window._fichaPropsCache.length, 'properties');
+          } catch (err) {
+            console.error('Ficha HTML load error:', err);
+            window.showToast?.('No se pudieron cargar los datos de la ficha', 'error');
+          }
+        };
+      }
+    })();
     })();
 
     initNotifications();
