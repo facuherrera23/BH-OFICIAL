@@ -15,6 +15,14 @@
 // ============================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import {
+    auditEvent,
+    auditSensitiveAction,
+    trackToolUsage,
+    auditError,
+    getClientIp,
+    getUserAgent,
+} from '../_shared/audit.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SERVICE_ROLE_KEY') ?? '';
@@ -185,6 +193,20 @@ async function actSendMessage(body: Record<string, unknown>, userId: string): Pr
         occurred_at: new Date().toISOString(),
     });
     if (error) console.warn('insert out message:', error.message);
+
+    // Auditoría: envío de mensaje por Zernio
+    await auditSensitiveAction(
+        supabase,
+        new Request('internal', { method: 'POST' }),
+        'send_message',
+        'chat',
+        'conversation',
+        conversationId,
+        `Msg to ${conv.platform}`,
+        { platform: conv.platform, account_id: conv.account_id },
+        { platform_message_id: platformMsgId, window_closed },
+        { source: 'zernio-proxy', action: 'send_message' }
+    );
 
     return { ok: true, platform_message_id: platformMsgId, window_closed: windowClosed };
 }

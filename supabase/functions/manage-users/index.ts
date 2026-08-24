@@ -20,6 +20,16 @@
 //   -> Users del dashboard de Supabase).
 // ============================================================
 
+import {
+    auditEvent,
+    auditSensitiveAction,
+    trackToolUsage,
+    auditError,
+    getClientIp,
+    getUserAgent,
+    genRequestId,
+} from '../_shared/audit.ts';
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -124,6 +134,19 @@ async function actionInvite(
     return json({ error: 'Usuario invitado pero no se pudo asignar el rol en profiles' }, 500);
   }
 
+  // Auditoría: invitación de usuario
+  await auditSensitiveAction(
+    supabase,
+    new Request('internal', { method: 'POST' }),
+    'invite',
+    'users',
+    'user',
+    user.id,
+    email,
+    null,
+    { email, full_name: fullName, role, phone }
+  );
+
   return json({ ok: true, userId: user.id, email });
 }
 
@@ -182,6 +205,19 @@ async function actionSetRole(
       headers: { ...serviceHeaders(serviceKey), 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_metadata: { role } }),
     },
+  );
+
+  // Auditoría: cambio de rol
+  await auditSensitiveAction(
+    supabase,
+    new Request('internal', { method: 'POST' }),
+    'change_role',
+    'users',
+    'user',
+    userId,
+    role,
+    { oldRole: targetRole },
+    { newRole: role }
   );
 
   return json({ ok: true, userId, role, authMirror: patchAuth.ok });
@@ -243,6 +279,19 @@ async function actionCreateDirect(
   if (!upsertRes.ok) {
     return json({ error: 'Usuario creado pero no se pudo asignar el rol en profiles' }, 500);
   }
+
+  // Auditoría: creación directa de usuario
+  await auditSensitiveAction(
+    supabase,
+    new Request('internal', { method: 'POST' }),
+    'create',
+    'users',
+    'user',
+    user.id,
+    email,
+    null,
+    { email, full_name: fullName, role, phone, tempPassword: true }
+  );
 
   return json({ ok: true, userId: user.id, email, tempPassword });
 }
@@ -391,6 +440,28 @@ async function actionUpdateUser(
   let authMirror = true;
   if (Object.keys(authPatch).length > 0) {
     authMirror = await patchAuthUser(userId, authPatch, supabaseUrl, serviceKey);
+  }
+
+  // Auditoría: actualización de usuario por super_admin
+  const changed = [];
+  if (typeof profilePatch.full_name === 'string') changed.push('full_name');
+  if (typeof profilePatch.phone === 'string') changed.push('phone');
+  if (newEmail) changed.push('email');
+  if (nextRole) changed.push('role');
+  if (banChange !== null) changed.push('is_active');
+  if (changed.length) {
+    await auditSensitiveAction(
+      supabase,
+      new Request('internal', { method: 'POST' }),
+      'update_sensitive',
+      'users',
+      'user',
+      userId,
+      target.full_name || email,
+      { oldRole: currentRole, oldActive: currentActive },
+      { newRole: nextRole || currentRole, newActive: banChange === null ? currentActive : !banChange },
+      { changed, admin: callerId, selfEdit }
+    );
   }
 
   return json({ ok: true, userId, authMirror });

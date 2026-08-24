@@ -153,7 +153,7 @@ LAYOUT PRINCIPAL
 <div class="nav-item" data-tab="tab-usuarios">
 <div class="nav-item-left">
 <i class="fas fa-shield-halved"></i>
-<span>Usuarios &amp; Permisos</span>
+<span>Usuarios & Permisos</span>
 </div>
 </div>
 <div class="nav-item" data-tab="tab-configuracion">
@@ -161,6 +161,13 @@ LAYOUT PRINCIPAL
 <i class="fas fa-sliders"></i>
 <span>Configuración</span>
 </div>
+</div>
+<div class="nav-item" data-tab="tab-supervision">
+<div class="nav-item-left">
+<i class="fas fa-shield-alt" style="color:var(--accent);"></i>
+<span style="font-weight:600;">Centro de Supervisión</span>
+</div>
+<span class="nav-badge" id="sideBadgeSupervision" style="background:rgba(239,68,68,0.15); color:var(--danger);">0</span>
 </div>
 </nav>
 <div class="sidebar-footer">
@@ -915,6 +922,323 @@ LAYOUT PRINCIPAL
 </main>
 </div>
 </section>
+
+<!-- ============================================================
+     SUPERVISION CENTER — tab-supervision
+     ============================================================ -->
+<section class="tab-module" id="tab-supervision">
+  <header class="tab-header">
+    <h2 style="font-family:var(--font-heading); font-size:24px; color:#fff; margin:0;">Centro de Supervisión</h2>
+    <p style="color:var(--text-muted); font-size:13px; margin:4px 0 0;">Auditoría · Uso · Seguridad · Alertas</p>
+  </header>
+
+  <!-- Toolbar -->
+  <div class="supervision-toolbar" style="display:flex; gap:12px; flex-wrap:wrap; margin:16px 0; padding:16px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px;">
+    <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">
+      <label style="font-size:12px; color:var(--text-dim);">Desde</label>
+      <input type="date" id="supFromDate" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px;">
+    </div>
+    <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">
+      <label style="font-size:12px; color:var(--text-dim);">Hasta</label>
+      <input type="date" id="supToDate" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px;">
+    </div>
+    <div style="flex:1;"></div>
+    <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">
+      <select id="supModuleFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:180px;">
+        <option value="">Todos los módulos</option>
+      </select>
+      <select id="supUserFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:180px;">
+        <option value="">Todos los usuarios</option>
+      </select>
+      <select id="supSeverityFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:150px;">
+        <option value="">Todas las severidades</option>
+        <option value="critical">🔴 Crítica</option>
+        <option value="high">🟠 Alta</option>
+        <option value="medium">🟡 Media</option>
+        <option value="low">🔵 Baja</option>
+        <option value="info">⚪ Info</option>
+      </select>
+    </div>
+    <div class="toolbar-group" style="display:flex; gap:8px;">
+      <button type="button" class="btn-luxury-action" id="supRefreshBtn"><i class="fas fa-arrows-rotate"></i> Actualizar</button>
+      <button type="button" class="status-pill active" id="supAutoRefreshBtn" style="background:rgba(31,200,195,0.15); color:var(--accent);"><i class="fas fa-broadcast-tower"></i> <span id="supAutoRefreshText">Realtime ON</span></button>
+      <button type="button" class="status-pill pending" id="supExportBtn"><i class="fas fa-file-export"></i> Exportar CSV</button>
+    </div>
+  </div>
+
+  <!-- Sub-tabs: 7 vistas -->
+  <div class="supervision-subtabs" style="display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid var(--border-subtle); padding-bottom:4px; overflow-x:auto;">
+    <button class="sup-subtab is-active" data-view="overview" style="padding:10px 16px; background:rgba(31,200,195,0.1); color:var(--accent); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Resumen</button>
+    <button class="sup-subtab" data-view="activity" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Actividad</button>
+    <button class="sup-subtab" data-view="users" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Usuarios</button>
+    <button class="sup-subtab" data-view="modules" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Módulos</button>
+    <button class="sup-subtab" data-view="alerts" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Alertas</button>
+    <button class="sup-subtab" data-view="audit" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Auditoría</button>
+    <button class="sup-subtab" data-view="rules" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Reglas</button>
+  </div>
+
+  <!-- VISTA 1: RESUMEN (KPIs) -->
+  <div class="sup-view is-active" id="supView-overview" style="display:block;">
+    <div class="kpi-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:24px;">
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Usuarios Activos</div>
+        <div id="kpiActiveUsers" style="font-family:var(--font-heading); font-size:36px; color:#fff; font-weight:700;">—</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Acciones Hoy</div>
+        <div id="kpiActionsToday" style="font-family:var(--font-heading); font-size:36px; color:#fff; font-weight:700;">—</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Exitosas</div>
+        <div id="kpiSuccess" style="font-family:var(--font-heading); font-size:36px; color:var(--success); font-weight:700;">—</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Fallidas</div>
+        <div id="kpiErrors" style="font-family:var(--font-heading); font-size:36px; color:var(--danger); font-weight:700;">—</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Sensibles</div>
+        <div id="kpiSensitive" style="font-family:var(--font-heading); font-size:36px; color:var(--warning); font-weight:700;">—</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Alertas Abiertas</div>
+        <div id="kpiOpenAlerts" style="font-family:var(--font-heading); font-size:36px; color:var(--accent); font-weight:700;">—</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Críticas</div>
+        <div id="kpiCriticalAlerts" style="font-family:var(--font-heading); font-size:36px; color:#EF4444; font-weight:700;">—</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Exportaciones</div>
+        <div id="kpiExports" style="font-family:var(--font-heading); font-size:36px; color:#F59E0B; font-weight:700;">—</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Ops. Masivas</div>
+        <div id="kpiBulkOps" style="font-family:var(--font-heading); font-size:36px; color:#8B5CF6; font-weight:700;">—</div>
+      </div>
+    </div>
+
+    <!-- Rankings -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:16px;">
+      <div class="ranking-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Actividad por Usuario</h3>
+        <div id="rankingUsers" style="font-size:13px; color:var(--text-secondary);">Cargando...</div>
+      </div>
+      <div class="ranking-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Actividad por Módulo</h3>
+        <div id="rankingModules" style="font-size:13px; color:var(--text-secondary);">Cargando...</div>
+      </div>
+      <div class="ranking-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Errores por Usuario</h3>
+        <div id="rankingErrors" style="font-size:13px; color:var(--text-secondary);">Cargando...</div>
+      </div>
+      <div class="ranking-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Acciones Sensibles</h3>
+        <div id="rankingSensitive" style="font-size:13px; color:var(--text-secondary);">Cargando...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VISTA 2: ACTIVIDAD EN VIVO -->
+  <div class="sup-view" id="supView-activity" style="display:none;">
+    <div class="activity-feed" style="max-height:600px; overflow-y:auto; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:16px;">
+      <div id="activityList" style="font-family:monospace; font-size:12px; line-height:1.8;">
+        <div style="color:var(--text-dim); text-align:center; padding:40px;">Conectando Realtime…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VISTA 3: USUARIOS -->
+  <div class="sup-view" id="supView-users" style="display:none;">
+    <div class="users-table-wrapper" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; overflow:hidden;">
+      <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+        <thead style="background:rgba(255,255,255,0.03);">
+          <tr>
+            <th style="padding:12px 16px; text-align:left; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Empleado</th>
+            <th style="padding:12px 16px; text-align:left; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Rol</th>
+            <th style="padding:12px 16px; text-align:left; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Broker</th>
+            <th style="padding:12px 16px; text-align:left; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Última Actividad</th>
+            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Acciones</th>
+            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Errores</th>
+            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Sensibles</th>
+            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Exportaciones</th>
+            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Alertas</th>
+            <th style="padding:12px 16px; text-align:center; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Estado</th>
+          </tr>
+        </thead>
+        <tbody id="supUsersTableBody">
+          <tr><td colspan="10" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Detalle usuario (panel inline) -->
+    <div id="supUserDetail" style="display:none; margin-top:16px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h3 id="supUserDetailName" style="font-family:var(--font-heading); font-size:18px; color:#fff; margin:0;">Perfil Operativo</h3>
+        <button type="button" class="status-pill pending" onclick="closeSupUserDetail()"><i class="fas fa-times"></i> Cerrar</button>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px;">
+        <div class="detail-section">
+          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Actividad Total</h4>
+          <div id="udTotalActivity" style="font-size:13px; color:var(--text-secondary);">—</div>
+        </div>
+        <div class="detail-section">
+          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Por Módulo</h4>
+          <div id="udByModule" style="font-size:12px; color:var(--text-secondary);">—</div>
+        </div>
+        <div class="detail-section">
+          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Últimos Eventos</h4>
+          <div id="udRecentEvents" style="font-size:12px; font-family:monospace; color:var(--text-muted); max-height:200px; overflow-y:auto;">—</div>
+        </div>
+        <div class="detail-section">
+          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Errores</h4>
+          <div id="udErrors" style="font-size:12px; color:var(--text-secondary);">—</div>
+        </div>
+        <div class="detail-section">
+          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Acciones Sensibles</h4>
+          <div id="udSensitive" style="font-size:12px; color:var(--text-secondary);">—</div>
+        </div>
+        <div class="detail-section">
+          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Exportaciones</h4>
+          <div id="udExports" style="font-size:12px; color:var(--text-secondary);">—</div>
+        </div>
+        <div class="detail-section">
+          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Alertas</h4>
+          <div id="udAlerts" style="font-size:12px; color:var(--text-secondary);">—</div>
+        </div>
+        <div class="detail-section">
+          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Comparativas</h4>
+          <div id="udCompare" style="font-size:12px; color:var(--text-secondary);">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VISTA 4: MÓDULOS -->
+  <div class="sup-view" id="supView-modules" style="display:none;">
+    <div class="modules-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px;">
+      <!-- Se llena dinámicamente -->
+    </div>
+  </div>
+
+  <!-- VISTA 5: ALERTAS -->
+  <div class="sup-view" id="supView-alerts" style="display:none;">
+    <div class="alerts-table-wrapper" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; overflow:hidden;">
+      <table style="width:100%; border-collapse:collapse; font-size:12px;">
+        <thead style="background:rgba(255,255,255,0.03);">
+          <tr>
+            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Severidad</th>
+            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Tipo</th>
+            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Empleado</th>
+            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Módulo</th>
+            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Descripción</th>
+            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Evidencia</th>
+            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Fecha</th>
+            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Estado</th>
+            <th style="padding:10px 12px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="supAlertsTableBody">
+          <tr><td colspan="9" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- VISTA 6: AUDITORÍA AVANZADA -->
+  <div class="sup-view" id="supView-audit" style="display:none;">
+    <div class="audit-table-wrapper" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; overflow:hidden;">
+      <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+        <thead style="background:rgba(255,255,255,0.03);">
+          <tr>
+            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Fecha</th>
+            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Usuario</th>
+            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Rol</th>
+            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Módulo</th>
+            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Acción</th>
+            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Entidad</th>
+            <th style="padding:8px 10px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Resultado</th>
+            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">IP</th>
+            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Request ID</th>
+          </tr>
+        </thead>
+        <tbody id="supAuditTableBody">
+          <tr><td colspan="9" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Detalle evento (panel lateral) -->
+    <div id="supAuditDetail" style="display:none; position:fixed; right:0; top:0; bottom:0; width:480px; background:#0f0f0f; border-left:1px solid var(--border-subtle); z-index:1000; padding:20px; overflow-y:auto; box-shadow:-4px 0 30px rgba(0,0,0,0.5);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--border-subtle);">
+        <h3 style="font-family:var(--font-heading); font-size:16px; color:#fff; margin:0;">Detalle del Evento</h3>
+        <button type="button" class="status-pill pending" onclick="closeSupAuditDetail()"><i class="fas fa-times"></i></button>
+      </div>
+      <div id="supAuditDetailContent" style="font-size:12px; color:var(--text-secondary); line-height:1.7;"></div>
+    </div>
+  </div>
+
+  <!-- VISTA 7: REGLAS -->
+  <div class="sup-view" id="supView-rules" style="display:none;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="font-family:var(--font-heading); font-size:18px; color:#fff; margin:0;">Reglas de Detección</h3>
+      <button type="button" class="btn-luxury-action" id="supNewRuleBtn"><i class="fas fa-plus"></i> Nueva Regla</button>
+    </div>
+
+    <div class="rules-table-wrapper" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; overflow:hidden;">
+      <table style="width:100%; border-collapse:collapse; font-size:12px;">
+        <thead style="background:rgba(255,255,255,0.03);">
+          <tr>
+            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Nombre</th>
+            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Módulo</th>
+            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Acción</th>
+            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Evento</th>
+            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Condición</th>
+            <th style="padding:10px 12px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Severidad</th>
+            <th style="padding:10px 12px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Cooldown</th>
+            <th style="padding:10px 12px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Habilitada</th>
+            <th style="padding:10px 12px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="supRulesTableBody">
+          <tr><td colspan="9" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Modal nueva/editar regla -->
+    <div class="admin-modal" id="supRuleModal">
+      <div class="modal-box" style="max-width:520px;">
+        <h3 id="supRuleModalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Nueva Regla</h3>
+        <form id="supRuleForm">
+          <input type="hidden" name="id" id="supRuleId" />
+          <div class="form-field"><label>Nombre (único) *</label><input type="text" name="name" required placeholder="bulk_export_detection" /></div>
+          <div class="form-field"><label>Descripción</label><textarea name="description" placeholder="Detecta exportaciones masivas en 1 hora" rows="2"></textarea></div>
+          <div class="form-grid-2">
+            <div class="form-field"><label>Módulo</label><select name="module" id="supRuleModule"><option value="">Todos</option></select></div>
+            <div class="form-field"><label>Acción</label><select name="action" id="supRuleAction"><option value="">Todas</option></select></div>
+            <div class="form-field"><label>Tipo Evento</label><select name="event_type" id="supRuleEventType"><option value="">Todos</option></select></div>
+            <div class="form-field"><label>Severidad *</label><select name="severity" required><option value="info">Info</option><option value="low">Baja</option><option value="medium" selected>Media</option><option value="high">Alta</option><option value="critical">Crítica</option></select></div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-field"><label>Umbral *</label><input type="number" name="threshold" required min="0" value="30" /></div>
+            <div class="form-field"><label>Ventana *</label><select name="window" id="supRuleWindow"><option value="1 hour">1 hora</option><option value="10 minutes">10 min</option><option value="15 minutes">15 min</option><option value="30 minutes">30 min</option><option value="24 hours">24 horas</option></select></div>
+            <div class="form-field"><label>Cooldown (min) *</label><input type="number" name="cooldown_minutes" required min="0" value="60" /></div>
+            <div class="form-field" style="margin-top:14px;">
+              <label class="pf-toggle" for="supRuleEnabled"><input type="checkbox" name="enabled" id="supRuleEnabled" checked /><span class="toggle-slider"></span><span class="toggle-label">Habilitada</span></label>
+            </div>
+          </div>
+          <div class="form-field"><label>Filtro JSON (opcional)</label><textarea name="filter_json" id="supRuleFilterJson" rows="4" placeholder='{"field":"changed_fields","contains":"price_usd"}' style="font-family:monospace; font-size:11px;"></textarea></div>
+          <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+            <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+            <button type="submit" class="btn-luxury-action" id="supRuleSaveBtn">Guardar Regla</button>
+          </div>
+        </form>
+      </div>
+    </div>
+</section>
+
 </div><!-- /content-area -->
 </main>
 </div><!-- /app-layout -->

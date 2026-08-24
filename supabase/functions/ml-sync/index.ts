@@ -18,6 +18,15 @@ import { jsonResponse, optionsResponse } from '../_shared/http.ts';
 import { requireAdmin } from '../_shared/auth.ts';
 import { checkRateLimit } from '../_shared/rate-limit.ts';
 import { MlItemSchema, type MlItemPayload, parseMlResponse } from '../_shared/ml.schemas.ts';
+import {
+    auditEvent,
+    auditSensitiveAction,
+    trackToolUsage,
+    auditError,
+    auditBulkOperation,
+    getClientIp,
+    getUserAgent,
+} from '../_shared/audit.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY') ?? '';
@@ -628,6 +637,18 @@ async function runJob(
                 price: Number(item.price),
             };
         }
+        // Auditoría: publicación en Mercado Libre
+        await auditSensitiveAction(
+            supabase,
+            new Request('internal', { method: 'POST' }),
+            'ml_publish',
+            'portales',
+            'property',
+            propertyId,
+            property.title,
+            { ml_item_id: item.id, permalink: item.permalink, price: Number(item.price) },
+            { source: 'ml-sync', operation: 'publish' }
+        );
 
         if (operation === 'update') {
             let itemId = mlItemId;
@@ -713,6 +734,20 @@ async function runJob(
                 return { ok: false, error: itemResult.error, rateLimited: itemResult.rateLimited };
             const item = parseMlResponse(MlItemSchema, itemResult.data, 'mlGetItem');
 
+            // Auditoría: actualización en Mercado Libre
+            await auditSensitiveAction(
+                supabase,
+                new Request('internal', { method: 'POST' }),
+                'ml_update',
+                'portales',
+                'property',
+                propertyId,
+                property.title,
+                { ml_item_id: itemId },
+                { ml_item_id: item.id, permalink: item.permalink, price: Number(item.price), status: item.status },
+                { source: 'ml-sync', operation: 'update' }
+            );
+
             return {
                 ok: true,
                 itemId,
@@ -745,6 +780,20 @@ async function runJob(
             );
             if ('error' in result)
                 return { ok: false, error: result.error, rateLimited: result.rateLimited };
+
+            // Auditoría: despublicación en Mercado Libre
+            await auditSensitiveAction(
+                supabase,
+                new Request('internal', { method: 'POST' }),
+                'ml_delete',
+                'portales',
+                'property',
+                propertyId,
+                property.title,
+                { ml_item_id: itemId },
+                null,
+                { source: 'ml-sync', operation: 'delete' }
+            );
 
             return { ok: true, itemId, mlStatus: 'closed' };
         }

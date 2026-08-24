@@ -1,4 +1,12 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import {
+    auditEvent,
+    auditSensitiveAction,
+    trackToolUsage,
+    auditError,
+    getClientIp,
+    getUserAgent,
+} from '../_shared/audit.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SERVICE_ROLE_KEY') || '';
@@ -219,6 +227,20 @@ async function handleEvent(type, ev) {
         zernio_event_id: str(ev.id) || null,
         occurred_at: occurredAt
       });
+
+      // Auditoría: mensaje recibido por Zernio
+      await auditSensitiveAction(
+          supabase,
+          new Request('internal', { method: 'POST' }),
+          'message_received',
+          'chat',
+          'conversation',
+          convId,
+          `Msg from ${body.slice(0, 50)}`,
+          { platform: conv.platform, account_id: accountId },
+          { platform_message_id: str(msg.id || msg.messageId), direction: 'in' },
+          { source: 'zernio-webhook', event: type }
+      );
 
       if (inserted === 'inserted') {
         // Nota: esto tiene una condición de carrera bajo alta concurrencia

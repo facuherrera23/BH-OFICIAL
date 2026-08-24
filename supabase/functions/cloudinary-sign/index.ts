@@ -17,6 +17,15 @@
 //   CLOUDINARY_CLOUD_NAME (opcional; default bienenhaus)
 // ============================================================
 
+import {
+    auditEvent,
+    auditSensitiveAction,
+    trackToolUsage,
+    auditError,
+    getClientIp,
+    getUserAgent,
+} from '../_shared/audit.ts';
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
