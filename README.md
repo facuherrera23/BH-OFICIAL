@@ -513,6 +513,103 @@ Capas aplicadas y verificadas:
 
 ---
 
+## Módulo Ficha HTML (Red & Difusión) — *Nuevo 2026-08*
+
+### Descripción
+Generador y exportador de fichas visuales de propiedades con diseño profesional. Permite crear fichas listas para compartir por WhatsApp, email, imprimir a PDF o descargar como HTML autocontenido.
+
+### Arquitectura Visual
+- **Shell two-col**: panel izquierdo (formulario, tema oscuro admin panel) + panel derecho (preview, fidelidad 1:1 al prototipo standalone)
+- **Breakpoints**: 1200px (side-by-side) → 1024px (stacked) → 680px (mobile optimizado)
+
+### Panel Izquierdo — Formulario (Tema Oscuro)
+| Campo | Tipo | Detalles |
+|-------|------|----------|
+| **Brand header** | Visual | Mark "BH" + "Bienenhaus Propiedades" + tag "Generador de fichas" + título "Cargá tu propiedad" |
+| **Autocompletar CRM** | `input[type=search]` | Debounce 250ms, sugerencias con título, código (PR-P0001), zona, broker; click = rellena todo el formulario + fotos |
+| **Título** | `input[text]` | Requerido, placeholder "Ej: Departamento 3 ambientes en Palermo" |
+| **Ubicación** | `input[text]` | Split 50/50 con Precio; "Barrio, ciudad" |
+| **Precio** | `input[text]` | Split 50/50; "Ej: USD 120.000" |
+| **Ambientes** | `input[text]` | Split 50/50 con Superficie; "Ej: 3" |
+| **Superficie** | `input[text]` | Split 50/50; "Ej: 85 m2" |
+| **Descripción** | `textarea` | Min-height 120px, "Escribí las características principales..." |
+| **Fotos adicionales** | Drag & drop zone | Click o arrastra; previews 72x72px con botón eliminar; primera foto = portada; se suman a fotos del CRM |
+| **Contacto** | `input[text]` | "Asesor, teléfono o mail" |
+
+**Acciones (sticky bottom):**
+- **Compartir texto** (teal) → `navigator.share` nativo + fallback clipboard
+- **Guardar PDF** (dark) → `window.print()` en ventana standalone
+- **Descargar HTML** (light) → HTML autocontenido descargable
+- **Limpiar** (light) → Reset formulario + `_fichaPhotos = []`
+
+### Panel Derecho — Preview (Fidelidad Prototipo)
+| Sección | Detalles |
+|---------|----------|
+| **Hero** | Fondo negro, kicker "Bienenhaus propiedades", título clamp(36px, 6.5vw, 72px) con última palabra en teal, barra vertical 4px + barra horizontal 280px teal |
+| **Cover photo** | 16:9, min-height 440px, object-fit cover |
+| **Photo grid** | 4 columnas, gap 12px, aspect-ratio 4/3, hover scale(1.02) |
+| **Content grid** | Description (white, pre-wrap) + Data-card (black grid 4-col: Ubicación, Precio, Ambientes, Superficie) |
+| **Contact band** | Paper background, contacto + short-logo "BH" |
+| **Footer institucional** | 3 secciones: Hero rotativo (3800ms/350ms fade, 4 mensajes: vender/comprar/alquilar/tasar) + Contacto (3 items con SVG icons) + Brand (BH + Bienenhaus + "Propiedades · CPI. 1.834") |
+
+### Responsive & Print
+| Breakpoint | Cambios |
+|------------|---------|
+| ≤1200px | Panel form max 440px |
+| ≤1024px | Stack vertical, form border-bottom, preview padding 32px |
+| ≤680px | Split → 1 col, actions 1 col, cover 250px, photo grid 2-col, data-card 2-col, footer arrows hidden |
+| **Print** | Solo sheet, grid 3-col, min-height 160px fotos, sin formulario/hints/actions |
+
+### JavaScript (admin-app.js)
+```javascript
+// Estado
+let _fichaPhotos = [];          // Data URLs de fotos subidas
+let _fichaPropsCache = [];      // Cache propiedades CRM
+let _fichaAgentsCache = [];     // Cache brokers activos
+
+// Funciones exportadas
+window.loadFichaHtml()          // Carga CRM + inicia footer rotator
+window.fichaBuildStaticHtml()   // Genera HTML autocontenido completo
+window.fichaGetShareText()      // Texto plano para compartir
+window.fichaUpdatePreview()     // Live sync form → preview
+
+// Autocomplete
+fichaRenderSuggestions(query)   // Filtra _fichaPropsCache, renderiza .ficha-suggestions
+fichaFillFromProperty(prop)     // Rellena form + _fichaPhotos desde property.image_urls
+
+// Archivos
+renderFichaFilePreviews(urls)   // Previews con botón eliminar individual
+Drag & drop en .ficha-file-box  // click = abre input, drop = setea files
+
+// Footer rotativo
+startFichaFooterRotator()       // 3800ms interval, 350ms fade crossfade
+```
+
+### Cache Busting
+| Archivo | Versión |
+|---------|---------|
+| `admin.css` | `?v=29` |
+| `admin-app.js` | `?v=60` |
+
+### Exportación HTML Autocontenido
+El botón **"Descargar HTML"** genera un archivo `.html` con:
+- DOCTYPE + `<html lang="es">` + `<head>` con charset, viewport, title
+- **CSS embebido completo** (tokens teal/paper/card, hero, photo-grid, data-card, footer, responsive, print)
+- **Artículo completo** (hero, body, footer rotativo)
+- **JS inline** para rotador de footer (3800ms/350ms, 4 mensajes)
+- Nombre: `ficha-{slug-del-titulo}.html`
+
+### Verificación E2E (Playwright)
+- ✅ Autocomplete "Depto" → sugerencias → selección → formulario rellenado
+- ✅ Preview live sync: título highlight última palabra, precio con nbsp, fotos Cloudinary f_auto,q_auto
+- ✅ Photo grid: 21 hijos (1 cover + 3 grid + placeholders)
+- ✅ Footer rotativo ciclando "¿Necesitás tasar tu propiedad?"
+- ✅ Descarga HTML: estructura válida, estilos embebidos, responsive 680px
+- ✅ Console: 0 errores
+- ✅ react-doctor: 100/100
+
+---
+
 ## Módulo Configuración
 
 Tab `tab-configuracion` — implementado y verificado E2E:
@@ -1374,6 +1471,48 @@ export interface AppSettings {
   };
 }
 ```
+
+---
+
+## Changelog / Historial de Releases
+
+### v2.1.0 — 2026-08-24 — Módulo Ficha HTML + Rediseño Visual
+**Commits:** `3554301` (feat), `9252006` (docs)
+
+**Nuevo Módulo: Ficha HTML** (`tab-ficha-html` bajo Red & Difusión)
+- Panel formulario tema oscuro admin + preview fidelidad 1:1 al prototipo
+- Hero con kicker + título highlight última palabra, photo grid 4-col, data-card negro, contact-band paper
+- Footer rotativo 3800ms/350ms (vender/comprar/alquilar/tasar)
+- Responsive 1200/1024/680, print solo sheet grid 3-col
+- Autocompletado CRM (debounce 250ms), drag&drop fotos con previews, limpieza individual
+- 3 acciones: compartir texto (navigator.share + clipboard), PDF (window.print), HTML autocontenido descargable
+- JS: listeners nav robustos (`dataset.bhNavBound`), `window.loadFichaHtml` global
+- Cache busters: `admin.css?v=29`, `admin-app.js?v=60`
+- Verificación: react-doctor 100/100, E2E Playwright verde, console 0 errores
+
+### v2.0.0 — 2026-08 — Panel Admin Unificado + CRM + Portales
+- Dashboard KPIs + gráfico ventas/consultas + zonas + ranking brokers
+- Propiedades CRUD completo + drafts + soft-delete + publicación ML individual/masiva
+- CRM Kanban (nuevo→contactado→visita→oferta→cerrado/perdido) + scoring + tags + export CSV
+- Agenda: calendario mensual navegable + lista + check-in/out + recordatorios
+- Brokers: matrícula, comisiones, horarios, permisos granulares
+- Propietarios: expedientes, contratos, documentos, timeline
+- Tasaciones: ACM completo (iframe TAI) + RPC valoración
+- Portales ML: OAuth, sync 5 min batch 50, auto-reply, dead-letter queue
+- CMS vivo: hero, servicios, stats, testimonios (versiones + i18n)
+- Usuarios: roles, cambio password (Edge Function), guard super_admin
+- Configuración: identidad, contacto, redes, USD rate, health integrations
+- Chat Zernio: código completo (webhook, proxy, Unified Inbox, bot/IA) — pendiente API key
+- Edge Functions: 12 funciones (ML, Cloudinary, Users, Zernio, Rate limit, Crypto)
+- Deploy: Cloudflare Pages (sin build, cache busters nativos)
+- QA: react-doctor 100/100, E2E Playwright contra producción
+
+### v1.0.0 — 2026-07 — Landing + Auth + Base DB
+- Landing page: hero, servicios, equipo, proceso, stats, testimonios, contacto
+- Catálogo propiedades: filtros server-side, paginación, WhatsApp flotante
+- Auth Supabase (email/pass), RLS en todas las tablas
+- Esquema DB: properties, agents, leads, visits, tasaciones, owners, site_content, app_settings, profiles, ml_listings, zernio_*
+- Migraciones: reset limpio 20260820 + incrementales
 
 ---
 
