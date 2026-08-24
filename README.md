@@ -501,7 +501,8 @@ Capas aplicadas y verificadas:
 | **CMS** | `tab-cms` | Editor en vivo: hero, servicios, stats, testimonios (versiones + i18n) |
 | **Usuarios** | `tab-usuarios` | Alta/edición usuarios, roles, cambio password (propia y terceros) vía Edge Function |
 | **Configuración** | `tab-configuracion` | Identidad, contacto, redes, preferencias, health integrations, sesión |
-| **Chat Zernio** | `tab-chat` | Unified Inbox WhatsApp/IG/FB/Web, contexto lateral, acciones 1-click, bot/IA |
+| **Chat Zernio** | \`tab-chat\` | Unified Inbox WhatsApp/IG/FB/Web, contexto lateral, acciones 1-click, bot/IA |
+| **Ficha HTML** | \`tab-ficha-html\` | Generador/exportador de ficha visual por propiedad: autocompletado desde CRM, fotos Cloudinary + subida manual, compartir texto, PDF vía impresión y HTML autocontenido |
 
 ### Navegación y Estado
 
