@@ -362,7 +362,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
     if (!window.supabaseClient) return;
     try {
       const [propsRes, leadsRes, visitsRes, agentsRes] = await Promise.all([
-        window.supabaseClient.from('properties').select('price_usd, zone, status, is_published, created_at'),
+        window.supabaseClient.from('properties').select('price_usd, zone, status, is_published, created_at, updated_at'),
         window.supabaseClient.from('leads').select('stage, created_at'),
         window.supabaseClient.from('visits').select('*').order('visit_date', { ascending: true }).limit(5),
         window.supabaseClient.from('agents').select('*').eq('status', 'activo'),
@@ -389,6 +389,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
 
       /* Zone progress */
       renderZoneProgress(props);
+      renderConsultasVentasChart(props, leads);
 
       /* Dashboard widgets */
       renderDashVisits(visits);
@@ -402,6 +403,56 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   function setKPI(id, value) {
     const el = $(`#${id}`);
     if (el) el.textContent = typeof value === 'number' ? value.toLocaleString('es-AR') : value;
+  }
+
+  function renderConsultasVentasChart(props, leads) {
+    const container = $('#consultasVentasChart');
+    if (!container) return;
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const pill = $('#chartYearPill');
+    if (pill) pill.innerHTML = '<i class="fas fa-calendar"></i> ' + year;
+
+    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const months = [];
+    for (let m = 0; m <= now.getMonth(); m++) months.push(m);
+
+    const inMonth = (iso, m) => {
+      if (!iso) return false;
+      const d = new Date(iso);
+      return d.getFullYear() === year && d.getMonth() === m;
+    };
+
+    const consultas = months.map(m => leads.filter(l => inMonth(l.created_at, m)).length);
+    const ventas = months.map(m => props.filter(p => ['vendido', 'alquilado'].includes(p.status) && inMonth(p.updated_at, m)).length);
+
+    const max = Math.max(...consultas, ...ventas);
+    if (!max) {
+      container.innerHTML = `<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:40px 20px;">Sin movimientos registrados en ${year} todavía.</p>`;
+      return;
+    }
+
+    const legend = `
+      <div class="chart-legend">
+        <span><i style="background:var(--accent);"></i>Consultas</span>
+        <span><i style="background:var(--success);"></i>Ventas</span>
+      </div>`;
+
+    const cols = months.map((m, i) => {
+      const cH = Math.round((consultas[i] / max) * 100);
+      const vH = Math.round((ventas[i] / max) * 100);
+      return `
+        <div class="chart-col">
+          <div class="chart-bars-group">
+            <div class="chart-bar-fill is-consultas" style="height:${cH}%;" title="${consultas[i]} ${consultas[i] === 1 ? 'consulta' : 'consultas'}"></div>
+            <div class="chart-bar-fill is-ventas" style="height:${vH}%;" title="${ventas[i]} ${ventas[i] === 1 ? 'venta' : 'ventas'}"></div>
+          </div>
+          <span class="chart-label">${monthNames[m]}</span>
+        </div>`;
+    }).join('');
+
+    container.innerHTML = legend + `<div class="chart-mock-bar-container">${cols}</div>`;
   }
 
   function renderZoneProgress(props) {

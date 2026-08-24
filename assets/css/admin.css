@@ -1080,6 +1080,12 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
 }
 .chart-col:hover .chart-bar-fill { filter: brightness(1.15); }
 .chart-label { font-size: 11px; color: var(--text-dim); font-weight: 600; }
+.chart-bars-group { display: flex; align-items: flex-end; justify-content: center; gap: 4px; flex: 1; width: 100%; }
+.chart-bars-group .chart-bar-fill { width: auto; flex: 1; min-width: 6px; max-width: 14px; min-height: 0; }
+.chart-bar-fill.is-consultas { background: linear-gradient(180deg, var(--accent), rgba(31, 200, 195, 0.25)); }
+.chart-bar-fill.is-ventas { background: linear-gradient(180deg, var(--success), rgba(0, 200, 120, 0.25)); }
+.chart-legend { display: flex; gap: 16px; justify-content: flex-end; padding: 0 4px 10px; font-size: 11.5px; color: var(--text-secondary); font-weight: 600; }
+.chart-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; }
 
 .zone-progress-row { margin-bottom: 14px; }
 .zone-progress-row:last-child { margin-bottom: 0; }

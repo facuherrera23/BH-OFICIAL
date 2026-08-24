@@ -16,7 +16,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 <!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-<link rel="stylesheet" href="assets/css/admin.css?v=25" />
+<link rel="stylesheet" href="assets/css/admin.css?v=26" />
 </head>
 <body class="is-loading">
 <!-- PRELOADER LUXURY -->
@@ -258,17 +258,10 @@ LAYOUT PRINCIPAL
 <h2 class="panel-title">Evolución de Consultas &amp; Ventas</h2>
 <p style="color:var(--text-muted); font-size:12px;">Comportamiento mensual de interesados vs operaciones.</p>
 </div>
-<span class="status-pill active"><i class="fas fa-calendar"></i> 2026</span>
+<span class="status-pill active" id="chartYearPill"><i class="fas fa-calendar"></i> 2026</span>
 </div>
-<div class="chart-mock-bar-container">
-<div class="chart-col"><div class="chart-bar-fill" style="height:45%;"></div><span class="chart-label">Ene</span></div>
-<div class="chart-col"><div class="chart-bar-fill" style="height:60%;"></div><span class="chart-label">Feb</span></div>
-<div class="chart-col"><div class="chart-bar-fill" style="height:55%;"></div><span class="chart-label">Mar</span></div>
-<div class="chart-col"><div class="chart-bar-fill" style="height:75%;"></div><span class="chart-label">Abr</span></div>
-<div class="chart-col"><div class="chart-bar-fill" style="height:70%;"></div><span class="chart-label">May</span></div>
-<div class="chart-col"><div class="chart-bar-fill" style="height:85%;"></div><span class="chart-label">Jun</span></div>
-<div class="chart-col"><div class="chart-bar-fill" style="height:95%;"></div><span class="chart-label">Jul</span></div>
-<div class="chart-col"><div class="chart-bar-fill" style="height:100%; background:linear-gradient(180deg, var(--glow), var(--accent));"></div><span class="chart-label" style="color:var(--accent); font-weight:700;">Ago</span></div>
+<div id="consultasVentasChart">
+<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Cargando evolución...</p>
 </div>
 </div>
 <div class="glass-panel" style="margin-bottom:0;">
@@ -1237,6 +1230,6 @@ setTimeout(function() { checkCDN(); }, 6000);
 <script src="assets/js/config.js?v=5"></script>
 <script src="assets/js/supabase-client.js?v=4"></script>
 <script src="assets/js/cloudinary.js?v=6"></script>
-<script src="assets/js/admin-app.js?v=55"></script>
+<script src="assets/js/admin-app.js?v=56"></script>
 </body>
 </html>
