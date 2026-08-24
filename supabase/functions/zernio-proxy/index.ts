@@ -108,13 +108,24 @@ async function zernioRequest(path: string, options: RequestInit & { apiKey?: str
         headers,
     });
 
-    // Manejo 429 con Retry-After
+    // Manejo 429 con Retry-After y límite de reintentos
     if (res.status === 429) {
         const retryAfter = res.headers.get('retry-after');
         const wait = retryAfter ? parseInt(retryAfter, 10) * 1000 : 60_000;
-        await new Promise(r => setTimeout(r, wait));
-        // Un reintento
-        return fetch(url, { ...options, headers });
+        
+        // Retry con backoff exponencial, máximo 3 intentos
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            await new Promise(r => setTimeout(r, wait * attempt));
+            const retryRes = await fetch(url, { ...options, headers });
+            if (retryRes.status !== 429) {
+                return retryRes;
+            }
+            // Si sigue 429, esperar más tiempo y reintentar
+            const nextWait = res.headers.get('retry-after') ? parseInt(res.headers.get('retry-after')!, 10) * 1000 : wait * 2;
+            await new Promise(r => setTimeout(r, wait * attempt));
+        }
+        // Si todos los reintentos fallan, lanzar error
+        throw new Error('Zernio API rate limit exceeded after 3 retries');
     }
 
     return res;
@@ -200,31 +211,37 @@ async function actMarkRead(body: Record<string, unknown>): Promise<unknown> {
     return { ok: true };
 }
 
-async function actListAccounts(): Promise<unknown> {
-    const res = await zernioRequest('/accounts');
-    if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`Zernio accounts failed (${res.status}): ${errText.slice(0, 300)}`);
-    }
-    const data = await res.json();
-    const accounts = Array.isArray(data) ? data : (data.data ?? []);
+// Configuración de plataformas válidas - extensible via env var
+    const PLATFORMS_CONFIG = Deno.env.get('ZERNIO_VALID_PLATFORMS');
+    const VALID_PLATFORMS = PLATFORMS_CONFIG
+        ? PLATFORMS_CONFIG.split(',').map(p => p.trim().toLowerCase())
+        : ['instagram', 'facebook', 'whatsapp', 'telegram', 'twitter', 'bluesky', 'reddit', 'slack'];
 
-    // Upsert espejo — batch para evitar await en loop
-    const now = new Date().toISOString();
-    const validAccounts = accounts
-        .map(acc => {
-            const platform = String(acc.platform ?? '');
-            if (!['instagram','facebook','whatsapp','telegram','twitter','bluesky','reddit','slack'].includes(platform)) return null;
-            return {
-                zernio_account_id: String(acc.id ?? ''),
-                platform,
-                username: String(acc.username ?? acc.name ?? ''),
-                status: 'connected',
-                raw: acc,
-                last_synced_at: now,
-            };
-        })
-        .filter((a): a is NonNullable<typeof a> => a !== null);
+    async function actListAccounts(): Promise<unknown> {
+        const res = await zernioRequest('/accounts');
+        if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`Zernio accounts failed (${res.status}): ${errText.slice(0, 300)}`);
+        }
+        const data = await res.json();
+        const accounts = Array.isArray(data) ? data : (data.data ?? []);
+
+        // Upsert espejo — batch para evitar await en loop
+        const now = new Date().toISOString();
+        const validAccounts = accounts
+            .map(acc => {
+                const platform = String(acc.platform ?? '').toLowerCase();
+                if (!VALID_PLATFORMS.includes(platform)) return null;
+                return {
+                    zernio_account_id: String(acc.id ?? ''),
+                    platform,
+                    username: String(acc.username ?? acc.name ?? ''),
+                    status: 'connected',
+                    raw: acc,
+                    last_synced_at: now,
+                };
+            })
+            .filter((a): a is NonNullable<typeof a> => a !== null);
 
     if (validAccounts.length > 0) {
         await supabase.from('zernio_accounts').upsert(validAccounts, { onConflict: 'zernio_account_id' });
@@ -323,7 +340,7 @@ async function actBackfillMessages(body: Record<string, unknown>): Promise<unkno
             direction: string;
             platform_message_id: string;
             body: string;
-            attachment: unknown;
+            attachment: { url: string; type: string; name?: string; size?: number } | null;
             status: string;
             zernio_event_id: null;
             occurred_at: string;
@@ -345,7 +362,12 @@ async function actBackfillMessages(body: Record<string, unknown>): Promise<unkno
         }
 
         if (messagesToInsert.length > 0) {
-            await supabase.from('zernio_messages').insert(messagesToInsert);
+            // Upsert con onConflict en platform_message_id + conversation_id para evitar duplicados
+            // El id es autogenerado, pero platform_message_id + conversation_id es único
+            await supabase.from('zernio_messages').upsert(messagesToInsert, {
+                onConflict: 'platform_message_id,conversation_id',
+                ignoreDuplicates: false
+            });
         }
         total += messagesToInsert.length;
 

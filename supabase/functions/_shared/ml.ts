@@ -49,6 +49,13 @@ let cachedCredentials: {
 
 const CREDENTIALS_TTL_MS = 30_000;
 
+/**
+ * Invalida el cache de credenciales ML. Debe llamarse después de actualizar credenciales en BD.
+ */
+export function invalidateMlCredentialsCache(): void {
+    cachedCredentials = null;
+}
+
 export async function getMlCredentials(
     supabase: SupabaseClient,
 ): Promise<{
@@ -194,16 +201,37 @@ export async function getAccessToken(
     const staleExpiresAt = conn.token_expires_at;
 
     // 1) Intentar tomar el lock (CAS sobre token_expires_at).
-    const sentinel = new Date(Date.now() + SENTINEL_MS).toISOString();
-    const { data: claimed, error: claimError } = await supabase
-        .from('ml_connection')
-        .update({ token_expires_at: sentinel })
-        .eq('id', conn.id)
-        .eq('token_expires_at', staleExpiresAt)
-        .select('id');
-
-    if (claimError) {
-        throw new Error(`No se pudo tomar el lock de refresh ML: ${claimError.message}`);
+    // Reintentar hasta 3 veces si hay contención.
+    let sentinel: string;
+    let claimed: any[] = [];
+    let claimError: any = null;
+    
+    for (let attempt = 0; attempt < 3; attempt++) {
+        sentinel = new Date(Date.now() + SENTINEL_MS).toISOString();
+        const result = await supabase
+            .from('ml_connection')
+            .update({ token_expires_at: sentinel })
+            .eq('id', conn.id)
+            .eq('token_expires_at', staleExpiresAt)
+            .select('id');
+        
+        claimError = result.error;
+        claimed = result.data ?? [];
+        
+        if (!claimError && (claimed ?? []).length > 0) {
+            break; // Lock adquirido exitosamente
+        }
+        
+        // Si falló por contención (CAS failed - no rows updated), reintentar
+        if (!claimError && (claimed ?? []).length === 0) {
+            await sleep(50 * (attempt + 1)); // backoff exponencial leve
+            continue;
+        }
+        
+        // Si hay error real (no contención), lanzar error
+        if (claimError) {
+            throw new Error(`No se pudo tomar el lock de refresh ML: ${claimError.message}`);
+        }
     }
 
     if ((claimed ?? []).length > 0) {
@@ -722,6 +750,9 @@ export async function registerMlWebhookTopic(
     callbackUrl: string,
     authToken: string,
 ): Promise<RegisterWebhookResult> {
+    if (!callbackUrl.startsWith('https://')) {
+        return { ok: false, topic, error: `callback_url debe ser HTTPS, recibido: ${callbackUrl}` };
+    }
     try {
         const res = await fetchWithTimeout(`${ML_API}/users/${userId}/topics/${topic}`, {
             method: 'POST',

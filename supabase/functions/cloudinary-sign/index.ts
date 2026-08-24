@@ -64,7 +64,7 @@ async function isAdminUser(userId: string): Promise<boolean> {
   if (!serviceKey || !supabaseUrl) return false;
 
   const res = await fetch(
-    `${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=role`,
+    `${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=role,is_active`,
     {
       headers: {
         apikey: serviceKey,
@@ -74,8 +74,16 @@ async function isAdminUser(userId: string): Promise<boolean> {
   );
   if (!res.ok) return false;
   const rows = await res.json();
-  /* user_role enum: super_admin | broker | agente */
-  return Array.isArray(rows) && rows.length > 0 && rows[0].role === 'super_admin';
+  if (!Array.isArray(rows) || rows.length === 0) return false;
+
+  const profile = rows[0];
+  /* user_role enum: super_admin | broker | agente.
+     Cualquier usuario activo del panel puede subir fotos de propiedades
+     (la carga de imagenes no esta restringida a super_admin en el
+     frontend: brokers y agentes tambien cargan/editan propiedades). */
+  if (profile.is_active === false) return false;
+  const ALLOWED_ROLES = new Set(['super_admin', 'broker', 'agente']);
+  return ALLOWED_ROLES.has(profile.role);
 }
 
 Deno.serve(async (req: Request) => {
@@ -96,10 +104,11 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'No autorizado' }, 401);
     }
 
-    /* 2. Rol admin verificado server-side contra profiles. */
+    /* 2. Perfil valido y activo verificado server-side contra profiles
+          (cualquier rol del panel: super_admin, broker o agente). */
     const admin = await isAdminUser(payload.sub);
     if (!admin) {
-      return json({ error: 'Solo administradores pueden subir imagenes' }, 403);
+      return json({ error: 'Tu usuario no tiene permiso para subir imágenes' }, 403);
     }
 
     /* 3. Carpeta pedida por el cliente, validada contra allowlist. */
