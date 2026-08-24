@@ -817,6 +817,7 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
 .gs-result i { color: var(--accent); width: 16px; text-align: center; flex-shrink: 0; }
 .gs-result-title { font-size: 13px; font-weight: 600; color: var(--text-main); }
 .gs-result-sub { font-size: 11px; color: var(--text-dim); }
+.gs-result mark { background: rgba(31, 200, 195, 0.22); color: var(--accent); font-weight: 700; border-radius: 2px; padding: 0 1px; }
 .gs-empty { padding: 20px 14px; text-align: center; color: var(--text-dim); font-size: 12.5px; }
 @keyframes dropdownIn {
     from { opacity: 0; transform: translateY(-6px); }

@@ -3063,6 +3063,7 @@ let dayCount = 1;
   });
 
   async function loadTasaciones() {
+    invalidateSearchCache();
     const tbody = $('#tasacionesTableBody');
     if (!tbody) return;
     if (!currentUser || !window.supabaseClient) return;
@@ -3498,6 +3499,7 @@ async function loadChatRedes() {
 
     // Funciones auxiliares
     async function loadConversations() {
+      invalidateSearchCache();
       if (!listEl) return;
       listEl.innerHTML = '<div class="chat-empty" style="text-align:center; padding:40px 20px; color:var(--text-dim);">Cargando conversaciones...</div>';
       try {
@@ -3646,6 +3648,8 @@ async function loadChatRedes() {
         if (badge) badge.remove();
       });
     }
+
+    window.adminApp.openChatConversation = openConversation;
 
     async function loadMessages(convId) {
       if (!messagesEl) return;
@@ -3874,30 +3878,55 @@ async function loadChatRedes() {
   let _searchCache = null;
   let _searchCacheExpiresAt = 0;
   const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min — evita datos desactualizados de leads/agents/owners
+  const SEARCH_RESULT_LIMIT = 15;
+  let _gsActions = [];
+  let _gsActiveIndex = -1;
+  let _gsRunId = 0;
 
   async function getSearchCache() {
     if (_searchCache && Date.now() < _searchCacheExpiresAt) return _searchCache;
-    try {
-      const [props, leads, agents, owners] = await Promise.all([
-        window.supabaseClient.from('properties').select('id, title, zone, address, price_usd, status').order('created_at', { ascending: false }).limit(200),
-        window.supabaseClient.from('leads').select('id, full_name, email, phone, stage').order('created_at', { ascending: false }).limit(200),
-        window.supabaseClient.from('agents').select('id, full_name, email, matricula').order('created_at', { ascending: false }).limit(100),
-        window.supabaseClient.from('owners').select('id, full_name, email, phone').order('created_at', { ascending: false }).limit(100),
-      ]);
-      _searchCache = {
-        properties: props.data || [],
-        leads: leads.data || [],
-        agents: agents.data || [],
-        owners: owners.data || [],
-      };
-      _searchCacheExpiresAt = Date.now() + SEARCH_CACHE_TTL_MS;
-      return _searchCache;
-    } catch (_) {
-      return { properties: [], leads: [], agents: [], owners: [] };
-    }
+    const empty = { properties: [], leads: [], agents: [], owners: [], visits: [], tasaciones: [], profiles: [], conversations: [] };
+    if (!window.supabaseClient) return empty;
+
+    /* Promise.allSettled: si un módulo falla o falta permiso RLS, los demás siguen funcionando */
+    const requests = [
+      ['properties', window.supabaseClient.from('properties').select('id, title, zone, address, price_usd, status').order('created_at', { ascending: false }).limit(200)],
+      ['leads', window.supabaseClient.from('leads').select('id, full_name, email, phone, stage').order('created_at', { ascending: false }).limit(200)],
+      ['agents', window.supabaseClient.from('agents').select('id, full_name, email, matricula').order('created_at', { ascending: false }).limit(100)],
+      ['owners', window.supabaseClient.from('owners').select('id, full_name, email, phone').order('created_at', { ascending: false }).limit(100)],
+      ['visits', window.supabaseClient.from('visits').select('id, client_name, client_phone, visit_date, status').order('visit_date', { ascending: false }).limit(200)],
+      ['tasaciones', window.supabaseClient.from('tasaciones').select('id, title, status, created_at').order('created_at', { ascending: false }).limit(200)],
+      ['profiles', window.supabaseClient.from('profiles').select('id, full_name, email, role').order('created_at', { ascending: true }).limit(100)],
+      ['conversations', window.supabaseClient.from('zernio_conversations').select('id, contact_name, contact_handle, last_message_preview, status').eq('status', 'open').order('last_message_at', { ascending: false, nullsFirst: false }).limit(100)],
+    ];
+
+    const settled = await Promise.allSettled(requests.map(([, req]) => req));
+    _searchCache = { ...empty };
+    settled.forEach((res, i) => {
+      const name = requests[i][0];
+      if (res.status === 'fulfilled') {
+        _searchCache[name] = res.value.data || [];
+      } else {
+        console.warn('[búsqueda global] falló carga de "' + name + '":', res.reason?.message || res.reason);
+      }
+    });
+    _searchCacheExpiresAt = Date.now() + SEARCH_CACHE_TTL_MS;
+    return _searchCache;
   }
 
   function invalidateSearchCache() { _searchCache = null; _searchCacheExpiresAt = 0; }
+
+  /* Resalta la coincidencia con <mark> sobre texto YA escapado (CSP/XSS safe) */
+  function gsHighlight(text, q) {
+    const safe = esc(String(text ?? ''));
+    if (!q) return safe;
+    const needle = esc(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try {
+      return safe.replace(new RegExp('(' + needle + ')', 'gi'), '<mark>$1</mark>');
+    } catch (_err) {
+      return safe;
+    }
+  }
 
   /* ------------------------------------------------
      17. SIDEBAR BADGES
@@ -4133,50 +4162,104 @@ async function loadChatRedes() {
     const _origLoadProperties = loadProperties;
     loadProperties = function () { invalidateSearchCache(); return _origLoadProperties.apply(this, arguments); };
 
-    $('#globalSearchInput')?.addEventListener('input', async (e) => {
-      const q = e.target.value.toLowerCase().trim();
+    let _gsDebounceTimer = null;
+    $('#globalSearchInput')?.addEventListener('input', (e) => {
+      clearTimeout(_gsDebounceTimer);
+      _gsDebounceTimer = setTimeout(() => runGlobalSearch(e.target.value), 250);
+    });
+
+    async function runGlobalSearch(rawQuery) {
+      const myRun = ++_gsRunId;
+      const q = String(rawQuery || '').toLowerCase().trim();
       const resultsContainer = $('#globalSearchResults');
       if (!resultsContainer) return;
-      if (!q || q.length < 2) { resultsContainer.innerHTML = ''; resultsContainer.style.display = 'none'; return; }
+      if (!q || q.length < 2) { resultsContainer.innerHTML = ''; resultsContainer.style.display = 'none'; _gsActiveIndex = -1; return; }
 
       const cache = await getSearchCache();
+      if (myRun !== _gsRunId) return;
       const results = [];
 
       const matches = (fields) => fields.some(f => f && f.toLowerCase().includes(q));
 
       for (const p of cache.properties) {
         if (!matches([p.title, p.zone, p.address])) continue;
-        results.push({ icon: 'fas fa-home', text: p.title || 'Sin título', sub: [p.zone, p.address].filter(Boolean).join(', '), tab: 'tab-propiedades', color: 'var(--accent)' });
+        results.push({ icon: 'fas fa-home', text: p.title || 'Sin título', sub: [p.zone, p.address].filter(Boolean).join(', '), tab: 'tab-propiedades', color: 'var(--accent)', action: () => { navigateTo('tab-propiedades'); window.adminApp.editProperty(p.id); } });
       }
       for (const l of cache.leads) {
         if (!matches([l.full_name, l.email, l.phone])) continue;
-        results.push({ icon: 'fas fa-user', text: l.full_name || 'Sin nombre', sub: l.email || l.phone || '', tab: 'tab-leads', color: '#3B82F6' });
+        results.push({ icon: 'fas fa-user', text: l.full_name || 'Sin nombre', sub: l.email || l.phone || '', tab: 'tab-leads', color: '#3B82F6', action: () => { navigateTo('tab-leads'); window.adminApp.editLead(l.id); } });
       }
       for (const a of cache.agents) {
         if (!matches([a.full_name, a.email, a.matricula])) continue;
-        results.push({ icon: 'fas fa-id-badge', text: a.full_name || 'Sin nombre', sub: a.matricula || a.email || '', tab: 'tab-agentes', color: '#10B981' });
+        results.push({ icon: 'fas fa-id-badge', text: a.full_name || 'Sin nombre', sub: a.matricula || a.email || '', tab: 'tab-agentes', color: '#10B981', action: () => { navigateTo('tab-agentes'); window.adminApp.editAgent(a.id); } });
       }
       for (const o of cache.owners) {
         if (!matches([o.full_name, o.email, o.phone])) continue;
-        results.push({ icon: 'fas fa-user-tie', text: o.full_name || 'Sin nombre', sub: o.email || o.phone || '', tab: 'tab-propietarios', color: '#F97316' });
+        results.push({ icon: 'fas fa-user-tie', text: o.full_name || 'Sin nombre', sub: o.email || o.phone || '', tab: 'tab-propietarios', color: '#F97316', action: () => { navigateTo('tab-propietarios'); window.adminApp.editOwner(o.id); } });
+      }
+      for (const v of cache.visits) {
+        if (!matches([v.client_name, v.client_phone])) continue;
+        results.push({ icon: 'fas fa-calendar-check', text: v.client_name || 'Sin cliente', sub: [v.visit_date ? new Date(v.visit_date).toLocaleDateString('es-AR') : '', v.status].filter(Boolean).join(' · '), tab: 'tab-agenda', color: '#F59E0B', action: () => { navigateTo('tab-agenda'); window.adminApp.editVisit(v.id); } });
+      }
+      for (const t of cache.tasaciones) {
+        if (!matches([t.title])) continue;
+        results.push({ icon: 'fas fa-chart-line', text: t.title || 'Sin título', sub: t.status === 'finalized' ? 'Finalizada' : 'Borrador', tab: 'tab-tasaciones', color: '#EF4444', action: () => { navigateTo('tab-tasaciones'); window.navigateToTasacion(t.id, t.title || ''); } });
+      }
+      for (const u of cache.profiles) {
+        if (!matches([u.full_name, u.email, u.role])) continue;
+        results.push({ icon: 'fas fa-user-shield', text: u.full_name || u.email || 'Sin nombre', sub: [u.email, USER_ROLE_LABELS[u.role] || u.role].filter(Boolean).join(' · '), tab: 'tab-usuarios', color: '#8B5CF6', action: () => navigateTo('tab-usuarios') });
+      }
+      for (const c of cache.conversations) {
+        if (!matches([c.contact_name, c.contact_handle, c.last_message_preview])) continue;
+        results.push({ icon: 'fas fa-comments', text: c.contact_name || c.contact_handle || 'Sin contacto', sub: c.last_message_preview || '', tab: 'tab-chat-redes', color: '#06B6D4', action: () => { navigateTo('tab-chat-redes'); setTimeout(() => window.adminApp.openChatConversation?.(c.id), 400); } });
       }
 
       if (!results.length) {
-        resultsContainer.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-dim); font-size:13px;">Sin resultados para "' + esc(q) + '"</div>';
+        resultsContainer.innerHTML = '<div class="gs-empty">Sin resultados para "' + esc(q) + '"</div>';
         resultsContainer.style.display = 'block';
+        _gsActiveIndex = -1;
         return;
       }
 
-      resultsContainer.innerHTML = results.slice(0, 10).map(r => `
-        <div class="gs-result" data-tab="${esc(r.tab)}" style="display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--border-subtle); transition:background 0.15s;">
+      _gsActions = results.map((r) => (typeof r.action === 'function' ? r.action : null));
+
+      resultsContainer.innerHTML = results.slice(0, SEARCH_RESULT_LIMIT).map((r, i) => `
+        <div class="gs-result${i === 0 ? ' is-active' : ''}" data-index="${i}" data-tab="${esc(r.tab)}" style="display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; border-bottom:1px solid var(--border-subtle); transition:background 0.15s;">
           <i class="${esc(r.icon)}" style="font-size:14px; color:${r.color}; min-width:18px; text-align:center;"></i>
           <div style="flex:1; min-width:0;">
-            <div style="color:#fff; font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(r.text)}</div>
-            <div style="color:var(--text-dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(r.sub)}</div>
+            <div style="color:#fff; font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${gsHighlight(r.text, q)}</div>
+            <div style="color:var(--text-dim); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${gsHighlight(r.sub, q)}</div>
           </div>
         </div>
       `).join('');
       resultsContainer.style.display = 'block';
+      _gsActiveIndex = 0;
+    }
+
+    $('#globalSearchInput')?.addEventListener('keydown', (e) => {
+      const container = $('#globalSearchResults');
+      if (!container || container.style.display !== 'block') return;
+
+      if (e.key === 'Escape') {
+        container.style.display = 'none';
+        _gsActiveIndex = -1;
+        return;
+      }
+
+      const items = $$('.gs-result', container);
+      if (!items.length) return;
+
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        _gsActiveIndex = e.key === 'ArrowDown'
+          ? Math.min(_gsActiveIndex + 1, items.length - 1)
+          : Math.max(_gsActiveIndex - 1, 0);
+        items.forEach((el, i) => el.classList.toggle('is-active', i === _gsActiveIndex));
+        items[_gsActiveIndex]?.scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        items[Math.max(_gsActiveIndex, 0)]?.click();
+      }
     });
 
     document.addEventListener('click', (e) => {
@@ -4194,8 +4277,12 @@ async function loadChatRedes() {
       gsResults.addEventListener('click', (e) => {
         const item = e.target.closest('.gs-result');
         if (!item) return;
-        if (item.dataset.tab) navigateTo(item.dataset.tab);
+        const idx = parseInt(item.dataset.index, 10);
+        const action = Number.isInteger(idx) ? _gsActions[idx] : null;
+        if (typeof action === 'function') action();
+        else if (item.dataset.tab) navigateTo(item.dataset.tab);
         gsResults.style.display = 'none';
+        _gsActiveIndex = -1;
         const input = $('#globalSearchInput');
         if (input) input.value = '';
       });
