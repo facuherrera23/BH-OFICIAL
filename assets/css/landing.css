@@ -450,6 +450,17 @@ section[id], main[id], footer[id] { scroll-margin-top: var(--navbar-height); }
   padding: 5px 14px; border-radius: var(--radius-btn); font-size: 11px; font-weight: 800;
   letter-spacing: 0.5px; text-transform: uppercase;
 }
+.card-badge--featured { background: var(--warning); color: var(--bg-void); }
+.card-badge--retasada { background: #8b5cf6; color: #fff; }
+.card-badge--oportunidad { background: #ef4444; color: #fff; }
+
+/* Stack multiple badges vertically */
+.card-image-wrapper .card-badge + .card-badge {
+  top: 52px; /* 16px + ~36px height */
+}
+.card-image-wrapper .card-badge + .card-badge + .card-badge {
+  top: 88px;
+}
 .card-favorite {
   position: absolute; top: 16px; right: 16px; width: 38px; height: 38px; border-radius: 50%;
   background: rgba(4, 6, 9, 0.65); backdrop-filter: blur(10px); border: 1px solid var(--border-subtle);
