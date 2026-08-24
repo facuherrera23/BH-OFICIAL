@@ -1300,13 +1300,19 @@ function buildPropiedadQuery(){
   return parts.join(', ');
 }
 
+const _geocodeCache = new Map(); // query normalizada -> {lat, lon} | null
+
 async function geocode(query){
+  const key = query.trim().toLowerCase();
+  if(_geocodeCache.has(key)) return _geocodeCache.get(key);
+
   const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(query);
   const res = await fetch(url, {headers:{'Accept':'application/json'}});
   if(!res.ok) throw new Error('geocode failed');
   const data = await res.json();
-  if(!data.length) return null;
-  return {lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon)};
+  const result = data.length ? {lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon)} : null;
+  _geocodeCache.set(key, result);
+  return result;
 }
 
 async function updateMainMap(){
@@ -1349,6 +1355,7 @@ async function updateMainMap(){
   let okCount = 0;
 
   for(const p of points){
+    const wasCached = _geocodeCache.has(p.query.trim().toLowerCase());
     try{
       const geo = await geocode(p.query);
       if(!geo){ continue; }
@@ -1364,7 +1371,8 @@ async function updateMainMap(){
       chip.innerHTML = '<span class="swatch" style="background:'+p.color+'"></span>'+_bhEsc(p.label);
       legendEl.appendChild(chip);
     }catch(e){}
-    await new Promise(r=>setTimeout(r, 1100));
+    /* Solo esperamos si hubo un request real a Nominatim (respeta su limite de 1 req/seg) */
+    if(!wasCached) await new Promise(r=>setTimeout(r, 1100));
   }
 
   if(bounds.length){
@@ -1486,13 +1494,3 @@ init();
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
