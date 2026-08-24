@@ -1,0 +1,15 @@
+# Dependencias
+node_modules/
+
+# Artefactos de tooling local (ver README §Estructura)
+.codegraph/
+.omo/
+.playwright-mcp/
+supabase/.temp/
+
+# Entorno y build
+.env.local
+*.log
+dist/
+build/
+.vite/

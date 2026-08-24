@@ -1,9 +1,0 @@
-[      72ms] [LOG] [BH] IIFE STARTED @ http://localhost:8788/assets/js/admin-app.js?v=43:10
-[      73ms] [LOG] [BH] MIDPOINT REACHED - LEADS section @ http://localhost:8788/assets/js/admin-app.js?v=43:767
-[      74ms] [LOG] [BH] CHECKPOINT - CHAT section @ http://localhost:8788/assets/js/admin-app.js?v=43:3281
-[      93ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
-[      93ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
-[      93ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
-[      93ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "new-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
-[      93ms] [VERBOSE] [DOM] Password forms should have (optionally hidden) username fields for accessibility: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:8788/admin.html:0
-[      93ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) @ http://localhost:8788/admin.html:0
