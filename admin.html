@@ -9,14 +9,14 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <meta name="theme-color" content="#020305" />
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23020305'/><text x='50' y='68' font-size='50' font-family='serif' font-weight='bold' fill='%231FC8C3' text-anchor='middle'>BH</text></svg>" type="image/svg+xml" />
+<link rel="icon" href="/assets/images/favicon.ico">
 <!-- Google Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 <!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-<link rel="stylesheet" href="assets/css/admin.css?v=29" />
+<link rel="stylesheet" href="assets/css/admin.css?v=30" />
 </head>
 <body class="is-loading">
 <!-- PRELOADER LUXURY -->
@@ -131,16 +131,23 @@ LAYOUT PRINCIPAL
 </div>
 <span class="nav-badge" style="background:rgba(31,200,195,0.2); color:var(--accent);">Live</span>
 </div>
-<div class="nav-item" data-tab="tab-portales">
-<div class="nav-item-left">
-<i class="fas fa-globe"></i>
-<span>Portales &amp; APIs</span>
-</div>
-<span class="nav-badge" style="color:var(--success);"><i class="fas fa-circle" style="font-size:8px;"></i> Sync</span>
-</div>                <div class="nav-item" data-tab="tab-chat-redes">                    <div class="nav-item-left">                        <i class="fas fa-comments" style="color:var(--accent);"></i>                        <span>Chat Redes</span>                    </div>                    <span class="nav-badge" id="sideBadgeChatRedes" style="background:rgba(31,200,195,0.2); color:var(--accent);">0</span>                </div><div class="nav-item" data-tab="tab-agentes">
+  <div class="nav-item" data-tab="tab-portales">
+  <div class="nav-item-left">
+  <i class="fas fa-globe"></i>
+  <span>Portales & APIs</span>
+  </div>
+  <span class="nav-badge" style="color:var(--success);"><i class="fas fa-circle" style="font-size:8px;"></i> Sync</span>
+  </div>
+<div class="nav-item" data-tab="tab-agentes">
 <div class="nav-item-left">
 <i class="fas fa-user-tie"></i>
-<span>Agentes &amp; Brokers</span>
+<span>Agentes & Brokers</span>
+</div>
+</div>
+<div class="nav-item" data-tab="tab-chat-redes">
+<div class="nav-item-left">
+<i class="fas fa-comments"></i>
+<span>Chat Redes</span>
 </div>
 </div>
 <div class="nav-item" data-tab="tab-ficha-html">
@@ -508,16 +515,22 @@ LAYOUT PRINCIPAL
 <p style="color:var(--text-muted); font-size:12.5px;">Modificá todos los contenidos de la landing page con guardado reactivo.</p>
 </div>
 <div style="display:flex; gap:10px;">
-<button class="status-pill pending" id="cmsResetBtn">Restaurar Original</button>
+<button class="status-pill pending" id="cmsResetBtn" title="Elimina todo el contenido CMS y restaura valores de fábrica (requiere escribir RESET)"><i class="fas fa-rotate-left"></i> Reinicio Global</button>
 <button class="btn-luxury-action" id="cmsSaveBtn"><i class="fas fa-floppy-disk"></i> Guardar Cambios Web</button>
 </div>
 </div>
 <div class="cms-nav-tabs">
-<button class="cms-tab-btn is-active" data-cms="cms-hero">1. Hero &amp; Portada</button>
-<button class="cms-tab-btn" data-cms="cms-servicios">2. Servicios</button>
-<button class="cms-tab-btn" data-cms="cms-equipo">3. Equipo</button>
-<button class="cms-tab-btn" data-cms="cms-stats">4. Estadísticas</button>
-<button class="cms-tab-btn" data-cms="cms-proceso">5. Cómo Trabajamos</button>
+<button class="cms-tab-btn is-active" data-cms="cms-hero">1. Hero & Portada</button>
+<button class="cms-tab-btn" data-cms="cms-catalogo">2. Catálogo</button>
+<button class="cms-tab-btn" data-cms="cms-servicios">3. Servicios</button>
+<button class="cms-tab-btn" data-cms="cms-equipo">4. Equipo</button>
+<button class="cms-tab-btn" data-cms="cms-stats">5. Estadísticas</button>
+<button class="cms-tab-btn" data-cms="cms-proceso">6. Cómo Trabajamos</button>
+<button class="cms-tab-btn" data-cms="cms-contacto">7. Contacto</button>
+<button class="cms-tab-btn" data-cms="cms-formulario">8. Formulario</button>
+<button class="cms-tab-btn" data-cms="cms-navbar">9. Navbar</button>
+<button class="cms-tab-btn" data-cms="cms-footer">10. Footer</button>
+<button class="cms-tab-btn" data-cms="cms-seo">11. SEO</button>
 </div>
 <div class="cms-section-content is-active" id="cms-hero">
 <div class="form-grid-2">
@@ -540,27 +553,200 @@ LAYOUT PRINCIPAL
 </div>
 </div>
 <div class="form-field"><label>URL Video Modal</label><input type="text" id="cms_hero_video" class="cms-field" data-key="hero_video" placeholder="https://www.youtube.com/watch?v=..." /></div>
+<div class="form-field"><label>CTA Principal Texto</label><input type="text" id="cms_hero_cta_text" class="cms-field" data-key="cta_text" placeholder="Ver Propiedades" /></div>
+<div class="form-field"><label>CTA Principal URL</label><input type="text" id="cms_hero_cta_url" class="cms-field" data-key="cta_url" placeholder="#propiedades" /></div>
+<div class="form-field"><label>CTA Video Texto</label><input type="text" id="cms_hero_video_cta" class="cms-field" data-key="video_cta" placeholder="Ver Video" /></div>
+<div class="form-field"><label>URL Video</label><input type="text" id="cms_hero_video_url" class="cms-field" data-key="video_url" placeholder="https://www.youtube.com/watch?v=..." /></div>
+<div class="form-field"><label>Alt Imagen Fondo</label><input type="text" id="cms_hero_bg_alt" class="cms-field" data-key="bg_image_alt" placeholder="Propiedad destacada Bienenhaus" /></div>
+</div>
+</div>
+<div class="cms-section-content" id="cms-catalogo">
+<div class="form-field"><label>Badge</label><input type="text" id="cms_catalog_badge" class="cms-field" data-key="badge" placeholder="Catálogo" /></div>
+<div class="form-field"><label>Título</label><input type="text" id="cms_catalog_title" class="cms-field" data-key="title" placeholder="Propiedades" /></div>
+<div class="form-field"><label>Destacado</label><input type="text" id="cms_catalog_highlight" class="cms-field" data-key="highlight" placeholder="disponibles" /></div>
+<div class="form-field"><label>CTA Texto</label><input type="text" id="cms_catalog_cta_text" class="cms-field" data-key="cta_text" placeholder="Contactar Asesor" /></div>
+<div class="form-field"><label>CTA URL</label><input type="text" id="cms_catalog_cta_url" class="cms-field" data-key="cta_url" placeholder="#contacto" /></div>
+<div class="form-grid-2">
+<div class="form-field"><label>Operaciones</label><input type="text" id="cms_catalog_operations" class="cms-field" data-key="operations" placeholder="venta,alquiler" /></div>
+<div class="form-field"><label>Tipos</label><input type="text" id="cms_catalog_types" class="cms-field" data-key="types" placeholder="departamento,casa,ph,terreno,local,oficina" /></div>
+</div>
+<div class="form-grid-2">
+<div class="form-field"><label>Precios</label><input type="text" id="cms_catalog_prices" class="cms-field" data-key="prices" placeholder="0-100000,100000-200000,200000-500000,500000-" /></div>
 </div>
 </div>
 <div class="cms-section-content" id="cms-servicios">
-<div class="form-grid-2">
-<div class="form-field"><label>Título Sección Servicios</label><input type="text" id="cms_serv_title" class="cms-field" data-key="serv_title" /></div>
-<div class="form-field"><label>Badge Sección</label><input type="text" id="cms_serv_badge" class="cms-field" data-key="serv_badge" /></div>
-</div>
-<div class="form-field"><label>Descripción General</label><textarea id="cms_serv_desc" class="cms-field" data-key="serv_desc"></textarea></div>
+<div class="form-field"><label>Badge</label><input type="text" id="cms_serv_badge" class="cms-field" data-key="badge" placeholder="Servicios" /></div>
+<div class="form-field"><label>Título</label><input type="text" id="cms_serv_title" class="cms-field" data-key="title" placeholder="¿Qué podemos <span class=\"highlight\">hacer</span> por vos?" /></div>
+<div class="form-field"><label>Descripción</label><textarea id="cms_serv_desc" class="cms-field" data-key="description" placeholder="Un equipo dedicado a brindarte la mejor experiencia inmobiliaria en Buenos Aires."></textarea></div>
+<div class="form-field"><label>CTA Texto</label><input type="text" id="cms_serv_cta_text" class="cms-field" data-key="cta_text" placeholder="Saber más" /></div>
+<div class="form-field"><label>CTA URL</label><input type="text" id="cms_serv_cta_url" class="cms-field" data-key="cta_url" placeholder="#contacto" /></div>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Items de Servicios</h4>
+<div id="cmsServicesItems"></div>
+<button type="button" class="btn-luxury-action" id="cmsAddServiceBtn"><i class="fas fa-plus"></i> Agregar Servicio</button>
 </div>
 <div class="cms-section-content" id="cms-equipo">
-<div class="form-field"><label>Título Sección Equipo</label><input type="text" id="cms_team_title" class="cms-field" data-key="team_title" /></div>
+<div class="form-field"><label>Badge</label><input type="text" id="cms_team_badge" class="cms-field" data-key="badge" placeholder="Nuestro Equipo" /></div>
+<div class="form-field"><label>Título</label><input type="text" id="cms_team_title" class="cms-field" data-key="title" placeholder="Conocé a <span class=\"highlight\">nuestros</span> asesores" /></div>
+<div class="form-field"><label>CTA Texto</label><input type="text" id="cms_team_cta_text" class="cms-field" data-key="cta_text" placeholder="Contactar" /></div>
+<div class="form-field"><label>CTA URL</label><input type="text" id="cms_team_cta_url" class="cms-field" data-key="cta_url" placeholder="#contacto" /></div>
 </div>
 <div class="cms-section-content" id="cms-stats">
-<div class="form-grid-2">
-<div class="form-field"><label>Métrica 1: Valor Objetivo</label><input type="number" id="cms_stat1_val" class="cms-field" data-key="stat1_val" /></div>
-<div class="form-field"><label>Métrica 1: Título</label><input type="text" id="cms_stat1_title" class="cms-field" data-key="stat1_title" /></div>
-</div>
+<div class="form-field"><label>Badge</label><input type="text" id="cms_stats_badge" class="cms-field" data-key="badge" placeholder="Estadísticas" /></div>
+<div class="form-field"><label>Título</label><input type="text" id="cms_stats_title" class="cms-field" data-key="title" placeholder="Números que <span class=\"highlight\">hablan</span>" /></div>
+<div class="form-field"><label>Descripción</label><textarea id="cms_stats_desc" class="cms-field" data-key="description" placeholder="Más de 15 años de trayectoria respaldados por resultados reales."></textarea></div>
+<div class="form-field"><label>CTA Label</label><input type="text" id="cms_stats_cta_label" class="cms-field" data-key="cta_label" placeholder="Contactar Ahora" /></div>
+<div class="form-field"><label>CTA Button Text</label><input type="text" id="cms_stats_cta_button_text" class="cms-field" data-key="button_text" placeholder="Contactar Ahora" /></div>
+<div class="form-field"><label>CTA Button URL</label><input type="text" id="cms_stats_cta_button_url" class="cms-field" data-key="button_url" placeholder="#contacto" /></div>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Items de Estadísticas</h4>
+<div id="cmsStatsItems"></div>
+<button type="button" class="btn-luxury-action" id="cmsAddStatBtn"><i class="fas fa-plus"></i> Agregar Estadística</button>
 </div>
 <div class="cms-section-content" id="cms-proceso">
-<div class="form-field"><label>Título Sección Proceso</label><input type="text" id="cms_proc_title" class="cms-field" data-key="proc_title" /></div>
+<div class="form-field"><label>Badge</label><input type="text" id="cms_proc_badge" class="cms-field" data-key="badge" placeholder="Proceso" /></div>
+<div class="form-field"><label>Título</label><input type="text" id="cms_proc_title" class="cms-field" data-key="title" placeholder="¿Cómo <span class=\"highlight\">trabajamos</span>?" /></div>
+<div class="form-field"><label>CTA Texto</label><input type="text" id="cms_proc_cta_text" class="cms-field" data-key="cta_text" placeholder="Empezar" /></div>
+<div class="form-field"><label>CTA URL</label><input type="text" id="cms_proc_cta_url" class="cms-field" data-key="cta_url" placeholder="#contacto" /></div>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Pasos del Proceso</h4>
+<div id="cmsProcessSteps"></div>
+<button type="button" class="btn-luxury-action" id="cmsAddProcessStepBtn"><i class="fas fa-plus"></i> Agregar Paso</button>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Compromiso</h4>
+<div class="form-field"><label>Título</label><input type="text" id="cms_commitment_title" class="cms-field" data-key="commitment_title" placeholder="Compromiso Total" /></div>
+<div class="form-field"><label>Descripción</label><textarea id="cms_commitment_desc" class="cms-field" data-key="commitment_description" placeholder="Tu satisfacción es nuestra prioridad..."></textarea></div>
+<div class="form-field"><label>Firma</label><input type="text" id="cms_commitment_signature" class="cms-field" data-key="commitment_signature" placeholder="Bienenhaus" /></div>
 </div>
+<div class="cms-section-content" id="cms-contacto">
+<div class="form-field"><label>Badge</label><input type="text" id="cms_contact_badge" class="cms-field" data-key="badge" placeholder="Contacto" /></div>
+<div class="form-field"><label>Título</label><input type="text" id="cms_contact_title" class="cms-field" data-key="title" placeholder="Hablemos de tu <span class=\"highlight\">próximo hogar</span>" /></div>
+<div class="form-grid-2">
+<div class="form-field"><label>Teléfono Label</label><input type="text" id="cms_contact_phone_label" class="cms-field" data-key="phone_label" placeholder="Teléfono" /></div>
+<div class="form-field"><label>Teléfono Valor</label><input type="text" id="cms_contact_phone" class="cms-field" data-key="phone" placeholder="+54 11 0000-0000" /></div>
+</div>
+<div class="form-grid-2">
+<div class="form-field"><label>Email Label</label><input type="text" id="cms_contact_email_label" class="cms-field" data-key="email_label" placeholder="Email" /></div>
+<div class="form-field"><label>Email Valor</label><input type="email" id="cms_contact_email" class="cms-field" data-key="email" placeholder="info@bienenhaus.com.ar" /></div>
+</div>
+<div class="form-grid-2">
+</div>
+<div class="form-grid-2">
+<div class="form-field"><label>Horario Label</label><input type="text" id="cms_contact_schedule_label" class="cms-field" data-key="schedule_label" placeholder="Horario" /></div>
+<div class="form-field"><label>Horario Valor</label><input type="text" id="cms_contact_schedule" class="cms-field" data-key="schedule" placeholder="Lun - Vie: 9:00 - 18:00" /></div>
+</div>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Tiempo de Respuesta</h4>
+<div class="form-grid-2">
+<div class="form-field"><label>Días Laborables Label</label><input type="text" id="cms_contact_weekday_label" class="cms-field" data-key="weekday_label" placeholder="Lunes a Viernes" /></div>
+<div class="form-field"><label>Días Laborables Respuesta</label><input type="text" id="cms_contact_weekday_response" class="cms-field" data-key="weekday_response" placeholder="Menos de 2 horas" /></div>
+</div>
+<div class="form-grid-2">
+<div class="form-field"><label>Sábados Label</label><input type="text" id="cms_contact_saturday_label" class="cms-field" data-key="saturday_label" placeholder="Sábados" /></div>
+<div class="form-field"><label>Sábados Respuesta</label><input type="text" id="cms_contact_saturday_response" class="cms-field" data-key="saturday_response" placeholder="Menos de 4 horas" /></div>
+</div>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Redes Sociales</h4>
+<div class="form-grid-2">
+<div class="form-field"><label>Instagram</label><input type="url" id="cms_contact_instagram" class="cms-field" data-key="instagram" placeholder="https://instagram.com/bienenhaus" /></div>
+<div class="form-field"><label>Facebook</label><input type="url" id="cms_contact_facebook" class="cms-field" data-key="facebook" placeholder="https://facebook.com/bienenhaus" /></div>
+</div>
+<div class="form-grid-2">
+<div class="form-field"><label>LinkedIn</label><input type="url" id="cms_contact_linkedin" class="cms-field" data-key="linkedin" placeholder="https://linkedin.com/company/bienenhaus" /></div>
+<div class="form-field"><label>YouTube</label><input type="url" id="cms_contact_youtube" class="cms-field" data-key="youtube" placeholder="https://youtube.com/@bienenhaus" /></div>
+</div>
+</div>
+<div class="cms-section-content" id="cms-formulario">
+<div class="form-field"><label>Pregunta Inicial</label><input type="text" id="cms_form_initial_question" class="cms-field" data-key="initial_question" placeholder="¿Qué estás buscando?" /></div>
+<div class="form-field"><label>Opciones</label>
+<div id="cmsFormOptions"></div>
+<button type="button" class="btn-luxury-action btn-sm" id="cmsAddFormOptionBtn"><i class="fas fa-plus"></i> Agregar Opción</button>
+</div>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Campos del Formulario</h4>
+<div id="cmsFormFields"></div>
+<button type="button" class="btn-luxury-action" id="cmsAddFormFieldBtn"><i class="fas fa-plus"></i> Agregar Campo</button>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<div class="form-field"><label>Texto Inicial Select</label><input type="text" id="cms_form_select_initial" class="cms-field" data-key="select_initial_text" placeholder="Seleccionar..." /></div>
+<div class="form-field"><label>Texto Consentimiento</label><textarea id="cms_form_consent" class="cms-field" data-key="consent" placeholder="Acepto la política de privacidad y el tratamiento de mis datos."></textarea></div>
+<div class="form-field"><label>Texto Botón</label><input type="text" id="cms_form_button_text" class="cms-field" data-key="button_text" placeholder="Enviar Consulta" /></div>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Estado de Éxito</h4>
+<div class="form-field"><label>Título</label><input type="text" id="cms_form_success_title" class="cms-field" data-key="success_title" placeholder="¡Consulta Enviada!" /></div>
+<div class="form-field"><label>Descripción</label><textarea id="cms_form_success_desc" class="cms-field" data-key="success_description" placeholder="Nuestro equipo te contactará a la brevedad."></textarea></div>
+</div>
+<div class="cms-section-content" id="cms-navbar">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Items Desktop</h4>
+<div id="cmsNavbarItems"></div>
+<button type="button" class="btn-luxury-action" id="cmsAddNavbarItemBtn"><i class="fas fa-plus"></i> Agregar Item</button>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Items Mobile</h4>
+<div id="cmsNavbarMobileItems"></div>
+<button type="button" class="btn-luxury-action" id="cmsAddNavbarMobileItemBtn"><i class="fas fa-plus"></i> Agregar Item</button>
+</div>
+<div class="cms-section-content" id="cms-footer">
+<div class="form-field"><label>Descripción</label><textarea id="cms_footer_description" class="cms-field" data-key="description" placeholder="Inmobiliaria premium en Buenos Aires..."></textarea></div>
+<div class="form-grid-2">
+<div class="form-field"><label>Copyright</label><input type="text" id="cms_footer_copyright" class="cms-field" data-key="copyright" placeholder="Bienenhaus Propiedades" /></div>
+<div class="form-field"><label>Matrícula</label><input type="text" id="cms_footer_matricula" class="cms-field" data-key="matricula" placeholder="C.R.I. 183944" /></div>
+</div>
+<div class="form-grid-2">
+<div class="form-field"><label>Razón Social</label><input type="text" id="cms_footer_razon_social" class="cms-field" data-key="razon_social" placeholder="BIENENHAUS PROPIEDADES S.A.S." /></div>
+<div class="form-field"><label>CUIT</label><input type="text" id="cms_footer_cuit" class="cms-field" data-key="cuit" placeholder="30-00000000-0" /></div>
+</div>
+<div class="form-field"><label>Descripción</label><textarea id="cms_footer_description" class="cms-field" data-key="description" placeholder="Inmobiliaria premium en Buenos Aires..."></textarea></div>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Links Navegación</h4>
+<div id="cmsFooterNavLinks"></div>
+<button type="button" class="btn-luxury-action" id="cmsAddFooterNavLinkBtn"><i class="fas fa-plus"></i> Agregar Link</button>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Links Servicios</h4>
+<div id="cmsFooterServiceLinks"></div>
+<button type="button" class="btn-luxury-action" id="cmsAddFooterServiceLinkBtn"><i class="fas fa-plus"></i> Agregar Link</button>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Contacto Footer</h4>
+<div class="form-grid-2">
+<div class="form-field"><label>Teléfono</label><input type="text" id="cms_footer_phone" class="cms-field" data-key="phone" placeholder="+54 11 0000-0000" /></div>
+<div class="form-field"><label>Email</label><input type="email" id="cms_footer_email" class="cms-field" data-key="email" placeholder="info@bienenhaus.com.ar" /></div>
+</div>
+<div class="form-grid-2">
+<div class="form-field"><label>Horario</label><input type="text" id="cms_footer_schedule" class="cms-field" data-key="schedule" placeholder="Lun - Vie: 9:00 - 18:00" /></div>
+</div>
+<div class="form-field"><label>CUIT</label><input type="text" id="cms_footer_cuit" class="cms-field" data-key="cuit" placeholder="30-00000000-0" /></div>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Legal</h4>
+<div class="form-grid-2">
+<div class="form-field"><label>Privacidad</label><input type="text" id="cms_footer_privacy" class="cms-field" data-key="privacy" placeholder="Política de Privacidad" /></div>
+<div class="form-field"><label>Términos</label><input type="text" id="cms_footer_terms" class="cms-field" data-key="terms" placeholder="Términos y Condiciones" /></div>
+</div>
+<div class="form-grid-2">
+<div class="form-field"><label>FAQ</label><input type="text" id="cms_footer_faq" class="cms-field" data-key="faq" placeholder="FAQ" /></div>
+</div>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">CTA Footer</h4>
+<div class="form-field"><label>Texto</label><input type="text" id="cms_footer_cta_text" class="cms-field" data-key="cta_text" placeholder="Encontrá tu hogar" /></div>
+<div class="form-field"><label>URL</label><input type="text" id="cms_footer_cta_url" class="cms-field" data-key="cta_url" placeholder="#propiedades" /></div>
+</div>
+<div class="cms-section-content" id="cms-seo">
+<div class="form-field"><label>Title</label><input type="text" id="cms_seo_title" class="cms-field" data-key="title" placeholder="Bienenhaus Propiedades | Inmobiliaria Premium en Buenos Aires" /></div>
+<div class="form-field"><label>Description</label><textarea id="cms_seo_description" class="cms-field" data-key="description" placeholder="Inmobiliaria premium en Buenos Aires..."></textarea></div>
+<div class="form-field"><label>OG Title</label><input type="text" id="cms_seo_og_title" class="cms-field" data-key="og_title" placeholder="Bienenhaus Propiedades | Inmobiliaria Premium en Buenos Aires" /></div>
+<div class="form-field"><label>OG Description</label><textarea id="cms_seo_og_description" class="cms-field" data-key="og_description" placeholder="Departamentos, casas y ph en las zonas más exclusivas..."></textarea></div>
+<div class="form-field"><label>OG Image</label><input type="url" id="cms_seo_og_image" class="cms-field" data-key="og_image" placeholder="https://bienenhaus.com.ar/og-image.png" /></div>
+<div class="form-field"><label>OG URL</label><input type="url" id="cms_seo_og_url" class="cms-field" data-key="og_url" placeholder="https://bienenhaus.com.ar" /></div>
+<div class="form-grid-2">
+<div class="form-field"><label>OG Type</label><input type="text" id="cms_seo_og_type" class="cms-field" data-key="og_type" placeholder="website" /></div>
+<div class="form-field"><label>OG Locale</label><input type="text" id="cms_seo_og_locale" class="cms-field" data-key="og_locale" placeholder="es_AR" /></div>
+</div>
+<div class="form-grid-2">
+<div class="form-field"><label>OG Site Name</label><input type="text" id="cms_seo_og_site_name" class="cms-field" data-key="og_site_name" placeholder="Bienenhaus Propiedades" /></div>
+</div>
+<hr style="margin:16px 0; border-color:var(--border-subtle);">
+<h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Twitter Card</h4>
+<div class="form-field"><label>Twitter Card</label><input type="text" id="cms_seo_twitter_card" class="cms-field" data-key="twitter_card" placeholder="summary_large_image" /></div>
+<div class="form-field"><label>Twitter Title</label><input type="text" id="cms_seo_twitter_title" class="cms-field" data-key="twitter_title" placeholder="Bienenhaus Propiedades | Inmobiliaria Premium en Buenos Aires" /></div>
+<div class="form-field"><label>Twitter Description</label><textarea id="cms_seo_twitter_description" class="cms-field" data-key="twitter_description" placeholder="Departamentos, casas y ph en las zonas más exclusivas..."></textarea></div>
+<div class="form-field"><label>Twitter Image</label><input type="url" id="cms_seo_twitter_image" class="cms-field" data-key="twitter_image" placeholder="https://bienenhaus.com.ar/og-image.png" /></div>
 </div>
 </section>
 <!-- 7. PORTALES & APIS -->
@@ -748,7 +934,6 @@ LAYOUT PRINCIPAL
 </div>
 <div class="form-grid-2">
 <div class="form-field"><label>Teléfono</label><input type="text" id="cfg_phone" class="cfg-field" data-key="phone" placeholder="+54 11 0000-0000" /></div>
-<div class="form-field"><label>Dirección / Sucursal</label><input type="text" id="cfg_address" class="cfg-field" data-key="address" placeholder="Av. Corrientes 1234, CABA" /></div>
 </div>
 <div class="form-field"><label>Horario de Atención</label><input type="text" id="cfg_schedule" class="cfg-field" data-key="schedule" placeholder="Lun - Vie: 9:00 - 18:00" /></div>
 </div>
@@ -958,21 +1143,32 @@ LAYOUT PRINCIPAL
         <option value="low">🔵 Baja</option>
         <option value="info">⚪ Info</option>
       </select>
+      <select id="supTimezoneFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:150px;" title="Zona horaria para mostrar fechas">
+        <option value="America/Argentina/Buenos_Aires">🇦🇷 AR (Buenos Aires)</option>
+        <option value="UTC">🌐 UTC</option>
+      </select>
     </div>
     <div class="toolbar-group" style="display:flex; gap:8px;">
       <button type="button" class="btn-luxury-action" id="supRefreshBtn"><i class="fas fa-arrows-rotate"></i> Actualizar</button>
       <button type="button" class="status-pill active" id="supAutoRefreshBtn" style="background:rgba(31,200,195,0.15); color:var(--accent);"><i class="fas fa-broadcast-tower"></i> <span id="supAutoRefreshText">Realtime ON</span></button>
-      <button type="button" class="status-pill pending" id="supExportBtn"><i class="fas fa-file-export"></i> Exportar CSV</button>
+      <button type="button" class="status-pill pending" id="supExportBtn" onclick="exportSupOverviewCSV()"><i class="fas fa-file-export"></i> Exportar CSV</button>
+      <button type="button" class="status-pill pending" id="supExportAlertsBtn" style="display:none;" onclick="exportSupAlertsCSV()"><i class="fas fa-file-export"></i> Exportar Alertas</button>
+      <button type="button" class="status-pill pending" id="supExportUsersBtn" style="display:none;" onclick="exportSupUsersCSV()"><i class="fas fa-file-export"></i> Exportar Usuarios</button>
+      <button type="button" class="status-pill pending" id="supExportModulesBtn" style="display:none;" onclick="exportSupModulesCSV()"><i class="fas fa-file-export"></i> Exportar Módulos</button>
+      <button type="button" class="btn-action" id="supAuditLoadMore" style="display:none;" onclick="loadMoreSupAudit()"><i class="fas fa-chevron-down"></i> Cargar más</button>
+      <button type="button" class="btn-action" id="supAlertsLoadMore" style="display:none;" onclick="loadMoreSupAlerts()"><i class="fas fa-chevron-down"></i> Cargar más</button>
     </div>
   </div>
 
-  <!-- Sub-tabs: 7 vistas -->
+  <!-- Sub-tabs: 9 vistas -->
   <div class="supervision-subtabs" style="display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid var(--border-subtle); padding-bottom:4px; overflow-x:auto;">
     <button class="sup-subtab is-active" data-view="overview" style="padding:10px 16px; background:rgba(31,200,195,0.1); color:var(--accent); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Resumen</button>
+    <button class="sup-subtab" data-view="executive" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Ejecutivo</button>
     <button class="sup-subtab" data-view="activity" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Actividad</button>
     <button class="sup-subtab" data-view="users" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Usuarios</button>
     <button class="sup-subtab" data-view="modules" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Módulos</button>
     <button class="sup-subtab" data-view="alerts" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Alertas</button>
+    <button class="sup-subtab" data-view="anomalies" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Anomalías</button>
     <button class="sup-subtab" data-view="audit" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Auditoría</button>
     <button class="sup-subtab" data-view="rules" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Reglas</button>
   </div>
@@ -1039,8 +1235,135 @@ LAYOUT PRINCIPAL
     </div>
   </div>
 
+  <!-- VISTA EJECUTIVA: DASHBOARD EJECUTIVO -->
+  <div class="sup-view" id="supView-executive" style="display:none;">
+    <header class="tab-header" style="margin-bottom:16px;">
+      <h2 style="font-family:var(--font-heading); font-size:24px; color:#fff; margin:0;">Dashboard Ejecutivo</h2>
+      <p style="color:var(--text-muted); font-size:13px; margin:4px 0 0;">KPIs cruzados · Tendencias · Alertas estratégicas</p>
+    </header>
+
+    <!-- Toolbar ejecutivo -->
+    <div class="supervision-toolbar" style="display:flex; gap:12px; flex-wrap:wrap; margin:16px 0; padding:16px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px;">
+      <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">
+        <label style="font-size:12px; color:var(--text-dim);">Desde</label>
+        <input type="date" id="execFromDate" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px;">
+      </div>
+      <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">
+        <label style="font-size:12px; color:var(--text-dim);">Hasta</label>
+        <input type="date" id="execToDate" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px;">
+      </div>
+      <div style="flex:1;"></div>
+      <div class="toolbar-group" style="display:flex; gap:8px;">
+        <button type="button" class="btn-luxury-action" id="execRefreshBtn"><i class="fas fa-arrows-rotate"></i> Actualizar</button>
+        <button type="button" class="status-pill pending" id="execExportBtn"><i class="fas fa-file-export"></i> Exportar CSV</button>
+      </div>
+    </div>
+
+    <!-- KPIs Principales -->
+    <div class="kpi-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:24px;">
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Conversión Lead→Cierre</div>
+        <div id="execConvRate" style="font-family:var(--font-heading); font-size:36px; color:var(--accent); font-weight:700;">—</div>
+        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">Lead→Visita→Cierre</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Tiempo Medio Cierre</div>
+        <div id="execAvgCloseTime" style="font-family:var(--font-heading); font-size:36px; color:#3B82F6; font-weight:700;">—</div>
+        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">Días desde lead→cierre</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Valor Cartera Activa</div>
+        <div id="execPortfolioValue" style="font-family:var(--font-heading); font-size:36px; color:var(--success); font-weight:700;">—</div>
+        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">USD en propiedades publicadas</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">ROI Marketing</div>
+        <div id="execMarketingROI" style="font-family:var(--font-heading); font-size:36px; color:#F59E0B; font-weight:700;">—</div>
+        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">Leads/USD invertido</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Productividad Brokers</div>
+        <div id="execBrokerProd" style="font-family:var(--font-heading); font-size:36px; color:#8B5CF6; font-weight:700;">—</div>
+        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">Cierres/broker activo</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">SLA Respuesta</div>
+        <div id="execSLAResponse" style="font-family:var(--font-heading); font-size:36px; color:#1FC8C3; font-weight:700;">—</div>
+        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">% leads contactados <24h</div>
+      </div>
+    </div>
+
+    <!-- Tendencias y Rankings -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(400px,1fr)); gap:16px; margin-bottom:24px;">
+      <!-- Tendencia Mensual -->
+      <div class="exec-chart-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Tendencia 12 Meses</h3>
+        <div id="execTrendChart" style="height:200px;">
+          <p style="color:var(--text-dim); font-size:12px; text-align:center; padding:40px;">Cargando tendencia...</p>
+        </div>
+      </div>
+
+      <!-- Top Oportunidades -->
+      <div class="exec-opportunities" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Top Oportunidades</h3>
+        <div id="execTopOpps" style="font-size:13px; color:var(--text-secondary);">
+          <p style="color:var(--text-dim); text-align:center; padding:20px;">Cargando...</p>
+        </div>
+      </div>
+
+      <!-- Alertas Estratégicas -->
+      <div class="exec-alerts" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Alertas Estratégicas</h3>
+        <div id="execStrategicAlerts" style="font-size:13px; color:var(--text-secondary);">
+          <p style="color:var(--text-dim); text-align:center; padding:20px;">Cargando...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabla Resumen Mensual -->
+    <div class="exec-monthly-table" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; overflow:hidden;">
+      <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px; padding:16px 20px; border-bottom:1px solid var(--border-subtle);">Resumen Mensual</h3>
+      <table style="width:100%; border-collapse:collapse; font-size:12px;">
+        <thead style="background:rgba(255,255,255,0.03);">
+          <tr>
+            <th style="padding:12px 16px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Mes</th>
+            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Leads</th>
+            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Visitas</th>
+            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Cierres</th>
+            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Volumen (USD)</th>
+            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Conv. %</th>
+            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">T. Cierre (días)</th>
+            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Ticket Prom.</th>
+          </tr>
+        </thead>
+        <tbody id="execMonthlyTableBody">
+          <tr><td colspan="8" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- VISTA 2: ACTIVIDAD EN VIVO -->
   <div class="sup-view" id="supView-activity" style="display:none;">
+    <div style="display:flex; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+      <div class="toolbar-group" style="display:flex; gap:8px; align-items:center; flex:1; min-width:250px;">
+        <label style="font-size:12px; color:var(--text-dim);">Buscar</label>
+        <input type="text" id="supActivitySearch" placeholder="Filtrar por usuario, acción, módulo, metadata..." style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; width:100%;">
+      </div>
+      <div style="flex:1;"></div>
+      <div class="toolbar-group" style="display:flex; gap:8px;">
+        <select id="supActivitySeverityFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:150px;">
+          <option value="">Todas las severidades</option>
+          <option value="critical">🔴 Crítica</option>
+          <option value="error">🟠 Error</option>
+          <option value="high">🟠 Alta</option>
+          <option value="medium">🟡 Media</option>
+          <option value="low">🔵 Baja</option>
+          <option value="info">⚪ Info</option>
+          <option value="success">✅ Éxito</option>
+        </select>
+      </div>
+    </div>
     <div class="activity-feed" style="max-height:600px; overflow-y:auto; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:16px;">
       <div id="activityList" style="font-family:monospace; font-size:12px; line-height:1.8;">
         <div style="color:var(--text-dim); text-align:center; padding:40px;">Conectando Realtime…</div>
@@ -1140,9 +1463,69 @@ LAYOUT PRINCIPAL
           </tr>
         </thead>
         <tbody id="supAlertsTableBody">
-          <tr><td colspan="9" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td></tr>
+          <tr><td colspan="10" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td></tr>
         </tbody>
       </table>
+    </div>
+    <div style="display:flex; justify-content:center; margin-top:12px;">
+      <button type="button" class="btn-action" id="supAlertsLoadMore" style="display:none;" onclick="loadMoreSupAlerts()"><i class="fas fa-chevron-down"></i> Cargar más</button>
+    </div>
+  </div>
+
+  <!-- VISTA 6: ANOMALÍAS ESTADÍSTICAS -->
+  <div class="sup-view" id="supView-anomalies" style="display:none;">
+    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+      <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">
+        <label style="font-size:12px; color:var(--text-dim);">Ventana</label>
+        <select id="anomTimeWindow" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px;">
+          <option value="1 hour">1 hora</option>
+          <option value="15 minutes">15 min</option>
+          <option value="10 minutes">10 min</option>
+        </select>
+      </div>
+      <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">
+        <label style="font-size:12px; color:var(--text-dim);">Severidad mínima</label>
+        <select id="anomSeverityFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px;">
+          <option value="">Todas</option>
+          <option value="critical">🔴 Crítica</option>
+          <option value="high">🟠 Alta</option>
+          <option value="medium">🟡 Media</option>
+          <option value="low">🔵 Baja</option>
+          <option value="info">⚪ Info</option>
+        </select>
+      </div>
+      <div style="flex:1;"></div>
+      <div class="toolbar-group" style="display:flex; gap:8px;">
+        <button type="button" class="btn-luxury-action" id="anomRefreshBtn"><i class="fas fa-arrows-rotate"></i> Actualizar</button>
+        <button type="button" class="status-pill pending" id="anomExportBtn"><i class="fas fa-file-export"></i> Exportar CSV</button>
+      </div>
+    </div>
+
+    <div class="anomalies-table-wrapper" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; overflow:hidden;">
+      <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+        <thead style="background:rgba(255,255,255,0.03);">
+          <tr>
+            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Severidad</th>
+            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Módulo</th>
+            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Usuario</th>
+            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Acción</th>
+            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Métrica</th>
+            <th style="padding:8px 10px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Ventana</th>
+            <th style="padding:8px 10px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Observado</th>
+            <th style="padding:8px 10px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Esperado</th>
+            <th style="padding:8px 10px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Z-Score</th>
+            <th style="padding:8px 10px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Percentil</th>
+            <th style="padding:8px 10px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Estado</th>
+            <th style="padding:8px 10px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="anomTableBody">
+          <tr><td colspan="12" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="display:flex; justify-content:center; margin-top:12px;">
+      <button type="button" class="btn-action" id="anomLoadMore" style="display:none;" onclick="loadMoreAnomalies()"><i class="fas fa-chevron-down"></i> Cargar más</button>
     </div>
   </div>
 
@@ -1225,6 +1608,8 @@ LAYOUT PRINCIPAL
             <div class="form-field"><label>Umbral *</label><input type="number" name="threshold" required min="0" value="30" /></div>
             <div class="form-field"><label>Ventana *</label><select name="window" id="supRuleWindow"><option value="1 hour">1 hora</option><option value="10 minutes">10 min</option><option value="15 minutes">15 min</option><option value="30 minutes">30 min</option><option value="24 hours">24 horas</option></select></div>
             <div class="form-field"><label>Cooldown (min) *</label><input type="number" name="cooldown_minutes" required min="0" value="60" /></div>
+            <div class="form-field"><label>Umbral Sigma *</label><input type="number" name="sigma_threshold" step="0.1" min="0.5" max="5" value="2.5" title="Desviaciones estándar para activar alerta" /></div>
+            <div class="form-field"><label>Percentil *</label><input type="number" name="percentile_threshold" step="0.1" min="50" max="99.9" value="95" title="Percentil para activar alerta (ej: 95 = p95)" /></div>
             <div class="form-field" style="margin-top:14px;">
               <label class="pf-toggle" for="supRuleEnabled"><input type="checkbox" name="enabled" id="supRuleEnabled" checked /><span class="toggle-slider"></span><span class="toggle-label">Habilitada</span></label>
             </div>
@@ -1232,6 +1617,7 @@ LAYOUT PRINCIPAL
           <div class="form-field"><label>Filtro JSON (opcional)</label><textarea name="filter_json" id="supRuleFilterJson" rows="4" placeholder='{"field":"changed_fields","contains":"price_usd"}' style="font-family:monospace; font-size:11px;"></textarea></div>
           <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
             <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+            <button type="button" class="btn-action" id="supRuleSimulateBtn" style="background:rgba(59,130,246,0.15); color:#3B82F6; border:1px solid rgba(59,130,246,0.3);" onclick="simulateSupRule()"><i class="fas fa-flask"></i> Simular</button>
             <button type="submit" class="btn-luxury-action" id="supRuleSaveBtn">Guardar Regla</button>
           </div>
         </form>

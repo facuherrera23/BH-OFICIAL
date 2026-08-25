@@ -3,44 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bienenhaus Propiedades — Inmobiliaria Premium en Buenos Aires</title>
-  <meta name="description" content="Inmobiliaria premium en Buenos Aires. Departamentos, casas, ph y propiedades en venta y alquiler en las zonas más exclusivas. Asesoramiento personalizado y tasaciones profesionales.">
-  <meta name="keywords" content="inmobiliaria Buenos Aires, departamentos venta, casas venta, ph alquiler, propiedades exclusivas, tasaciones, Bienenhaus">
+  <title>Bienenhaus Propiedades — Inmobiliaria</title>
+  <meta name="description" content="Inmobiliaria . Departamentos, casas, ph y propiedades en venta y alquiler en las zonas más exclusivas. Asesoramiento personalizado y tasaciones profesionales.">
+  <meta name="keywords" content="inmobiliaria, departamentos venta, casas venta, ph alquiler, propiedades exclusivas, tasaciones, Bienenhaus">
   <meta name="theme-color" content="#020305">
-  <meta property="og:title" content="Bienenhaus Propiedades — Inmobiliaria Premium en Buenos Aires">
-  <meta property="og:description" content="Departamentos, casas y ph en las zonas más exclusivas de Buenos Aires. Asesoramiento personalizado por expertos del mercado inmobiliario.">
+  <meta property="og:title" content="Bienenhaus Propiedades — Inmobiliaria">
+  <meta property="og:description" content="Departamentos, casas. Asesoramiento personalizado por expertos del mercado inmobiliario.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://bienenhaus.com.ar">
   <meta property="og:image" content="https://bienenhaus.com.ar/og-image.png">
   <meta property="og:locale" content="es_AR">
   <meta property="og:site_name" content="Bienenhaus Propiedades">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Bienenhaus Propiedades — Inmobiliaria Premium en Buenos Aires">
-  <meta name="twitter:description" content="Departamentos, casas y ph en las zonas más exclusivas de Buenos Aires. Tasaciones y asesoramiento personalizado.">
+  <meta name="twitter:title" content="Bienenhaus Propiedades — Inmobiliaria Premium en Córdoba">
+  <meta name="twitter:description" content="Departamentos, casas y ph en las zonas más exclusivas de Córdoba. Tasaciones y asesoramiento personalizado.">
   <meta name="twitter:image" content="https://bienenhaus.com.ar/og-image.png">
   <link rel="canonical" href="https://bienenhaus.com.ar">
+  <link rel="icon" href="/assets/images/favicon.ico">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "RealEstateAgent",
     "name": "Bienenhaus Propiedades",
-    "description": "Inmobiliaria premium en Buenos Aires. Departamentos, casas, ph y propiedades en venta y alquiler.",
+    "description": "Inmobiliaria . Departamentos, casas, ph y propiedades en venta y alquiler.",
     "url": "https://bienenhaus.com.ar",
     "telephone": "+54-11-0000-0000",
-    "address": {
-      "@type": "PostalAddress",
-      "addressLocality": "Buenos Aires",
-      "addressRegion": "CABA",
-      "addressCountry": "AR"
-    },
-    "geo": {
-      "@type": "GeoCoordinates",
-      "latitude": "-34.6037",
-      "longitude": "-58.3816"
-    },
     "areaServed": {
       "@type": "City",
-      "name": "Buenos Aires"
+      "name": "Cordoba"
     },
     "priceRange": "$$",
     "openingHours": "Mo-Fr 09:00-18:00",
@@ -57,7 +47,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-  <link rel="stylesheet" href="assets/css/landing.css">
+  <link rel="stylesheet" href="assets/css/landing.css?v=8">
 </head>
 <body class="is-loading">
 
@@ -93,12 +83,12 @@
         </span>
       </a>
 
-      <div class="nav-menu" role="menubar">
-        <a href="#propiedades" class="is-active" role="menuitem">Propiedades</a>
-        <a href="#servicios" role="menuitem">Servicios</a>
-        <a href="#equipo" role="menuitem">Equipo</a>
-        <a href="#proceso" role="menuitem">Proceso</a>
-        <a href="#contacto" role="menuitem">Contacto</a>
+      <div class="nav-menu desktop-nav-items" role="menubar">
+        <a href="#propiedades" class="is-active nav-item" role="menuitem">Propiedades</a>
+        <a href="#servicios" class="nav-item" role="menuitem">Servicios</a>
+        <a href="#equipo" class="nav-item" role="menuitem">Equipo</a>
+        <a href="#proceso" class="nav-item" role="menuitem">Proceso</a>
+        <a href="#contacto" class="nav-item" role="menuitem">Contacto</a>
       </div>
 
       <div class="nav-actions">
@@ -119,12 +109,14 @@
 
   <!-- Mobile Menu -->
   <div class="mobile-menu" id="mobileMenu" role="dialog" aria-label="Menú móvil">
-    <a href="#propiedades">Propiedades</a>
-    <a href="#servicios">Servicios</a>
-    <a href="#equipo">Equipo</a>
-    <a href="#proceso">Proceso</a>
-    <a href="#contacto">Contacto</a>
-    <a href="admin.html">Panel Admin</a>
+    <div class="mobile-nav-items">
+      <a href="#propiedades" class="nav-item">Propiedades</a>
+      <a href="#servicios" class="nav-item">Servicios</a>
+      <a href="#equipo" class="nav-item">Equipo</a>
+      <a href="#proceso" class="nav-item">Proceso</a>
+      <a href="#contacto" class="nav-item">Contacto</a>
+      <a href="admin.html" class="nav-item">Panel Admin</a>
+    </div>
   </div>
 
   <!-- Hero -->
@@ -141,14 +133,14 @@
         <div class="hero-deco" aria-hidden="true"></div>
         <div class="eyebrow-pill">
           <span class="pulse-live" aria-hidden="true"></span>
-          Inmobiliaria Premium en Buenos Aires
+          Inmobiliaria Premium en Córdoba
         </div>
         <h1 class="hero-title">
           Encontramos el<br>
           hogar que <span class="highlight">merecés</span>
         </h1>
         <p class="hero-desc">
-          Departamentos, casas y ph en las zonas más exclusivas de Buenos Aires. Asesoramiento personalizado y procesos transparentes.
+          Departamentos, casas y ph en las zonas más exclusivas de Córdoba. Asesoramiento personalizado y procesos transparentes.
         </p>
 
         <div class="hero-divider" aria-hidden="true">
@@ -157,10 +149,10 @@
         </div>
 
         <div class="hero-actions">
-          <a href="#propiedades" class="btn-primary">
+          <a href="#propiedades" class="btn-primary hero-cta">
             Ver Propiedades <i class="fas fa-arrow-right"></i>
           </a>
-          <button class="btn-video" id="openVideoModal" aria-label="Ver video institucional">
+          <button class="btn-video hero-video-cta" id="openVideoModal" aria-label="Ver video institucional">
             <span class="play-circle"><i class="fas fa-play"></i></span>
             Ver Video
           </button>
@@ -251,9 +243,54 @@
             <span class="catalog-label">Catálogo</span>
             <h2 class="catalog-title">Propiedades <span class="highlight">disponibles</span></h2>
           </div>
-          <a href="#contacto" class="btn-outline">
+          <a href="#contacto" class="btn-outline catalog-cta">
             Contactar Asesor <i class="fas fa-arrow-right"></i>
           </a>
+        </div>
+
+        <div class="search-bar" role="search" aria-label="Buscar propiedades">
+          <div class="search-group search-group--query">
+            <label for="catalogSearchInput">Buscar</label>
+            <div class="search-input-wrapper">
+              <i class="fas fa-search" aria-hidden="true"></i>
+              <input type="text" id="catalogSearchInput" placeholder="Buscar propiedad..." autocomplete="off" />
+            </div>
+          </div>
+          <div class="search-group">
+            <label for="searchOperacion">Operación</label>
+            <select id="searchOperacion">
+              <option value="">Todas</option>
+              <option value="venta">Venta</option>
+              <option value="alquiler">Alquiler</option>
+            </select>
+          </div>
+          <div class="search-group">
+            <label for="searchZona">Ubicación</label>
+            <select id="searchZona">
+              <option value="">Todas las zonas</option>
+            </select>
+          </div>
+          <div class="search-group">
+            <label for="searchPrecio">Precio</label>
+            <select id="searchPrecio">
+              <option value="">Todos los precios</option>
+              <option value="0-100000">Hasta USD 100.000</option>
+              <option value="100000-200000">USD 100.000 – 200.000</option>
+              <option value="200000-500000">USD 200.000 – 500.000</option>
+              <option value="500000-">USD 500.000+</option>
+            </select>
+          </div>
+          <div class="search-group">
+            <label id="bedroomsLabel">Dormitorios</label>
+            <div class="bedroom-pills" role="group" aria-labelledby="bedroomsLabel">
+              <button type="button" class="bed-pill active" data-beds="" aria-pressed="true">Todas</button>
+              <button type="button" class="bed-pill" data-beds="1" aria-pressed="false">1</button>
+              <button type="button" class="bed-pill" data-beds="2" aria-pressed="false">2</button>
+              <button type="button" class="bed-pill" data-beds="3" aria-pressed="false">3</button>
+              <button type="button" class="bed-pill" data-beds="4" aria-pressed="false">4+</button>
+            </div>
+          </div>
+          <button type="button" class="btn-search" id="searchBtn">BUSCAR <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
         </div>
 
         <div class="filters-section">
@@ -283,6 +320,7 @@
           <span class="services-label">Servicios</span>
           <h2 class="services-title">¿Qué podemos <span class="highlight">hacer</span> por vos?</h2>
           <p class="services-desc">Un equipo dedicado a brindarte la mejor experiencia inmobiliaria en Buenos Aires.</p>
+          <a href="#contacto" class="btn-primary services-cta">Saber más <i class="fas fa-arrow-right"></i></a>
         </div>
 
         <div class="services-grid">
@@ -339,7 +377,7 @@
             <span class="team-label">Nuestro Equipo</span>
             <h2 class="team-title">Conocé a <span class="highlight">nuestros</span> asesores</h2>
           </div>
-          <a href="#contacto" class="btn-team">
+          <a href="#contacto" class="btn-team team-cta">
             Contactar <i class="fas fa-arrow-right"></i>
           </a>
         </div>
@@ -354,7 +392,7 @@
     <section class="stats-premium" id="estadisticas" data-animate>
       <div class="container">
         <div class="services-header">
-          <span class="services-label">Estadísticas</span>
+          <span class="services-label stats-label">Estadísticas</span>
           <h2 class="services-title stats-title">Números que <span class="highlight">hablan</span></h2>
           <p class="services-desc">Más de 15 años de trayectoria respaldados por resultados reales.</p>
         </div>
@@ -389,9 +427,9 @@
         <div class="stats-cta" data-animate>
           <div class="stats-cta-icon">
             <i class="fas fa-phone-volume"></i>
-            <span>¿Tenés alguna consulta?</span>
+            <span class="stats-cta-label">¿Tenés alguna consulta?</span>
           </div>
-          <a href="#contacto" class="btn-stats">
+          <a href="#contacto" class="btn-stats stats-cta-button">
             Contactar Ahora <i class="fas fa-arrow-right"></i>
           </a>
         </div>
@@ -406,7 +444,7 @@
             <span class="process-label">Proceso</span>
             <h2 class="process-title">¿Cómo <span class="highlight">trabajamos</span>?</h2>
           </div>
-          <a href="#contacto" class="btn-process">
+          <a href="#contacto" class="btn-process process-cta">
             Empezar <i class="fas fa-arrow-right"></i>
           </a>
         </div>
@@ -423,7 +461,7 @@
             <div class="timeline-dot"></div>
           </div>
 
-          <div class="steps-grid">
+          <div class="process-steps">
             <div class="step-card" data-animate>
               <div class="step-number">01</div>
               <div class="step-icon"><i class="fas fa-comments"></i></div>
@@ -460,9 +498,9 @@
         <div class="commitment-bar" data-animate>
           <div class="commitment-icon">
             <i class="fas fa-handshake"></i>
-            <span>Compromiso Total</span>
+            <span class="commitment-title">Compromiso Total</span>
           </div>
-          <p class="commitment-text">Tu satisfacción es nuestra prioridad. Trabajamos con transparencia, honestidad y profesionalismo en cada operación.</p>
+          <p class="commitment-description">Tu satisfacción es nuestra prioridad. Trabajamos con transparencia, honestidad y profesionalismo en cada operación.</p>
           <div class="commitment-signature">Bienenhaus</div>
         </div>
       </div>
@@ -484,24 +522,24 @@
             <div class="contact-info-item">
               <div class="icon"><i class="fas fa-phone"></i></div>
               <div>
-                <div class="label">Teléfono</div>
-                <div class="value">+54 11 0000-0000</div>
+                <div class="label contact-phone-label">Teléfono</div>
+                <div class="value contact-phone">+54 11 0000-0000</div>
               </div>
             </div>
 
             <div class="contact-info-item">
               <div class="icon"><i class="fas fa-envelope"></i></div>
               <div>
-                <div class="label">Email</div>
-                <div class="value">info@bienenhaus.com.ar</div>
+                <div class="label contact-email-label">Email</div>
+                <div class="value contact-email">info@bienenhaus.com.ar</div>
               </div>
             </div>
 
             <div class="contact-info-item">
               <div class="icon"><i class="fas fa-clock"></i></div>
               <div>
-                <div class="label">Horario</div>
-                <div class="value">Lun - Vie: 9:00 - 18:00</div>
+                <div class="label contact-schedule-label">Horario</div>
+                <div class="value contact-schedule">Lun - Vie: 9:00 - 18:00</div>
               </div>
             </div>
 
@@ -509,12 +547,12 @@
               <div class="response-label"><i class="fas fa-bolt"></i> Tiempo de Respuesta</div>
               <div class="response-hours">
                 <div class="hour-block">
-                  <div class="day">Lunes a Viernes</div>
-                  <div class="time">Menos de 2 horas</div>
+                  <div class="day contact-weekday-label">Lunes a Viernes</div>
+                  <div class="time contact-weekday-response">Menos de 2 horas</div>
                 </div>
                 <div class="hour-block">
-                  <div class="day">Sábados</div>
-                  <div class="time">Menos de 4 horas</div>
+                  <div class="day contact-saturday-label">Sábados</div>
+                  <div class="time contact-saturday-response">Menos de 4 horas</div>
                 </div>
               </div>
             </div>
@@ -537,43 +575,33 @@
             </div>
 
             <form id="contactForm">
-              <span class="form-step-label">¿Qué estás buscando?</span>
-              <div class="form-pills">
+              <span class="form-initial-question">¿Qué estás buscando?</span>
+              <div class="form-options">
                 <button type="button" class="form-pill" data-value="comprar">Comprar</button>
                 <button type="button" class="form-pill" data-value="vender">Vender</button>
                 <button type="button" class="form-pill" data-value="alquilar">Alquilar</button>
                 <button type="button" class="form-pill" data-value="invertir">Invertir</button>
               </div>
 
-              <div class="form-group">
-                <label for="nombre">Nombre completo <span class="required">*</span></label>
-                <div class="input-wrapper">
-                  <i class="fas fa-user input-icon"></i>
+              <div class="form-fields">
+                <div class="form-field">
+                  <label>Nombre completo <span class="required">*</span></label>
                   <input type="text" id="nombre" name="nombre" placeholder="Tu nombre" required>
                 </div>
-              </div>
 
-              <div class="form-group">
-                <label for="email">Email <span class="required">*</span></label>
-                <div class="input-wrapper">
-                  <i class="fas fa-envelope input-icon"></i>
+                <div class="form-field">
+                  <label>Email <span class="required">*</span></label>
                   <input type="email" id="email" name="email" placeholder="tu@email.com" required>
                 </div>
-              </div>
 
-              <div class="form-group">
-                <label for="telefono">Teléfono</label>
-                <div class="input-wrapper">
-                  <i class="fas fa-phone input-icon"></i>
+                <div class="form-field">
+                  <label>Teléfono</label>
                   <input type="tel" id="telefono" name="telefono" placeholder="+54 11 0000-0000">
                 </div>
-              </div>
 
-              <div class="form-group">
-                <label for="tipo_propiedad">Tipo de propiedad</label>
-                <div class="input-wrapper">
-                  <i class="fas fa-home input-icon"></i>
-                  <select id="tipo_propiedad" name="tipo_propiedad">
+                <div class="form-field">
+                  <label>Tipo de propiedad</label>
+                  <select id="tipo_propiedad" name="tipo_propiedad" class="form-select">
                     <option value="">Seleccionar...</option>
                     <option value="departamento">Departamento</option>
                     <option value="casa">Casa</option>
@@ -582,29 +610,24 @@
                     <option value="local">Local Comercial</option>
                   </select>
                 </div>
-              </div>
 
-              <div class="form-group">
-                <label for="presupuesto">Presupuesto estimado (USD)</label>
-                <div class="input-wrapper">
-                  <i class="fas fa-dollar-sign input-icon"></i>
+                <div class="form-field">
+                  <label>Presupuesto estimado (USD)</label>
                   <input type="text" id="presupuesto" name="presupuesto" placeholder="Ej: 150000">
                 </div>
-              </div>
 
-              <div class="form-group">
-                <label for="mensaje">Mensaje</label>
-                <div class="input-wrapper">
+                <div class="form-field">
+                  <label>Mensaje</label>
                   <textarea id="mensaje" name="mensaje" placeholder="Contanos sobre lo que buscás..." rows="4"></textarea>
+                </div>
+
+                <div class="form-field checkbox-group">
+                  <input type="checkbox" id="consent" name="consent" required>
+                  <label for="consent" class="form-consent">Acepto la política de privacidad y el tratamiento de mis datos.</label>
                 </div>
               </div>
 
-              <div class="form-group checkbox-group">
-                <input type="checkbox" id="consent" name="consent" required>
-                <label for="consent">Acepto la política de privacidad y el tratamiento de mis datos.</label>
-              </div>
-
-              <button type="submit" class="btn-submit">
+              <button type="submit" class="btn-submit form-submit-btn">
                 <span class="btn-text">Enviar Consulta</span>
                 <i class="fas fa-paper-plane"></i>
                 <span class="spinner"></span>
@@ -614,7 +637,7 @@
             <div class="submit-success" id="submitSuccess">
               <div class="success-icon"><i class="fas fa-check-circle"></i></div>
               <h3 class="success-title">¡Consulta Enviada!</h3>
-              <p class="success-text">Nuestro equipo te contactará a la brevedad.</p>
+              <p class="success-description">Nuestro equipo te contactará a la brevedad.</p>
             </div>
           </div>
         </div>
@@ -637,9 +660,9 @@
       <div class="footer-hero">
         <span class="footer-hero-label">Bienenhaus Propiedades</span>
         <h2 class="footer-hero-title">Encontramos el<br>hogar que <span class="highlight">merecés</span></h2>
-        <p class="footer-hero-desc">Departamentos, casas y ph en las zonas más exclusivas de Buenos Aires.</p>
+        <p class="footer-hero-desc">Departamentos, casas y ph en las zonas más exclusivas de Córdoba.</p>
         <div class="footer-hero-actions">
-          <a href="#propiedades" class="btn-primary">Ver Propiedades <i class="fas fa-arrow-right"></i></a>
+          <a href="#propiedades" class="btn-primary footer-cta" data-cta-text="Ver Propiedades" data-cta-url="#propiedades">Ver Propiedades <i class="fas fa-arrow-right"></i></a>
           <a href="#contacto" class="btn-outline">Contactar Asesor</a>
         </div>
       </div>
@@ -648,19 +671,21 @@
 
       <div class="footer-grid">
         <div class="footer-col">
-          <div class="footer-logo-sub">BIENENHAUS PROPIEDADES ®</div>
+          <div class="footer-logo-sub footer-matricula">BIENENHAUS PROPIEDADES ®</div>
           <span class="footer-logo-main">BIENENHAUS</span>
-          <p class="footer-desc">Inmobiliaria premium en Buenos Aires. Más de 15 años de experiencia brindando asesoramiento personalizado.</p>
+          <p class="footer-desc footer-description">Inmobiliaria . Más de 15 años de experiencia brindando asesoramiento personalizado.</p>
+          <img src="assets/img/logo-bh.png" alt="Bienenhaus Logo" class="footer-logo-img">
           <div class="footer-social">
             <a href="https://instagram.com/" target="_blank" rel="noopener" class="social-circle" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
             <a href="https://facebook.com/" target="_blank" rel="noopener" class="social-circle" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
             <a href="https://linkedin.com/" target="_blank" rel="noopener" class="social-circle" aria-label="LinkedIn"><i class="fab fa-linkedin-in"></i></a>
+            <a href="https://youtube.com/" target="_blank" rel="noopener" class="social-circle" aria-label="YouTube"><i class="fab fa-youtube"></i></a>
           </div>
         </div>
 
         <div class="footer-col">
           <h4>Navegación</h4>
-          <ul>
+          <ul class="footer-nav-links">
             <li><a href="#propiedades">Propiedades</a></li>
             <li><a href="#servicios">Servicios</a></li>
             <li><a href="#equipo">Equipo</a></li>
@@ -671,7 +696,7 @@
 
         <div class="footer-col">
           <h4>Servicios</h4>
-          <ul>
+          <ul class="footer-service-links">
             <li><a href="#servicios">Venta</a></li>
             <li><a href="#servicios">Alquiler</a></li>
             <li><a href="#servicios">Inversión</a></li>
@@ -683,16 +708,16 @@
         <div class="footer-col">
           <h4>Contacto</h4>
           <div class="footer-contact-item">
-            <i class="fas fa-phone"></i> +54 11 0000-0000
+            <i class="fas fa-phone"></i> <span class="footer-phone">+54 11 0000-0000</span>
           </div>
           <div class="footer-contact-item">
-            <i class="fas fa-envelope"></i> info@bienenhaus.com.ar
+            <i class="fas fa-envelope"></i> <span class="footer-email">info@bienenhaus.com.ar</span>
           </div>
           <div class="footer-contact-item">
-            <i class="fas fa-clock"></i> Lun - Vie: 9:00 - 18:00
+            <i class="fas fa-clock"></i> <span class="footer-schedule">Lun - Vie: 9:00 - 18:00</span>
           </div>
           <div class="footer-contact-item">
-            <i class="fas fa-id-card"></i> CUIT
+            <i class="fas fa-id-card"></i> <span class="footer-cuit">CUIT</span>
           </div>
         </div>
 
@@ -707,11 +732,11 @@
       </div>
 
       <div class="footer-bottom">
-        <span>© 2025 Bienenhaus Propiedades. Todos los derechos reservados.</span>
+        <span class="footer-copyright">© 2025 Bienenhaus Propiedades. Todos los derechos reservados.</span>
         <div class="footer-bottom-center">
-          <a href="#">Política de Privacidad</a>
-          <a href="#">Términos y Condiciones</a>
-          <a href="#">FAQ</a>
+          <a href="#" class="footer-privacy">Política de Privacidad</a>
+          <a href="#" class="footer-terms">Términos y Condiciones</a>
+          <a href="#" class="footer-faq">FAQ</a>
         </div>
       </div>
     </div>
@@ -732,6 +757,50 @@
     </div>
   </div>
 
+  <!-- Property Detail Modal -->
+  <div class="property-modal" id="propertyModal" role="dialog" aria-modal="true" aria-label="Detalle de propiedad">
+    <div class="property-modal-panel">
+      <div class="property-modal-header">
+        <div class="property-info-badges">
+          <span class="badge-status" id="propertyDetailStatus"></span>
+          <span class="badge-code" id="propertyDetailCode"></span>
+        </div>
+        <button class="property-modal-close" id="propertyModalClose" aria-label="Cerrar detalle">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="property-modal-scroll">
+        <div class="property-modal-layout">
+          <div class="property-modal-gallery">
+            <div class="property-gallery-main">
+              <img id="propertyGalleryMain" src="" alt="">
+              <button type="button" class="gallery-nav gallery-nav--prev" id="galleryPrev" aria-label="Imagen anterior">
+                <i class="fas fa-chevron-left"></i>
+              </button>
+              <button type="button" class="gallery-nav gallery-nav--next" id="galleryNext" aria-label="Imagen siguiente">
+                <i class="fas fa-chevron-right"></i>
+              </button>
+              <span class="gallery-counter" id="galleryCounter"></span>
+            </div>
+            <div class="property-gallery-thumbs" id="propertyGalleryThumbs"></div>
+            <div class="property-detail-video" id="propertyDetailVideoWrap" hidden>
+              <h4 class="property-detail-subtitle">Video de la propiedad</h4>
+              <div class="property-video-frame" id="propertyVideoFrame"></div>
+            </div>
+          </div>
+          <div class="property-modal-info">
+            <h3 class="property-detail-title" id="propertyDetailTitle"></h3>
+            <div class="property-detail-location" id="propertyDetailLocation"></div>
+            <div class="property-detail-price" id="propertyDetailPrice"></div>
+            <ul class="property-detail-features" id="propertyDetailFeatures"></ul>
+            <h4 class="property-detail-subtitle">Descripción</h4>
+            <p class="property-detail-desc" id="propertyDetailDesc"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- WhatsApp Float -->
   <a href="https://wa.me/5491100000000" target="_blank" rel="noopener" class="whatsapp-float" aria-label="Contactar por WhatsApp">
     <i class="fab fa-whatsapp"></i>
@@ -743,6 +812,6 @@
 <script src="assets/js/config.js?v=5"></script>
 <script src="assets/js/supabase-client.js?v=3"></script>
 <script src="assets/js/cloudinary.js?v=6"></script>
-<script src="assets/js/landing-app.js?v=6"></script>
+<script src="assets/js/landing-app.js?v=9"></script>
 </body>
 </html>

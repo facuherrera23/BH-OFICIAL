@@ -51,6 +51,9 @@
    01. TOKENS DE DISEÑO
    ================================================================ */
 :root {
+    /* Tema oscuro nativo: popups de <select>, date pickers, scrollbars */
+    color-scheme: dark;
+
     /* Fondos */
     --bg-void: #020305;
     --bg-primary: #05070A;
@@ -179,6 +182,7 @@ button:disabled { cursor: not-allowed; opacity: 0.6; }
 
 input, select, textarea, button { font-family: inherit; color: inherit; font-size: inherit; }
 input, select, textarea { background: transparent; }
+select option { background: var(--bg-secondary); color: var(--text-main); }
 
 img { max-width: 100%; display: block; }
 svg { display: block; }

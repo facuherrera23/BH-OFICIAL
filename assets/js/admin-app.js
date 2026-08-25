@@ -21,9 +21,40 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   let _submittingAgent = false;
   let _submittingOwner = false;
 
-  function esc(s) {
+function esc(s) {
     if (s == null) return '';
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    return String(s)
+      .replace(/&/g, '&')
+      .replace(/</g, '<')
+      .replace(/>/g, '>')
+      .replace(/"/g, '"')
+      .replace(/'/g, "'");
+  }
+  // Timezone selector (AR/UTC) for supervision module
+  let _supTimezone = 'America/Argentina/Buenos_Aires';
+
+  function getSupTimezone() {
+    return _supTimezone;
+  }
+
+  function setSupTimezone(tz) {
+    _supTimezone = tz;
+    // Re-render current view if in supervision
+    if (currentSection === 'tab-supervision' && _supCurrentView) {
+      switchSupView(_supCurrentView);
+    }
+  }
+
+  function formatDateWithTZ(dateStr, options = {}) {
+    if (!dateStr) return '—';
+    const defaultOpts = { timeZone: getSupTimezone(), ...options };
+    return new Date(dateStr).toLocaleDateString('es-AR', defaultOpts);
+  }
+
+  function formatDateTimeWithTZ(dateStr, options = {}) {
+    if (!dateStr) return '—';
+    const defaultOpts = { timeZone: getSupTimezone(), hour: '2-digit', minute: '2-digit', ...options };
+    return new Date(dateStr).toLocaleString('es-AR', defaultOpts);
   }
   let editingAgentId = null;
   let editingOwnerId = null;
@@ -310,6 +341,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
       'tab-usuarios': 'Usuarios & Permisos',
       'tab-configuracion': 'Configuración General',
       'tab-ficha-html': 'Ficha HTML',
+      'tab-supervision': 'Centro de Supervisión',
     };
     const titleEl = $('#moduleTitle');
     if (titleEl) titleEl.textContent = titles[section] || 'Panel';
@@ -319,9 +351,9 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
     const target = $(`#${section}`);
     if (target) target.classList.add('is-active');
 
-    /* Load data */
+/* Load data */
     const loaders = {
-'tab-dashboard': loadDashboard,
+      'tab-dashboard': loadDashboard,
       'tab-propiedades': loadProperties,
       'tab-leads': loadCRM,
       'tab-agenda': loadVisits,
@@ -333,6 +365,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
       'tab-usuarios': loadUsers,
       'tab-portales': loadPortals,
       'tab-ficha-html': loadFichaHtml,
+      'tab-supervision': loadSupervision,
     };
     if (loaders[section]) loaders[section]();
 
@@ -758,6 +791,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
 
   /* Edit property */
   window.adminApp = window.adminApp || {};
+  window.adminApp.loadSupervision = loadSupervision;
   window.adminApp.editProperty = async function (id) {
     try {
       const { data, error } = await window.supabaseClient
@@ -1438,8 +1472,209 @@ let dayCount = 1;
                 .update({ stage: 'oferta', updated_at: new Date().toISOString() })
                 .eq('id', newLeadId);
               showToast('Lead movido a Oferta / Cierre', 'success');
-            }
-          }
+}
+  }
+
+  // ============================================================
+  // ANOMALÍAS ESTADÍSTICAS
+  // ============================================================
+  let _anomCursor = null; // { created_at, id }
+  let _anomHasMore = true;
+  let _anomTimeWindow = '1 hour';
+  let _anomSeverityFilter = '';
+
+  async function loadAnomaliesTable(append = false) {
+    if (!window.supabaseClient) return;
+    const tbody = $('#anomTableBody');
+    const loadMoreBtn = $('#anomLoadMore');
+    if (!tbody) return;
+    if (!append) {
+      tbody.innerHTML = '<tr><td colspan="12" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td></tr>';
+      _anomCursor = null;
+      _anomHasMore = true;
+    }
+    try {
+      const timeWindow = $('#anomTimeWindow')?.value || '1 hour';
+      const severityFilter = $('#anomSeverityFilter')?.value || '';
+      
+      let query = window.supabaseClient
+        .from('supervision_anomalies')
+        .select('*')
+        .eq('time_window', timeWindow)
+        .order('created_at', { ascending: false })
+        .limit(51); // 51 para detectar hasMore
+      
+      if (severityFilter) {
+        query = query.eq('severity', severityFilter);
+      }
+      
+      // Cursor-based pagination
+      if (_anomCursor) {
+        query = query.or(`created_at.lt.${_anomCursor.created_at},and(created_at.eq.${_anomCursor.created_at},id.lt.${_anomCursor.id})`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      const anomalies = data || [];
+      const hasMore = anomalies.length > 50;
+      const rows = hasMore ? anomalies.slice(0, 50) : anomalies;
+      _anomHasMore = hasMore;
+      if (rows.length) {
+        _anomCursor = { created_at: rows[rows.length - 1].created_at, id: rows[rows.length - 1].id };
+      }
+
+      const severityColors = { critical: '#EF4444', high: '#F97316', medium: '#FFB800', low: '#3B82F6', info: '#1FC8C3' };
+      const severityLabels = { critical: '🔴 Crítica', high: '🟠 Alta', medium: '🟡 Media', low: '🔵 Baja', info: '⚪ Info' };
+      const statusLabels = { open: 'Abierta', acknowledged: 'Reconocida', investigating: 'Investigando', resolved: 'Resuelta', dismissed: 'Descartada', false_positive: 'Falso Positivo' };
+      const statusPillClass = {
+        open: 'pending', acknowledged: 'active', investigating: 'active',
+        resolved: 'success', dismissed: 'pending', false_positive: 'pending'
+      };
+
+      const renderRows = rows.map(a => {
+        const color = severityColors[a.severity] || 'var(--text-secondary)';
+        const userLabel = a.user_id ? `${a.user_id.slice(0,8)}...` : 'sistema';
+        return `<tr style="border-bottom:1px solid var(--border-subtle);">
+          <td style="padding:8px 10px;"><span style="color:${color}; font-weight:600;">${severityLabels[a.severity] || a.severity}</span></td>
+          <td style="padding:8px 10px; color:var(--accent);">${esc(a.module || '—')}</td>
+          <td style="padding:8px 10px; color:var(--text-secondary);">${esc(userLabel)}</td>
+          <td style="padding:8px 10px; color:var(--text-secondary);">${esc(a.action || '—')}</td>
+          <td style="padding:8px 10px; color:var(--text-secondary);">${esc(a.metric || '—')}</td>
+          <td style="padding:8px 10px; text-align:center; color:var(--text-secondary);">${esc(a.time_window || '—')}</td>
+          <td style="padding:8px 10px; text-align:right; color:#fff; font-weight:600; font-family:monospace; font-size:11px;">${a.observed_value ? a.observed_value.toLocaleString('es-AR') : '—'}</td>
+          <td style="padding:8px 10px; text-align:right; color:var(--text-secondary); font-family:monospace; font-size:11px;">${a.expected_mean ? a.expected_mean.toFixed(2) : '—'}</td>
+          <td style="padding:8px 10px; text-align:center; color:#fff; font-family:monospace; font-size:11px;">${a.z_score !== null && a.z_score !== undefined ? a.z_score.toFixed(2) : '—'}</td>
+          <td style="padding:8px 10px; text-align:center; color:var(--accent); font-weight:600; font-size:11px;">${a.percentile_rank !== null && a.percentile_rank !== undefined ? a.percentile_rank.toFixed(1) + '%' : '—'}</td>
+          <td style="padding:8px 10px; text-align:center;"><span class="status-pill ${statusPillClass[a.status] || 'pending'}" style="font-size:10px;">${statusLabels[a.status] || a.status}</span></td>
+          <td style="padding:8px 10px; text-align:center;">
+            <div style="display:flex; gap:4px; justify-content:center; flex-wrap:wrap;">
+              ${a.status === 'open' ? `
+                <button class="btn-action" onclick="acknowledgeAnomaly('${esc(a.id)}')" title="Reconocer"><i class="fas fa-check"></i></button>
+              ` : ''}
+              ${(a.status === 'acknowledged' || a.status === 'investigating') ? `
+                <button class="btn-action" onclick="resolveAnomaly('${esc(a.id)}')" title="Marcar resuelta"><i class="fas fa-flag-checkered"></i></button>
+              ` : ''}
+              ${(a.status === 'open' || a.status === 'acknowledged' || a.status === 'investigating') ? `
+                <button class="btn-action" onclick="dismissAnomaly('${esc(a.id)}')" title="Descartar"><i class="fas fa-times"></i></button>
+              ` : ''}
+              ${a.status === 'false_positive' ? `
+                <button class="btn-action" onclick="reopenAnomaly('${esc(a.id)}')" title="Reabrir"><i class="fas fa-undo"></i></button>
+              ` : ''}
+              <button class="btn-action" onclick="viewAnomalyDetail('${esc(a.id)}')" title="Ver detalle"><i class="fas fa-eye"></i></button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+
+      if (append) {
+        tbody.innerHTML += renderRows;
+      } else {
+        tbody.innerHTML = renderRows;
+      }
+
+      if (loadMoreBtn) {
+        loadMoreBtn.style.display = _anomHasMore ? 'inline-flex' : 'none';
+      }
+    } catch (err) {
+      console.error('loadAnomaliesTable error:', err);
+      tbody.innerHTML = '<tr><td colspan="12" style="padding:40px; text-align:center; color:var(--danger);">Error cargando anomalías</td></tr>';
+      if (loadMoreBtn) loadMoreBtn.style.display = 'none';
+    }
+  }
+
+  window.loadMoreAnomalies = function() {
+    loadAnomaliesTable(true);
+  };
+
+  window.acknowledgeAnomaly = async function(id) {
+    if (!window.supabaseClient) return;
+    try {
+      await window.supabaseClient.from('supervision_anomalies').update({ status: 'acknowledged', acknowledged_by: currentUser.id, acknowledged_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id);
+      showToast('Anomalía reconocida', 'success');
+      loadAnomaliesTable();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.resolveAnomaly = async function(id) {
+    if (!window.supabaseClient) return;
+    try {
+      await window.supabaseClient.from('supervision_anomalies').update({ status: 'resolved', resolved_by: currentUser.id, resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id);
+      showToast('Anomalía marcada como resuelta', 'success');
+      loadAnomaliesTable();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.dismissAnomaly = async function(id) {
+    if (!window.supabaseClient) return;
+    try {
+      await window.supabaseClient.from('supervision_anomalies').update({ status: 'dismissed', dismissed_by: currentUser.id, dismissed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id);
+      showToast('Anomalía descartada', 'success');
+      loadAnomaliesTable();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.reopenAnomaly = async function(id) {
+    if (!window.supabaseClient) return;
+    try {
+      await window.supabaseClient.from('supervision_anomalies').update({ status: 'open', updated_at: new Date().toISOString() }).eq('id', id);
+      showToast('Anomalía reabierta', 'success');
+      loadAnomaliesTable();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.viewAnomalyDetail = async function(id) {
+    if (!window.supabaseClient) return;
+    try {
+      const { data } = await window.supabaseClient.from('supervision_anomalies').select('*').eq('id', id).single();
+      if (!data) return;
+      const severityColors = { critical: '#EF4444', high: '#F97316', medium: '#FFB800', low: '#3B82F6', info: '#1FC8C3' };
+      const severityLabels = { critical: '🔴 Crítica', high: '🟠 Alta', medium: '🟡 Media', low: '🔵 Baja', info: '⚪ Info' };
+      const statusLabels = { open: 'Abierta', acknowledged: 'Reconocida', investigating: 'Investigando', resolved: 'Resuelta', dismissed: 'Descartada', false_positive: 'Falso Positivo' };
+      const color = severityColors[data.severity] || 'var(--text-secondary)';
+      
+      // Show in a modal
+      let modal = $('#anomDetailModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'anomDetailModal';
+        modal.className = 'admin-modal';
+        modal.innerHTML = `
+          <div class="modal-box" style="max-width:600px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+              <h3 id="anomDetailTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin:0;"></h3>
+              <button type="button" class="status-pill pending" onclick="closeModal('anomDetailModal')"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="anomDetailContent" style="max-height:70vh; overflow-y:auto;"></div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+      }
+      $('#anomDetailTitle').textContent = `Anomalía: ${data.module} · ${data.action}`;
+      $('#anomDetailContent').innerHTML = `
+        <div style="line-height:1.8; font-size:13px;">
+          <div><strong>ID:</strong> <code style="color:var(--accent);">${esc(data.id)}</code></div>
+          <div><strong>Severidad:</strong> <span style="color:${color}; font-weight:600;">${severityLabels[data.severity] || data.severity}</span></div>
+          <div><strong>Estado:</strong> <span style="color:var(--accent);">${esc(data.status)}</span></div>
+          <div><strong>Módulo:</strong> <span style="color:var(--accent);">${esc(data.module || '—')}</span></div>
+          <div><strong>Acción:</strong> ${esc(data.action || '—')}</div>
+          <div><strong>Métrica:</strong> ${esc(data.metric || '—')}</div>
+          <div><strong>Ventana:</strong> ${esc(data.time_window || '—')}</div>
+          <hr style="margin:12px 0; border-color:var(--border-subtle);">
+          <div><strong>Valor observado:</strong> <span style="color:#fff; font-family:monospace; font-weight:600;">${data.observed_value ? data.observed_value.toLocaleString('es-AR') : '—'}</span></div>
+          <div><strong>Valor esperado (media):</strong> <span style="color:var(--text-secondary); font-family:monospace;">${data.expected_mean ? data.expected_mean.toFixed(2) : '—'}</span></div>
+          <div><strong>Desviación estándar:</strong> <span style="color:var(--text-secondary); font-family:monospace;">${data.expected_stddev !== null ? data.expected_stddev.toFixed(2) : '—'}</span></div>
+          <div><strong>Z-Score:</strong> <span style="color:${data.z_score !== null ? (Math.abs(data.z_score) > 2 ? '#EF4444' : 'var(--accent)') : 'var(--text-secondary)'}; font-family:monospace; font-weight:600;">${data.z_score !== null ? data.z_score.toFixed(2) : '—'}</span></div>
+          <div><strong>Percentil:</strong> <span style="color:var(--accent); font-weight:600;">${data.percentile_rank !== null ? data.percentile_rank.toFixed(1) + '%' : '—'}</span></div>
+          <div><strong>Evidencia:</strong><pre style="background:rgba(255,255,255,0.03); padding:12px; border-radius:8px; font-size:11px; overflow:auto; max-height:200px; margin-top:8px;">${esc(JSON.stringify(data.evidence || {}, null, 2))}</pre></div>
+          <hr style="margin:16px 0; border-color:var(--border-subtle);">
+          <div><strong>Creada:</strong> ${data.created_at ? new Date(data.created_at).toLocaleString('es-AR') : '—'}</div>
+          <div><strong>Reconocida:</strong> ${data.acknowledged_at ? new Date(data.acknowledged_at).toLocaleString('es-AR') : '—'}</div>
+          <div><strong>Resuelta:</strong> ${data.resolved_at ? new Date(data.resolved_at).toLocaleString('es-AR') : '—'}</div>
+        </div>
+      `;
+      openModal('anomDetailModal');
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
         } catch (_) {}
       }
 
@@ -1687,11 +1922,108 @@ let dayCount = 1;
     }
   });
 
-  /* Reset CMS to reload from DB */
+  const DEFAULT_CMS_CONTENT = {
+    hero: {
+      title: 'Encontrá tu próximo hogar',
+      subtitle: 'en Buenos Aires',
+      eyebrow: 'Bienvenidos a Bienenhaus',
+      description: 'Propiedades seleccionadas, asesoramiento experto y la confianza de una inmobiliaria con trayectoria.',
+      bg_image_url: '',
+      video_url: ''
+    },
+    services: {
+      title: 'Nuestros Servicios',
+      badge: 'Qué ofrecemos',
+      description: 'Acompañamos cada paso de tu operación inmobiliaria con profesionalidad y transparencia.'
+    },
+    team: {
+      title: 'Nuestro Equipo'
+    },
+    stats: {
+      title: 'Nuestros Números',
+      description: 'Años de experiencia respaldan cada operación.',
+      properties_sold: '500+',
+      stat1_label: 'Propiedades vendidas'
+    },
+    process: {
+      title: 'Cómo Trabajamos'
+    }
+  };
+
+  async function globalResetCMS() {
+    const confirmed = confirm(
+      '⚠️ REINICIO GLOBAL DE CMS\n\n' +
+      'Esta acción ELIMINARÁ todo el contenido del CMS (Hero, Servicios, Equipo, Stats, Proceso) ' +
+      'y restaurará los valores por defecto de fábrica.\n\n' +
+      '¿Estás seguro de que querés continuar?'
+    );
+    if (!confirmed) return;
+
+    const doubleConfirmed = confirm(
+      '⚠️ CONFIRMACIÓN FINAL\n\n' +
+      'Se borrarán TODOS los registros de site_content.\n' +
+      'Esta acción NO se puede deshacer.\n\n' +
+      'Escribí "RESET" para confirmar:'
+    );
+    if (!doubleConfirmed) return;
+
+    const userInput = prompt('Escribí "RESET" para confirmar el reinicio global:');
+    if (userInput !== 'RESET') {
+      showToast('Reinicio cancelado: texto incorrecto', 'warning');
+      return;
+    }
+
+    const btn = $('#cmsResetBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reiniciando...'; }
+
+    try {
+      const { error } = await window.supabaseClient
+        .from('site_content')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+
+      if (error) throw error;
+
+      cmsData = {};
+
+      $$('.cms-field[data-key]').forEach(input => {
+        input.value = '';
+      });
+
+      if (heroBgPreview) {
+        heroBgPreview.innerHTML = '<i class="fas fa-cloud-arrow-up"></i><span>Sin imagen</span>';
+        heroBgPreview.style.position = '';
+      }
+      if (heroBgHidden) heroBgHidden.value = '';
+
+      populateCMSFieldsWithDefaults();
+
+      invalidateRequestCache('site_content');
+
+      showToast('✅ CMS reiniciado a valores de fábrica', 'success');
+    } catch (err) {
+      console.error('Global reset error:', err);
+      showToast('Error en reinicio global: ' + err.message, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-left"></i> Reinicio Global'; }
+    }
+  }
+
+  function populateCMSFieldsWithDefaults() {
+    Object.entries(DEFAULT_CMS_CONTENT).forEach(([sectionKey, content]) => {
+      Object.entries(content).forEach(([path, value]) => {
+        Object.entries(CMS_FIELD_MAP).forEach(([dataKey, mapping]) => {
+          if (mapping.section === sectionKey && mapping.path === path) {
+            const input = $(`.cms-field[data-key="${dataKey}"]`);
+            if (input) input.value = value;
+          }
+        });
+      });
+    });
+  }
+
   $('#cmsResetBtn')?.addEventListener('click', async () => {
-    if (!confirm('¿Restaurar los contenidos desde la base de datos?')) return;
-    await loadCMS();
-    showToast('Contenidos restaurados', 'success');
+    await globalResetCMS();
   });
 
   const heroBgFile = $('#cmsHeroBgFile');
@@ -1735,7 +2067,6 @@ let dayCount = 1;
     whatsapp:         { section: 'contact', path: 'whatsapp' },
     email:            { section: 'contact', path: 'email' },
     phone:            { section: 'contact', path: 'phone' },
-    address:          { section: 'contact', path: 'address' },
     schedule:         { section: 'contact', path: 'schedule' },
     social_instagram: { section: 'social',  path: 'instagram' },
     social_facebook:  { section: 'social',  path: 'facebook' },
@@ -3331,9 +3662,134 @@ let dayCount = 1;
     showToast('Tasaciones exportadas (' + rows.length + ')');
   };
 
-  /* ------------------------------------------------
-     15. TOAST NOTIFICATIONS
-     ------------------------------------------------ */
+  // --- SUPERVISIÓN CSV EXPORTS ---
+  window.exportSupAlertsCSV = async function() {
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient.from('supervision_alerts').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      const headers = ['ID', 'Severidad', 'Tipo', 'Usuario', 'Usuario ID', 'Módulo', 'Descripción', 'Evidencia', 'Estado', 'Asignado a', 'Creado', 'Actualizado', 'Notas'];
+      const rows = (data || []).map(a => [
+        a.id,
+        a.severity,
+        a.alert_type || a.rule_name,
+        a.user_name || '',
+        a.user_id || '',
+        a.module || '',
+        a.description || '',
+        a.evidence ? JSON.stringify(a.evidence) : '',
+        a.status,
+        a.assigned_to || '',
+        a.created_at,
+        a.updated_at,
+        a.notes || ''
+      ]);
+      const date = new Date().toISOString().slice(0, 10);
+      downloadCSV('supervision-alertas-' + date + '.csv', rows, headers);
+      showToast('Alertas exportadas (' + rows.length + ')', 'success');
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.exportSupUsersCSV = async function() {
+    if (!window.supabaseClient) return;
+    try {
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const [auditRes, profilesRes] = await Promise.all([
+        window.supabaseClient.from('audit_log').select('user_id, action, severity, created_at, metadata').gte('created_at', weekAgo),
+        window.supabaseClient.from('profiles').select('id, full_name, email, role')
+      ]);
+      if (auditRes.error) throw auditRes.error;
+      if (profilesRes.error) throw profilesRes.error;
+      const audit = auditRes.data || [];
+      const profiles = profilesRes.data || [];
+      const profileMap = new Map(profiles.map(p => [p.id, p]));
+
+      const userStats = {};
+      audit.forEach(a => {
+        const uid = a.user_id || 'unknown';
+        if (!userStats[uid]) userStats[uid] = { actions: 0, errors: 0, sensitive: 0, exports: 0, bulk: 0, lastActivity: null };
+        userStats[uid].actions++;
+        if (a.severity === 'error' || a.severity === 'critical') userStats[uid].errors++;
+        if (a.metadata?.sensitive === true) userStats[uid].sensitive++;
+        if (a.action === 'export' || a.action?.includes('export')) userStats[uid].exports++;
+        if (a.action?.includes('bulk') || a.metadata?.bulk === true) userStats[uid].bulk++;
+        const ts = a.created_at ? new Date(a.created_at).getTime() : 0;
+        if (ts > (userStats[uid].lastActivity || 0)) userStats[uid].lastActivity = ts;
+      });
+
+      const { data: alerts } = await window.supabaseClient.from('supervision_alerts').select('user_id').eq('status', 'open');
+      const alertCounts = {};
+      (alerts || []).forEach(a => { alertCounts[a.user_id] = (alertCounts[a.user_id] || 0) + 1; });
+
+      const headers = ['Usuario ID', 'Nombre', 'Email', 'Rol', 'Acciones (7d)', 'Errores', 'Sensibles', 'Exportaciones', 'Masivas', 'Última actividad', 'Alertas abiertas'];
+      const rows = Object.entries(userStats).map(([uid, stats]) => {
+        const profile = profileMap.get(uid);
+        return [
+          uid,
+          profile?.full_name || profile?.email || uid,
+          profile?.email || '',
+          profile?.role || '',
+          stats.actions,
+          stats.errors,
+          stats.sensitive,
+          stats.exports,
+          stats.bulk,
+          stats.lastActivity ? new Date(stats.lastActivity).toISOString() : '',
+          alertCounts[uid] || 0
+        ];
+      });
+      const date = new Date().toISOString().slice(0, 10);
+      downloadCSV('supervision-usuarios-' + date + '.csv', rows, headers);
+      showToast('Usuarios supervisión exportados (' + rows.length + ')', 'success');
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.exportSupModulesCSV = async function() {
+    if (!window.supabaseClient) return;
+    try {
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await window.supabaseClient.from('audit_log').select('module, action, severity, user_id').gte('created_at', weekAgo);
+      if (error) throw error;
+      const audit = data || [];
+
+      const modStats = {};
+      audit.forEach(a => {
+        const mod = a.module || 'general';
+        if (!modStats[mod]) modStats[mod] = { total: 0, errors: 0, actions: new Set(), users: new Set() };
+        modStats[mod].total++;
+        modStats[mod].actions.add(a.action);
+        modStats[mod].users.add(a.user_id);
+        if (a.severity === 'error' || a.severity === 'critical') modStats[mod].errors++;
+      });
+
+      const headers = ['Módulo', 'Total acciones', 'Usuarios únicos', 'Acciones únicas', 'Errores', 'Tasa error %'];
+      const rows = Object.entries(modStats).map(([mod, stats]) => {
+        const errorRate = stats.total > 0 ? ((stats.errors / stats.total) * 100).toFixed(1) : 0;
+        return [mod, stats.total, stats.users.size, stats.actions.size, stats.errors, errorRate + '%'];
+      });
+      const date = new Date().toISOString().slice(0, 10);
+      downloadCSV('supervision-modulos-' + date + '.csv', rows, headers);
+      showToast('Módulos supervisión exportados (' + rows.length + ')', 'success');
+  } catch (err) { showToast('Error: ' + err.message, 'error'); }
+};
+
+window.exportAnomaliesCSV = async function() {
+  if (!window.supabaseClient) return;
+  try {
+    const timeWindow = $('#anomTimeWindow')?.value || '1 hour';
+    const { data, error } = await window.supabaseClient.from('supervision_anomalies').select('*').eq('time_window', timeWindow).order('created_at', { ascending: false });
+    if (error) throw error;
+    const headers = ['ID', 'Módulo', 'Usuario', 'Acción', 'Métrica', 'Ventana', 'Observado', 'Esperado', 'Desv. Est.', 'Z-Score', 'Percentil', 'Severidad', 'Estado', 'Creada', 'Reconocida', 'Resuelta', 'Evidencia'];
+    const rows = (data || []).map(a => [a.id, a.module || '', a.user_id || '', a.action || '', a.metric || '', a.time_window || '', a.observed_value, a.expected_mean, a.expected_stddev, a.z_score, a.percentile_rank, a.severity, a.status, a.created_at, a.acknowledged_at, a.resolved_at, JSON.stringify(a.evidence || {})]);
+    const date = new Date().toISOString().slice(0, 10);
+    downloadCSV('supervision-anomalias-' + date + '.csv', rows, headers);
+    showToast('Anomalías exportadas (' + rows.length + ')', 'success');
+  } catch (err) { showToast('Error: ' + err.message, 'error'); }
+};
+
+/* ------------------------------------------------
+   15. TOAST NOTIFICATIONS
+   ------------------------------------------------ */
   function showToast(message, type = 'success') {
     const toast = $('#toastMsg');
     const text = $('#toastText');
@@ -4028,6 +4484,7 @@ async function loadChatRedes() {
   }
 
   function timeAgo(dateStr) {
+    if (!dateStr) return '—';
     const diffMin = Math.round((Date.now() - new Date(dateStr).getTime()) / 60000);
     if (diffMin < 1) return 'ahora mismo';
     if (diffMin < 60) return `hace ${diffMin} min`;
@@ -4035,10 +4492,11 @@ async function loadChatRedes() {
     if (diffH < 24) return `hace ${diffH} h`;
     const diffD = Math.round(diffH / 24);
     if (diffD < 7) return `hace ${diffD} d`;
-    return new Date(dateStr).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
+    return formatDateWithTZ(dateStr, { day: '2-digit', month: 'short' });
   }
 
   function timeUntil(dateStr) {
+    if (!dateStr) return '—';
     const diffMin = Math.round((new Date(dateStr).getTime() - Date.now()) / 60000);
     if (diffMin <= 0) return 'en curso';
     if (diffMin < 60) return `en ${diffMin} min`;
@@ -4055,10 +4513,11 @@ async function loadChatRedes() {
       const nowIso = new Date().toISOString();
       const soonIso = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
 
-      const [leadsRes, visitsRes, tasRes] = await Promise.all([
+      const [leadsRes, visitsRes, tasRes, alertsRes] = await Promise.all([
         window.supabaseClient.from('leads').select('id, full_name, created_at').eq('stage', 'nuevo').gte('created_at', since).order('created_at', { ascending: false }).limit(5),
         window.supabaseClient.from('visits').select('id, client_name, visit_date').eq('status', 'pendiente').gte('visit_date', nowIso).lte('visit_date', soonIso).order('visit_date', { ascending: true }).limit(5),
         window.supabaseClient.from('tasaciones').select('id, title, created_at').neq('status', 'finalized').gte('created_at', since).order('created_at', { ascending: false }).limit(5),
+        window.supabaseClient.from('supervision_alerts').select('id, severity, title, module, created_at, user_id, assigned_to').eq('status', 'open').in('severity', ['critical', 'high']).order('created_at', { ascending: false }).limit(5),
       ]);
 
       const items = [];
@@ -4096,6 +4555,24 @@ async function loadChatRedes() {
           sub: timeAgo(t.created_at),
           tab: 'tab-tasaciones',
           ts: new Date(t.created_at).getTime(),
+        });
+      });
+
+      // Supervisión: alertas critical/high abiertas
+      const severityColors = { critical: '#EF4444', high: '#F97316' };
+      const severityLabels = { critical: '🔴 Crítica', high: '🟠 Alta' };
+      const severityIcons = { critical: 'fas fa-shield-alt', high: 'fas fa-exclamation-triangle' };
+      (alertsRes.data || []).forEach(a => {
+        items.push({
+          id: 'sup-' + a.id,
+          icon: severityIcons[a.severity] || 'fas fa-shield-alt',
+          color: severityColors[a.severity] || '#EF4444',
+          title: `${severityLabels[a.severity] || a.severity}: ${a.title}`,
+          sub: `${a.module} • ${timeAgo(a.created_at)}`,
+          tab: 'tab-supervision',
+          ts: new Date(a.created_at).getTime(),
+          // Guardar info para navegar a vista Alertas
+          _supView: 'alerts',
         });
       });
 
@@ -4181,7 +4658,13 @@ async function loadChatRedes() {
     panel.addEventListener('click', (e) => {
       const item = e.target.closest('.notif-item');
       if (!item) return;
-      if (item.dataset.tab) navigateTo(item.dataset.tab);
+      if (item.dataset.tab) {
+        navigateTo(item.dataset.tab);
+        // Si es supervisión y tiene vista específica, cambiar sub-tab
+        if (item.dataset.tab === 'tab-supervision' && item._supView) {
+          setTimeout(() => switchSupView(item._supView), 100);
+        }
+      }
       closePanel();
     });
 
@@ -4222,6 +4705,1214 @@ async function loadChatRedes() {
       showToast('No se pudieron cargar los datos de la ficha', 'error');
     }
     startFichaFooterRotator();
+  }
+
+  /* ------------------------------------------------
+     SUPERVISION CENTER
+     ------------------------------------------------ */
+  let _supRealtimeChannel = null;
+  let _supCurrentView = 'overview';
+  let _supAutoRefresh = true;
+  let _supAutoRefreshTimer = null;
+
+  async function loadSupervision() {
+    if (!currentUser || !window.supabaseClient) return;
+    
+    // Check super_admin role
+    if (currentProfile?.role !== 'super_admin') {
+      showToast('Acceso denegado: solo Super Admin', 'error');
+      navigateTo('tab-dashboard');
+      return;
+    }
+
+    // Initialize sub-tab listeners
+    initSupSubTabs();
+    
+    // Load initial data
+    await refreshSupervisionKPIs();
+    await loadSupUsersDropdown();
+    await loadSupModulesDropdown();
+    
+    // Start auto-refresh if enabled
+    if (_supAutoRefresh) startSupAutoRefresh();
+    
+    // Setup Realtime for audit_log and supervision_alerts
+    setupSupRealtime();
+    
+    // Initialize executive dashboard date defaults
+    const now = new Date();
+    const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+    const today = new Date();
+    $('#execFromDate').value = monthAgo.toISOString().split('T')[0];
+    $('#execToDate').value = today.toISOString().split('T')[0];
+    
+    // Load executive dashboard if it's the current view
+    if (_supCurrentView === 'executive') {
+      await loadExecutiveDashboard();
+    }
+  }
+
+  async function refreshSupervisionKPIs() {
+    if (!window.supabaseClient) return;
+    
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    
+    try {
+      const [auditRes, alertsRes] = await Promise.all([
+        window.supabaseClient.from('audit_log').select('user_id, action, module, severity, created_at, metadata').gte('created_at', weekAgo),
+        window.supabaseClient.from('supervision_alerts').select('*').eq('status', 'open')
+      ]);
+
+      const audit = auditRes.data || [];
+      const alerts = alertsRes.data || [];
+
+      // KPIs
+      const uniqueUsers = new Set(audit.map(a => a.user_id).filter(Boolean)).size;
+      const actionsToday = audit.filter(a => a.created_at >= todayStart).length;
+      const successCount = audit.filter(a => a.severity === 'success' || a.severity === 'info').length;
+      const errorCount = audit.filter(a => a.severity === 'error' || a.severity === 'critical').length;
+      const sensitiveCount = audit.filter(a => a.metadata?.sensitive === true).length;
+      const openAlerts = alerts.length;
+      const criticalAlerts = alerts.filter(a => a.severity === 'critical').length;
+      const exportsCount = audit.filter(a => a.action === 'export' || a.action?.includes('export')).length;
+      const bulkOpsCount = audit.filter(a => a.action?.includes('bulk') || a.metadata?.bulk === true).length;
+
+      setKPI('kpiActiveUsers', uniqueUsers);
+      setKPI('kpiActionsToday', actionsToday.toLocaleString('es-AR'));
+      setKPI('kpiSuccess', successCount.toLocaleString('es-AR'));
+      setKPI('kpiErrors', errorCount.toLocaleString('es-AR'));
+      setKPI('kpiSensitive', sensitiveCount.toLocaleString('es-AR'));
+      setKPI('kpiOpenAlerts', openAlerts);
+      setKPI('kpiCriticalAlerts', criticalAlerts);
+      setKPI('kpiExports', exportsCount);
+      setKPI('kpiBulkOps', bulkOpsCount);
+
+      // Rankings
+      renderSupRankings(audit);
+      
+      // Update sidebar badge
+      const badge = $('#sideBadgeSupervision');
+      if (badge) badge.textContent = openAlerts;
+
+    } catch (err) {
+      console.error('refreshSupervisionKPIs error:', err);
+      showToast('Error cargando KPIs de supervisión', 'error');
+    }
+  }
+
+  function renderSupRankings(audit) {
+    // Activity by User
+    const byUser = {};
+    audit.forEach(a => {
+      const uid = a.user_id || 'unknown';
+      byUser[uid] = (byUser[uid] || 0) + 1;
+    });
+    const topUsers = Object.entries(byUser).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const usersEl = $('#rankingUsers');
+    if (usersEl) {
+      usersEl.innerHTML = topUsers.length
+        ? topUsers.map(([uid, count]) => `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-subtle);"><span style="color:var(--text-secondary);">${esc(uid)}</span><span style="color:var(--accent); font-weight:600;">${count}</span></div>`).join('')
+        : '<div style="color:var(--text-dim); text-align:center; padding:20px;">Sin actividad</div>';
+    }
+
+    // Activity by Module
+    const byModule = {};
+    audit.forEach(a => {
+      const mod = a.module || 'general';
+      byModule[mod] = (byModule[mod] || 0) + 1;
+    });
+    const topModules = Object.entries(byModule).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const modulesEl = $('#rankingModules');
+    if (modulesEl) {
+      modulesEl.innerHTML = topModules.length
+        ? topModules.map(([mod, count]) => `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-subtle);"><span style="color:var(--text-secondary);">${esc(mod)}</span><span style="color:var(--accent); font-weight:600;">${count}</span></div>`).join('')
+        : '<div style="color:var(--text-dim); text-align:center; padding:20px;">Sin datos</div>';
+    }
+
+    // Errors by User
+    const errorsByUser = {};
+    audit.filter(a => a.severity === 'error' || a.severity === 'critical').forEach(a => {
+      const uid = a.user_id || 'unknown';
+      errorsByUser[uid] = (errorsByUser[uid] || 0) + 1;
+    });
+    const topErrors = Object.entries(errorsByUser).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const errorsEl = $('#rankingErrors');
+    if (errorsEl) {
+      errorsEl.innerHTML = topErrors.length
+        ? topErrors.map(([uid, count]) => `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-subtle);"><span style="color:var(--text-secondary);">${esc(uid)}</span><span style="color:var(--danger); font-weight:600;">${count}</span></div>`).join('')
+        : '<div style="color:var(--text-dim); text-align:center; padding:20px;">Sin errores</div>';
+    }
+
+    // Sensitive actions
+    const sensitiveByUser = {};
+    audit.filter(a => a.metadata?.sensitive === true).forEach(a => {
+      const uid = a.user_id || 'unknown';
+      sensitiveByUser[uid] = (sensitiveByUser[uid] || 0) + 1;
+    });
+    const topSensitive = Object.entries(sensitiveByUser).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const sensitiveEl = $('#rankingSensitive');
+    if (sensitiveEl) {
+      sensitiveEl.innerHTML = topSensitive.length
+        ? topSensitive.map(([uid, count]) => `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-subtle);"><span style="color:var(--text-secondary);">${esc(uid)}</span><span style="color:var(--warning); font-weight:600;">${count}</span></div>`).join('')
+        : '<div style="color:var(--text-dim); text-align:center; padding:20px;">Sin acciones sensibles</div>';
+    }
+  }
+
+  async function loadSupUsersDropdown() {
+    if (!window.supabaseClient) return;
+    try {
+      const { data } = await window.supabaseClient.from('profiles').select('id, full_name, email, role').order('full_name');
+      const select = $('#supUserFilter');
+      if (select && data) {
+        select.innerHTML = '<option value="">Todos los usuarios</option>' + data.map(u => `<option value="${esc(u.id)}">${esc(u.full_name || u.email)} (${esc(u.role)})</option>`).join('');
+      }
+    } catch (err) {
+      console.error('loadSupUsersDropdown error:', err);
+    }
+  }
+
+  async function loadSupModulesDropdown() {
+    if (!window.supabaseClient) return;
+    try {
+      const { data } = await window.supabaseClient.from('audit_log').select('module').gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString());
+      const modules = [...new Set((data || []).map(a => a.module).filter(Boolean))].sort();
+      const select = $('#supModuleFilter');
+      if (select) {
+        select.innerHTML = '<option value="">Todos los módulos</option>' + modules.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+      }
+    } catch (err) {
+      console.error('loadSupModulesDropdown error:', err);
+    }
+  }
+
+  function initSupSubTabs() {
+    const tabs = $$('.sup-subtab');
+    tabs.forEach(tab => {
+      if (tab.dataset.supBound) return;
+      tab.dataset.supBound = 'true';
+      tab.addEventListener('click', () => switchSupView(tab.dataset.view));
+    });
+
+    // Toolbar buttons
+    $('#supRefreshBtn')?.addEventListener('click', () => refreshSupervisionKPIs());
+    $('#supAutoRefreshBtn')?.addEventListener('click', toggleSupAutoRefresh);
+    $('#supExportBtn')?.addEventListener('click', exportSupervisionCSV);
+    $('#supExportAnomaliesBtn')?.addEventListener('click', exportAnomaliesCSV);
+
+    // Timezone selector
+    $('#supTimezoneFilter')?.addEventListener('change', (e) => {
+      setSupTimezone(e.target.value);
+    });
+
+    // Anomalies toolbar
+    $('#anomRefreshBtn')?.addEventListener('click', () => loadAnomaliesTable());
+    $('#anomExportBtn')?.addEventListener('click', exportAnomaliesCSV);
+    $('#anomTimeWindow')?.addEventListener('change', () => {
+      _anomTimeWindow = $('#anomTimeWindow').value;
+      loadAnomaliesTable();
+    });
+    $('#anomSeverityFilter')?.addEventListener('change', () => {
+      _anomSeverityFilter = $('#anomSeverityFilter').value;
+      loadAnomaliesTable();
+    });
+  }
+
+  function switchSupView(view) {
+    _supCurrentView = view;
+    
+    // Update tab buttons
+    $$('.sup-subtab').forEach(t => {
+      const isActive = t.dataset.view === view;
+      t.classList.toggle('is-active', isActive);
+      t.style.background = isActive ? 'rgba(31,200,195,0.1)' : 'transparent';
+      t.style.color = isActive ? 'var(--accent)' : 'var(--text-muted)';
+    });
+
+    // Show/hide views
+    $$('.sup-view').forEach(v => {
+      const isActive = v.id === 'supView-' + view;
+      v.style.display = isActive ? 'block' : 'none';
+    });
+
+    // Show/hide view-specific export buttons
+    const exportBtns = {
+      overview: 'supExportBtn',
+      alerts: 'supExportAlertsBtn',
+      users: 'supExportUsersBtn',
+      modules: 'supExportModulesBtn',
+      anomalies: 'supExportAnomaliesBtn',
+      audit: 'supExportBtn', // reuse overview button for audit
+    };
+    Object.values(exportBtns).forEach(id => {
+      const el = $('#' + id);
+      if (el) el.style.display = 'none';
+    });
+    const activeExportBtn = exportBtns[view];
+    if (activeExportBtn) {
+      const el = $('#' + activeExportBtn);
+      if (el) el.style.display = 'inline-flex';
+    }
+
+    // Show/hide "Cargar más" buttons
+    const loadMoreBtns = {
+      audit: 'supAuditLoadMore',
+      alerts: 'supAlertsLoadMore',
+      anomalies: 'anomLoadMore',
+    };
+    Object.values(loadMoreBtns).forEach(id => {
+      const el = $('#' + id);
+      if (el) el.style.display = 'none';
+    });
+    const activeLoadMoreBtn = loadMoreBtns[view];
+    if (activeLoadMoreBtn) {
+      const el = $('#' + activeLoadMoreBtn);
+      if (el) el.style.display = 'inline-flex';
+    }
+
+    // Load view-specific data
+    switch (view) {
+      case 'activity': loadSupActivity(); break;
+      case 'users': loadSupUsersTable(); break;
+      case 'modules': loadSupModulesGrid(); break;
+      case 'alerts': loadSupAlertsTable(); break;
+      case 'anomalies': loadAnomaliesTable(); break;
+      case 'audit': loadSupAuditTable(); break;
+      case 'rules': loadSupRulesTable(); break;
+      case 'overview':
+      default:
+        // Already loaded by refreshSupervisionKPIs
+        break;
+    }
+  }
+
+  function toggleSupAutoRefresh() {
+    _supAutoRefresh = !_supAutoRefresh;
+    const btn = $('#supAutoRefreshBtn');
+    const text = $('#supAutoRefreshText');
+    if (btn && text) {
+      if (_supAutoRefresh) {
+        btn.classList.remove('pending');
+        btn.style.background = 'rgba(31,200,195,0.15)';
+        btn.style.color = 'var(--accent)';
+        text.textContent = 'Realtime ON';
+        startSupAutoRefresh();
+      } else {
+        btn.classList.add('pending');
+        btn.style.background = 'rgba(255,184,0,0.15)';
+        btn.style.color = 'var(--warning)';
+        text.textContent = 'Realtime OFF';
+        stopSupAutoRefresh();
+      }
+    }
+  }
+
+  function startSupAutoRefresh() {
+    stopSupAutoRefresh();
+    _supAutoRefreshTimer = setInterval(() => {
+      if (_supAutoRefresh && _supCurrentView === 'overview') {
+        refreshSupervisionKPIs();
+      }
+      if (_supAutoRefresh && _supCurrentView === 'activity') {
+        loadSupActivity();
+      }
+      if (_supAutoRefresh && _supCurrentView === 'alerts') {
+        loadSupAlertsTable();
+      }
+    }, 30000); // 30 seconds
+  }
+
+  function stopSupAutoRefresh() {
+    if (_supAutoRefreshTimer) {
+      clearInterval(_supAutoRefreshTimer);
+      _supAutoRefreshTimer = null;
+    }
+  }
+
+  function setupSupRealtime() {
+    if (!window.supabaseClient) return;
+    if (_supRealtimeChannel) {
+      _supRealtimeChannel.unsubscribe();
+    }
+    _supRealtimeChannel = window.supabaseClient.channel('supervision-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_log' }, payload => {
+        if (_supAutoRefresh) {
+          refreshSupervisionKPIs();
+          if (_supCurrentView === 'activity') loadSupActivity();
+          if (_supCurrentView === 'audit') loadSupAuditTable();
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'supervision_alerts' }, payload => {
+        if (_supAutoRefresh) {
+          refreshSupervisionKPIs();
+          if (_supCurrentView === 'alerts') loadSupAlertsTable();
+        }
+      })
+      .subscribe();
+  }
+
+  // --- VIEW: ACTIVITY (Live feed) ---
+  let _supActivitySearch = '';
+  let _supActivitySeverity = '';
+  let _supActivityDebounce = null;
+
+  async function loadSupActivity() {
+    if (!window.supabaseClient) return;
+    const listEl = $('#activityList');
+    if (!listEl) return;
+
+    // Inicializar listeners una sola vez
+    if (!listEl.dataset.listenersBound) {
+      listEl.dataset.listenersBound = 'true';
+      const searchEl = $('#supActivitySearch');
+      const severityEl = $('#supActivitySeverityFilter');
+      if (searchEl) {
+        searchEl.addEventListener('input', () => {
+          clearTimeout(_supActivityDebounce);
+          _supActivityDebounce = setTimeout(() => {
+            _supActivitySearch = searchEl.value.toLowerCase().trim();
+            renderSupActivity();
+          }, 200);
+        });
+      }
+      if (severityEl) {
+        severityEl.addEventListener('change', () => {
+          _supActivitySeverity = severityEl.value;
+          renderSupActivity();
+        });
+      }
+    }
+
+    listEl.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding:20px;">Cargando actividad...</div>';
+    try {
+      const { data } = await window.supabaseClient.from('audit_log').select('user_id, action, module, severity, metadata, created_at').order('created_at', { ascending: false }).limit(200);
+      window._supActivityCache = data || [];
+      renderSupActivity();
+    } catch (err) {
+      console.error('loadSupActivity error:', err);
+      listEl.innerHTML = '<div style="color:var(--danger); text-align:center; padding:20px;">Error cargando actividad</div>';
+    }
+  }
+
+  function renderSupActivity() {
+    const listEl = $('#activityList');
+    if (!listEl) return;
+    const activity = window._supActivityCache || [];
+    if (!activity.length) {
+      listEl.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding:40px;">Sin actividad reciente</div>';
+      return;
+    }
+
+    // Filtrar en cliente (cache de 200 filas)
+    let filtered = activity;
+    if (_supActivitySearch) {
+      filtered = filtered.filter(a =>
+        (a.user_id || '').toLowerCase().includes(_supActivitySearch) ||
+        (a.action || '').toLowerCase().includes(_supActivitySearch) ||
+        (a.module || '').toLowerCase().includes(_supActivitySearch) ||
+        (a.metadata ? JSON.stringify(a.metadata).toLowerCase() : '').includes(_supActivitySearch)
+      );
+    }
+    if (_supActivitySeverity) {
+      filtered = filtered.filter(a => a.severity === _supActivitySeverity);
+    }
+
+    const severityColors = { critical: '#EF4444', error: '#EF4444', high: '#F97316', medium: '#FFB800', low: '#3B82F6', info: '#1FC8C3', success: 'var(--success)' };
+    listEl.innerHTML = filtered.slice(0, 100).map(a => {
+      const color = severityColors[a.severity] || 'var(--text-secondary)';
+      const time = a.created_at ? new Date(a.created_at).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+      const meta = a.metadata ? `<br><span style="color:var(--text-dim); font-size:10px;">${esc(JSON.stringify(a.metadata)).slice(0, 200)}</span>` : '';
+      return `<div style="border-bottom:1px solid var(--border-subtle); padding:8px 0; font-family:monospace; font-size:11px; line-height:1.6;">
+        <span style="color:var(--text-dim);">[${esc(time)}]</span>
+        <span style="color:${color}; margin:0 8px;">●</span>
+        <span style="color:var(--accent);">${esc(a.module || 'general')}</span>
+        <span style="color:var(--text-secondary);">${esc(a.action)}</span>
+        <span style="color:var(--text-muted);">por ${esc(a.user_id || 'sistema')}</span>
+        ${meta}
+      </div>`;
+    }).join('');
+  }
+
+  // --- VIEW: USERS TABLE ---
+  async function loadSupUsersTable() {
+    if (!window.supabaseClient) return;
+    const tbody = $('#supUsersTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="10" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td></tr>';
+    try {
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const [auditRes, profilesRes] = await Promise.all([
+        window.supabaseClient.from('audit_log').select('user_id, action, severity, created_at, metadata').gte('created_at', weekAgo),
+        window.supabaseClient.from('profiles').select('id, full_name, email, role')
+      ]);
+      const audit = auditRes.data || [];
+      const profiles = profilesRes.data || [];
+      const profileMap = new Map(profiles.map(p => [p.id, p]));
+
+      const userStats = {};
+      audit.forEach(a => {
+        const uid = a.user_id || 'unknown';
+        if (!userStats[uid]) userStats[uid] = { actions: 0, errors: 0, sensitive: 0, exports: 0, bulk: 0, lastActivity: null };
+        userStats[uid].actions++;
+        if (a.severity === 'error' || a.severity === 'critical') userStats[uid].errors++;
+        if (a.metadata?.sensitive === true) userStats[uid].sensitive++;
+        if (a.action === 'export' || a.action?.includes('export')) userStats[uid].exports++;
+        if (a.action?.includes('bulk') || a.metadata?.bulk === true) userStats[uid].bulk++;
+        const ts = a.created_at ? new Date(a.created_at).getTime() : 0;
+        if (ts > (userStats[uid].lastActivity || 0)) userStats[uid].lastActivity = ts;
+      });
+
+      const alertCounts = {};
+      const { data: alerts } = await window.supabaseClient.from('supervision_alerts').select('user_id').eq('status', 'open');
+      (alerts || []).forEach(a => { alertCounts[a.user_id] = (alertCounts[a.user_id] || 0) + 1; });
+
+      const rows = Object.entries(userStats).map(([uid, stats]) => {
+        const profile = profileMap.get(uid);
+        const name = profile ? `${esc(profile.full_name || profile.email)}` : `UID: ${uid.slice(0,8)}...`;
+        const role = profile ? esc(profile.role) : '—';
+        const broker = profile?.broker_id ? 'Sí' : 'No';
+        const lastAct = stats.lastActivity ? new Date(stats.lastActivity).toLocaleString('es-AR') : '—';
+        const alertCount = alertCounts[uid] || 0;
+        const statusClass = alertCount > 5 ? 'danger' : alertCount > 0 ? 'warning' : 'success';
+        const statusText = alertCount > 5 ? '⚠️ Crítico' : alertCount > 0 ? '⚠️ Alerta' : '✅ OK';
+        return `<tr style="border-bottom:1px solid var(--border-subtle);">
+          <td style="padding:10px 16px; color:#fff;">${name}</td>
+          <td style="padding:10px 16px; color:var(--text-secondary);">${role}</td>
+          <td style="padding:10px 16px; color:var(--text-secondary);">${broker}</td>
+          <td style="padding:10px 16px; color:var(--text-secondary);">${lastAct}</td>
+          <td style="padding:10px 16px; text-align:right; color:var(--accent); font-weight:600;">${stats.actions.toLocaleString('es-AR')}</td>
+          <td style="padding:10px 16px; text-align:right; color:var(--danger); font-weight:600;">${stats.errors}</td>
+          <td style="padding:10px 16px; text-align:right; color:var(--warning); font-weight:600;">${stats.sensitive}</td>
+          <td style="padding:10px 16px; text-align:right; color:#F59E0B; font-weight:600;">${stats.exports}</td>
+          <td style="padding:10px 16px; text-align:center; color:${alertCount > 0 ? 'var(--danger)' : 'var(--success)'}; font-weight:600;">${alertCount}</td>
+          <td style="padding:10px 16px; text-align:center;">
+            <span class="status-pill ${statusClass}" style="font-size:10px;">${statusText}</span>
+          </td>
+        </tr>`;
+      }).join('');
+
+      tbody.innerHTML = rows || '<tr><td colspan="10" style="padding:40px; text-align:center; color:var(--text-dim);">Sin datos</td></tr>';
+
+      // Click handlers for user detail
+      $$('#supUsersTableBody tr').forEach(tr => {
+        tr.style.cursor = 'pointer';
+        tr.addEventListener('click', () => {
+          const uid = Object.keys(userStats)[Array.from(tr.parentNode.children).indexOf(tr)];
+          if (uid) openSupUserDetail(uid, userStats[uid], profileMap.get(uid), audit.filter(a => a.user_id === uid));
+        });
+      });
+    } catch (err) {
+      console.error('loadSupUsersTable error:', err);
+      tbody.innerHTML = '<tr><td colspan="10" style="padding:40px; text-align:center; color:var(--danger);">Error cargando usuarios</td></tr>';
+    }
+  }
+
+  function openSupUserDetail(uid, stats, profile, userAudit) {
+    const detail = $('#supUserDetail');
+    const nameEl = $('#supUserDetailName');
+    if (!detail || !nameEl) return;
+    nameEl.textContent = profile ? `${profile.full_name || profile.email}` : `UID: ${uid}`;
+    $('#udTotalActivity').textContent = `${stats.actions} acciones (${stats.errors} errores, ${stats.sensitive} sensibles, ${stats.exports} exportaciones, ${stats.bulk} masivas)`;
+    
+    const byModule = {};
+    userAudit.forEach(a => { byModule[a.module || 'general'] = (byModule[a.module || 'general'] || 0) + 1; });
+    $('#udByModule').innerHTML = Object.entries(byModule).map(([m, c]) => `<div>${esc(m)}: <span style="color:var(--accent);">${c}</span></div>`).join('');
+    
+    $('#udRecentEvents').innerHTML = userAudit.slice(0, 20).map(a => {
+      const time = a.created_at ? new Date(a.created_at).toLocaleString('es-AR') : '';
+      return `<div style="border-bottom:1px solid var(--border-subtle); padding:4px 0; font-family:monospace; font-size:11px;">
+        [${esc(time)}] ${esc(a.action)} en ${esc(a.module || 'general')} <span style="color:${a.severity === 'error' ? 'var(--danger)' : a.severity === 'critical' ? '#EF4444' : 'var(--text-secondary)'}">[${esc(a.severity)}]</span>
+      </div>`;
+    }).join('');
+    
+    $('#udErrors').textContent = stats.errors ? `${stats.errors} errores en 7 días` : 'Sin errores';
+    $('#udSensitive').textContent = stats.sensitive ? `${stats.sensitive} acciones sensibles` : 'Sin acciones sensibles';
+    $('#udExports').textContent = stats.exports ? `${stats.exports} exportaciones` : 'Sin exportaciones';
+    $('#udAlerts').innerHTML = `<button class="status-pill" onclick="navigateTo('tab-supervision'); setTimeout(() => switchSupView('alerts'), 100);">${stats.alerts || 0} alertas abiertas</button>`;
+    $('#udCompare').textContent = `Promedio acciones/usuario: ${Math.round(Object.values(userStats).reduce((s, u) => s + u.actions, 0) / Object.keys(userStats).length)}`;
+    
+    detail.style.display = 'block';
+    detail.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  window.closeSupUserDetail = function() {
+    const detail = $('#supUserDetail');
+    if (detail) detail.style.display = 'none';
+  };
+
+  // --- VIEW: MODULES GRID ---
+  async function loadSupModulesGrid() {
+    if (!window.supabaseClient) return;
+    const grid = $('.modules-grid');
+    if (!grid) return;
+    grid.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding:40px;">Cargando módulos...</div>';
+    try {
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await window.supabaseClient.from('audit_log').select('module, action, severity, created_at').gte('created_at', weekAgo);
+      const audit = data || [];
+      
+      const modStats = {};
+      audit.forEach(a => {
+        const mod = a.module || 'general';
+        if (!modStats[mod]) modStats[mod] = { total: 0, errors: 0, actions: new Set(), users: new Set() };
+        modStats[mod].total++;
+        modStats[mod].actions.add(a.action);
+        modStats[mod].users.add(a.user_id);
+        if (a.severity === 'error' || a.severity === 'critical') modStats[mod].errors++;
+      });
+
+      grid.innerHTML = Object.entries(modStats).map(([mod, stats]) => {
+        const errorRate = stats.total > 0 ? ((stats.errors / stats.total) * 100).toFixed(1) : 0;
+        const errorColor = errorRate > 10 ? 'var(--danger)' : errorRate > 5 ? 'var(--warning)' : 'var(--success)';
+        return `<div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+          <h4 style="color:var(--accent); margin:0 0 12px; font-size:14px;">${esc(mod)}</h4>
+          <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:8px; font-size:12px; color:var(--text-secondary);">
+            <div>Total acciones: <span style="color:var(--accent); font-weight:600;">${stats.total.toLocaleString('es-AR')}</span></div>
+            <div>Usuarios únicos: <span style="color:var(--accent); font-weight:600;">${stats.users.size}</span></div>
+            <div>Acciones únicas: <span style="color:var(--accent); font-weight:600;">${stats.actions.size}</span></div>
+            <div>Errores: <span style="color:${errorColor}; font-weight:600;">${stats.errors} (${errorRate}%)</span></div>
+          </div>
+        </div>`;
+      }).join('');
+    } catch (err) {
+      console.error('loadSupModulesGrid error:', err);
+      grid.innerHTML = '<div style="color:var(--danger); text-align:center; padding:40px;">Error cargando módulos</div>';
+    }
+  }
+
+  // --- VIEW: ALERTS TABLE ---
+  let _supAlertsCursor = null;
+  let _supAlertsHasMore = true;
+
+  async function loadSupAlertsTable(append = false) {
+    if (!window.supabaseClient) return;
+    const tbody = $('#supAlertsTableBody');
+    const loadMoreBtn = $('#supAlertsLoadMore');
+    if (!tbody) return;
+    if (!append) {
+      tbody.innerHTML = '<tr><td colspan="10" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td></tr>';
+      _supAlertsCursor = null;
+      _supAlertsHasMore = true;
+    }
+    try {
+      // Cargar usuarios para dropdown de asignación
+      const { data: usersData } = await window.supabaseClient
+        .from('profiles')
+        .select('id, full_name, email, role')
+        .eq('is_active', true)
+        .order('full_name');
+      const users = usersData || [];
+      const userOptions = users.map(u => `<option value="${esc(u.id)}">${esc(u.full_name || u.email)} (${esc(u.role)})</option>`).join('');
+
+      let query = window.supabaseClient.from('supervision_alerts').select('*').order('created_at', { ascending: false }).limit(51);
+      if (_supAlertsCursor) {
+        query = query.or(`created_at.lt.${_supAlertsCursor.created_at},and(created_at.eq.${_supAlertsCursor.created_at},id.lt.${_supAlertsCursor.id})`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      const alerts = data || [];
+      const hasMore = alerts.length > 50;
+      const rows = hasMore ? alerts.slice(0, 50) : alerts;
+      _supAlertsHasMore = hasMore;
+      if (rows.length) {
+        _supAlertsCursor = { created_at: rows[rows.length - 1].created_at, id: rows[rows.length - 1].id };
+      }
+
+      const severityColors = { critical: '#EF4444', high: '#F97316', medium: '#FFB800', low: '#3B82F6', info: '#1FC8C3' };
+      const severityLabels = { critical: '🔴 Crítica', high: '🟠 Alta', medium: '🟡 Media', low: '🔵 Baja', info: '⚪ Info' };
+      const statusLabels = { open: 'Abierta', assigned: 'Asignada', investigating: 'Investigando', acknowledged: 'Reconocida', resolved: 'Resuelta', dismissed: 'Descartada' };
+      const statusPillClass = {
+        open: 'pending', assigned: 'active', investigating: 'active',
+        acknowledged: 'active', resolved: 'success', dismissed: 'pending'
+      };
+      const renderRows = rows.map(a => {
+        const color = severityColors[a.severity] || 'var(--text-secondary)';
+        const assignedName = a.assigned_to
+          ? (users.find(u => u.id === a.assigned_to)?.full_name || users.find(u => u.id === a.assigned_to)?.email || a.assigned_to.slice(0,8)+'...')
+          : '—';
+        return `<tr style="border-bottom:1px solid var(--border-subtle);" data-alert-id="${esc(a.id)}">
+          <td style="padding:10px 12px;"><span style="color:${color}; font-weight:600;">${severityLabels[a.severity] || a.severity}</span></td>
+          <td style="padding:10px 12px; color:var(--text-secondary);">${esc(a.rule_name || a.alert_type || '—')}</td>
+          <td style="padding:10px 12px; color:#fff;">${esc(a.user_name || a.user_id || '—')}</td>
+          <td style="padding:10px 12px; color:var(--text-secondary);">${esc(a.module || '—')}</td>
+          <td style="padding:10px 12px; color:var(--text-secondary);">${esc(a.description || '—').slice(0, 80)}${a.description && a.description.length > 80 ? '...' : ''}</td>
+          <td style="padding:10px 12px; font-family:monospace; font-size:10px; color:var(--text-dim);">${a.evidence ? '📎 Ver' : '—'}</td>
+          <td style="padding:10px 12px; color:var(--text-secondary);">${a.created_at ? new Date(a.created_at).toLocaleString('es-AR') : '—'}</td>
+          <td style="padding:10px 12px; color:var(--accent); font-weight:500; font-size:12px;">${esc(assignedName)}</td>
+          <td style="padding:10px 12px;"><span class="status-pill ${statusPillClass[a.status] || 'pending'}" style="font-size:10px;">${statusLabels[a.status] || a.status}</span></td>
+          <td style="padding:10px 12px; text-align:center;">
+            <div style="display:flex; gap:4px; justify-content:center; flex-wrap:wrap;">
+              ${a.status === 'open' ? `
+                <select class="assign-user-select" data-alert-id="${esc(a.id)}" style="padding:4px 8px; border:1px solid var(--border-input); border-radius:4px; background:rgba(255,255,255,0.03); color:#fff; font-size:11px; min-width:140px;" onchange="assignSupAlert(this.value, '${esc(a.id)}')">
+                  <option value="">— Asignar a —</option>
+                  ${userOptions}
+                </select>
+              ` : ''}
+              ${a.status === 'assigned' || a.status === 'investigating' ? `
+                <button class="btn-action" onclick="acknowledgeSupAlert('${esc(a.id)}')" title="Reconocer (empezar investigación)"><i class="fas fa-check"></i></button>
+                <button class="btn-action" onclick="resolveSupAlert('${esc(a.id)}')" title="Marcar resuelta"><i class="fas fa-flag-checkered"></i></button>
+              ` : ''}
+              ${a.status === 'open' || a.status === 'assigned' || a.status === 'investigating' || a.status === 'acknowledged' ? `
+                <button class="btn-action" onclick="dismissSupAlert('${esc(a.id)}')" title="Descartar"><i class="fas fa-times"></i></button>
+              ` : ''}
+              ${a.notes ? `
+                <button class="btn-action" onclick="viewSupAlertNotes('${esc(a.id)}')" title="Ver/editar notas"><i class="fas fa-sticky-note"></i></button>
+              ` : ''}
+              <button class="btn-action" onclick="viewSupAlertDetail('${esc(a.id)}')" title="Ver detalle completo"><i class="fas fa-eye"></i></button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+
+      if (append) {
+        tbody.innerHTML += renderRows;
+      } else {
+        tbody.innerHTML = renderRows;
+      }
+
+      if (loadMoreBtn) {
+        loadMoreBtn.style.display = _supAlertsHasMore ? 'inline-flex' : 'none';
+      }
+    } catch (err) {
+      console.error('loadSupAlertsTable error:', err);
+      tbody.innerHTML = '<tr><td colspan="10" style="padding:40px; text-align:center; color:var(--danger);">Error cargando alertas</td></tr>';
+      if (loadMoreBtn) loadMoreBtn.style.display = 'none';
+    }
+  }
+
+  window.loadMoreSupAlerts = function() {
+    loadSupAlertsTable(true);
+  };
+
+  window.assignSupAlert = async function(userId, alertId) {
+    if (!userId || !window.supabaseClient) return;
+    try {
+      await window.supabaseClient.from('supervision_alerts').update({ assigned_to: userId, status: 'assigned', updated_at: new Date().toISOString() }).eq('id', alertId);
+      showToast('Alerta asignada', 'success');
+      loadSupAlertsTable();
+      refreshSupervisionKPIs();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.acknowledgeSupAlert = async function(alertId) {
+    if (!window.supabaseClient) return;
+    try {
+      await window.supabaseClient.from('supervision_alerts').update({ status: 'acknowledged', acknowledged_by: currentUser.id, acknowledged_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', alertId);
+      showToast('Alerta reconocida - investigación iniciada', 'success');
+      loadSupAlertsTable();
+      refreshSupervisionKPIs();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.resolveSupAlert = async function(alertId) {
+    if (!window.supabaseClient) return;
+    try {
+      await window.supabaseClient.from('supervision_alerts').update({ status: 'resolved', resolved_by: currentUser.id, resolved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', alertId);
+      showToast('Alerta marcada como resuelta', 'success');
+      loadSupAlertsTable();
+      refreshSupervisionKPIs();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.dismissSupAlert = async function(alertId) {
+    if (!window.supabaseClient) return;
+    try {
+      await window.supabaseClient.from('supervision_alerts').update({ status: 'dismissed', dismissed_by: currentUser.id, dismissed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', alertId);
+      showToast('Alerta descartada', 'success');
+      loadSupAlertsTable();
+      refreshSupervisionKPIs();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.viewSupAlertNotes = async function(alertId) {
+    if (!window.supabaseClient) return;
+    try {
+      const { data } = await window.supabaseClient.from('supervision_alerts').select('notes').eq('id', alertId).single();
+      if (!data) return;
+      const currentNotes = data.notes || '';
+      const newNotes = prompt('Notas de investigación:', currentNotes);
+      if (newNotes === null) return; // Cancel
+      if (newNotes === currentNotes) return; // No changes
+      await window.supabaseClient.from('supervision_alerts').update({ notes: newNotes, updated_at: new Date().toISOString() }).eq('id', alertId);
+      showToast('Notas actualizadas', 'success');
+      loadSupAlertsTable();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.viewSupAlertDetail = async function(id) {
+    if (!window.supabaseClient) return;
+    try {
+      const { data } = await window.supabaseClient.from('supervision_alerts').select('*').eq('id', id).single();
+      if (!data) return;
+
+      // Build detail content with button to navigate to Auditoría
+      const evidence = data.evidence ? JSON.stringify(data.evidence, null, 2) : '—';
+      const requestId = data.metadata?.request_id || data.evidence?.request_id || '—';
+      const entityId = data.evidence?.entity_id || '—';
+      const entityType = data.evidence?.entity_type || '—';
+
+      const content = `
+        <div style="line-height:1.8; font-size:13px;">
+          <div><strong>ID:</strong> <code style="color:var(--accent);">${esc(data.id)}</code></div>
+          <div><strong>Regla:</strong> ${esc(data.rule_name || data.alert_type || '—')}</div>
+          <div><strong>Severidad:</strong> <span style="color:${({critical:'#EF4444',high:'#F97316',medium:'#FFB800',low:'#3B82F6',info:'#1FC8C3'}[data.severity]||'var(--text-secondary)')}; font-weight:600;">${esc(data.severity)}</span></div>
+          <div><strong>Usuario:</strong> ${esc(data.user_name || data.user_id || '—')}</div>
+          <div><strong>Módulo:</strong> <span style="color:var(--accent);">${esc(data.module || '—')}</span></div>
+          <div><strong>Descripción:</strong> ${esc(data.description || '—')}</div>
+          <div><strong>Evidencia:</strong><pre style="background:rgba(255,255,255,0.03); padding:12px; border-radius:8px; font-size:11px; overflow:auto; max-height:200px; margin-top:8px;">${esc(evidence)}</pre></div>
+          <div style="margin-top:16px; padding:12px; background:rgba(31,200,195,0.1); border:1px solid rgba(31,200,195,0.3); border-radius:8px;">
+            <div style="font-weight:600; color:var(--accent); margin-bottom:8px;">🔗 Vincular con Auditoría</div>
+            <div style="font-size:12px; color:var(--text-secondary);">Si la alerta se generó desde un evento de auditoría, puedes buscar el evento original:</div>
+            <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+              ${requestId !== '—' ? `<button class="btn-action" onclick="goToAuditFromAlert('request_id', '${esc(requestId)}')" title="Buscar por Request ID"><i class="fas fa-search"></i> Request ID: ${esc(requestId).slice(0,20)}...</button>` : ''}
+              ${entityId !== '—' ? `<button class="btn-action" onclick="goToAuditFromAlert('entity_id', '${esc(entityId)}')" title="Buscar por Entity ID"><i class="fas fa-search"></i> Entity ID: ${esc(entityId).slice(0,20)}...</button>` : ''}
+            </div>
+          </div>
+          <hr style="margin:16px 0; border-color:var(--border-subtle);">
+          <div><strong>Creada:</strong> ${data.created_at ? new Date(data.created_at).toLocaleString('es-AR') : '—'}</div>
+          <div><strong>Estado:</strong> ${esc(data.status)}</div>
+        </div>
+      `;
+
+      // Show in a modal instead of alert
+      let modal = $('#supAlertDetailModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'supAlertDetailModal';
+        modal.className = 'admin-modal';
+        modal.innerHTML = `
+          <div class="modal-box" style="max-width:600px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+              <h3 id="supAlertDetailTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin:0;"></h3>
+              <button type="button" class="status-pill pending" onclick="closeModal('supAlertDetailModal')"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="supAlertDetailContent" style="max-height:70vh; overflow-y:auto;"></div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+      }
+      $('#supAlertDetailTitle').textContent = `Alerta: ${esc(data.rule_name || data.alert_type || id)}`;
+      $('#supAlertDetailContent').innerHTML = content;
+      openModal('supAlertDetailModal');
+
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  // Navegar a Auditoría desde alerta (filtra por request_id o entity_id)
+  window.goToAuditFromAlert = function(filterType, value) {
+    if (!value || value === '—') return;
+    navigateTo('tab-supervision');
+    setTimeout(() => {
+      switchSupView('audit');
+      if (filterType === 'request_id') {
+        $('#supModuleFilter').value = ''; // no filtrar por módulo
+        // Buscar en metadata.request_id - necesitamos filtro personalizado
+        // Por ahora ponemos el valor en un campo temporal y filtramos
+        window._auditCustomFilter = { type: 'request_id', value };
+      } else if (filterType === 'entity_id') {
+        window._auditCustomFilter = { type: 'entity_id', value };
+      }
+      loadSupAuditTable();
+    }, 150);
+  };
+
+  // --- VIEW: AUDIT TABLE ---
+  let _supAuditCursor = null; // { created_at, id }
+  let _supAuditHasMore = true;
+
+  async function loadSupAuditTable(append = false) {
+    if (!window.supabaseClient) return;
+    const tbody = $('#supAuditTableBody');
+    const loadMoreBtn = $('#supAuditLoadMore');
+    if (!tbody) return;
+    if (!append) {
+      tbody.innerHTML = '<tr><td colspan="9" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td></tr>';
+      _supAuditCursor = null;
+      _supAuditHasMore = true;
+    }
+    try {
+      const fromDate = $('#supFromDate')?.value ? new Date($('#supFromDate').value).toISOString() : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const toDate = $('#supToDate')?.value ? new Date(new Date($('#supToDate').value).getTime() + 24 * 60 * 60 * 1000).toISOString() : new Date().toISOString();
+      const moduleFilter = $('#supModuleFilter')?.value;
+      const userFilter = $('#supUserFilter')?.value;
+      const severityFilter = $('#supSeverityFilter')?.value;
+
+      // Custom filter from alert detail (request_id or entity_id)
+      const customFilter = window._auditCustomFilter || null;
+
+      let query = window.supabaseClient.from('audit_log').select('*').gte('created_at', fromDate).lte('created_at', toDate).order('created_at', { ascending: false }).limit(51); // 51 para detectar hasMore
+      if (moduleFilter) query = query.eq('module', moduleFilter);
+      if (userFilter) query = query.eq('user_id', userFilter);
+      if (severityFilter) query = query.eq('severity', severityFilter);
+      // Custom filter from alert detail
+      if (customFilter) {
+        if (customFilter.type === 'request_id') {
+          query = query.or(`request_id.eq.${customFilter.value},metadata->>request_id.eq.${customFilter.value}`);
+        } else if (customFilter.type === 'entity_id') {
+          query = query.or(`entity_id.eq.${customFilter.value},metadata->>entity_id.eq.${customFilter.value}`);
+        }
+        // Clear after use
+        window._auditCustomFilter = null;
+      }
+      // Cursor-based pagination
+      if (_supAuditCursor) {
+        query = query.or(`created_at.lt.${_supAuditCursor.created_at},and(created_at.eq.${_supAuditCursor.created_at},id.lt.${_supAuditCursor.id})`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      const audit = data || [];
+      const hasMore = audit.length > 50;
+      const rows = hasMore ? audit.slice(0, 50) : audit;
+      _supAuditHasMore = hasMore;
+      if (rows.length) {
+        _supAuditCursor = { created_at: rows[rows.length - 1].created_at, id: rows[rows.length - 1].id };
+      }
+
+      const resultColors = { success: 'var(--success)', error: 'var(--danger)', critical: '#EF4444', info: 'var(--accent)', warning: 'var(--warning)' };
+      const renderRows = rows.map(a => {
+        const color = resultColors[a.severity] || 'var(--text-secondary)';
+        return `<tr style="border-bottom:1px solid var(--border-subtle); cursor:pointer;" onclick="openSupAuditDetail('${esc(a.id)}')">
+          <td style="padding:8px 10px; font-family:monospace; font-size:11px; color:var(--text-secondary);">${a.created_at ? new Date(a.created_at).toLocaleString('es-AR') : '—'}</td>
+          <td style="padding:8px 10px; color:#fff;">${esc(a.user_id || 'sistema')}</td>
+          <td style="padding:8px 10px; color:var(--text-secondary);">${esc(a.user_role || '—')}</td>
+          <td style="padding:8px 10px; color:var(--accent); font-size:12px;">${esc(a.module || 'general')}</td>
+          <td style="padding:8px 10px; color:#fff; font-weight:500;">${esc(a.action)}</td>
+          <td style="padding:8px 10px; color:var(--text-secondary); font-family:monospace; font-size:11px;">${esc(a.entity_type || '—')}:${esc(a.entity_id || '—').slice(0, 20)}</td>
+          <td style="padding:8px 10px; text-align:center;"><span style="color:${color}; font-weight:600; text-transform:uppercase; font-size:11px;">${esc(a.severity || 'info')}</span></td>
+          <td style="padding:8px 10px; color:var(--text-dim); font-family:monospace; font-size:10px;">${esc(a.ip_address || '—')}</td>
+          <td style="padding:8px 10px; color:var(--text-dim); font-family:monospace; font-size:10px;">${esc(a.request_id || '—').slice(0, 20)}</td>
+        </tr>`;
+      }).join('');
+
+      if (append) {
+        tbody.innerHTML += renderRows;
+      } else {
+        tbody.innerHTML = renderRows;
+      }
+
+      // Botón "Cargar más"
+      if (loadMoreBtn) {
+        loadMoreBtn.style.display = _supAuditHasMore ? 'inline-flex' : 'none';
+      }
+    } catch (err) {
+      console.error('loadSupAuditTable error:', err);
+      tbody.innerHTML = '<tr><td colspan="9" style="padding:40px; text-align:center; color:var(--danger);">Error cargando auditoría</td></tr>';
+      if (loadMoreBtn) loadMoreBtn.style.display = 'none';
+    }
+  }
+
+  window.loadMoreSupAudit = function() {
+    loadSupAuditTable(true);
+  };
+
+  window.openSupAuditDetail = async function(id) {
+    if (!window.supabaseClient) return;
+    const detail = $('#supAuditDetail');
+    const content = $('#supAuditDetailContent');
+    if (!detail || !content) return;
+    try {
+      const { data } = await window.supabaseClient.from('audit_log').select('*').eq('id', id).single();
+      if (!data) return;
+      content.innerHTML = `
+        <div style="margin-bottom:12px;"><strong>ID:</strong> <code style="color:var(--accent);">${esc(data.id)}</code></div>
+        <div style="margin-bottom:12px;"><strong>Fecha:</strong> ${data.created_at ? new Date(data.created_at).toLocaleString('es-AR') : '—'}</div>
+        <div style="margin-bottom:12px;"><strong>Usuario:</strong> ${esc(data.user_id)} <span style="color:var(--text-dim);">(${esc(data.user_role || '—')})</span></div>
+        <div style="margin-bottom:12px;"><strong>Módulo:</strong> <span style="color:var(--accent);">${esc(data.module || 'general')}</span></div>
+        <div style="margin-bottom:12px;"><strong>Acción:</strong> <span style="color:#fff; font-weight:600;">${esc(data.action)}</span></div>
+        <div style="margin-bottom:12px;"><strong>Entidad:</strong> ${esc(data.entity_type || '—')}:${esc(data.entity_id || '—')}</div>
+        <div style="margin-bottom:12px;"><strong>Severidad:</strong> <span style="color:${resultColors[data.severity] || 'var(--text-secondary)'}; font-weight:600; text-transform:uppercase;">${esc(data.severity || 'info')}</span></div>
+        <div style="margin-bottom:12px;"><strong>IP:</strong> ${esc(data.ip_address || '—')}</div>
+        <div style="margin-bottom:12px;"><strong>Request ID:</strong> <code style="color:var(--accent);">${esc(data.request_id || '—')}</code></div>
+        <div style="margin-bottom:12px;"><strong>Metadata:</strong><pre style="background:rgba(255,255,255,0.03); padding:12px; border-radius:8px; font-size:11px; overflow:auto; max-height:200px;">${esc(JSON.stringify(data.metadata || {}, null, 2))}</pre></div>
+      `;
+      detail.style.display = 'block';
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.closeSupAuditDetail = function() {
+    const detail = $('#supAuditDetail');
+    if (detail) detail.style.display = 'none';
+  };
+
+  const resultColors = { success: 'var(--success)', error: 'var(--danger)', critical: '#EF4444', info: 'var(--accent)', warning: 'var(--warning)' };
+
+  // --- VIEW: RULES TABLE ---
+  async function loadSupRulesTable() {
+    if (!window.supabaseClient) return;
+    const tbody = $('#supRulesTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="9" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td></tr>';
+    try {
+      const { data } = await window.supabaseClient.from('supervision_rules').select('*').order('created_at', { ascending: false });
+      const rules = data || [];
+      if (!rules.length) {
+        tbody.innerHTML = '<tr><td colspan="9" style="padding:40px; text-align:center; color:var(--text-dim);">Sin reglas configuradas</td></tr>';
+        return;
+      }
+      const severityColors = { critical: '#EF4444', high: '#F97316', medium: '#FFB800', low: '#3B82F6', info: '#1FC8C3' };
+      tbody.innerHTML = rules.map(r => {
+        const color = severityColors[r.severity] || 'var(--text-secondary)';
+        return `<tr style="border-bottom:1px solid var(--border-subtle);">
+          <td style="padding:10px 12px; color:#fff; font-weight:500;">${esc(r.name)}</td>
+          <td style="padding:10px 12px; color:var(--text-secondary);">${esc(r.module || 'todos')}</td>
+          <td style="padding:10px 12px; color:var(--text-secondary);">${esc(r.action || 'todas')}</td>
+          <td style="padding:10px 12px; color:var(--text-secondary);">${esc(r.event_type || 'todos')}</td>
+          <td style="padding:10px 12px; font-family:monospace; font-size:10px; color:var(--text-dim);">${esc(r.condition_json ? JSON.stringify(r.condition_json) : 'siempre')}</td>
+          <td style="padding:10px 12px; text-align:center;"><span style="color:${color}; font-weight:600; text-transform:uppercase;">${esc(r.severity)}</span></td>
+          <td style="padding:10px 12px; text-align:center; color:var(--text-secondary);">${esc(r.window)}</td>
+          <td style="padding:10px 12px; text-align:center;">
+            <label class="pf-toggle"><input type="checkbox" ${r.enabled ? 'checked' : ''} disabled><span class="toggle-slider"></span></label>
+          </td>
+          <td style="padding:10px 12px; text-align:center;">
+            <button class="btn-action" onclick="editSupRule('${esc(r.id)}')"><i class="fas fa-edit"></i></button>
+            <button class="btn-action danger" onclick="deleteSupRule('${esc(r.id)}')"><i class="fas fa-trash"></i></button>
+          </td>
+        </tr>`;
+      }).join('');
+    } catch (err) {
+      console.error('loadSupRulesTable error:', err);
+      tbody.innerHTML = '<tr><td colspan="9" style="padding:40px; text-align:center; color:var(--danger);">Error cargando reglas</td></tr>';
+    }
+  }
+
+  // Rules modal handlers
+  $('#supNewRuleBtn')?.addEventListener('click', () => {
+    $('#supRuleForm')?.reset();
+    $('#supRuleId').value = '';
+    $('#supRuleModalTitle').textContent = 'Nueva Regla';
+    openModal('supRuleModal');
+  });
+
+  window.editSupRule = async function(id) {
+    if (!window.supabaseClient) return;
+    try {
+      const { data } = await window.supabaseClient.from('supervision_rules').select('*').eq('id', id).single();
+      if (!data) return;
+      $('#supRuleId').value = data.id;
+      $('#supRuleForm [name="name"]').value = data.name;
+      $('#supRuleForm [name="description"]').value = data.description || '';
+      $('#supRuleForm [name="module"]').value = data.module || '';
+      $('#supRuleForm [name="action"]').value = data.action || '';
+      $('#supRuleForm [name="event_type"]').value = data.event_type || '';
+      $('#supRuleForm [name="severity"]').value = data.severity;
+      $('#supRuleForm [name="threshold"]').value = data.threshold;
+      $('#supRuleForm [name="window"]').value = data.window;
+      $('#supRuleForm [name="cooldown_minutes"]').value = data.cooldown_minutes;
+      $('#supRuleForm [name="enabled"]').checked = data.enabled;
+      $('#supRuleForm [name="filter_json"]').value = data.filter_json ? JSON.stringify(data.filter_json, null, 2) : '';
+      $('#supRuleModalTitle').textContent = 'Editar Regla';
+      openModal('supRuleModal');
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.deleteSupRule = async function(id) {
+    if (!window.supabaseClient) return;
+    if (!confirm('¿Eliminar esta regla?')) return;
+    try {
+      await window.supabaseClient.from('supervision_rules').delete().eq('id', id);
+      showToast('Regla eliminada', 'success');
+      loadSupRulesTable();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  // Simular regla: ejecuta la lógica contra audit_log reciente y muestra matches
+  window.simulateSupRule = async function() {
+    if (!window.supabaseClient) return;
+    const fd = new FormData($('#supRuleForm'));
+    const name = fd.get('name');
+    const module = fd.get('module') || null;
+    const action = fd.get('action') || null;
+    const threshold = parseInt(fd.get('threshold')) || 0;
+    const windowStr = fd.get('window') || '1 hour';
+    const filterJson = fd.get('filter_json') ? JSON.parse(fd.get('filter_json')) : null;
+    const cooldown = parseInt(fd.get('cooldown_minutes')) || 0;
+
+    if (!name) { showToast('Ingrese un nombre para la regla', 'error'); return; }
+
+    const modal = $('#supRuleModal');
+    const btn = $('#supRuleSimulateBtn');
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Simulando...';
+    btn.disabled = true;
+
+    try {
+      const v_window = windowStr;
+      const v_threshold = threshold;
+      const v_filter = filterJson;
+
+      let query = window.supabaseClient.from('audit_log').select('user_id, action, module, severity, changed_fields, metadata, created_at').gte('created_at', new Date(Date.now() - parseInterval(v_window)).toISOString());
+      if (module) query = query.eq('module', module);
+      if (action) query = query.eq('action', action);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      const audit = data || [];
+
+      let matches = [];
+      if (v_filter && v_filter.contains) {
+        const field = v_filter.contains;
+        matches = audit.filter(a => a.changed_fields && a.changed_fields.includes(field) && a.user_id)
+          .reduce((acc, a) => {
+            acc[a.user_id] = (acc[a.user_id] || 0) + 1;
+            return acc;
+          }, {});
+        matches = Object.entries(matches).filter(([_, count]) => count > v_threshold);
+      } else {
+        matches = audit.filter(a => a.user_id)
+          .reduce((acc, a) => {
+            acc[a.user_id] = (acc[a.user_id] || 0) + 1;
+            return acc;
+          }, {});
+        matches = Object.entries(matches).filter(([_, count]) => count > v_threshold);
+      }
+
+      if (!matches.length) {
+        showToast('Simulación: 0 usuarios superan el umbral', 'info');
+        return;
+      }
+
+      // Verificar cooldown (alertas existentes recientes)
+      const cooldownStart = new Date(Date.now() - cooldown * 60 * 1000).toISOString();
+      const { data: existingAlerts } = await window.supabaseClient.from('supervision_alerts').select('user_id').eq('alert_type', name).gte('created_at', cooldownStart).in('status', ['open', 'assigned', 'investigating', 'acknowledged']);
+      const cooledUsers = new Set((existingAlerts || []).map(a => a.user_id));
+
+      const results = matches.map(([userId, count]) => ({
+        userId,
+        count,
+        wouldAlert: !cooledUsers.has(userId),
+        cooldownBlocked: cooledUsers.has(userId)
+      }));
+
+      // Mostrar resultados en modal
+      const resultHtml = results.map(r => `
+        <div style="padding:10px; border-bottom:1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-weight:600;">${r.userId.slice(0,8)}...</div>
+            <div style="font-size:11px; color:var(--text-dim);">${r.count} eventos en la ventana</div>
+          </div>
+          <span class="status-pill ${r.wouldAlert ? 'pending' : 'success'}" style="font-size:10px;">
+            ${r.wouldAlert ? '🔔 Generaría alerta' : '⏳ Bloqueado por cooldown'}
+          </span>
+        </div>
+      `).join('');
+
+      // Crear modal de resultados si no existe
+      let resultModal = $('#supRuleSimulateResult');
+      if (!resultModal) {
+        resultModal = document.createElement('div');
+        resultModal.id = 'supRuleSimulateResult';
+        resultModal.className = 'admin-modal';
+        resultModal.innerHTML = `
+          <div class="modal-box" style="max-width:500px;">
+            <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Resultado de Simulación</h3>
+            <div id="supSimulateResultContent" style="max-height:300px; overflow-y:auto;"></div>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+              <button type="button" class="status-pill pending modal-close-btn" onclick="closeModal('supRuleSimulateResult')">Cerrar</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(resultModal);
+      }
+      $('#supSimulateResultContent').innerHTML = `
+        <div style="margin-bottom:16px; padding:12px; background:rgba(31,200,195,0.1); border-radius:8px; border:1px solid rgba(31,200,195,0.3);">
+          <div style="font-weight:600; color:var(--accent);">Regla: ${esc(name)}</div>
+          <div style="font-size:12px; color:var(--text-secondary);">Módulo: ${esc(module || 'todos')} | Acción: ${esc(action || 'todas')} | Ventana: ${esc(v_window)} | Umbral: > ${v_threshold}</div>
+          <div style="font-size:12px; color:var(--text-secondary);">Cooldown: ${cooldown} min | ${matches.length} usuario(s) superan umbral</div>
+        </div>
+        ${resultHtml}
+      `;
+      openModal('supRuleSimulateResult');
+
+    } catch (err) {
+      console.error('simulateSupRule error:', err);
+      showToast('Error en simulación: ' + err.message, 'error');
+    } finally {
+      btn.innerHTML = originalHtml;
+      btn.disabled = false;
+    }
+  };
+
+  // Helper: parse interval string like "1 hour", "10 minutes", "24 hours" to ms
+  function parseInterval(str) {
+    const m = String(str).match(/^(\d+)\s*(hour|hours|minute|minutes|day|days)$/i);
+    if (!m) return 3600000; // default 1 hour
+    const val = parseInt(m[1]);
+    const unit = m[2].toLowerCase();
+    if (unit.startsWith('hour')) return val * 3600000;
+    if (unit.startsWith('minute')) return val * 60000;
+    if (unit.startsWith('day')) return val * 86400000;
+    return 3600000;
+  }
+
+  $('#supRuleForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!window.supabaseClient) return;
+    const fd = new FormData(e.target);
+    const id = fd.get('id');
+    const payload = {
+      name: fd.get('name'),
+      description: fd.get('description'),
+      module: fd.get('module') || null,
+      action: fd.get('action') || null,
+      event_type: fd.get('event_type') || null,
+      severity: fd.get('severity'),
+      threshold: parseInt(fd.get('threshold')) || 0,
+      window: fd.get('window'),
+      cooldown_minutes: parseInt(fd.get('cooldown_minutes')) || 0,
+      enabled: fd.get('enabled') === 'on',
+      filter_json: fd.get('filter_json') ? JSON.parse(fd.get('filter_json')) : null,
+      updated_at: new Date().toISOString()
+    };
+    try {
+      if (id) {
+        await window.supabaseClient.from('supervision_rules').update(payload).eq('id', id);
+      } else {
+        await window.supabaseClient.from('supervision_rules').insert({ ...payload, created_at: new Date().toISOString() });
+      }
+      closeModal('supRuleModal');
+      showToast(id ? 'Regla actualizada' : 'Regla creada', 'success');
+      loadSupRulesTable();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  });
+
+  function exportSupervisionCSV() {
+    if (!window.supabaseClient) return;
+    // Export current view data - for now export audit_log
+    window.supabaseClient.from('audit_log').select('*').order('created_at', { ascending: false }).limit(1000).then(({ data, error }) => {
+      if (error) { showToast('Error: ' + error.message, 'error'); return; }
+      const headers = ['ID', 'Usuario', 'Rol', 'Módulo', 'Acción', 'Entidad', 'ID Entidad', 'Severidad', 'IP', 'Request ID', 'Metadata', 'Creado'];
+      const rows = (data || []).map(r => [r.id, r.user_id, r.user_role, r.module, r.action, r.entity_type, r.entity_id, r.severity, r.ip_address, r.request_id, JSON.stringify(r.metadata || {}), r.created_at]);
+      downloadCSV('supervision-audit-' + new Date().toISOString().slice(0, 10) + '.csv', rows, headers);
+      showToast('Auditoría exportada (' + rows.length + ' filas)', 'success');
+    });
+  }
+
+  function exportSupOverviewCSV() {
+    if (!window.supabaseClient) return;
+    // Export KPIs + rankings from overview
+    const kpis = {};
+    ['kpiActiveUsers','kpiActionsToday','kpiSuccess','kpiErrors','kpiSensitive','kpiOpenAlerts','kpiCriticalAlerts','kpiExports','kpiBulkOps'].forEach(id => {
+      const el = $('#' + id);
+      if (el) kpis[id] = el.textContent;
+    });
+    const rankings = {};
+    ['rankingUsers','rankingModules','rankingErrors','rankingSensitive'].forEach(id => {
+      const el = $('#' + id);
+      if (el) rankings[id] = el.textContent;
+    });
+    const date = new Date().toISOString().slice(0, 10);
+    // KPIs CSV
+    const kpiHeaders = ['KPI', 'Valor'];
+    const kpiRows = Object.entries(kpis).map(([k, v]) => [k, v]);
+    downloadCSV('supervision-resumen-kpis-' + date + '.csv', kpiRows, kpiHeaders);
+    // Rankings CSV (combined)
+    const rankHeaders = ['Ranking', 'Detalle'];
+    const rankRows = Object.entries(rankings).map(([k, v]) => [k, v]);
+    downloadCSV('supervision-resumen-rankings-' + date + '.csv', rankRows, rankHeaders);
+    showToast('Resumen supervisión exportado (KPIs + Rankings)', 'success');
   }
 
   function fichaFieldVal(id) {
@@ -4820,3 +6511,397 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
   }
 })
 ();
+
+// ============================================================
+// EJECUTIVO DASHBOARD FUNCTIONS
+// ============================================================
+(async function() {
+'use strict';
+
+// DOM helpers for this IIFE
+const $ = (sel, ctx = document) => ctx.querySelector(sel);
+const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
+
+// Executive Dashboard State
+let _execFromDate = '';
+let _execToDate = '';
+
+  // Load Executive Dashboard
+  window.loadExecutiveDashboard = async function() {
+    if (!currentUser || !window.supabaseClient) return;
+    if (currentProfile?.role !== 'super_admin') return;
+
+    _execFromDate = $('#execFromDate').value || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    _execToDate = $('#execToDate').value || new Date().toISOString().split('T')[0];
+
+    await Promise.all([
+      loadExecKPIs(),
+      loadExecTrendChart(),
+      loadExecTopOpps(),
+      loadExecStrategicAlerts(),
+      loadExecMonthlyTable()
+    ]);
+  };
+
+  async function loadExecKPIs() {
+    if (!window.supabaseClient) return;
+    try {
+      const fromDate = new Date(_execFromDate).toISOString();
+      const toDate = new Date(new Date(_execToDate).getTime() + 24 * 60 * 60 * 1000).toISOString();
+
+      // Parallel queries for all KPIs
+      const [
+        leadsRes,
+        visitsRes,
+        closedRes,
+        propertiesRes,
+        auditRes,
+        brokerRes
+      ] = await Promise.all([
+        window.supabaseClient.from('leads').select('id, stage, created_at, budget_usd').gte('created_at', _execFromDate).lte('created_at', _execToDate),
+        window.supabaseClient.from('visits').select('id, visit_date, lead_id').gte('visit_date', _execFromDate).lte('visit_date', _execToDate),
+        window.supabaseClient.from('leads').select('id, stage, created_at, budget_usd').in('stage', ['cerrado']).gte('closed_at', _execFromDate).lte('closed_at', _execToDate),
+        window.supabaseClient.from('properties').select('price_usd, status, is_published').eq('is_published', true).neq('status', 'vendido'),
+        window.supabaseClient.from('audit_log').select('user_id, action, severity, created_at, metadata').gte('created_at', new Date(_execFromDate).toISOString()).lte('created_at', new Date(_execToDate).toISOString()),
+        window.supabaseClient.from('agents').select('id, full_name, sales_ytd').eq('status', 'activo')
+      ]);
+
+      const leads = leadsRes.data || [];
+      const visits = visitsRes.data || [];
+      const closed = closedRes.data || [];
+      const properties = propertiesRes.data || [];
+      const audit = auditRes.data || [];
+      const brokers = brokerRes.data || [];
+
+      // KPI: Conversión Lead→Cierre
+      const totalLeads = leads.length;
+      const totalClosed = closed.length;
+      const convRate = totalLeads > 0 ? ((totalClosed / totalLeads) * 100).toFixed(1) : 0;
+      setKPI('execConvRate', convRate + '%');
+
+      // KPI: Tiempo medio cierre
+      if (closed.length > 0) {
+        const closeTimes = closed.map(l => {
+          const created = new Date(l.created_at).getTime();
+          const closedAt = new Date(l.closed_at || l.updated_at).getTime();
+          return (closedAt - created) / (1000 * 60 * 60 * 24);
+        });
+        const avgClose = (closeTimes.reduce((a, b) => a + b, 0) / closeTimes.length).toFixed(1);
+        setKPI('execAvgCloseTime', avgClose + ' días');
+      } else {
+        setKPI('execAvgCloseTime', '—');
+      }
+
+      // KPI: Valor cartera activa
+      const portfolioValue = properties.reduce((sum, p) => sum + (p.price_usd || 0), 0);
+      setKPI('execPortfolioValue', '$' + portfolioValue.toLocaleString('es-AR'));
+
+      // KPI: ROI Marketing (leads por USD invertido - estimado)
+      const marketingSpend = 10000; // USD estimado mensual
+      const leadsPerDollar = marketingSpend > 0 ? (totalLeads / marketingSpend).toFixed(2) : 0;
+      setKPI('execMarketingROI', leadsPerDollar + ' leads/USD');
+
+      // KPI: Productividad Brokers
+      const activeBrokers = brokers.filter(b => b.sales_ytd && b.sales_ytd > 0).length;
+      const totalSales = brokers.reduce((sum, b) => sum + (b.sales_ytd || 0), 0);
+      const prodPerBroker = activeBrokers > 0 ? (totalSales / activeBrokers).toFixed(0) : 0;
+      setKPI('execBrokerProd', '$' + parseInt(prodPerBroker).toLocaleString('es-AR'));
+
+      // KPI: SLA Respuesta
+      const newLeads = leads.filter(l => l.stage === 'nuevo').length;
+      const contactedLeads = leads.filter(l => ['contactado', 'visita', 'oferta', 'cerrado'].includes(l.stage)).length;
+      const slaRate = totalLeads > 0 ? ((contactedLeads / totalLeads) * 100).toFixed(1) : 0;
+      setKPI('execSLAResponse', slaRate + '%');
+
+      // Update sidebar badges
+      updateSidebarBadges();
+    } catch (err) {
+      console.error('loadExecKPIs error:', err);
+    }
+  }
+
+  async function loadExecTrendChart() {
+    if (!window.supabaseClient) return;
+    const container = $('#execTrendChart');
+    if (!container) return;
+    container.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:40px;">Cargando tendencia...</p>';
+
+    try {
+      const fromDate = new Date(_execFromDate).toISOString();
+      const toDate = new Date(new Date(_execToDate).getTime() + 24 * 60 * 60 * 1000).toISOString();
+
+      const [leadsRes, visitsRes, closedRes] = await Promise.all([
+        window.supabaseClient.from('leads').select('created_at').gte('created_at', new Date(_execFromDate).toISOString()).lte('created_at', _execToDate),
+        window.supabaseClient.from('visits').select('visit_date').gte('visit_date', new Date(_execFromDate).toISOString()).lte('visit_date', new Date(_execToDate).toISOString()),
+        window.supabaseClient.from('leads').select('closed_at').in('stage', ['cerrado']).gte('closed_at', new Date(_execFromDate).toISOString()).lte('closed_at', new Date(_execToDate).toISOString())
+      ]);
+
+      const leads = leadsRes.data || [];
+      const visits = visitsRes.data || [];
+      const closed = closedRes.data || [];
+
+      // Group by month for last 12 months
+      const months = [];
+      const now = new Date();
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        months.push({
+          key: d.toISOString().slice(0, 7),
+          label: d.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' })
+        });
+      }
+
+      const trendData = months.map(m => {
+        const start = new Date(m.key + '-01').toISOString();
+        const end = new Date(new Date(m.key + '-01').getFullYear(), new Date(m.key + '-01').getMonth() + 1, 1).toISOString();
+        return {
+          month: m.label,
+          leads: leads.filter(l => l.created_at >= start && l.created_at < end).length,
+          visits: visits.filter(v => v.visit_date >= start && v.visit_date < end).length,
+          closed: closed.filter(c => c.closed_at >= start && c.closed_at < end).length
+        };
+      });
+
+      const maxVal = Math.max(...trendData.map(d => d.leads), ...trendData.map(d => d.visits), ...trendData.map(d => d.closed), 1);
+      const container = $('#execTrendChart');
+      if (!container) return;
+
+      container.innerHTML = `
+        <div style="display:flex; align-items:end; justify-content:space-between; height:180px; gap:4px; padding:0 8px;">
+          ${trendData.map(d => `
+            <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; min-width:30px;">
+              <div style="height:${(d.leads / maxVal) * 160}px; width:100%; background:var(--accent); border-radius:2px 2px 0 0; transition:height 0.3s;" title="Leads: ${d.leads}"></div>
+              <div style="height:${(d.visits / maxVal) * 160}px; width:100%; background:#3B82F6; border-radius:2px 2px 0 0; transition:height 0.3s;" title="Visitas: ${d.visits}"></div>
+              <div style="height:${(d.closed / maxVal) * 160}px; width:100%; background:var(--success); border-radius:2px 2px 0 0; transition:height 0.3s;" title="Cierres: ${d.closed}"></div>
+              <div style="font-size:9px; color:var(--text-dim); white-space:nowrap;">${d.month}</div>
+            </div>
+          `).join('')}
+        </div>
+        <div class="chart-legend" style="display:flex; justify-content:center; gap:16px; margin-top:12px; font-size:11px;">
+          <span><i style="background:var(--accent); width:10px; height:10px; display:inline-block; margin-right:4px; border-radius:2px;"></i>Leads</span>
+          <span><i style="background:#3B82F6; width:10px; height:10px; display:inline-block; margin-right:4px; border-radius:2px;"></i>Visitas</span>
+          <span><i style="background:var(--success); width:10px; height:10px; display:inline-block; margin-right:4px; border-radius:2px;"></i>Cierres</span>
+        </div>
+      `;
+    } catch (err) {
+      console.error('loadExecTrendChart error:', err);
+      const container = $('#execTrendChart');
+      if (container) container.innerHTML = '<p style="color:var(--danger); text-align:center; padding:40px;">Error cargando tendencia</p>';
+    }
+  }
+
+  async function loadExecTopOpps() {
+    if (!window.supabaseClient) return;
+    const container = $('#execTopOpps');
+    if (!container) return;
+    container.innerHTML = '<p style="color:var(--text-dim); text-align:center; padding:20px;">Cargando...</p>';
+
+    try {
+      // Get top properties by value that are not sold
+      const { data: props } = await window.supabaseClient
+        .from('properties')
+        .select('id, title, price_usd, zone, status, created_at')
+        .eq('is_published', true)
+        .neq('status', 'vendido')
+        .neq('status', 'alquilado')
+        .order('price_usd', { ascending: false })
+        .limit(10);
+
+      const { data: leads } = await window.supabaseClient
+        .from('leads')
+        .select('id, full_name, budget_usd, property_id, stage, created_at')
+        .in('stage', ['visita', 'oferta'])
+        .order('budget_usd', { ascending: false })
+        .limit(10);
+
+      let html = '<div style="display:flex; flex-direction:column; gap:12px;">';
+      
+      if (props && props.length) {
+        html += '<div style="margin-bottom:16px;"><strong style="color:var(--accent);">Propiedades Top</strong></div>';
+        props.forEach((p, i) => {
+          html += `<div style="padding:10px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-weight:600; color:#fff;">${i + 1}. ${p.title || 'Sin título'}</div>
+              <div style="font-size:11px; color:var(--text-dim);">${p.zone || 'Sin zona'} • ${p.status}</div>
+            </div>
+            <div style="color:var(--accent); font-weight:700;">USD ${p.price_usd ? p.price_usd.toLocaleString('es-AR') : '—'}</div>
+          </div>`;
+        });
+      }
+
+      if (leads && leads.length) {
+        html += '<div style="margin-top:16px;"><strong style="color:var(--accent);">Leads Calientes</strong></div>';
+        leads.forEach((l, i) => {
+          html += `<div style="padding:10px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-weight:600; color:#fff;">${i + 1}. ${l.full_name || 'Sin nombre'}</div>
+              <div style="font-size:11px; color:var(--text-dim);">${l.stage} • ${l.property_id ? 'Con propiedad' : 'Sin propiedad'}</div>
+            </div>
+            <div style="color:#F59E0B; font-weight:700;">${l.budget_usd ? 'USD ' + l.budget_usd.toLocaleString('es-AR') : 'Sin presupuesto'}</div>
+          </div>`;
+        });
+      }
+
+      if (!props.length && !leads.length) {
+        html = '<p style="color:var(--text-dim); text-align:center; padding:20px;">Sin oportunidades destacadas</p>';
+      }
+
+      html += '</div>';
+      const container = $('#execTopOpps');
+      if (container) container.innerHTML = html;
+    } catch (err) {
+      console.error('loadExecTopOpps error:', err);
+      const container = $('#execTopOpps');
+      if (container) container.innerHTML = '<p style="color:var(--danger); text-align:center; padding:20px;">Error cargando oportunidades</p>';
+    }
+  }
+
+  async function loadExecStrategicAlerts() {
+    if (!window.supabaseClient) return;
+    const container = $('#execStrategicAlerts');
+    if (!container) return;
+    container.innerHTML = '<p style="color:var(--text-dim); text-align:center; padding:20px;">Cargando...</p>';
+
+    try {
+      const [alertsRes, anomaliesRes, auditRes] = await Promise.all([
+        window.supabaseClient.from('supervision_alerts').select('*').eq('status', 'open').in('severity', ['critical', 'high']).order('created_at', { ascending: false }).limit(5),
+        window.supabaseClient.from('supervision_anomalies').select('*').eq('status', 'open').in('severity', ['critical', 'high']).order('created_at', { ascending: false }).limit(5),
+        window.supabaseClient.from('audit_log').select('*').eq('severity', 'critical').gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).order('created_at', { ascending: false }).limit(5)
+      ]);
+
+      const alerts = alertsRes.data || [];
+      const anomalies = anomaliesRes.data || [];
+      const criticalAudit = auditRes.data || [];
+
+      let html = '<div style="display:flex; flex-direction:column; gap:12px;">';
+
+      if (alerts.length) {
+        html += '<div><strong style="color:#EF4444;">🔴 Alertas Críticas/Alta</strong></div>';
+        alerts.forEach(a => {
+          html += `<div style="padding:10px; background:rgba(239,68,68,0.1); border:1px solid #EF4444; border-radius:8px;">
+            <div style="font-weight:600; color:#EF4444;">${a.title || a.rule_name || a.alert_type}</div>
+            <div style="font-size:11px; color:var(--text-dim);">${a.module} • ${a.user_name || a.user_id} • ${new Date(a.created_at).toLocaleString('es-AR')}</div>
+          </div>`;
+        });
+      }
+
+      if (anomalies.length) {
+        html += '<div style="margin-top:8px;"><strong style="color:#F97316;">🟠 Anomalías Detectadas</strong></div>';
+        anomalies.forEach(a => {
+          html += `<div style="padding:10px; background:rgba(249,115,22,0.1); border:1px solid #F97316; border-radius:8px;">
+            <div style="font-weight:600; color:#F97316;">${a.module} • ${a.action} (${a.metric})</div>
+            <div style="font-size:11px; color:var(--text-dim);">Valor: ${a.observed_value} vs Esperado: ${a.expected_mean} • Z-Score: ${a.z_score?.toFixed(2) || 'N/A'} • Percentil: ${a.percentile_rank}%</div>
+          </div>`;
+        });
+      }
+
+      if (criticalAudit.length) {
+        html += '<div style="margin-top:8px;"><strong style="color:#EF4444;">🔴 Eventos Críticos (24h)</strong></div>';
+        criticalAudit.forEach(a => {
+          html += `<div style="padding:10px; background:rgba(239,68,68,0.1); border:1px solid #EF4444; border-radius:8px;">
+            <div style="font-weight:600; color:#EF4444;">${a.action} en ${a.module}</div>
+            <div style="font-size:11px; color:var(--text-dim);">${a.user_id} • ${new Date(a.created_at).toLocaleString('es-AR')}</div>
+          </div>`;
+        });
+      }
+
+      if (!alerts.length && !anomalies.length && !criticalAudit.length) {
+        html = '<p style="color:var(--success); text-align:center; padding:20px;"><i class="fas fa-check-circle"></i> Sin alertas estratégicas activas</p>';
+      }
+
+      html += '</div>';
+      const container = $('#execStrategicAlerts');
+      if (container) container.innerHTML = html;
+    } catch (err) {
+      console.error('loadExecStrategicAlerts error:', err);
+      const container = $('#execStrategicAlerts');
+      if (container) container.innerHTML = '<p style="color:var(--danger); text-align:center; padding:20px;">Error cargando alertas</p>';
+    }
+  }
+
+  async function loadExecMonthlyTable() {
+    if (!window.supabaseClient) return;
+    const tbody = $('#execMonthlyTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td></tr>';
+
+    try {
+      const now = new Date();
+      const months = [];
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        months.push({
+          key: d.toISOString().slice(0, 7),
+          label: d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+        });
+      }
+
+      const [leadsRes, visitsRes, closedRes, propsRes] = await Promise.all([
+        window.supabaseClient.from('leads').select('created_at, budget_usd, stage').gte('created_at', new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString()),
+        window.supabaseClient.from('visits').select('visit_date').gte('visit_date', new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString()),
+        window.supabaseClient.from('leads').select('closed_at, budget_usd').eq('stage', 'cerrado').gte('closed_at', new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString()),
+        window.supabaseClient.from('properties').select('created_at, price_usd, status').eq('is_published', true).gte('created_at', new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString())
+      ]);
+
+      const leads = leadsRes.data || [];
+      const visits = visitsRes.data || [];
+      const closed = closedRes.data || [];
+      const props = propsRes.data || [];
+
+      const rows = months.map(m => {
+        const start = new Date(m.key + '-01').toISOString();
+        const end = new Date(new Date(m.key + '-01').getFullYear(), new Date(m.key + '-01').getMonth() + 1, 1).toISOString();
+
+        const mLeads = leads.filter(l => l.created_at >= start && l.created_at < end);
+        const mVisits = visits.filter(v => v.visit_date >= start && v.visit_date < end);
+        const mClosed = closed.filter(c => c.closed_at >= start && c.closed_at < end);
+        const mProps = props.filter(p => p.created_at >= start && p.created_at < end);
+
+        const totalValue = mClosed.reduce((sum, c) => sum + (c.budget_usd || 0), 0);
+        const convRate = mLeads.length > 0 ? ((mClosed.length / mLeads.length) * 100).toFixed(1) : 0;
+        const avgCloseTime = mClosed.length > 0 ? 
+          (mClosed.reduce((sum, c) => sum + (new Date(c.closed_at || c.updated_at).getTime() - new Date(c.created_at).getTime()) / (1000 * 60 * 60 * 24), 0) / mClosed.length).toFixed(1) : 0;
+        const avgTicket = mClosed.length > 0 ? (totalValue / mClosed.length).toFixed(0) : 0;
+
+        return `<tr style="border-bottom:1px solid var(--border-subtle);">
+          <td style="padding:10px 16px; color:#fff; font-weight:500;">${m.label}</td>
+          <td style="padding:10px 16px; text-align:right; color:var(--accent);">${mLeads.length}</td>
+          <td style="padding:10px 16px; text-align:right; color:#3B82F6;">${mVisits.length}</td>
+          <td style="padding:10px 16px; text-align:right; color:var(--success); font-weight:600;">${mClosed.length}</td>
+          <td style="padding:10px 16px; text-align:right; color:var(--accent); font-weight:600;">USD ${totalValue.toLocaleString('es-AR')}</td>
+          <td style="padding:10px 16px; text-align:right; color:#F59E0B;">${convRate}%</td>
+          <td style="padding:10px 16px; text-align:right; color:#8B5CF6;">${avgCloseTime} días</td>
+          <td style="padding:10px 16px; text-align:right; color:#F59E0B;">USD ${parseInt(avgTicket).toLocaleString('es-AR')}</td>
+        </tr>`;
+      }).join('');
+
+      const tbody = $('#execMonthlyTableBody');
+      if (tbody) tbody.innerHTML = rows;
+    } catch (err) {
+      console.error('loadExecMonthlyTable error:', err);
+      const tbody = $('#execMonthlyTableBody');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="padding:40px; text-align:center; color:var(--danger);">Error cargando tabla mensual</td></tr>';
+    }
+  }
+
+  // Event listeners for executive dashboard
+  $('#execRefreshBtn')?.addEventListener('click', () => loadExecutiveDashboard());
+  $('#execExportBtn')?.addEventListener('click', exportExecCSV);
+  $('#execFromDate')?.addEventListener('change', () => loadExecutiveDashboard());
+  $('#execToDate')?.addEventListener('change', () => loadExecutiveDashboard());
+
+  function exportExecCSV() {
+    if (!window.supabaseClient) return;
+    // Export executive KPIs
+    const kpis = {};
+    ['execConvRate', 'execAvgCloseTime', 'execPortfolioValue', 'execMarketingROI', 'execBrokerProd', 'execSLAResponse'].forEach(id => {
+      const el = $('#' + id);
+      if (el) kpis[id] = el.textContent;
+    });
+    const headers = ['KPI', 'Valor'];
+    const rows = Object.entries(kpis).map(([k, v]) => [k, v]);
+    const date = new Date().toISOString().slice(0, 10);
+    downloadCSV('ejecutivo-kpis-' + date + '.csv', rows, headers);
+    showToast('KPIs ejecutivos exportados', 'success');
+  }
+})();
