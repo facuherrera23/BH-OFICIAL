@@ -1658,21 +1658,35 @@ MODALES
 <option value="otro">Otro</option>
 </select>
 </div>
-<div class="form-field"><label>Precio en USD *</label><input type="number" name="price_usd" required placeholder="150000" /></div>
+<div class="form-field">
+<label>Moneda</label>
+<select name="price_currency" id="priceCurrencySelect">
+<option value="USD">USD (Dólares)</option>
+<option value="ARS">ARS (Pesos Argentinos)</option>
+</select>
+</div>
 </div>
 <div class="form-grid-2">
 <div class="form-field">
 <label>Operación</label>
-<select name="status">
+<select name="status" id="propertyStatusSelect">
 <option value="venta">Venta</option>
 <option value="alquiler">Alquiler</option>
 </select>
 </div>
 <div class="form-field"><label>Zona / Barrio</label><input type="text" name="zone" placeholder="Palermo, Villa Belgrano..." /></div>
 </div>
+<div class="form-grid-2" id="priceFieldsContainer">
+<div class="form-field" id="priceUsdField"><label>Precio en USD *</label><input type="number" name="price_usd" required placeholder="150000" step="1000" /></div>
+<div class="form-field" id="priceArsField" style="display:none;"><label>Precio en ARS *</label><input type="number" name="price_ars" required placeholder="150000000" step="10000" /></div>
+</div>
 <div class="form-grid-2">
 <div class="form-field"><label>Dirección</label><input type="text" name="address" placeholder="Av. Santa Fe 1234" /></div>
-<div class="form-field"><label>Superficie (m²)</label><input type="number" name="area_m2" placeholder="75" /></div>
+<div class="form-field"><label>Superficie Cubierta (m²)</label><input type="number" name="surface_covered" placeholder="75" step="0.5" /></div>
+</div>
+<div class="form-grid-2">
+<div class="form-field"><label>Superficie Terreno (m²)</label><input type="number" name="surface_total" placeholder="200" step="0.5" /></div>
+<div class="form-field"><label>Ambientes</label><input type="number" name="rooms" placeholder="3" /></div>
 </div>
 <div class="form-grid-2">
 <div class="form-field"><label>Ambientes</label><input type="number" name="rooms" placeholder="3" /></div>
@@ -2063,6 +2077,30 @@ return true;
 setTimeout(function() { checkCDN(); }, 3000);
 setTimeout(function() { checkCDN(); }, 6000);
 })();
+    // Currency selector handler for property form
+    document.addEventListener('DOMContentLoaded', function() {
+        const currencySelect = document.getElementById('priceCurrencySelect');
+        const usdField = document.getElementById('priceUsdField');
+        const arsField = document.getElementById('priceArsField');
+        if (currencySelect && usdField && arsField) {
+            function togglePriceFields() {
+                if (currencySelect.value === 'ARS') {
+                    usdField.style.display = 'none';
+                    usdField.querySelector('input').removeAttribute('required');
+                    arsField.style.display = '';
+                    arsField.querySelector('input').setAttribute('required', 'required');
+                } else {
+                    usdField.style.display = '';
+                    usdField.querySelector('input').setAttribute('required', 'required');
+                    arsField.style.display = 'none';
+                    arsField.querySelector('input').removeAttribute('required');
+                }
+            }
+            currencySelect.addEventListener('change', togglePriceFields);
+            // Initial state
+            togglePriceFields();
+        }
+    });
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="assets/js/utils.js?v=1"></script>

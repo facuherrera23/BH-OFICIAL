@@ -729,16 +729,29 @@ function esc(s) {
 
     try {
       const formData = new FormData(e.target);
+      const priceCurrency = formData.get('price_currency') || 'USD';
+      const priceUsdInput = parseFloat(formData.get('price_usd')) || 0;
+      const priceArsInput = parseFloat(formData.get('price_ars')) || 0;
+      const usdRate = window.BH_CONFIG?.USD_RATE || 1000;
+      
+      let priceUsd = priceUsdInput;
+      if (priceCurrency === 'ARS' && priceArsInput > 0) {
+        priceUsd = priceArsInput / usdRate;
+      }
+      
       const data = {
         title: formData.get('title') || '',
         description: formData.get('description') || '',
-        price_usd: parseFloat(formData.get('price_usd')) || 0,
+        price_usd: priceUsd,
+        price_currency: priceCurrency,
         property_type: formData.get('property_type') || '',
         zone: formData.get('zone') || '',
         address: formData.get('address') || '',
         bedrooms: parseInt(formData.get('bedrooms')) || 0,
         bathrooms: parseInt(formData.get('bathrooms')) || 0,
-        area_m2: parseFloat(formData.get('area_m2')) || 0,
+        surface_covered: parseFloat(formData.get('surface_covered')) || 0,
+        surface_total: parseFloat(formData.get('surface_total')) || 0,
+        area_m2: parseFloat(formData.get('surface_covered')) || 0,
         garage_spaces: parseInt(formData.get('garage_spaces')) || 0,
         rooms: parseInt(formData.get('rooms')) || 0,
         status: formData.get('status') || 'venta',
@@ -747,7 +760,7 @@ function esc(s) {
         is_retasada: formData.get('is_retasada') === 'on',
         is_oportunidad: formData.get('is_oportunidad') === 'on',
         video_url: formData.get('video_url') || '',
-        created_by: currentUser?.id || null, // para trigger property_code
+        created_by: currentUser?.id || null,
       };
 
       /* Image uploads */
@@ -804,17 +817,20 @@ function esc(s) {
       editingPropertyId = id;
       const form = $('#propertyForm');
       if (form) {
-        form.reset(); /* limpia cualquier archivo de imagen que hubiera quedado seleccionado de un uso anterior del modal */
+        form.reset();
         form.elements.title.value = data.title || '';
         form.elements.description.value = data.description || '';
         form.elements.price_usd.value = data.price_usd || '';
+        form.elements.price_ars.value = data.price_ars || '';
+        form.elements.price_currency.value = data.price_currency || 'USD';
         form.elements.property_type.value = data.property_type || '';
         form.elements.status.value = data.status || 'venta';
         form.elements.zone.value = data.zone || '';
         form.elements.address.value = data.address || '';
         form.elements.bedrooms.value = data.bedrooms || '';
         form.elements.bathrooms.value = data.bathrooms || '';
-        form.elements.area_m2.value = data.area_m2 || '';
+        form.elements.surface_covered.value = data.surface_covered || data.area_m2 || '';
+        form.elements.surface_total.value = data.surface_total || '';
         form.elements.garage_spaces.value = data.garage_spaces || '';
         form.elements.rooms.value = data.rooms || '';
         form.elements.is_published.checked = data.is_published || false;
@@ -823,11 +839,10 @@ function esc(s) {
         form.elements.is_oportunidad.checked = data.is_oportunidad || false;
         form.elements.video_url.value = data.video_url || '';
 
-        // Código de propiedad (solo lectura en edición)
-        const codeInput = $('#propCode');
-        if (codeInput) {
-          codeInput.value = data.property_code || '';
-          codeInput.setAttribute('readonly', 'readonly');
+        // Trigger currency field toggle
+        const currencySelect = document.getElementById('priceCurrencySelect');
+        if (currencySelect) {
+          currencySelect.dispatchEvent(new Event('change'));
         }
 
         const previews = $('#imagePreviewGrid');
