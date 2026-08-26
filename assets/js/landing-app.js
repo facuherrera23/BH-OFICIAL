@@ -3,6 +3,7 @@
    ============================================================ */
 
 const _usdFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
 
 (function () {
   'use strict';
@@ -243,7 +244,7 @@ const _usdFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
       locationEl.appendChild(document.createTextNode(' ' + [p.zone, p.address].filter(Boolean).join(', ')));
     }
 
-    setText('propertyDetailPrice', formatPrice(p.price_usd));
+    setText('propertyDetailPrice', formatPrice(p.price_usd, p.price_currency));
 
     const featuresEl = document.getElementById('propertyDetailFeatures');
     if (featuresEl) {
@@ -1669,7 +1670,7 @@ function renderSocialLinks(social) {
 
       const price = document.createElement('div');
       price.className = 'card-price';
-      price.textContent = formatPrice(p.price_usd);
+      price.textContent = formatPrice(p.price_usd, p.price_currency);
 
       const title = document.createElement('h3');
       title.className = 'card-title';
@@ -1847,9 +1848,9 @@ function renderSocialLinks(social) {
     if (el) el.textContent = `${count} Propiedades`;
   }
 
-  function formatPrice(price) {
+  function formatPrice(price, currency) {
     if (!price) return 'Consultar precio';
-    return _usdFormatter.format(price);
+    return currency === 'ARS' ? _arsFormatter.format(price) : _usdFormatter.format(price);
   }
 
   /* --- Team --- */

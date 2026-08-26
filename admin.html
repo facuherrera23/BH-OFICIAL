@@ -241,19 +241,19 @@ LAYOUT PRINCIPAL
 </div>
 <div class="kpi-grid-6">
 <div class="kpi-card">
-<div class="kpi-top"><span class="kpi-title">Volumen de Cartera</span><div class="kpi-icon"><i class="fas fa-gem"></i></div></div>
-<div class="kpi-value" id="kpiVolumen">USD 0</div>
-<div class="kpi-trend"><i class="fas fa-arrow-trend-up"></i> Calculado en tiempo real</div>
+<div class="kpi-top"><span class="kpi-title">Volumen Cartera Venta</span><div class="kpi-icon"><i class="fas fa-dollar-sign"></i></div></div>
+<div class="kpi-value" id="kpiVolumenVenta">USD 0</div>
+<div class="kpi-trend"><i class="fas fa-arrow-trend-up"></i> Propiedades en venta</div>
+</div>
+<div class="kpi-card">
+<div class="kpi-top"><span class="kpi-title">Volumen Cartera Alquiler</span><div class="kpi-icon"><i class="fas fa-money-bill-wave"></i></div></div>
+<div class="kpi-value" id="kpiVolumenAlquiler">ARS 0</div>
+<div class="kpi-trend"><i class="fas fa-arrow-trend-up"></i> Propiedades en alquiler</div>
 </div>
 <div class="kpi-card">
 <div class="kpi-top"><span class="kpi-title">Propiedades Activas</span><div class="kpi-icon"><i class="fas fa-building"></i></div></div>
 <div class="kpi-value" id="kpiActivas">0</div>
 <div class="kpi-trend"><i class="fas fa-circle-check"></i> En cartera activa</div>
-</div>
-<div class="kpi-card">
-<div class="kpi-top"><span class="kpi-title">Ticket Promedio</span><div class="kpi-icon"><i class="fas fa-tag"></i></div></div>
-<div class="kpi-value" id="kpiTicket">USD 0</div>
-<div class="kpi-trend"><i class="fas fa-arrow-trend-up"></i> Promedio por inmueble</div>
 </div>
 <div class="kpi-card">
 <div class="kpi-top"><span class="kpi-title">Leads Calificados</span><div class="kpi-icon"><i class="fas fa-users"></i></div></div>
@@ -339,7 +339,7 @@ LAYOUT PRINCIPAL
 <th>Inmueble</th>
 <th>Superficie</th>
 <th>Ambientes</th>
-<th>Precio (USD)</th>
+<th>Precio</th>
 <th>Operación</th>
 <th>Estado</th>
 <th>Acciones</th>
@@ -1301,9 +1301,14 @@ LAYOUT PRINCIPAL
         <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">Días desde lead→cierre</div>
       </div>
       <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
-        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Valor Cartera Activa</div>
-        <div id="execPortfolioValue" style="font-family:var(--font-heading); font-size:36px; color:var(--success); font-weight:700;">—</div>
-        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">USD en propiedades publicadas</div>
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Cartera Venta</div>
+        <div id="execPortfolioVenta" style="font-family:var(--font-heading); font-size:36px; color:var(--success); font-weight:700;">—</div>
+        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">USD en propiedades en venta</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Cartera Alquiler</div>
+        <div id="execPortfolioAlquiler" style="font-family:var(--font-heading); font-size:36px; color:var(--success); font-weight:700;">—</div>
+        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">ARS en propiedades en alquiler</div>
       </div>
       <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
         <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">ROI Marketing</div>
@@ -1718,11 +1723,10 @@ MODALES
 <div class="form-field"><label>Ambientes</label><input type="number" name="rooms" placeholder="3" /></div>
 </div>
 <div class="form-grid-2">
-<div class="form-field"><label>Ambientes</label><input type="number" name="rooms" placeholder="3" /></div>
 <div class="form-field"><label>Dormitorios</label><input type="number" name="bedrooms" placeholder="2" /></div>
+<div class="form-field"><label>Baños</label><input type="number" name="bathrooms" placeholder="1" /></div>
 </div>
 <div class="form-grid-2">
-<div class="form-field"><label>Baños</label><input type="number" name="bathrooms" placeholder="1" /></div>
 <div class="form-field"><label>Cocheras</label><input type="number" name="garage_spaces" placeholder="1" /></div>
 </div>
 <div class="form-field"><label>Descripción</label><textarea name="description" placeholder="Descripción de la propiedad" rows="3"></textarea></div>
@@ -2111,6 +2115,7 @@ setTimeout(function() { checkCDN(); }, 6000);
         const currencySelect = document.getElementById('priceCurrencySelect');
         const usdField = document.getElementById('priceUsdField');
         const arsField = document.getElementById('priceArsField');
+        const statusSelect = document.getElementById('propertyStatusSelect');
         if (currencySelect && usdField && arsField) {
             function togglePriceFields() {
                 if (currencySelect.value === 'ARS') {
@@ -2126,7 +2131,18 @@ setTimeout(function() { checkCDN(); }, 6000);
                 }
             }
             currencySelect.addEventListener('change', togglePriceFields);
-            // Initial state
+
+            if (statusSelect) {
+                statusSelect.addEventListener('change', function() {
+                    if (statusSelect.value === 'alquiler') {
+                        currencySelect.value = 'ARS';
+                    } else {
+                        currencySelect.value = 'USD';
+                    }
+                    togglePriceFields();
+                });
+            }
+
             togglePriceFields();
         }
     });

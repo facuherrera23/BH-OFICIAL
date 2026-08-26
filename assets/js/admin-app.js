@@ -4,6 +4,7 @@
    ============================================================ */
 
 const _usdFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 });
 const _numFormatter = new Intl.NumberFormat('es-AR');
 
 (function () {
@@ -110,7 +111,8 @@ function esc(s) {
   const PropertySchema = z.object({
     title: z.string().min(3, 'El título debe tener al menos 3 caracteres').max(120, 'Máximo 120 caracteres'),
     description: z.string().min(10, 'La descripción debe tener al menos 10 caracteres').max(5000, 'Máximo 5000 caracteres').optional().nullable(),
-    price_usd: z.number().positive('El precio USD debe ser mayor a 0').max(10000000, 'Precio USD excesivo'),
+    price_usd: z.number().min(0).default(0),
+    price_ars: z.number().min(0).default(0),
     price_currency: z.enum(['USD', 'ARS'], { errorMap: () => ({ message: 'Moneda debe ser USD o ARS' }) }).default('USD'),
     property_type: z.enum(['casa', 'departamento', 'terreno', 'local', 'oficina', 'galpon', 'quinta', 'otro'], { errorMap: () => ({ message: 'Tipo de propiedad inválido' }) }),
     status: z.enum(['venta', 'alquiler'], { errorMap: () => ({ message: 'Operación debe ser venta o alquiler' }) }).default('venta'),
@@ -570,7 +572,7 @@ function esc(s) {
     if (!window.supabaseClient) return;
     try {
       const [propsRes, leadsRes, visitsRes, agentsRes] = await Promise.all([
-        window.supabaseClient.from('properties').select('price_usd, zone, status, is_published, created_at, updated_at'),
+        window.supabaseClient.from('properties').select('price_usd, price_currency, zone, status, is_published, created_at, updated_at'),
         window.supabaseClient.from('leads').select('stage, created_at'),
         window.supabaseClient.from('visits').select('*').order('visit_date', { ascending: true }).limit(5),
         window.supabaseClient.from('agents').select('*').eq('status', 'activo'),
@@ -582,15 +584,17 @@ function esc(s) {
       const agents = agentsRes.data || [];
 
       /* KPIs */
-      const totalValue = props.reduce((sum, p) => sum + (p.price_usd || 0), 0);
+      const propsVenta = props.filter(p => p.status === 'venta' || (!p.status && (p.price_currency || 'USD') === 'USD'));
+      const propsAlquiler = props.filter(p => p.status === 'alquiler' || p.price_currency === 'ARS');
+      const volumenVenta = propsVenta.reduce((sum, p) => sum + (p.price_usd || 0), 0);
+      const volumenAlquiler = propsAlquiler.reduce((sum, p) => sum + (p.price_usd || 0), 0);
       const activeProps = props.filter(p => p.is_published && p.status !== 'vendido' && p.status !== 'alquilado').length;
-      const avgTicket = activeProps > 0 ? Math.round(totalValue / activeProps) : 0;
       const activeLeads = leads.filter(l => !['cerrado', 'perdido'].includes(l.stage)).length;
       const upcomingVisits = visits.filter(v => v.status === 'pendiente' || v.status === 'confirmada').length;
 
-      setKPI('kpiVolumen', 'USD ' + formatNumber(totalValue));
+      setKPI('kpiVolumenVenta', formatPrice(volumenVenta, 'USD'));
+      setKPI('kpiVolumenAlquiler', formatPrice(volumenAlquiler, 'ARS'));
       setKPI('kpiActivas', activeProps);
-      setKPI('kpiTicket', 'USD ' + formatNumber(avgTicket));
       setKPI('kpiLeads', activeLeads);
       setKPI('kpiVisitas', upcomingVisits);
       setKPI('kpiBrokers', agents.length);
@@ -839,7 +843,7 @@ function esc(s) {
           </td>
           <td style="font-size:13px;">${p.area_m2 ? p.area_m2 + ' m²' : '-'}</td>
           <td style="font-size:13px;">${p.rooms || '-'}</td>
-          <td style="font-weight:600; color:var(--accent); font-size:13.5px;">${formatPrice(p.price_usd)}</td>
+          <td style="font-weight:600; color:var(--accent); font-size:13.5px;">${formatPrice(p.price_usd, p.price_currency)}</td>
           <td><span class="nav-badge" style="background:${p.status === 'venta' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${p.status === 'venta' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${esc(p.status || 'venta')}</span></td>
           <td>
               <div style="display:flex; gap:4px; flex-wrap:wrap;">
@@ -932,12 +936,17 @@ function esc(s) {
       
       // Zod validation
       const validated = validateForm(PropertySchema, formData);
-      const { price_currency, price_usd: priceUsdInput, price_ars: priceArsInput, ...rest } = validated;
-      const usdRate = window.BH_CONFIG?.USD_RATE || 1000;
+      const { price_currency, ...rest } = validated;
       
-      let priceUsd = priceUsdInput;
+      let priceUsd;
       if (price_currency === 'ARS' && validated.price_ars > 0) {
-        priceUsd = validated.price_ars / usdRate;
+        priceUsd = validated.price_ars;
+      } else {
+        priceUsd = validated.price_usd;
+      }
+      
+      if (!priceUsd || priceUsd <= 0) {
+        throw new Error('El precio de la propiedad debe ser mayor a 0');
       }
       
       const data = {
@@ -999,15 +1008,20 @@ function esc(s) {
         .single();
       if (error) throw error;
 
-      editingPropertyId = id;
+        editingPropertyId = id;
       const form = $('#propertyForm');
       if (form) {
         form.reset();
         form.elements.title.value = data.title || '';
         form.elements.description.value = data.description || '';
-        form.elements.price_usd.value = data.price_usd || '';
-        form.elements.price_ars.value = data.price_ars || '';
         form.elements.price_currency.value = data.price_currency || 'USD';
+        if (data.price_currency === 'ARS') {
+          form.elements.price_usd.value = '';
+          form.elements.price_ars.value = data.price_usd || '';
+        } else {
+          form.elements.price_usd.value = data.price_usd || '';
+          form.elements.price_ars.value = '';
+        }
         form.elements.property_type.value = data.property_type || '';
         form.elements.status.value = data.status || 'venta';
         form.elements.zone.value = data.zone || '';
@@ -3543,7 +3557,7 @@ let dayCount = 1;
       if (!prop.image_urls || prop.image_urls.length < 3) errors.push('Mínimo 3 imágenes requeridas');
       if (!prop.description || prop.description.length < 100) errors.push('Descripción debe tener al menos 100 caracteres');
       if (!prop.zone) errors.push('Zona/barrio requerido');
-      if (!prop.price_usd || prop.price_usd <= 0) errors.push('Precio USD válido requerido');
+      if (!prop.price_usd || prop.price_usd <= 0) errors.push('Precio válido requerido');
       if (!prop.broker_id) errors.push('Broker asignado requerido');
       if (prop.status !== 'publicada') errors.push('La propiedad debe estar en estado "publicada"');
 
@@ -3928,9 +3942,9 @@ let dayCount = 1;
     if (!window.supabaseClient) return;
     var { data, error } = await window.supabaseClient.from('properties').select('*').order('created_at', { ascending: false });
     if (error) { showToast('Error exportando: ' + error.message, 'error'); return; }
-    var headers = ['ID', 'Título', 'Tipo', 'Zona', 'Dirección', 'Precio USD', 'Dormitorios', 'Baños', 'm²', 'Estado', 'Publicada', 'Fecha'];
+    var headers = ['ID', 'Título', 'Tipo', 'Zona', 'Dirección', 'Precio', 'Moneda', 'Dormitorios', 'Baños', 'm²', 'Estado', 'Publicada', 'Fecha'];
     var rows = data.map(function(p) {
-      return [p.id, p.title, p.property_type, p.zone, p.address, p.price_usd, p.bedrooms, p.bathrooms, p.area_m2, p.status, p.published, p.created_at];
+      return [p.id, p.title, p.property_type, p.zone, p.address, p.price_usd, p.price_currency || 'USD', p.bedrooms, p.bathrooms, p.area_m2, p.status, p.published, p.created_at];
     });
     var date = new Date().toISOString().slice(0, 10);
     downloadCSV('propiedades-' + date + '.csv', rows, headers);
@@ -6287,7 +6301,7 @@ on(document, 'keydown', (e) => {
     const set = (id, val) => { const el = $('#' + id); if (el) el.value = val; };
     set('fichaTitle', p.title || '');
     set('fichaLocation', [p.zone, p.address].filter(Boolean).join(', '));
-    set('fichaPrice', p.price_usd != null ? _usdFormatter.format(p.price_usd) : 'Consultar');
+    set('fichaPrice', p.price_usd != null ? formatPrice(p.price_usd, p.price_currency) : 'Consultar');
     set('fichaRooms', p.rooms != null ? String(p.rooms) : '');
     set('fichaSurface', p.area_m2 != null ? `${p.area_m2} m²` : '');
     set('fichaDescription', p.description || '');
@@ -6598,9 +6612,9 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
   /* ------------------------------------------------
      18. UTILITY
      ------------------------------------------------ */
-  function formatPrice(price) {
+  function formatPrice(price, currency) {
     if (!price) return '-';
-    return _usdFormatter.format(price);
+    return currency === 'ARS' ? _arsFormatter.format(price) : _usdFormatter.format(price);
   }
 
   function formatNumber(num) {
@@ -6849,7 +6863,7 @@ let _execToDate = '';
         window.supabaseClient.from('leads').select('id, stage, created_at, budget_usd').gte('created_at', _execFromDate).lte('created_at', _execToDate),
         window.supabaseClient.from('visits').select('id, visit_date, lead_id').gte('visit_date', _execFromDate).lte('visit_date', _execToDate),
         window.supabaseClient.from('leads').select('id, stage, created_at, budget_usd').in('stage', ['cerrado']).gte('closed_at', _execFromDate).lte('closed_at', _execToDate),
-        window.supabaseClient.from('properties').select('price_usd, status, is_published').eq('is_published', true).neq('status', 'vendido'),
+        window.supabaseClient.from('properties').select('price_usd, price_currency, status, is_published').eq('is_published', true).neq('status', 'vendido'),
         window.supabaseClient.from('audit_log').select('user_id, action, severity, created_at, metadata').gte('created_at', new Date(_execFromDate).toISOString()).lte('created_at', new Date(_execToDate).toISOString()),
         window.supabaseClient.from('agents').select('id, full_name, sales_ytd').eq('status', 'activo')
       ]);
@@ -6880,9 +6894,12 @@ let _execToDate = '';
         setKPI('execAvgCloseTime', '—');
       }
 
-      // KPI: Valor cartera activa
-      const portfolioValue = properties.reduce((sum, p) => sum + (p.price_usd || 0), 0);
-      setKPI('execPortfolioValue', '$' + portfolioValue.toLocaleString('es-AR'));
+      const _execPropsVenta = properties.filter(p => p.status === 'venta' || (!p.status && (p.price_currency || 'USD') === 'USD'));
+      const _execPropsAlquiler = properties.filter(p => p.status === 'alquiler' || p.price_currency === 'ARS');
+      const _execVenta = _execPropsVenta.reduce((s, p) => s + (p.price_usd || 0), 0);
+      const _execAlquiler = _execPropsAlquiler.reduce((s, p) => s + (p.price_usd || 0), 0);
+      setKPI('execPortfolioVenta', formatPrice(_execVenta, 'USD'));
+      setKPI('execPortfolioAlquiler', formatPrice(_execAlquiler, 'ARS'));
 
       // KPI: ROI Marketing (leads por USD invertido - estimado)
       const marketingSpend = 10000; // USD estimado mensual
@@ -7012,7 +7029,7 @@ let _execToDate = '';
               <div style="font-weight:600; color:#fff;">${i + 1}. ${p.title || 'Sin título'}</div>
               <div style="font-size:11px; color:var(--text-dim);">${p.zone || 'Sin zona'} • ${p.status}</div>
             </div>
-            <div style="color:var(--accent); font-weight:700;">USD ${p.price_usd ? p.price_usd.toLocaleString('es-AR') : '—'}</div>
+            <div style="color:var(--accent); font-weight:700;">${formatPrice(p.price_usd, p.price_currency)}</div>
           </div>`;
         });
       }
@@ -7182,7 +7199,7 @@ let _execToDate = '';
     if (!window.supabaseClient) return;
     // Export executive KPIs
     const kpis = {};
-    ['execConvRate', 'execAvgCloseTime', 'execPortfolioValue', 'execMarketingROI', 'execBrokerProd', 'execSLAResponse'].forEach(id => {
+    ['execConvRate', 'execAvgCloseTime', 'execPortfolioVenta', 'execPortfolioAlquiler', 'execMarketingROI', 'execBrokerProd', 'execSLAResponse'].forEach(id => {
       const el = $('#' + id);
       if (el) kpis[id] = el.textContent;
     });
