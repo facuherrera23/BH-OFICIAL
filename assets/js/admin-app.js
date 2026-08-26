@@ -210,17 +210,29 @@ function esc(s) {
   // Helper: parse and validate form data
   function validateForm(schema, formData) {
     const data = {};
+    
     for (const [key, value] of formData.entries()) {
       if (value === '' || value === undefined) continue;
+      
+      // Checkbox values come as "on" string, convert to boolean
+      if (value === 'on') {
+        const input = formData.querySelector ? formData.querySelector(`input[name="${key}"]`) : null;
+        const isCheckbox = input && input.type === 'checkbox';
+        data[key] = isCheckbox ? true : value === 'true';
+      }
       // Convert numeric strings
-      if (!isNaN(value) && !isNaN(parseFloat(value)) && key !== 'phone' && key !== 'whatsapp' && key !== 'dni_cuit' && key !== 'license_number') {
+      else if (!isNaN(value) && !isNaN(parseFloat(value)) && key !== 'phone' && key !== 'whatsapp' && key !== 'dni_cuit' && key !== 'license_number') {
         data[key] = parseFloat(value);
-      } else if (value === 'true' || value === 'false') {
+      }
+      // Boolean strings
+      else if (value === 'true' || value === 'false') {
         data[key] = value === 'true';
-      } else {
+      }
+      else {
         data[key] = value;
       }
     }
+    
     const result = schema.safeParse(data);
     if (!result.success) {
       const errors = result.error.flatten().fieldErrors;
@@ -481,9 +493,6 @@ function esc(s) {
   function navigateTo(section) {
     const prevSection = currentSection;
     currentSection = section;
-
-    /* Cleanup previous tab's event listeners */
-    offAll();
 
     /* Sidebar active */
     $$('.nav-item[data-tab]').forEach(el => {
