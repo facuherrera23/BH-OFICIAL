@@ -21,6 +21,29 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   let _submittingAgent = false;
   let _submittingOwner = false;
 
+  /* Pagination state */
+  let _propPage = 1;
+  let _propPageSize = 25;
+  let _propTotalCount = 0;
+
+  /* ------------------------------------------------
+     EVENT LISTENER REGISTRY (for cleanup on tab switch)
+     ------------------------------------------------ */
+  const _listenerRegistry = [];
+
+  function on(el, event, handler, options) {
+    if (!el) return;
+    el.addEventListener(event, handler, options);
+    _listenerRegistry.push({ el, event, handler, options });
+  }
+
+  function offAll() {
+    _listenerRegistry.forEach(({ el, event, handler, options }) => {
+      if (el) el.removeEventListener(event, handler, options);
+    });
+    _listenerRegistry.length = 0;
+  }
+
 function esc(s) {
     if (s == null) return '';
     return String(s)
@@ -68,6 +91,135 @@ function esc(s) {
 
   const $ = (sel, ctx = document) => ctx.querySelector(sel);
   const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
+
+  /* ------------------------------------------------
+     ZOD VALIDATION SCHEMAS
+     ------------------------------------------------ */
+  const z = window.Zod;
+
+  // Property validation
+  const PropertySchema = z.object({
+    title: z.string().min(3, 'El título debe tener al menos 3 caracteres').max(120, 'Máximo 120 caracteres'),
+    description: z.string().min(10, 'La descripción debe tener al menos 10 caracteres').max(5000, 'Máximo 5000 caracteres').optional().nullable(),
+    price_usd: z.number().positive('El precio USD debe ser mayor a 0').max(10000000, 'Precio USD excesivo'),
+    price_currency: z.enum(['USD', 'ARS'], { errorMap: () => ({ message: 'Moneda debe ser USD o ARS' }) }).default('USD'),
+    property_type: z.enum(['casa', 'departamento', 'terreno', 'local', 'oficina', 'galpon', 'quinta', 'otro'], { errorMap: () => ({ message: 'Tipo de propiedad inválido' }) }),
+    status: z.enum(['venta', 'alquiler'], { errorMap: () => ({ message: 'Operación debe ser venta o alquiler' }) }).default('venta'),
+    zone: z.string().min(2, 'Zona/barrio requerido').max(80, 'Máximo 80 caracteres').optional().nullable(),
+    address: z.string().max(200, 'Máximo 200 caracteres').optional().nullable(),
+    bedrooms: z.number().int().min(0).max(20).default(0),
+    bathrooms: z.number().int().min(0).max(20).default(0),
+    surface_covered: z.number().min(0).max(10000).default(0),
+    surface_total: z.number().min(0).max(50000).default(0),
+    garage_spaces: z.number().int().min(0).max(10).default(0),
+    rooms: z.number().int().min(0).max(20).default(0),
+    video_url: z.string().url('URL de video inválida').optional().nullable(),
+    is_published: z.boolean().default(false),
+    featured: z.boolean().default(false),
+    is_retasada: z.boolean().default(false),
+    is_oportunidad: z.boolean().default(false),
+  });
+
+  // Lead validation
+  const LeadSchema = z.object({
+    full_name: z.string().min(2, 'Nombre completo requerido').max(100, 'Máximo 100 caracteres'),
+    email: z.string().email('Email inválido').max(150).optional().nullable(),
+    phone: z.string().max(30).optional().nullable(),
+    whatsapp: z.string().max(30).optional().nullable(),
+    contact_name: z.string().min(2, 'Nombre de contacto requerido').max(100),
+    contact_phone: z.string().max(30).optional().nullable(),
+    contact_email: z.string().email('Email de contacto inválido').max(150).optional().nullable(),
+    contact_preference: z.enum(['whatsapp', 'email', 'call', 'chat']).optional().nullable(),
+    source: z.enum(['landing', 'ml', 'chat', 'referido', 'tasacion', 'walkin', 'manual']).default('manual'),
+    stage: z.enum(['nuevo', 'contactado', 'visita', 'oferta', 'cerrado', 'perdido']).default('nuevo'),
+    property_id: z.string().uuid('ID de propiedad inválido').optional().nullable(),
+    broker_id: z.string().uuid('ID de broker inválido').optional().nullable(),
+    budget_usd: z.number().min(0).max(10000000).default(0),
+    preferred_zone: z.string().max(80).optional().nullable(),
+    preferred_type: z.string().max(50).optional().nullable(),
+    preferred_rooms: z.number().int().min(0).max(20).optional().nullable(),
+    notes: z.string().max(2000).optional().nullable(),
+    tags: z.array(z.string()).default([]),
+    score: z.number().int().min(0).max(100).default(0),
+  });
+
+  // Visit validation
+  const VisitSchema = z.object({
+    lead_id: z.string().uuid('ID de lead inválido').optional().nullable(),
+    property_id: z.string().uuid('ID de propiedad inválido').optional().nullable(),
+    broker_id: z.string().uuid('ID de broker inválido').optional().nullable(),
+    client_name: z.string().min(2, 'Nombre del cliente requerido').max(100),
+    client_phone: z.string().max(30).optional().nullable(),
+    client_email: z.string().email('Email inválido').max(150).optional().nullable(),
+    visit_date: z.string().datetime({ offset: true }, { message: 'Fecha de visita inválida' }),
+    duration_minutes: z.number().int().min(15).max(480).default(60),
+    status: z.enum(['pendiente', 'confirmada', 'completada', 'cancelada']).default('pendiente'),
+    notes: z.string().max(1000).optional().nullable(),
+  });
+
+  // Tasación validation
+  const TasacionSchema = z.object({
+    property_id: z.string().uuid('ID de propiedad inválido').optional().nullable(),
+    owner_id: z.string().uuid('ID de propietario inválido').optional().nullable(),
+    broker_id: z.string().uuid('ID de broker inválido').optional().nullable(),
+    type: z.enum(['venta', 'alquiler', 'hipotecario', 'judicial']),
+    status: z.enum(['borrador', 'en_revision', 'entregada', 'vencida']).default('borrador'),
+    data: z.record(z.unknown()).default({}),
+    valuation_usd: z.number().min(0).max(50000000).optional().nullable(),
+    report_url: z.string().url('URL de reporte inválida').optional().nullable(),
+    expires_at: z.string().datetime({ offset: true }).optional().nullable(),
+  });
+
+  // Agent validation
+  const AgentSchema = z.object({
+    full_name: z.string().min(2, 'Nombre completo requerido').max(100),
+    email: z.string().email('Email inválido').max(150).optional().nullable(),
+    phone: z.string().max(30).optional().nullable(),
+    license_number: z.string().min(5, 'Matrícula requerida').max(30).optional().nullable(),
+    license_expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha de vencimiento inválida (YYYY-MM-DD)').optional().nullable(),
+    commission_sale: z.number().min(0).max(100).default(3),
+    commission_rent: z.number().min(0).max(100).default(4),
+    permissions: z.record(z.boolean()).default({}),
+    status: z.enum(['activo', 'inactivo', 'vacaciones']).default('activo'),
+  });
+
+  // Owner validation
+  const OwnerSchema = z.object({
+    full_name: z.string().min(2, 'Nombre completo requerido').max(100),
+    dni_cuit: z.string().min(8, 'DNI/CUIT requerido').max(20).optional().nullable(),
+    email: z.string().email('Email inválido').max(150).optional().nullable(),
+    phone: z.string().max(30).optional().nullable(),
+    address: z.string().max(200).optional().nullable(),
+    preferred_contact: z.enum(['whatsapp', 'email', 'call', 'chat']).optional().nullable().default('whatsapp'),
+    bank_name: z.string().max(100).optional().nullable(),
+    cbu_cvu: z.string().max(30).optional().nullable(),
+    alias_cbu: z.string().max(50).optional().nullable(),
+    exclusive: z.boolean().default(false),
+    notes: z.string().max(1000).optional().nullable(),
+  });
+
+  // Helper: parse and validate form data
+  function validateForm(schema, formData) {
+    const data = {};
+    for (const [key, value] of formData.entries()) {
+      if (value === '' || value === undefined) continue;
+      // Convert numeric strings
+      if (!isNaN(value) && !isNaN(parseFloat(value)) && key !== 'phone' && key !== 'whatsapp' && key !== 'dni_cuit' && key !== 'license_number') {
+        data[key] = parseFloat(value);
+      } else if (value === 'true' || value === 'false') {
+        data[key] = value === 'true';
+      } else {
+        data[key] = value;
+      }
+    }
+    const result = schema.safeParse(data);
+    if (!result.success) {
+      const errors = result.error.flatten().fieldErrors;
+      const messages = Object.entries(errors).map(([field, msgs]) => `${field}: ${msgs.join(', ')}`).join('; ');
+      throw new Error('Validación fallida: ' + messages);
+    }
+    return result.data;
+  }
 
   /* ------------------------------------------------
      1. AUTH
@@ -320,6 +472,9 @@ function esc(s) {
   function navigateTo(section) {
     const prevSection = currentSection;
     currentSection = section;
+
+    /* Cleanup previous tab's event listeners */
+    offAll();
 
     /* Sidebar active */
     $$('.nav-item[data-tab]').forEach(el => {
@@ -585,12 +740,27 @@ function esc(s) {
   async function loadProperties() {
     invalidateSearchCache();
     const tbody = $('#propertiesTableBody');
+    const pageInfo = $('#propPageInfo');
+    const pagePrev = $('#propPagePrev');
+    const pageNext = $('#propPageNext');
+    const pageSize = $('#propPageSize');
     if (!tbody) return;
     if (!window.supabaseClient) return;
 
     try {
+      // Get total count for pagination
+      const { count: totalCount, error: countError } = await window.supabaseClient
+        .from('properties')
+        .select('*', { count: 'exact', head: true });
+      if (countError) throw countError;
+      _propTotalCount = totalCount || 0;
+      console.log('[loadProperties] Total count:', _propTotalCount);
+
+      const from = (_propPage - 1) * _propPageSize;
+      const to = from + _propPageSize - 1;
+
       const [propsRes, listingsRes] = await Promise.all([
-        window.supabaseClient.from('properties').select('*').order('created_at', { ascending: false }),
+        window.supabaseClient.from('properties').select('*').order('created_at', { ascending: false }).range(from, to),
         ml_connected
           ? window.supabaseClient.from('ml_listings').select('property_id, ml_listing_id, status')
           : Promise.resolve({ data: [] }),
@@ -602,6 +772,12 @@ function esc(s) {
 
       const mlMap = {};
       (listingsRes.data || []).forEach(l => { if (l.property_id) mlMap[l.property_id] = l; });
+
+      // Update pagination UI
+      const totalPages = Math.ceil(_propTotalCount / _propPageSize);
+      if (pageInfo) pageInfo.textContent = `Página ${_propPage} de ${totalPages || 1}`;
+      if (pagePrev) pagePrev.disabled = _propPage <= 1;
+      if (pageNext) pageNext.disabled = _propPage >= totalPages;
 
       if (!data?.length) {
         tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-dim);">No hay propiedades cargadas</td></tr>';
@@ -664,21 +840,27 @@ function esc(s) {
           </td>
         </tr>`;
       }).join('');
-    } catch (err) {
+} catch (err) {
       console.error('Error loading properties:', err);
       tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar propiedades</td></tr>';
     }
-  }
+
+    // Pagination controls
+    on(pagePrev, 'click', () => { if (_propPage > 1) { _propPage--; loadProperties(); } });
+    on(pageNext, 'click', () => { const totalPages = Math.ceil(_propTotalCount / _propPageSize); if (_propPage < totalPages) { _propPage++; loadProperties(); } });
+    on(pageSize, 'change', () => { _propPageSize = parseInt(pageSize.value); _propPage = 1; loadProperties(); });
+
+  } // end loadProperties
 
   /* Create button */
-  $('#btnNewProp')?.addEventListener('click', () => {
+  on($('#btnNewProp'), 'click', () => {
     editingPropertyId = null;
     resetPropertyForm();
     openModal('propertyModal');
   });
 
   /* Topbar create button */
-  $('#topbarNewProp')?.addEventListener('click', () => {
+  on($('#topbarNewProp'), 'click', () => {
     editingPropertyId = null;
     resetPropertyForm();
     openModal('propertyModal');
@@ -696,7 +878,7 @@ function esc(s) {
   }
 
   /* Vista previa inmediata de las imágenes nuevas seleccionadas (antes de guardar) */
-  $('#propImageFilesInput')?.addEventListener('change', (e) => {
+  on($('#propImageFilesInput'), 'change', (e) => {
     const previews = $('#imagePreviewGrid');
     if (!previews) return;
 
@@ -720,7 +902,7 @@ function esc(s) {
   });
 
   /* Save property */
-  $('#propertyForm')?.addEventListener('submit', async (e) => {
+  on($('#propertyForm'), 'submit', async (e) => {
     e.preventDefault();
     if (_submittingProperty) return;
     _submittingProperty = true;
@@ -729,37 +911,22 @@ function esc(s) {
 
     try {
       const formData = new FormData(e.target);
-      const priceCurrency = formData.get('price_currency') || 'USD';
-      const priceUsdInput = parseFloat(formData.get('price_usd')) || 0;
-      const priceArsInput = parseFloat(formData.get('price_ars')) || 0;
+      
+      // Zod validation
+      const validated = validateForm(PropertySchema, formData);
+      const { price_currency, price_usd: priceUsdInput, price_ars: priceArsInput, ...rest } = validated;
       const usdRate = window.BH_CONFIG?.USD_RATE || 1000;
       
       let priceUsd = priceUsdInput;
-      if (priceCurrency === 'ARS' && priceArsInput > 0) {
-        priceUsd = priceArsInput / usdRate;
+      if (price_currency === 'ARS' && validated.price_ars > 0) {
+        priceUsd = validated.price_ars / usdRate;
       }
       
       const data = {
-        title: formData.get('title') || '',
-        description: formData.get('description') || '',
+        ...rest,
         price_usd: priceUsd,
-        price_currency: priceCurrency,
-        property_type: formData.get('property_type') || '',
-        zone: formData.get('zone') || '',
-        address: formData.get('address') || '',
-        bedrooms: parseInt(formData.get('bedrooms')) || 0,
-        bathrooms: parseInt(formData.get('bathrooms')) || 0,
-        surface_covered: parseFloat(formData.get('surface_covered')) || 0,
-        surface_total: parseFloat(formData.get('surface_total')) || 0,
-        area_m2: parseFloat(formData.get('surface_covered')) || 0,
-        garage_spaces: parseInt(formData.get('garage_spaces')) || 0,
-        rooms: parseInt(formData.get('rooms')) || 0,
-        status: formData.get('status') || 'venta',
-        is_published: formData.get('is_published') === 'on',
-        featured: formData.get('featured') === 'on',
-        is_retasada: formData.get('is_retasada') === 'on',
-        is_oportunidad: formData.get('is_oportunidad') === 'on',
-        video_url: formData.get('video_url') || '',
+        price_currency,
+        area_m2: validated.surface_covered,
         created_by: currentUser?.id || null,
       };
 
@@ -882,7 +1049,7 @@ function esc(s) {
   };
 
   /* Property search */
-  $('#propSearchInput')?.addEventListener('input', (e) => {
+  on($('#propSearchInput'), 'input', (e) => {
     const q = e.target.value.toLowerCase();
     const rows = $$('#propertiesTableBody tr');
     rows.forEach(row => {
@@ -1011,7 +1178,7 @@ function esc(s) {
   }
 
   /* Create lead */
-  $('#btnNewLead')?.addEventListener('click', () => {
+  on($('#btnNewLead'), 'click', () => {
     editingLeadId = null;
     $('#leadForm')?.reset();
     openModal('leadModal');
@@ -1019,7 +1186,7 @@ function esc(s) {
 
   /* Save lead */
   let _submittingLead = false;
-  $('#leadForm')?.addEventListener('submit', async (e) => {
+  on($('#leadForm'), 'submit', async (e) => {
     e.preventDefault();
     if (_submittingLead) return;
     _submittingLead = true;
@@ -1028,15 +1195,29 @@ function esc(s) {
 
     try {
       const formData = new FormData(e.target);
+      
+      // Zod validation
+      const validated = validateForm(LeadSchema, formData);
       const data = {
-        full_name: formData.get('full_name') || '',
-        phone: formData.get('phone') || '',
-        email: formData.get('email') || '',
-        budget_usd: parseFloat(formData.get('budget_usd')) || 0,
-        stage: formData.get('stage') || 'nuevo',
-        preferred_type: formData.get('preferred_type') || '',
-        preferred_zone: formData.get('preferred_zone') || '',
-        notes: formData.get('notes') || '',
+        full_name: validated.full_name,
+        phone: validated.phone,
+        email: validated.email,
+        whatsapp: validated.whatsapp,
+        budget_usd: validated.budget_usd,
+        stage: validated.stage,
+        preferred_type: validated.preferred_type,
+        preferred_zone: validated.preferred_zone,
+        notes: validated.notes,
+        source: validated.source,
+        property_id: validated.property_id,
+        broker_id: validated.broker_id,
+        contact_name: validated.contact_name,
+        contact_phone: validated.contact_phone,
+        contact_email: validated.contact_email,
+        contact_preference: validated.contact_preference,
+        preferred_rooms: validated.preferred_rooms,
+        tags: validated.tags,
+        score: validated.score,
       };
 
       if (editingLeadId) {
@@ -1381,7 +1562,7 @@ let dayCount = 1;
   window.filterVisitsByDate = filterVisitsByDate;
 
   /* Create visit */
-  $('#btnNewVisit')?.addEventListener('click', () => {
+  on($('#btnNewVisit'), 'click', () => {
     editingVisitId = null;
     $('#visitForm')?.reset();
     /* Limpiar selector dinámico si existe */
@@ -1433,7 +1614,7 @@ let dayCount = 1;
 
   /* Save visit */
   let _submittingVisit = false;
-  $('#visitForm')?.addEventListener('submit', async (e) => {
+  on($('#visitForm'), 'submit', async (e) => {
     e.preventDefault();
     if (_submittingVisit) return;
     _submittingVisit = true;
@@ -1448,13 +1629,20 @@ let dayCount = 1;
       const oldLeadId = oldVisit?.lead_id ?? null;
 
       const formData = new FormData(e.target);
+      
+      // Zod validation
+      const validated = validateForm(VisitSchema, formData);
       const data = {
-        visit_date: formData.get('visit_date') || null,
-        status: formData.get('status') || 'pendiente',
-        client_name: formData.get('client_name') || '',
-        client_phone: formData.get('client_phone') || '',
-        notes: formData.get('notes') || '',
-        lead_id: formData.get('lead_id') || null,
+        visit_date: validated.visit_date,
+        status: validated.status,
+        client_name: validated.client_name,
+        client_phone: validated.client_phone,
+        client_email: validated.client_email,
+        notes: validated.notes,
+        lead_id: validated.lead_id,
+        property_id: validated.property_id,
+        broker_id: validated.broker_id,
+        duration_minutes: validated.duration_minutes,
       };
 
       const newStatus = data.status;
@@ -1889,7 +2077,7 @@ let dayCount = 1;
     });
   });
 
-  $('#cmsSaveBtn')?.addEventListener('click', async () => {
+  on($('#cmsSaveBtn'), 'click', async () => {
     const btn = $('#cmsSaveBtn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
 
@@ -2037,7 +2225,7 @@ let dayCount = 1;
     });
   }
 
-  $('#cmsResetBtn')?.addEventListener('click', async () => {
+  on($('#cmsResetBtn'), 'click', async () => {
     await globalResetCMS();
   });
 
@@ -2045,9 +2233,9 @@ let dayCount = 1;
   const heroBgPreview = $('#cmsHeroBgPreview');
   const heroBgHidden = $('#cms_hero_bg');
 
-  $('#cmsHeroBgUpload')?.addEventListener('click', () => heroBgFile?.click());
+  on($('#cmsHeroBgUpload'), 'click', () => heroBgFile?.click());
 
-  heroBgFile?.addEventListener('change', (e) => {
+  on(heroBgFile, 'change', (e) => {
     (async () => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -2137,7 +2325,7 @@ let dayCount = 1;
     }
   }
 
-  $('#cfgSaveBtn')?.addEventListener('click', async () => {
+  on($('#cfgSaveBtn'), 'click', async () => {
     const btn = $('#cfgSaveBtn');
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
@@ -2223,7 +2411,7 @@ let dayCount = 1;
   }
 
   /* Zernio Config UI helpers */
-  $('#toggleZernioKey')?.addEventListener('click', () => {
+  on($('#toggleZernioKey'), 'click', () => {
     const input = $('#cfg_zernio_api_key');
     const icon = $('#toggleZernioKey i');
     if (!input || !icon) return;
@@ -2236,7 +2424,7 @@ let dayCount = 1;
     }
   });
 
-  $('#btnTestZernio')?.addEventListener('click', async () => {
+  on($('#btnTestZernio'), 'click', async () => {
     const btn = $('#btnTestZernio');
     const statusEl = $('#zernioTestStatus');
     const keyInput = $('#cfg_zernio_api_key');
@@ -2316,7 +2504,7 @@ let dayCount = 1;
   }
 
   /* Create agent */
-  $('#btnNewAgent')?.addEventListener('click', () => {
+  on($('#btnNewAgent'), 'click', () => {
     editingAgentId = null;
     $('#agentForm')?.reset();
     const title = $('#agentModalTitle');
@@ -2325,7 +2513,7 @@ let dayCount = 1;
   });
 
   /* Save agent */
-  $('#agentForm')?.addEventListener('submit', async (e) => {
+  on($('#agentForm'), 'submit', async (e) => {
     e.preventDefault();
     if (_submittingAgent) return;
     _submittingAgent = true;
@@ -2334,13 +2522,19 @@ let dayCount = 1;
 
     try {
       const formData = new FormData(e.target);
+      
+      // Zod validation
+      const validated = validateForm(AgentSchema, formData);
       const data = {
-        full_name: formData.get('full_name') || '',
-        email: formData.get('email') || '',
-        phone: formData.get('phone') || '',
-        matricula: formData.get('matricula') || '',
-        bio: formData.get('bio') || '',
-        status: formData.get('status') || 'activo',
+        full_name: validated.full_name,
+        email: validated.email,
+        phone: validated.phone,
+        license_number: validated.license_number,
+        license_expiry: validated.license_expiry,
+        commission_sale: validated.commission_sale,
+        commission_rent: validated.commission_rent,
+        permissions: validated.permissions,
+        status: validated.status,
       };
 
       const photoFile = formData.get('photo_file');
@@ -2486,7 +2680,7 @@ let dayCount = 1;
   }
 
   /* Create owner */
-  $('#btnNewOwner')?.addEventListener('click', () => {
+  on($('#btnNewOwner'), 'click', () => {
     editingOwnerId = null;
     $('#ownerForm')?.reset();
     const title = $('#ownerModalTitle');
@@ -2495,7 +2689,7 @@ let dayCount = 1;
   });
 
   /* Save owner */
-  $('#ownerForm')?.addEventListener('submit', async (e) => {
+  on($('#ownerForm'), 'submit', async (e) => {
     e.preventDefault();
     if (_submittingOwner) return;
     _submittingOwner = true;
@@ -2504,18 +2698,21 @@ let dayCount = 1;
 
     try {
       const formData = new FormData(e.target);
+      
+      // Zod validation
+      const validated = validateForm(OwnerSchema, formData);
       const data = {
-        full_name: formData.get('full_name') || '',
-        email: formData.get('email') || '',
-        phone: formData.get('phone') || '',
-        dni_cuit: formData.get('dni_cuit') || '',
-        address: formData.get('address') || '',
-        preferred_contact: formData.get('preferred_contact') || 'whatsapp',
-        bank_name: formData.get('bank_name') || '',
-        cbu_cvu: formData.get('cbu_cvu') || '',
-        alias_cbu: formData.get('alias_cbu') || '',
-        exclusive: formData.get('exclusive') === 'on',
-        notes: formData.get('notes') || '',
+        full_name: validated.full_name,
+        email: validated.email,
+        phone: validated.phone,
+        dni_cuit: validated.dni_cuit,
+        address: validated.address,
+        preferred_contact: validated.preferred_contact || 'whatsapp',
+        bank_name: validated.bank_name || '',
+        cbu_cvu: validated.cbu_cvu || '',
+        alias_cbu: validated.alias_cbu || '',
+        exclusive: validated.exclusive || false,
+        notes: validated.notes,
       };
 
       if (editingOwnerId) {
@@ -2582,7 +2779,7 @@ let dayCount = 1;
   };
 
   /* Owner search */
-  $('#ownerSearchInput')?.addEventListener('input', (e) => {
+  on($('#ownerSearchInput'), 'input', (e) => {
     const q = e.target.value.toLowerCase();
     $$('#ownersTableBody tr').forEach(row => {
       row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
@@ -2700,9 +2897,9 @@ let dayCount = 1;
     showToast(`Usuario creado: ${email}. Copiá la contraseña temporal y pasásela al usuario.`, 'warning');
   }
 
-  $('#userTempPass')?.addEventListener('click', function () { this.select(); });
+  on($('#userTempPass'), 'click', function () { this.select(); });
 
-  $('#btnNewUser')?.addEventListener('click', () => {
+  on($('#btnNewUser'), 'click', () => {
     $('#userForm')?.reset();
     const passBox = $('#userTempPassBox');
     if (passBox) passBox.style.display = 'none';
@@ -2710,12 +2907,12 @@ let dayCount = 1;
   });
 
   const userNoEmailCb = document.querySelector('#userForm input[name="no_email"]');
-  userNoEmailCb?.addEventListener('change', () => {
+  on(userNoEmailCb, 'change', () => {
     const btn = $('#userSaveBtn');
     if (btn) btn.textContent = userNoEmailCb.checked ? 'Crear Usuario' : 'Enviar Invitación';
   });
 
-  $('#userForm')?.addEventListener('submit', async (e) => {
+  on($('#userForm'), 'submit', async (e) => {
     e.preventDefault();
     const form = e.target;
     const btn = $('#userSaveBtn');
@@ -2751,7 +2948,7 @@ let dayCount = 1;
     }
   });
 
-  $('#usersTableBody')?.addEventListener('change', async (e) => {
+  on($('#usersTableBody'), 'change', async (e) => {
     const select = e.target.closest('.user-role-select');
     if (!select) return;
     const previous = select.dataset.current || 'agente';
@@ -2775,7 +2972,7 @@ let dayCount = 1;
     }
   });
 
-  $('#usersTableBody')?.addEventListener('click', async (e) => {
+  on($('#usersTableBody'), 'click', async (e) => {
     const editBtn = e.target.closest('.user-edit-btn');
     if (editBtn) {
       openUserEditor(editBtn.dataset.id);
@@ -2785,7 +2982,7 @@ let dayCount = 1;
     if (toggleBtn && !toggleBtn.disabled) await toggleUserActive(toggleBtn.dataset.id);
   });
 
-  $('#sidebarUserProfile')?.addEventListener('click', (e) => {
+  on($('#sidebarUserProfile'), 'click', (e) => {
     /* Logout y cambio de contraseña viven dentro de la tarjeta:
        ninguno de los dos debe abrir el editor. */
     if (e.target.closest('#logoutBtn')) return;
@@ -2800,7 +2997,7 @@ let dayCount = 1;
     openModal('passwordModal');
   }
 
-  $('#changePasswordBtn')?.addEventListener('click', () => {
+  on($('#changePasswordBtn'), 'click', () => {
     if (!currentUser || !window.supabaseClient) return;
     openPasswordModal();
   });
@@ -2868,7 +3065,7 @@ let dayCount = 1;
     }
   }
 
-  $('#userEditForm')?.addEventListener('submit', async (e) => {
+  on($('#userEditForm'), 'submit', async (e) => {
     e.preventDefault();
     const form = e.target;
     const btn = $('#userEditSaveBtn');
@@ -2951,7 +3148,7 @@ let dayCount = 1;
   /* Cambio de contraseña propia: único flujo permitido. Se re-autentica con
      la contraseña actual antes de aplicar el cambio; Supabase solo actualiza
      la del usuario de la sesión, así nadie puede cambiar la de un tercero. */
-  $('#passwordChangeForm')?.addEventListener('submit', async (e) => {
+  on($('#passwordChangeForm'), 'submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const currentPwd = String(fd.get('current_password') || '');
@@ -3127,7 +3324,7 @@ let dayCount = 1;
     openModal('portalModal');
   };
 
-  $('#portalApiForm')?.addEventListener('submit', async (e) => {
+  on($('#portalApiForm'), 'submit', async (e) => {
     e.preventDefault();
     const index = parseInt($('#portalIndex')?.value, 10);
     const portal = PORTALS[index];
@@ -3153,7 +3350,7 @@ let dayCount = 1;
   });
 
   /* Sync all button */
-  $('#syncAllBtn')?.addEventListener('click', () => {
+  on($('#syncAllBtn'), 'click', () => {
     showToast('Sincronización iniciada — próximamente', 'info');
   });
 
@@ -3453,7 +3650,7 @@ let dayCount = 1;
     loadTasaciones();
   }
 
-  $('#btnBackToList')?.addEventListener('click', hideTasacionEditor);
+  on($('#btnBackToList'), 'click', hideTasacionEditor);
 
   window.addEventListener('message', (e) => {
     /* Security: solo aceptar mensajes de origen propio (tasacion.html vive en el mismo origin) */
@@ -3520,7 +3717,7 @@ let dayCount = 1;
   /* ------------------------------------------------
      Security: delegated handlers (sin onclick inline; datos externos viajan en data-* esc()'
      ------------------------------------------------ */
-  $('#propertiesTableBody')?.addEventListener('click', (e) => {
+  on($('#propertiesTableBody'), 'click', (e) => {
     const upd = e.target.closest('[data-ml-update-prop]');
     if (upd) { window.adminApp.mlUpdateProperty(upd.dataset.mlUpdateProp, upd.dataset.mlListing || ''); return; }
     const rem = e.target.closest('[data-ml-remove]');
@@ -3529,12 +3726,12 @@ let dayCount = 1;
     if (pub) { window.adminApp.mlPublishProperty(pub.dataset.mlPublish); }
   });
 
-  $('#imagePreviewGrid')?.addEventListener('click', (e) => {
+  on($('#imagePreviewGrid'), 'click', (e) => {
     const btn = e.target.closest('.preview-remove');
     if (btn) btn.closest('.image-preview-item')?.remove();
   });
 
-  $('#tasacionesTableBody')?.addEventListener('click', (e) => {
+  on($('#tasacionesTableBody'), 'click', (e) => {
     const open = e.target.closest('[data-open-tasacion]');
     if (open) { window.navigateToTasacion(open.dataset.openTasacion, open.dataset.tasacionTitle || ''); return; }
     const del = e.target.closest('[data-del-tasacion]');
@@ -3558,7 +3755,7 @@ let dayCount = 1;
     }
   }
 
-  $('#btnNewTasacion')?.addEventListener('click', createNewTasacion);
+  on($('#btnNewTasacion'), 'click', createNewTasacion);
 
   /* ------------------------------------------------
      14. MODALS
@@ -3581,7 +3778,7 @@ let dayCount = 1;
 
   /* Close on backdrop click */
   $$('.admin-modal').forEach(overlay => {
-    overlay.addEventListener('click', (e) => {
+    on(overlay, 'click', (e) => {
       if (e.target === overlay) {
         overlay.classList.remove('is-open');
         document.body.style.overflow = '';
@@ -3590,7 +3787,7 @@ let dayCount = 1;
   });
 
   /* Close on Escape */
-  document.addEventListener('keydown', (e) => {
+  on(document, 'keydown', (e) => {
     if (e.key === 'Escape') {
       $$('.admin-modal.is-open').forEach(m => {
         m.classList.remove('is-open');
@@ -3841,7 +4038,7 @@ window.exportAnomaliesCSV = async function() {
      16. QUICK ACTIONS & GLOBAL SEARCH
      ------------------------------------------------ */
   $$('.quick-action-chip[data-action]').forEach(chip => {
-    chip.addEventListener('click', () => {
+    on(chip, 'click', () => {
       const action = chip.dataset.action;
       switch (action) {
         case 'openPropertyModal':
@@ -3946,14 +4143,14 @@ async function loadChatRedes() {
 
     // Eventos: búsqueda (solo se enganchan una vez; loadChatRedes se re-ejecuta cada vez que se entra a la pestaña)
     if (!_chatListenersBound) {
-      searchEl?.addEventListener('input', debounce(() => {
+      on(searchEl, 'input', debounce(() => {
         _chatSearchTerm = searchEl.value.toLowerCase().trim();
         renderConversations();
       }, 150));
 
       // Eventos: filtros plataforma
       filterChips.forEach(chip => {
-        chip.addEventListener('click', () => {
+on(chip, 'click', () => {
           filterChips.forEach(c => c.classList.remove('active'));
           chip.classList.add('active');
           _chatPlatformFilter = chip.dataset.platform;
@@ -4132,7 +4329,7 @@ async function loadChatRedes() {
 
       // Click handlers
       $$('#chatConversationsList .chat-conv-item').forEach(item => {
-        item.addEventListener('click', () => openConversation(item.dataset.convId));
+        on(item, 'click', () => openConversation(item.dataset.convId));
       });
     }
 
@@ -4687,7 +4884,7 @@ async function loadChatRedes() {
       if (!wrapper.contains(e.target)) closePanel();
     });
 
-    document.addEventListener('keydown', (e) => {
+on(document, 'keydown', (e) => {
       if (e.key === 'Escape') closePanel();
     });
   }
@@ -4911,24 +5108,24 @@ async function loadChatRedes() {
     });
 
     // Toolbar buttons
-    $('#supRefreshBtn')?.addEventListener('click', () => refreshSupervisionKPIs());
-    $('#supAutoRefreshBtn')?.addEventListener('click', toggleSupAutoRefresh);
-    $('#supExportBtn')?.addEventListener('click', exportSupervisionCSV);
-    $('#supExportAnomaliesBtn')?.addEventListener('click', exportAnomaliesCSV);
+    on($('#supRefreshBtn'), 'click', () => refreshSupervisionKPIs());
+    on($('#supAutoRefreshBtn'), 'click', toggleSupAutoRefresh);
+    on($('#supExportBtn'), 'click', exportSupervisionCSV);
+    on($('#supExportAnomaliesBtn'), 'click', exportAnomaliesCSV);
 
     // Timezone selector
-    $('#supTimezoneFilter')?.addEventListener('change', (e) => {
+    on($('#supTimezoneFilter'), 'change', (e) => {
       setSupTimezone(e.target.value);
     });
 
     // Anomalies toolbar
-    $('#anomRefreshBtn')?.addEventListener('click', () => loadAnomaliesTable());
-    $('#anomExportBtn')?.addEventListener('click', exportAnomaliesCSV);
-    $('#anomTimeWindow')?.addEventListener('change', () => {
+    on($('#anomRefreshBtn'), 'click', () => loadAnomaliesTable());
+    on($('#anomExportBtn'), 'click', exportAnomaliesCSV);
+    on($('#anomTimeWindow'), 'change', () => {
       _anomTimeWindow = $('#anomTimeWindow').value;
       loadAnomaliesTable();
     });
-    $('#anomSeverityFilter')?.addEventListener('change', () => {
+    on($('#anomSeverityFilter'), 'change', () => {
       _anomSeverityFilter = $('#anomSeverityFilter').value;
       loadAnomaliesTable();
     });
@@ -5694,7 +5891,7 @@ async function loadChatRedes() {
   }
 
   // Rules modal handlers
-  $('#supNewRuleBtn')?.addEventListener('click', () => {
+  on($('#supNewRuleBtn'), 'click', () => {
     $('#supRuleForm')?.reset();
     $('#supRuleId').value = '';
     $('#supRuleModalTitle').textContent = 'Nueva Regla';
@@ -5862,7 +6059,7 @@ async function loadChatRedes() {
     return 3600000;
   }
 
-  $('#supRuleForm')?.addEventListener('submit', async (e) => {
+  on($('#supRuleForm'), 'submit', async (e) => {
     e.preventDefault();
     if (!window.supabaseClient) return;
     const fd = new FormData(e.target);
@@ -6227,9 +6424,9 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
     }, 3800);
   }
 
-  $('#fichaPropertySearch')?.addEventListener('input', e => fichaRenderSuggestions(e.target.value));
-  $('#fichaPropertySearch')?.addEventListener('blur', () => setTimeout(fichaHideSuggestions, 150));
-  $('#fichaSuggestions')?.addEventListener('mousedown', e => {
+  on($('#fichaPropertySearch'), 'input', e => fichaRenderSuggestions(e.target.value));
+  on($('#fichaPropertySearch'), 'blur', () => setTimeout(fichaHideSuggestions, 150));
+  on($('#fichaSuggestions'), 'mousedown', e => {
     const btn = e.target.closest('.ficha-suggestion');
     if (!btn) return;
     e.preventDefault();
@@ -6267,12 +6464,12 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
   const fichaFileBox = $('.ficha-file-box');
   if (fichaFileBox) {
     ['dragenter', 'dragover'].forEach(ev => {
-      fichaFileBox.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); fichaFileBox.classList.add('is-dragover'); });
+      on(fichaFileBox, ev, e => { e.preventDefault(); e.stopPropagation(); fichaFileBox.classList.add('is-dragover'); });
     });
     ['dragleave', 'drop'].forEach(ev => {
-      fichaFileBox.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); fichaFileBox.classList.remove('is-dragover'); });
+      on(fichaFileBox, ev, e => { e.preventDefault(); e.stopPropagation(); fichaFileBox.classList.remove('is-dragover'); });
     });
-    fichaFileBox.addEventListener('drop', e => {
+    on(fichaFileBox, 'drop', e => {
       const files = Array.from(e.dataTransfer.files || []).filter(f => f.type.startsWith('image/'));
       if (files.length) {
         const dt = new DataTransfer();
@@ -6282,7 +6479,7 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
         input.dispatchEvent(new Event('change', { bubbles: true }));
       }
     });
-    fichaFileBox.addEventListener('click', e => {
+    on(fichaFileBox, 'click', e => {
       if (e.target === fichaFileBox || e.target.closest('.file-icon') || e.target.closest('.file-text') || e.target.closest('.file-sub')) {
         $('#fichaPhotos')?.click();
       }

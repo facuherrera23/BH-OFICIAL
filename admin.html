@@ -349,6 +349,16 @@ LAYOUT PRINCIPAL
 <tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando propiedades...</td></tr>
 </tbody>
 </table>
+<div id="propertiesPagination" style="display:flex; justify-content:center; align-items:center; gap:12px; margin-top:16px; padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-md);">
+<button id="propPagePrev" class="btn-action" title="Página anterior" disabled><i class="fas fa-chevron-left"></i></button>
+<span id="propPageInfo" style="color:var(--text-secondary); font-size:13px;">Página 1 de 1</span>
+<button id="propPageNext" class="btn-action" title="Página siguiente" disabled><i class="fas fa-chevron-right"></i></button>
+<select id="propPageSize" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:6px 12px; color:#fff; font-size:12px;">
+<option value="25">25 por página</option>
+<option value="50">50 por página</option>
+<option value="100">100 por página</option>
+</select>
+</div>
 </div>
 </div>
 </section>
@@ -1635,7 +1645,7 @@ MODALES
 <div class="admin-modal" id="propertyModal">
 <div class="modal-box">
 <h3 id="propModalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Nueva Propiedad</h3>
-<form id="propertyForm">
+<form id="propertyForm" novalidate>
 <input type="hidden" id="propId" />
 <div class="form-field">
 <label>Código</label>
@@ -1748,7 +1758,7 @@ MODALES
 <div class="admin-modal" id="leadModal">
 <div class="modal-box">
 <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Nuevo Prospecto / Lead</h3>
-<form id="leadForm">
+<form id="leadForm" novalidate>
 <div class="form-field"><label>Nombre y Apellido *</label><input type="text" name="full_name" required placeholder="Dr. Carlos Varela" /></div>
 <div class="form-grid-2">
 <div class="form-field"><label>Teléfono / WhatsApp *</label><input type="text" name="phone" required placeholder="+54 9 387 000-0000" /></div>
@@ -1793,7 +1803,7 @@ MODALES
 <div class="admin-modal" id="visitModal">
 <div class="modal-box">
 <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Agendar Nueva Visita</h3>
-<form id="visitForm">
+<form id="visitForm" novalidate>
 <input type="hidden" name="property_id" id="visitPropertyId" />
 <div class="form-grid-2">
 <div class="form-field"><label>Fecha y Hora *</label><input type="datetime-local" name="visit_date" required /></div>
@@ -1820,7 +1830,7 @@ MODALES
 <div class="admin-modal" id="agentModal">
 <div class="modal-box">
 <h3 id="agentModalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Registrar Asesor / Broker</h3>
-<form id="agentForm">
+<form id="agentForm" novalidate>
 <div class="form-field"><label>Nombre Completo *</label><input type="text" name="full_name" required placeholder="Lic. Sofía Martínez" /></div>
 <div class="form-grid-2">
 <div class="form-field"><label>Email</label><input type="email" name="email" placeholder="agente@bienenhaus.com.ar" /></div>
@@ -1852,7 +1862,7 @@ MODALES
 <div class="admin-modal" id="ownerModal">
 <div class="modal-box">
 <h3 id="ownerModalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Expediente de Propietario</h3>
-<form id="ownerForm">
+<form id="ownerForm" novalidate>
 <input type="hidden" name="id" id="ownerId" />
 <div class="form-grid-2">
 <div class="form-field"><label>Nombre Completo / Titular *</label><input type="text" name="full_name" required placeholder="Ing. Roberto Gómez" /></div>
@@ -2103,10 +2113,11 @@ setTimeout(function() { checkCDN(); }, 6000);
     });
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/js/zod.umd.js"></script>
 <script src="assets/js/utils.js?v=1"></script>
 <script src="assets/js/config.js?v=5"></script>
 <script src="assets/js/supabase-client.js?v=4"></script>
 <script src="assets/js/cloudinary.js?v=6"></script>
-<script src="assets/js/admin-app.js?v=60"></script>
+<script src="assets/js/admin-app.js?v=77"></script>
 </body>
 </html>
