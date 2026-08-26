@@ -459,6 +459,15 @@ LAYOUT PRINCIPAL
 <tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando visitas...</td></tr>
 </tbody>
 </table>
+<div id="visitsPagination" style="display:flex; justify-content:center; align-items:center; gap:12px; margin-top:16px; padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-md);">
+<button id="visitsPagePrev" class="btn-action" title="Página anterior" disabled><i class="fas fa-chevron-left"></i></button>
+<span id="visitsPageInfo" style="color:var(--text-secondary); font-size:13px;">Página 1 de 1</span>
+<button id="visitsPageNext" class="btn-action" title="Página siguiente" disabled><i class="fas fa-chevron-right"></i></button>
+<select id="visitsPageSize" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:6px 12px; color:#fff; font-size:12px;">
+<option value="25">25 por página</option>
+<option value="50">50 por página</option>
+<option value="100">100 por página</option>
+</select>
 </div>
 </div>
 </div>
@@ -835,10 +844,20 @@ LAYOUT PRINCIPAL
 <span id="composerPlatformHint"></span>
 <span>Enter para enviar • Shift+Enter para salto de línea</span>
 </div>
-</div>
-</div>
-</div>
-</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="crmPagination" style="display:flex; justify-content:center; align-items:center; gap:12px; margin-top:16px; padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-md);">
+    <button id="crmPagePrev" class="btn-action" title="Página anterior" disabled><i class="fas fa-chevron-left"></i></button>
+    <span id="crmPageInfo" style="color:var(--text-secondary); font-size:13px;">Página 1 de 1</span>
+    <button id="crmPageNext" class="btn-action" title="Página siguiente" disabled><i class="fas fa-chevron-right"></i></button>
+    <select id="crmPageSize" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:6px 12px; color:#fff; font-size:12px;">
+      <option value="25">25 por página</option>
+      <option value="50">50 por página</option>
+      <option value="100">100 por página</option>
+    </select>
+  </div>
 </section>
 <!-- 8. AGENTES -->
 <section class="tab-module" id="tab-agentes">

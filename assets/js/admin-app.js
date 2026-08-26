@@ -25,6 +25,15 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   let _propPage = 1;
   let _propPageSize = 25;
   let _propTotalCount = 0;
+  let _crmPage = 1;
+  let _crmPageSize = 25;
+  let _crmTotalCount = 0;
+  let _visitsPage = 1;
+  let _visitsPageSize = 25;
+  let _visitsTotalCount = 0;
+  let _tasacionesPage = 1;
+  let _tasacionesPageSize = 25;
+  let _tasacionesTotalCount = 0;
 
   /* ------------------------------------------------
      EVENT LISTENER REGISTRY (for cleanup on tab switch)
@@ -1073,9 +1082,19 @@ function esc(s) {
     invalidateSearchCache();
     if (!window.supabaseClient) return;
     try {
+      /* Get total count for pagination */
+      const { count: totalCount, error: countError } = await window.supabaseClient
+        .from('leads')
+        .select('*', { count: 'exact', head: true });
+      if (countError) throw countError;
+      _crmTotalCount = totalCount || 0;
+
+      const from = (_crmPage - 1) * _crmPageSize;
+      const to = from + _crmPageSize - 1;
+
       /* Traer leads y sus visitas (próximas y última) en una sola query */
       const [{ data: leads, error: leadsErr }, { data: visits, error: visitsErr }] = await Promise.all([
-        window.supabaseClient.from('leads').select('*').order('created_at', { ascending: false }),
+        window.supabaseClient.from('leads').select('*').order('created_at', { ascending: false }).range(from, to),
         window.supabaseClient.from('visits')
           .select('id, lead_id, visit_date, status, client_name')
           .neq('status', 'cancelada')
@@ -1322,20 +1341,41 @@ function esc(s) {
   async function loadVisits() {
     invalidateSearchCache();
     const tbody = $('#visitsTableBody');
+    const pageInfo = $('#visitsPageInfo');
+    const pagePrev = $('#visitsPagePrev');
+    const pageNext = $('#visitsPageNext');
+    const pageSize = $('#visitsPageSize');
     if (!tbody) return;
     if (!window.supabaseClient) return;
 
     try {
+      /* Get total count for pagination */
+      const { count: totalCount, error: countError } = await window.supabaseClient
+        .from('visits')
+        .select('*', { count: 'exact', head: true });
+      if (countError) throw countError;
+      _visitsTotalCount = totalCount || 0;
+
+      const from = (_visitsPage - 1) * _visitsPageSize;
+      const to = from + _visitsPageSize - 1;
+
       /* JOIN con leads para mostrar nombre del lead y link a CRM */
       const { data, error } = await window.supabaseClient
         .from('visits')
         .select('*, leads(id, full_name, stage)')
-        .order('visit_date', { ascending: true });
+        .order('visit_date', { ascending: true })
+        .range(from, to);
 
       if (error) throw error;
 
       calVisitsCache = data || [];
       renderCalendar();
+
+      /* Update pagination UI */
+      const totalPages = Math.ceil(_visitsTotalCount / _visitsPageSize);
+      if (pageInfo) pageInfo.textContent = `Página ${_visitsPage} de ${totalPages || 1}`;
+      if (pagePrev) pagePrev.disabled = _visitsPage <= 1;
+      if (pageNext) pageNext.disabled = _visitsPage >= totalPages;
 
       if (!data?.length) {
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">No hay visitas programadas</td></tr>';
@@ -3661,15 +3701,36 @@ let dayCount = 1;
   async function loadTasaciones() {
     invalidateSearchCache();
     const tbody = $('#tasacionesTableBody');
+    const pageInfo = $('#tasacionesPageInfo');
+    const pagePrev = $('#tasacionesPagePrev');
+    const pageNext = $('#tasacionesPageNext');
+    const pageSize = $('#tasacionesPageSize');
     if (!tbody) return;
     if (!currentUser || !window.supabaseClient) return;
 
     try {
+      /* Get total count for pagination */
+      const { count: totalCount, error: countError } = await window.supabaseClient
+        .from('tasaciones')
+        .select('*', { count: 'exact', head: true });
+      if (countError) throw countError;
+      _tasacionesTotalCount = totalCount || 0;
+
+      const from = (_tasacionesPage - 1) * _tasacionesPageSize;
+      const to = from + _tasacionesPageSize - 1;
+
       const { data, error } = await window.supabaseClient
         .from('tasaciones')
         .select('id, title, status, created_at')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(from, to);
       if (error) throw error;
+
+      /* Update pagination UI */
+      const totalPages = Math.ceil(_tasacionesTotalCount / _tasacionesPageSize);
+      if (pageInfo) pageInfo.textContent = `Página ${_tasacionesPage} de ${totalPages || 1}`;
+      if (pagePrev) pagePrev.disabled = _tasacionesPage <= 1;
+      if (pageNext) pageNext.disabled = _tasacionesPage >= totalPages;
 
       if (!data || data.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color:var(--text-dim);">No hay tasaciones registradas</td></tr>';
@@ -3690,6 +3751,12 @@ let dayCount = 1;
           </td>
         </tr>`;
       }).join('');
+
+      /* Pagination controls */
+      on(pagePrev, 'click', () => { if (_tasacionesPage > 1) { _tasacionesPage--; loadTasaciones(); } });
+      on(pageNext, 'click', () => { const totalPages = Math.ceil(_tasacionesTotalCount / _tasacionesPageSize); if (_tasacionesPage < totalPages) { _tasacionesPage++; loadTasaciones(); } });
+      on(pageSize, 'change', () => { _tasacionesPageSize = parseInt(pageSize.value); _tasacionesPage = 1; loadTasaciones(); });
+
     } catch (err) {
       console.error('loadTasaciones error:', err);
       tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar tasaciones</td></tr>';
