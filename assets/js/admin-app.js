@@ -6656,21 +6656,47 @@ on(chip, 'click', () => {
             .is('deleted_at', null)
             .order('full_name');
           if (!agents?.length) { showToast('No hay brokers activos', 'warning'); return; }
-          const brokerId = prompt('Seleccione broker (número):\n' + agents.map((a,i)=>`${i+1}. ${a.full_name}`).join('\n'));
-          if (!brokerId) return;
-          const selected = agents[parseInt(brokerId)-1];
-          if (!selected) { showToast('Selección inválida', 'warning'); return; }
-          try {
-            const { error } = await window.supabaseClient
-              .from('zernio_conversations')
-              .update({ broker_id: selected.id, updated_at: new Date().toISOString() })
-              .eq('id', _chatCurrentConv.id);
-            if (error) throw error;
-            _chatCurrentConv.broker_id = selected.id;
-            showToast('Broker asignado: ' + selected.full_name, 'success');
-          } catch (err) {
-            showToast('Error asignando broker: ' + err.message, 'error');
+
+          const brokerSelect = $('#brokerAssignSelect');
+          const modal = $('#brokerAssignModal');
+          if (brokerSelect) {
+            brokerSelect.innerHTML = '<option value="">— Seleccionar broker —</option>' +
+              agents.map(a => `<option value="${a.id}">${a.full_name}</option>`).join('');
           }
+
+          openModal('brokerAssignModal');
+
+          const form = $('#brokerAssignForm');
+          const handleSubmit = async (e) => {
+            e.preventDefault();
+            const brokerId = brokerSelect.value;
+            if (!brokerId) { showToast('Selecciona un broker', 'warning'); return; }
+
+            const selected = agents.find(a => a.id === brokerId);
+            if (!selected) { showToast('Selección inválida', 'warning'); return; }
+
+            try {
+              const { error } = await window.supabaseClient
+                .from('zernio_conversations')
+                .update({ broker_id: selected.id, updated_at: new Date().toISOString() })
+                .eq('id', _chatCurrentConv.id);
+              if (error) throw error;
+              _chatCurrentConv.broker_id = selected.id;
+              showToast('Broker asignado: ' + selected.full_name, 'success');
+              closeModal('brokerAssignModal');
+              form.removeEventListener('submit', handleSubmit);
+            } catch (err) {
+              showToast('Error asignando broker: ' + err.message, 'error');
+            }
+          };
+          form.addEventListener('submit', handleSubmit);
+
+          const cancelBtn = modal.querySelector('.modal-close-btn');
+          const closeHandler = () => {
+            closeModal('brokerAssignModal');
+            form.removeEventListener('submit', handleSubmit);
+          };
+          modal.querySelectorAll('.modal-close-btn').forEach(btn => btn.onclick = closeHandler);
         };
       }
     }

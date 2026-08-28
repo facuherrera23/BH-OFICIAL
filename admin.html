@@ -2337,8 +2337,29 @@ MODALES
 </div>
 </form>
 </div>
-</div>
-<!-- TOAST NOTIFICATION -->
+    </div>
+    <!-- MODAL ASIGNAR BROKER CHAT -->
+    <div class="admin-modal" id="brokerAssignModal">
+      <div class="modal-box">
+        <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">
+          <i class="fas fa-user-tie" style="margin-right:8px; color:var(--accent);"></i> Asignar Broker
+        </h3>
+        <p style="color:var(--text-dim); font-size:13px; margin-bottom:18px;">Selecciona el broker para esta conversación</p>
+        <form id="brokerAssignForm" novalidate>
+          <div class="form-field">
+            <label>Broker</label>
+            <select name="broker_id" id="brokerAssignSelect" required style="width:100%; padding:12px 14px; background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:12px; color:#fff; font-size:13.5px; width:100%;">
+              <option value="">— Seleccionar broker —</option>
+            </select>
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+            <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+            <button type="submit" class="btn-luxury-action" style="background:linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);"><i class="fas fa-user-check"></i> Asignar Broker</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <!-- TOAST NOTIFICATION -->
 <div class="toast-msg" id="toastMsg">
 <i class="fas fa-circle-check" style="color:var(--accent); font-size:18px;"></i>
 <span id="toastText">Operación exitosa.</span>
