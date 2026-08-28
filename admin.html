@@ -940,8 +940,11 @@ LAYOUT PRINCIPAL
 <span class="chat-account-badge"></span>
 </div>
 </div>
-<div class="chat-header-actions" style="display:flex; gap:8px;">
+<div class="chat-header-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
 <button class="status-pill" id="btnMarkRead" style="font-size:12px; padding:6px 12px;"><i class="fas fa-check"></i> Marcar leído</button>
+<button class="btn-action" id="btnChatCreateLead" style="font-size:11px; padding:6px 10px; background:linear-gradient(135deg, #1fc8c3 0%, #1a9a9a 100%);" title="Crear lead en CRM"><i class="fas fa-user-plus"></i> Crear Lead</button>
+<button class="btn-action" id="btnChatScheduleVisit" style="font-size:11px; padding:6px 10px; background:linear-gradient(135deg, #1fc8c3 0%, #1a9a9a 100%);" title="Agendar visita"><i class="fas fa-calendar-plus"></i> Agendar Visita</button>
+<button class="btn-action" id="btnChatAssignBroker" style="font-size:11px; padding:6px 10px; background:linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);" title="Asignar broker"><i class="fas fa-user-tie"></i> Asignar Broker</button>
 </div>
 </div>
 <div class="chat-messages" id="chatMessages" style="flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:12px;">
@@ -1988,8 +1991,15 @@ MODALES
 <form id="agentForm" novalidate>
 <div class="form-field"><label>Nombre Completo *</label><input type="text" name="full_name" required placeholder="Lic. Sofía Martínez" /></div>
 <div class="form-grid-2">
-<div class="form-field"><label>Email</label><input type="email" name="email" placeholder="agente@bienenhaus.com.ar" /></div>
-<div class="form-field"><label>Teléfono</label><input type="text" name="phone" placeholder="+54 11 0000-0000" /></div>
+  <div class="form-field"><label>Email</label><input type="email" name="email" placeholder="agente@bienenhaus.com.ar" /></div>
+  <div class="form-field"><label>Teléfono</label><input type="text" name="phone" placeholder="+54 11 0000-0000" /></div>
+</div>
+<div class="form-field">
+  <label>Usuario Auth (para login)</label>
+  <select name="profile_id" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:12px; padding:10px 12px; color:#fff; font-size:13.5px; width:100%;">
+    <option value="">— Sin vincular —</option>
+  </select>
+  <small style="color:var(--text-dim); font-size:11px;">Vincular a un usuario de auth para acceso al panel</small>
 </div>
 <div class="form-grid-2">
 <div class="form-field"><label>Matrícula C.R.I.</label><input type="text" name="matricula" placeholder="C.R.I. 9941" /></div>
@@ -2003,17 +2013,8 @@ MODALES
 </div>
 </div>
 <div class="form-grid-2">
-<div class="form-field"><label>Comisión Venta (%)</label><input type="number" name="commission_rate" value="3" min="0" max="100" step="0.5" /></div>
-<div class="form-field">
-<label>Especialidades</label>
-<select name="specialties" multiple size="3" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:12px; padding:8px 12px; color:#fff; font-size:13.5px; width:100%;">
-<option value="venta">Venta</option>
-<option value="alquiler">Alquiler</option>
-<option value="terrenos">Terrenos</option>
-<option value="comercial">Comercial</option>
-<option value="tasaciones">Tasaciones</option>
-</select>
-</div>
+  <div class="form-field"><label>Comisión Venta (%)</label><input type="number" name="commission_sale" value="3" min="0" max="100" step="0.1" placeholder="3.0" /></div>
+  <div class="form-field"><label>Comisión Alquiler (%)</label><input type="number" name="commission_rent" value="4" min="0" max="100" step="0.1" placeholder="4.0" /></div>
 </div>
 <div class="form-field">
 <label>Foto</label>
@@ -2282,8 +2283,7 @@ MODALES
 <p style="color:var(--text-muted); font-size:12.5px; margin-bottom:22px;">Gestión de claves API y sincronización.</p>
 <form id="portalApiForm">
 <input type="hidden" id="portalIndex" />
-<div class="form-field"><label>API Key / Client ID *</label><input type="text" id="portalApiKey" required /></div>
-<div class="form-field"><label>Client Secret / Access Token</label><input type="password" id="portalApiSecret" value="••••••••••••••••••••" /></div>
+<div id="portalConfigFields"></div>
 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
 <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
 <button type="submit" class="btn-luxury-action">Guardar Credenciales</button>
@@ -2412,6 +2412,6 @@ setTimeout(function() { checkCDN(); }, 6000);
 <script src="assets/js/config.js?v=5"></script>
 <script src="assets/js/supabase-client.js?v=4"></script>
 <script src="assets/js/cloudinary.js?v=6"></script>
-<script src="assets/js/admin-app.js?v=91"></script>
+<script src="assets/js/admin-app.js?v=103"></script>
 </body>
 </html>

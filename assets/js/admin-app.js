@@ -190,9 +190,11 @@ function esc(s) {
     phone: z.string().max(30).optional().nullable(),
     matricula: z.string().max(30).optional().nullable(),
     bio: z.string().max(2000).optional().nullable(),
-    commission_rate: z.number().min(0).max(100).default(3),
+    commission_sale: z.number().min(0).max(100).default(3),
+    commission_rent: z.number().min(0).max(100).default(4),
     specialties: z.array(z.string()).default([]),
     status: z.enum(['activo', 'inactivo', 'vacaciones']).default('activo'),
+    profile_id: z.string().uuid('ID de usuario inválido').optional().nullable(),
   });
 
   // Owner validation
@@ -711,7 +713,7 @@ function esc(s) {
         window.supabaseClient.from('properties').select('price_usd, price_currency, zone, status, is_published, created_at, updated_at'),
         window.supabaseClient.from('leads').select('stage, created_at'),
         window.supabaseClient.from('visits').select('*').order('visit_date', { ascending: true }).limit(5),
-        window.supabaseClient.from('agents').select('*').eq('status', 'activo'),
+        window.supabaseClient.from('agents').select('*').eq('status', 'activo').is('deleted_at', null),
       ]);
 
       const props = propsRes.data || [];
@@ -1796,6 +1798,7 @@ let dayCount = 1;
         .from('agents')
         .select('id, full_name')
         .eq('status', 'activo')
+        .is('deleted_at', null)
         .order('full_name');
       if (error) throw error;
       const brokers = data || [];
@@ -1913,6 +1916,7 @@ let dayCount = 1;
   on($('#btnNewVisit'), 'click', () => {
     editingVisitId = null;
     $('#visitForm')?.reset();
+    loadBrokersForVisit();
     /* Limpiar selector dinámico si existe */
     const oldSelect = $('#visitLeadSelect');
     if (oldSelect) oldSelect.remove();
@@ -1981,6 +1985,7 @@ let dayCount = 1;
         .from('agents')
         .select('id, full_name')
         .eq('status', 'activo')
+        .is('deleted_at', null)
         .order('full_name');
       if (error) throw error;
       const currentValue = select.value;
@@ -2917,9 +2922,13 @@ let dayCount = 1;
         const rateInput = $('#cfg_usd_rate');
         if (prefs?.value && typeof prefs.value.usd_rate === 'number' && rateInput) rateInput.value = prefs.value.usd_rate;
       }
-      if (zernioRes.data?.value?.key) {
-        const keyInput = $('#cfg_zernio_api_key');
-        if (keyInput) keyInput.value = zernioRes.data.value.key;
+      if (zernioRes.data?.value) {
+        const val = zernioRes.data.value;
+        const apiKey = typeof val === 'string' ? val : val.key;
+        if (apiKey) {
+          const keyInput = $('#cfg_zernio_api_key');
+          if (keyInput) keyInput.value = apiKey;
+        }
       }
       cfgData = {};
       (rows || []).forEach(item => { cfgData[item.section_key] = item; });
@@ -2955,12 +2964,11 @@ let dayCount = 1;
 
       await Promise.all(Object.entries(updatesBySection).map(async ([sectionKey, newFields]) => {
         if (sectionKey === 'zernio') {
-          // Guardar Zernio API Key en zernio_config
           const apiKey = newFields.api_key?.trim();
           if (apiKey) {
             const { error } = await window.supabaseClient
               .from('zernio_config')
-              .upsert({ key: 'api_key', value: { key: apiKey }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+              .upsert({ key: 'api_key', value: apiKey, updated_at: new Date().toISOString() }, { onConflict: 'key' });
             if (error) throw error;
           }
           return;
@@ -3075,6 +3083,7 @@ let dayCount = 1;
       const { data, error } = await window.supabaseClient
         .from('agents')
         .select('*')
+        .is('deleted_at', null)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -3119,6 +3128,17 @@ let dayCount = 1;
     $('#agentForm')?.reset();
     const title = $('#agentModalTitle');
     if (title) title.textContent = 'Registrar Asesor / Broker';
+    const profileSelect = document.querySelector('#agentForm [name="profile_id"]');
+    if (profileSelect && window.supabaseClient) {
+      window.supabaseClient.from('profiles').select('id, full_name, email, role')
+        .order('full_name')
+        .then(({ data }) => {
+          if (data) {
+            profileSelect.innerHTML = '<option value="">— Sin vincular —</option>' +
+              data.map(u => `<option value="${u.id}">${u.full_name || u.email} (${u.role})</option>`).join('');
+          }
+        });
+    }
     openModal('agentModal');
   });
 
@@ -3142,7 +3162,8 @@ let dayCount = 1;
         phone: validated.phone,
         matricula: validated.matricula,
         bio: validated.bio,
-        commission_rate: validated.commission_rate,
+        commission_sale: validated.commission_sale,
+        commission_rent: validated.commission_rent,
         specialties: specialtiesSel ? Array.from(specialtiesSel.selectedOptions).map(o => o.value) : [],
         status: validated.status,
       };
@@ -3187,8 +3208,10 @@ let dayCount = 1;
         form.elements.phone.value = data.phone || '';
         form.elements.matricula.value = data.matricula || '';
         form.elements.bio.value = data.bio || '';
-        form.elements.commission_rate.value = data.commission_rate ?? 3;
+        form.elements.commission_sale.value = data.commission_sale ?? 3;
+        form.elements.commission_rent.value = data.commission_rent ?? 4;
         form.elements.status.value = data.status || 'activo';
+        form.elements.profile_id.value = data.profile_id || '';
         if (form.elements.specialties && data.specialties) {
           Array.from(form.elements.specialties.options).forEach(opt => {
             opt.selected = (data.specialties || []).includes(opt.value);
@@ -3203,13 +3226,15 @@ let dayCount = 1;
     }
   };
 
-  /* Delete agent */
   window.adminApp.deleteAgent = async function (id) {
-    if (!confirm('¿Eliminar este agente?')) return;
+    if (!confirm('¿Eliminar este agente? (soft delete, se puede restaurar)')) return;
     try {
-      const { error } = await window.supabaseClient.from('agents').delete().eq('id', id);
+      const { error } = await window.supabaseClient
+        .from('agents')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', id);
       if (error) throw error;
-      showToast('Agente eliminado', 'success');
+      showToast('Agente eliminado (soft delete)', 'success');
       loadAgents();
       updateSidebarBadges();
     } catch (err) {
@@ -3376,7 +3401,7 @@ let dayCount = 1;
     if (!window.supabaseClient) return;
     try {
       const [brokersRes, ownersRes] = await Promise.all([
-        window.supabaseClient.from('agents').select('id, full_name').eq('status', 'activo').order('full_name'),
+        window.supabaseClient.from('agents').select('id, full_name').eq('status', 'activo').is('deleted_at', null).order('full_name'),
         window.supabaseClient.from('owners').select('id, full_name').is('deleted_at', null).order('full_name')
       ]);
       const brokers = brokersRes.data || [];
@@ -4876,6 +4901,53 @@ let dayCount = 1;
     }
   };
 
+  /* Portal config field definitions per portal type */
+  const PORTAL_CONFIG_FIELDS = {
+    'ZonaProp': [
+      { name: 'client_id', label: 'Client ID', type: 'text', required: true },
+      { name: 'client_secret', label: 'Client Secret', type: 'password', required: true },
+      { name: 'username', label: 'Username (opcional)', type: 'text', required: false },
+      { name: 'password', label: 'Password (opcional)', type: 'password', required: false }
+    ],
+    'Argenprop': [
+      { name: 'username', label: 'Username / Email', type: 'text', required: true },
+      { name: 'password', label: 'Password', type: 'password', required: true },
+      { name: 'api_key', label: 'API Key (opcional)', type: 'text', required: false }
+    ],
+    'Argentpropiedades': [
+      { name: 'client_id', label: 'Client ID', type: 'text', required: true },
+      { name: 'client_secret', label: 'Client Secret', type: 'password', required: true }
+    ],
+    'Properati': [
+      { name: 'api_key', label: 'API Key', type: 'text', required: true },
+      { name: 'client_id', label: 'Client ID (opcional)', type: 'text', required: false }
+    ],
+    'MiArgPropiedad': [
+      { name: 'username', label: 'Username / Email', type: 'text', required: true },
+      { name: 'password', label: 'Password', type: 'password', required: true },
+      { name: 'api_key', label: 'API Key (opcional)', type: 'text', required: false }
+    ],
+    'Mercado Libre': [
+      { name: 'app_id', label: 'APP ID', type: 'text', required: true },
+      { name: 'secret_key', label: 'Secret Key', type: 'password', required: true }
+    ]
+  };
+
+  function renderPortalConfigFields(portalName) {
+    const fields = PORTAL_CONFIG_FIELDS[portalName] || [
+      { name: 'api_key', label: 'API Key', type: 'text', required: true },
+      { name: 'api_secret', label: 'Secret', type: 'password', required: true }
+    ];
+    const container = $('#portalConfigFields');
+    if (!container) return;
+    container.innerHTML = fields.map(f => `
+      <div class="form-field">
+        <label>${f.label} ${f.required ? '<span style="color:var(--danger);">*</span>' : ''}</label>
+        <input type="${f.type}" id="portalField_${f.name}" name="${f.name}" ${f.required ? 'required' : ''} />
+      </div>
+    `).join('');
+  }
+
   window.adminApp.openPortalConfig = async function (index) {
     const portal = PORTALS[index];
     if (!portal) return;
@@ -4884,22 +4956,24 @@ let dayCount = 1;
     const idx = $('#portalIndex');
     if (idx) idx.value = index;
 
+    renderPortalConfigFields(portal.name);
+
     try {
       const { data } = await window.supabaseClient
         .from('portal_settings')
-        .select('api_key, api_secret')
+        .select('*')
         .eq('portal_name', portal.name)
         .single();
 
-      const apiKey = $('#portalApiKey');
-      const secret = $('#portalApiSecret');
-      if (apiKey) apiKey.value = data?.api_key || '';
-      if (secret) secret.value = data?.api_secret || '';
+      if (data) {
+        Object.keys(data).forEach(key => {
+          if (key !== 'portal_name' && key !== 'is_active' && key !== 'id') {
+            const input = $(`#portalField_${key}`);
+            if (input) input.value = data[key] || '';
+          }
+        });
+      }
     } catch (_) {
-      const apiKey = $('#portalApiKey');
-      const secret = $('#portalApiSecret');
-      if (apiKey) apiKey.value = '';
-      if (secret) secret.value = '';
     }
 
     openModal('portalModal');
@@ -4916,11 +4990,16 @@ let dayCount = 1;
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
 
     try {
-      const apiKey = $('#portalApiKey')?.value?.trim() || '';
-      const secret = $('#portalApiSecret')?.value?.trim() || '';
+      const fields = PORTAL_CONFIG_FIELDS[portal.name] || [];
+      const upsertData = { portal_name: portal.name };
+      fields.forEach(f => {
+        const input = $(`#portalField_${f.name}`);
+        if (input) upsertData[f.name] = input.value?.trim() || '';
+      });
+
       const { error } = await window.supabaseClient
         .from('portal_settings')
-        .upsert({ portal_name: portal.name, api_key: apiKey, api_secret: secret }, { onConflict: 'portal_name' });
+        .upsert(upsertData, { onConflict: 'portal_name' });
       if (error) throw error;
       showToast(`${portal.name} configurado correctamente`, 'success');
       closeModal('portalModal');
@@ -4928,7 +5007,7 @@ let dayCount = 1;
       showToast('Error al guardar: ' + err.message, 'error');
     } finally {
       _submittingPortal = false;
-      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar Expediente'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar Credenciales'; }
     }
   });
 
@@ -5079,7 +5158,7 @@ let dayCount = 1;
       if (!prop.zone) errors.push('Zona/barrio requerido');
       if (!prop.price_usd || prop.price_usd <= 0) errors.push('Precio válido requerido');
       if (!prop.broker_id) errors.push('Broker asignado requerido');
-      if (prop.status !== 'publicada') errors.push('La propiedad debe estar en estado "publicada"');
+      if (!prop.is_published) errors.push('La propiedad debe estar publicada');
 
       if (errors.length) {
         showToast('Validación fallida: ' + errors.join('; '), 'error');
@@ -5828,8 +5907,8 @@ window.exportAnomaliesCSV = async function() {
 
 async function loadChatRedes() {
     if (!currentUser || !window.supabaseClient) return;
-    if (currentProfile?.role !== 'super_admin') {
-      showToast('Acceso denegado: solo super_admin', 'error');
+    if (!['super_admin', 'broker'].includes(currentProfile?.role)) {
+      showToast('Acceso denegado: solo super_admin y brokers', 'error');
       navigateTo('tab-dashboard');
       return;
     }
@@ -5940,6 +6019,7 @@ on(chip, 'click', () => {
 
     // Realtime
     setupRealtime();
+    setupCoreRealtime();
 
     // Funciones auxiliares
     async function loadConversations() {
@@ -6091,6 +6171,79 @@ on(chip, 'click', () => {
         const badge = el.querySelector('.chat-unread-badge');
         if (badge) badge.remove();
       });
+
+      // Chat sidebar actions
+      const createLeadBtn = $('#btnChatCreateLead');
+      const scheduleVisitBtn = $('#btnChatScheduleVisit');
+      const assignBrokerBtn = $('#btnChatAssignBroker');
+
+      if (createLeadBtn) {
+        createLeadBtn.onclick = async () => {
+          if (!_chatCurrentConv) return;
+          try {
+            const { data: lead, error } = await window.supabaseClient
+              .from('leads')
+              .insert([{
+                full_name: _chatCurrentConv.contact_name || 'Sin nombre',
+                phone: _chatCurrentConv.contact_handle || '',
+                source: 'chat',
+                stage: 'nuevo',
+                broker_id: _chatCurrentConv.broker_id || null,
+                property_id: _chatCurrentConv.property_id || null,
+                notes: `Creado desde chat Zernio (conv: ${_chatCurrentConv.id})`
+              }])
+              .select()
+              .single();
+            if (error) throw error;
+            showToast('Lead creado: ' + (lead.full_name || lead.id), 'success');
+            loadCRM();
+            updateSidebarBadges();
+          } catch (err) {
+            showToast('Error creando lead: ' + err.message, 'error');
+          }
+        };
+      }
+
+      if (scheduleVisitBtn) {
+        scheduleVisitBtn.onclick = () => {
+          if (!_chatCurrentConv) return;
+          window.adminApp.openVisitModal({
+            lead_id: null,
+            client_name: _chatCurrentConv.contact_name || '',
+            client_phone: _chatCurrentConv.contact_handle || '',
+            property_id: _chatCurrentConv.property_id || '',
+            broker_id: _chatCurrentConv.broker_id || null
+          });
+        };
+      }
+
+      if (assignBrokerBtn) {
+        assignBrokerBtn.onclick = async () => {
+          if (!_chatCurrentConv) return;
+          const { data: agents } = await window.supabaseClient
+            .from('agents')
+            .select('id, full_name')
+            .eq('status', 'activo')
+            .is('deleted_at', null)
+            .order('full_name');
+          if (!agents?.length) { showToast('No hay brokers activos', 'warning'); return; }
+          const brokerId = prompt('Seleccione broker (número):\n' + agents.map((a,i)=>`${i+1}. ${a.full_name}`).join('\n'));
+          if (!brokerId) return;
+          const selected = agents[parseInt(brokerId)-1];
+          if (!selected) { showToast('Selección inválida', 'warning'); return; }
+          try {
+            const { error } = await window.supabaseClient
+              .from('zernio_conversations')
+              .update({ broker_id: selected.id, updated_at: new Date().toISOString() })
+              .eq('id', _chatCurrentConv.id);
+            if (error) throw error;
+            _chatCurrentConv.broker_id = selected.id;
+            showToast('Broker asignado: ' + selected.full_name, 'success');
+          } catch (err) {
+            showToast('Error asignando broker: ' + err.message, 'error');
+          }
+        };
+      }
     }
 
     window.adminApp.openChatConversation = openConversation;
@@ -6270,6 +6423,60 @@ on(chip, 'click', () => {
       return d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
     }
 
+function setupCoreRealtime() {
+      if (_coreRealtimeChannel) {
+        _coreRealtimeChannel.unsubscribe();
+        _coreRealtimeChannel = null;
+      }
+      const tables = ['visits', 'leads', 'properties', 'agents', 'owners', 'tasaciones', 'commissions', 'commission_liquidations', 'commission_payments'];
+      _coreRealtimeChannel = window.supabaseClient.channel('core-tables')
+        .on('postgres_changes', { event: '*', schema: 'public', table: tables }, payload => {
+          const table = payload.table;
+          const event = payload.eventType;
+          const newRecord = payload.new;
+          const oldRecord = payload.old;
+
+          invalidateSearchCache();
+          if (table === 'properties') invalidateFichaCache();
+          if (window.Bus) window.Bus.emit(table + ':changed', { event, new: newRecord, old: oldRecord });
+
+          switch (table) {
+            case 'visits':
+              loadVisits();
+              updateSidebarBadges();
+              if (event === 'INSERT' && newRecord?.lead_id) loadCRM();
+              break;
+            case 'leads':
+              loadCRM();
+              updateSidebarBadges();
+              break;
+            case 'properties':
+              loadProperties();
+              updateSidebarBadges();
+              break;
+            case 'agents':
+              loadAgents();
+              populateBrokerFilters();
+              updateSidebarBadges();
+              break;
+            case 'owners':
+              loadOwners();
+              updateSidebarBadges();
+              break;
+            case 'tasaciones':
+              loadTasaciones();
+              updateSidebarBadges();
+              break;
+            case 'commissions':
+            case 'commission_liquidations':
+            case 'commission_payments':
+              loadCommissionDashboard();
+              break;
+          }
+        })
+        .subscribe();
+    }
+
     function debounce(fn, ms) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); }; }
 
     function setupRealtime() {
@@ -6359,6 +6566,19 @@ on(chip, 'click', () => {
   }
 
   function invalidateSearchCache() { _searchCache = null; _searchCacheExpiresAt = 0; }
+function invalidateFichaCache() { _fichaPropsCache = []; _fichaAgentsCache = []; if (window.loadFichaHtml) window.loadFichaHtml(); }
+
+async function mutate(table, fn) {
+  try {
+    const result = await fn();
+    invalidateSearchCache();
+    if (table === 'properties') invalidateFichaCache();
+    if (window.Bus) window.Bus.emit(table + ':changed', result);
+    return result;
+  } catch (err) {
+    throw err;
+  }
+}
 
   /* Resalta la coincidencia con <mark> sobre texto YA escapado (CSP/XSS safe) */
   function gsHighlight(text, q) {
@@ -6378,13 +6598,9 @@ on(chip, 'click', () => {
   async function updateSidebarBadges() {
     if (!currentUser || !window.supabaseClient) return;
     try {
-      const [props, leads, visits, owners, tasaciones] = await Promise.all([
-        window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('is_published', true),
-        window.supabaseClient.from('leads').select('*', { count: 'exact', head: true }).not('stage', 'in', '(cerrado,perdido)'),
-        window.supabaseClient.from('visits').select('*', { count: 'exact', head: true }).eq('status', 'pendiente'),
-        window.supabaseClient.from('owners').select('*', { count: 'exact', head: true }),
-        window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true }),
-      ]);
+      const { data, error } = await window.supabaseClient.rpc('get_sidebar_badge_counts');
+      if (error) throw error;
+      const counts = data || { properties: 0, leads: 0, visits: 0, owners: 0, tasaciones: 0 };
 
       const propsEl = $('#sideBadgeProps');
       const leadsEl = $('#sideBadgeLeads');
@@ -6392,11 +6608,11 @@ on(chip, 'click', () => {
       const ownersEl = $('#sideBadgeOwners');
       const tasEl = $('#sideBadgeTasaciones');
 
-      if (propsEl) propsEl.textContent = props.count || 0;
-      if (leadsEl) leadsEl.textContent = (leads.count || 0) + ' Activos';
-      if (visitsEl) visitsEl.textContent = (visits.count || 0) + ' Citas';
-      if (ownersEl) ownersEl.textContent = (owners.count || 0) + ' Activos';
-      if (tasEl) tasEl.textContent = tasaciones.count || 0;
+      if (propsEl) propsEl.textContent = counts.properties || 0;
+      if (leadsEl) leadsEl.textContent = (counts.leads || 0) + ' Activos';
+      if (visitsEl) visitsEl.textContent = (counts.visits || 0) + ' Citas';
+      if (ownersEl) ownersEl.textContent = (counts.owners || 0) + ' Activos';
+      if (tasEl) tasEl.textContent = counts.tasaciones || 0;
     } catch (err) {
       console.error('Badge update error:', err);
     }
@@ -6737,7 +6953,20 @@ on(document, 'keydown', (e) => {
     }
   }
 
-  function renderSupRankings(audit) {
+  async function renderSupRankings(audit) {
+    const userIds = [...new Set(audit.map(a => a.user_id).filter(Boolean))];
+    let userNames = {};
+    if (userIds.length && window.supabaseClient) {
+      try {
+        const { data } = await window.supabaseClient
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', userIds);
+        if (data) userNames = Object.fromEntries(data.map(u => [u.id, u.full_name]));
+      } catch (_) {}
+    }
+    const getName = (uid) => userNames[uid] || uid;
+
     // Activity by User
     const byUser = {};
     audit.forEach(a => {
@@ -6748,7 +6977,7 @@ on(document, 'keydown', (e) => {
     const usersEl = $('#rankingUsers');
     if (usersEl) {
       usersEl.innerHTML = topUsers.length
-        ? topUsers.map(([uid, count]) => `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-subtle);"><span style="color:var(--text-secondary);">${esc(uid)}</span><span style="color:var(--accent); font-weight:600;">${count}</span></div>`).join('')
+        ? topUsers.map(([uid, count]) => `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-subtle);"><span style="color:var(--text-secondary);">${esc(getName(uid))}</span><span style="color:var(--accent); font-weight:600;">${count}</span></div>`).join('')
         : '<div style="color:var(--text-dim); text-align:center; padding:20px;">Sin actividad</div>';
     }
 
@@ -6776,7 +7005,7 @@ on(document, 'keydown', (e) => {
     const errorsEl = $('#rankingErrors');
     if (errorsEl) {
       errorsEl.innerHTML = topErrors.length
-        ? topErrors.map(([uid, count]) => `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-subtle);"><span style="color:var(--text-secondary);">${esc(uid)}</span><span style="color:var(--danger); font-weight:600;">${count}</span></div>`).join('')
+        ? topErrors.map(([uid, count]) => `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-subtle);"><span style="color:var(--text-secondary);">${esc(getName(uid))}</span><span style="color:var(--danger); font-weight:600;">${count}</span></div>`).join('')
         : '<div style="color:var(--text-dim); text-align:center; padding:20px;">Sin errores</div>';
     }
 
@@ -6790,7 +7019,7 @@ on(document, 'keydown', (e) => {
     const sensitiveEl = $('#rankingSensitive');
     if (sensitiveEl) {
       sensitiveEl.innerHTML = topSensitive.length
-        ? topSensitive.map(([uid, count]) => `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-subtle);"><span style="color:var(--text-secondary);">${esc(uid)}</span><span style="color:var(--warning); font-weight:600;">${count}</span></div>`).join('')
+        ? topSensitive.map(([uid, count]) => `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-subtle);"><span style="color:var(--text-secondary);">${esc(getName(uid))}</span><span style="color:var(--warning); font-weight:600;">${count}</span></div>`).join('')
         : '<div style="color:var(--text-dim); text-align:center; padding:20px;">Sin acciones sensibles</div>';
     }
   }
@@ -8416,7 +8645,7 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
           try {
             const [propsRes, agentsRes] = await Promise.all([
               window.supabaseClient.from('properties').select('id, title, property_code, zone, address, price_usd, rooms, area_m2, description, image_urls, agent_id').order('created_at', { ascending: false }),
-              window.supabaseClient.from('agents').select('id, full_name, phone, email').eq('status', 'activo')
+window.supabaseClient.from('agents').select('id, full_name, phone, email').eq('status', 'activo').is('deleted_at', null)
             ]);
             if (propsRes.error) throw propsRes.error;
             if (agentsRes.error) throw agentsRes.error;
@@ -8500,7 +8729,7 @@ let _execToDate = '';
         window.supabaseClient.from('leads').select('id, stage, created_at, budget_usd').in('stage', ['cerrado']).gte('closed_at', _execFromDate).lte('closed_at', _execToDate),
         window.supabaseClient.from('properties').select('price_usd, price_currency, status, is_published').eq('is_published', true).neq('status', 'vendido'),
         window.supabaseClient.from('audit_log').select('user_id, action, status, created_at, metadata').gte('created_at', new Date(_execFromDate).toISOString()).lte('created_at', new Date(_execToDate).toISOString()),
-        window.supabaseClient.from('agents').select('id, full_name, sales_ytd').eq('status', 'activo')
+        window.supabaseClient.from('agents').select('id, full_name, sales_ytd').eq('status', 'activo').is('deleted_at', null)
       ]);
 
       const leads = leadsRes.data || [];
