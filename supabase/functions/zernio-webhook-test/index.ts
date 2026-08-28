@@ -151,10 +151,11 @@ async function ensureAccount(accountId, platformHint) {
   return !error;
 }
 
-async function upsertConversation(convId, accountId, contactName, contactHandle) {
+async function upsertConversation(convId, accountId, contactName, contactHandle, platform) {
   const payload = { id: convId, account_id: accountId };
   if (contactName) payload.contact_name = contactName;
   if (contactHandle) payload.contact_handle = contactHandle;
+  if (platform) payload.platform = platform;
 
   const { error } = await supabase.from('zernio_conversations').upsert(payload, { onConflict: 'id' });
   if (error) throw new Error('upsert_conversation: ' + error.message);
@@ -187,7 +188,8 @@ async function handleEvent(type, ev) {
         convId,
         accountId,
         str(conv.contactName || conv.name || data.contactName),
-        str(conv.contactHandle || conv.handle || data.contactHandle)
+        str(conv.contactHandle || conv.handle || data.contactHandle),
+        conv.platform || data.platform
       );
       log('info', { event: type, conv_id: convId });
       return;
@@ -203,7 +205,8 @@ async function handleEvent(type, ev) {
         convId,
         accountId,
         str(conv.contactName || conv.name || data.contactName),
-        str(conv.contactHandle || conv.handle || data.contactHandle)
+        str(conv.contactHandle || conv.handle || data.contactHandle),
+        conv.platform || data.platform
       );
 
       const body = str(msg.text || msg.body || data.text);
@@ -265,7 +268,8 @@ async function handleEvent(type, ev) {
           convId,
           accountId,
           str(conv.contactName || data.contactName),
-          str(conv.contactHandle || data.contactHandle)
+          str(conv.contactHandle || data.contactHandle),
+          conv.platform || data.platform
         );
         await insertMessage({
           conversation_id: convId,

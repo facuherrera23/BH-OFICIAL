@@ -293,7 +293,7 @@ export async function auditSensitiveAction(
     action: string,
     module: string,
     entityType: string,
-    entityId: string,
+    entityId: string | null,
     entityLabel: string,
     oldData?: Record<string, unknown> | null,
     newData?: Record<string, unknown> | null

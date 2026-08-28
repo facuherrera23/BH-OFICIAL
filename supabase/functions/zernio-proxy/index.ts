@@ -197,12 +197,12 @@ async function actSendMessage(body: Record<string, unknown>, userId: string): Pr
     // Auditoría: envío de mensaje por Zernio
     await auditSensitiveAction(
         supabase,
-        new Request('internal', { method: 'POST' }),
+        new Request('http://internal', { method: 'POST' }),
         'send_message',
         'chat',
         'conversation',
-        conversationId,
-        `Msg to ${conv.platform}`,
+        null,
+        `Conv ${conversationId}: Msg to ${conv.platform}`,
         { platform: conv.platform, account_id: conv.account_id },
         { platform_message_id: platformMsgId, window_closed },
         { source: 'zernio-proxy', action: 'send_message' }
