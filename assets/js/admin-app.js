@@ -2441,6 +2441,7 @@ let dayCount = 1;
           .select('id, client_name, visit_date, duration_minutes')
           .eq('agent_id', data.agent_id)
           .in('status', ['pendiente', 'confirmada'])
+          .is('deleted_at', null)
           .neq('id', editingVisitId || '00000000-0000-0000-0000-000000000000');
         if (!conflictError && conflicts?.length) {
           const hasOverlap = conflicts.some(c => {
@@ -7002,10 +7003,10 @@ function setupCoreRealtime() {
 
     /* Promise.allSettled: si un módulo falla o falta permiso RLS, los demás siguen funcionando */
     const requests = [
-      ['properties', window.supabaseClient.from('properties').select('id, title, zone, address, price_usd, status').order('created_at', { ascending: false }).limit(200)],
-      ['leads', window.supabaseClient.from('leads').select('id, full_name, email, phone, stage').order('created_at', { ascending: false }).limit(200)],
-      ['agents', window.supabaseClient.from('agents').select('id, full_name, email, matricula').order('created_at', { ascending: false }).limit(100)],
-      ['owners', window.supabaseClient.from('owners').select('id, full_name, email, phone').order('created_at', { ascending: false }).limit(100)],
+      ['properties', window.supabaseClient.from('properties').select('id, title, zone, address, price_usd, status').eq('deleted_at', null).order('created_at', { ascending: false }).limit(200)],
+      ['leads', window.supabaseClient.from('leads').select('id, full_name, email, phone, stage').eq('deleted_at', null).order('created_at', { ascending: false }).limit(200)],
+      ['agents', window.supabaseClient.from('agents').select('id, full_name, email, matricula').eq('deleted_at', null).order('created_at', { ascending: false }).limit(100)],
+      ['owners', window.supabaseClient.from('owners').select('id, full_name, email, phone').eq('deleted_at', null).order('created_at', { ascending: false }).limit(100)],
       ['visits', window.supabaseClient.from('visits').select('id, client_name, client_phone, visit_date, status').order('visit_date', { ascending: false }).limit(200)],
       ['tasaciones', window.supabaseClient.from('tasaciones').select('id, title, status, created_at').order('created_at', { ascending: false }).limit(200)],
       ['profiles', window.supabaseClient.from('profiles').select('id, full_name, email, role').order('created_at', { ascending: true }).limit(100)],
