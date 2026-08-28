@@ -23,8 +23,9 @@
 
 ### ✅ Lo que YA está listo en el proyecto
 - [x] Base de datos: tablas `zernio_accounts`, `zernio_conversations`, `zernio_messages`, `zernio_webhook_events`, `zernio_config` creadas con RLS y Realtime
-- [x] Edge Function `zernio-webhook` deployada y funcionando (recibe webhooks de Zernio)
-- [x] Edge Function `zernio-proxy` deployada (proxy autenticado para enviar respuestas)
+- [x] Migración `20260827_zernio_chat_completo` aplicada en producción (columna `platform`, UNIQUE no parcial en `zernio_messages`, FKs, RLS, `api_key` restringida a `super_admin`)
+- [x] Edge Function `zernio-webhook` deployada y verificada E2E (firma HMAC 401/200, dedup, persistencia de `platform`, update de conversación, auditoría)
+- [x] Edge Function `zernio-proxy` deployada (proxy autenticado para enviar respuestas; verify JWT = ON)
 - [x] Panel administrativo: pestaña "Chat Redes" en categoría "Red & Difusión"
 - [x] Configuración: campo "Zernio API Key" + botón "Probar Conexión" en pestaña Configuración
 - [x] Webhook secret ya configurado en DB (`zernio_config` → key `webhook_secret`)
@@ -252,7 +253,7 @@ En Zernio Dashboard → **Connections** debe mostrar:
 Antes de dar por terminado, verifica **TODOS** los checkboxes:
 
 ### Infraestructura
-- [ ] Migración DB aplicada (`zernio_chat_tables`)
+- [ ] Migración DB aplicada (`20260827_zernio_chat_completo`)
 - [ ] `zernio-webhook` deployado en Supabase (Verify JWT = OFF)
 - [ ] `zernio-proxy` deployado via CLI
 - [ ] `zernio_config` tiene `webhook_secret` y `api_key`
@@ -324,5 +325,5 @@ Si completaste **TODOS** los pasos de esta guía, el **Chat Redes Sociales está
 
 ---
 
-*Documento generado automáticamente - Última actualización: 2026-08-23*
+*Documento generado automáticamente - Última actualización: 2026-08-27*
 *Proyecto: BH-OFICIAL | Bienenhaus Propiedades*

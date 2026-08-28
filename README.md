@@ -593,7 +593,7 @@ Secciones consumidas por `landing-app.js` (`applySectionContent`) desde `site_co
 ## Chat Zernio (Omnicanal)
 
 ### Estado Actual
-**Código completo, listo para activar**. Falta solo API key de Zernio.
+**Código completo, verificado E2E en producción**. Falta solo API key real de Zernio para activar envíos (la recepción via webhook ya fue validada con firma HMAC, dedup, persistencia de `platform`, update de conversación y auditoría).
 
 ### Componentes Implementados
 | Componente | Archivo | Estado |
@@ -798,6 +798,12 @@ Suscripciones centralizadas: properties, leads, visits, conversations, ml_listin
 ---
 
 ## Changelog Reciente
+
+### v2.3.0 — 2026-08-27
+- **Módulo Chat Zernio 100% funcional**: migración `20260827_zernio_chat_completo` (columna `platform`, UNIQUE no parcial `(platform_message_id, conversation_id)`, FKs con CASCADE, RLS completo, policy `api_key` restringida a `super_admin`)
+- **Fix bugs detectados en E2E**: `new Request('internal')` lanzaba TypeError y cortaba el update de conversación (`unread_count`/`last_message_at`/`last_message_preview`); auditoría con `entity_id` texto que fallaba cast a `uuid` (ahora `null` + ID en `entityLabel`)
+- **Persistencia `platform`** en webhook + webhook-test; verify JWT OFF en webhook, ON en proxy
+- **Edge Functions redeployadas**: `zernio-webhook`, `zernio-proxy`, `zernio-webhook-test`
 
 ### v2.2.0 — 2026-08-25
 - **Fix visuales landing**: iconos Servicios/Proceso/Stats visibles (prefijo `fas` auto), títulos con `<span class="highlight">` renderizados, badge "Destacada" ámbar
