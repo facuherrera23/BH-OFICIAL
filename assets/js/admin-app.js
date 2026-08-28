@@ -377,7 +377,7 @@ function esc(s) {
     hidePreloader();
   }
 
-  // ── Visit Reminder System ──────────────────────────────────
+  // -- Visit Reminder System ----------------------------------
 
   function requestNotificationPermission() {
     if (!('Notification' in window)) return;
@@ -489,7 +489,7 @@ function esc(s) {
 
   cleanupOldReminders();
 
-  // ── End Visit Reminder System ──────────────────────────────
+  // -- End Visit Reminder System ------------------------------
 
   function showApp() {
     const loginScreen = $('#loginScreen');
@@ -1900,9 +1900,9 @@ let dayCount = 1;
         <td style="font-size:13px;">${dateStr}</td>
         <td style="font-size:13px; font-weight:500;">${esc(v.client_name || 'Sin cliente')}</td>
         <td style="font-size:13px; color:var(--text-dim);">${leadLink}</td>
-        <td style="font-size:13px; color:var(--text-dim);">${v.property_id ? '✓' : '—'}</td>
+        <td style="font-size:13px; color:var(--text-dim);">${v.property_id ? '?' : '—'}</td>
         <td><span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : v.status === 'completada' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : v.status === 'completada' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${esc(v.status || 'pendiente')}</span>${countdownHtml}</td>
-        <td style="font-size:12px; color:var(--text-dim);">${v.lead_id ? '✓' : '—'}</td>
+        <td style="font-size:12px; color:var(--text-dim);">${v.lead_id ? '?' : '—'}</td>
         <td>
           <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
             <button class="btn-action" title="Editar" onclick="window.adminApp.editVisit('${v.id}')"><i class="fas fa-pen"></i></button>
@@ -1914,22 +1914,402 @@ let dayCount = 1;
       </tr>`;
   }
 
-  function filterVisitsByDate(dateStr) {
-    const tbody = $('#visitsTableBody');
-    if (!tbody) return;
-    const dayVisits = calVisitsCache.filter(v => {
-      if (!v.visit_date) return false;
-      const dv = new Date(v.visit_date);
-      const ds = dv.getFullYear() + '-' + String(dv.getMonth() + 1).padStart(2, '0') + '-' + String(dv.getDate()).padStart(2, '0');
-      return ds === dateStr;
-    });
-    tbody.innerHTML = dayVisits.length
-      ? dayVisits.map(visitRowHtml).join('')
-      : '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">No hay visitas en esta fecha</td></tr>';
-    calViewMode = 'table';
-    updateViewToggle();
-  }
-  window.filterVisitsByDate = filterVisitsByDate;
+  
+
+    // ============================================
+    // GRANULAR REALTIME ROW UPDATES
+    // ============================================
+
+    function upsertVisitRow(v) {
+      const tbody = $('#visitsTableBody');
+      if (!tbody) return;
+      const existing = tbody.querySelector(`tr[data-id="${v.id}"]`);
+      const rowHtml = visitRowHtml(v);
+      if (existing) {
+        existing.outerHTML = rowHtml;
+      } else {
+        tbody.insertAdjacentHTML('afterbegin', rowHtml);
+      }
+    }
+
+    function removeVisitRow(id) {
+      const row = $('#visitsTableBody')?.querySelector(`tr[data-id="${id}"]`);
+      if (row) row.remove();
+    }
+
+    function upsertLeadCard(lead) {
+      const stage = lead.stage || 'nuevo';
+      const container = $(`#cards-${stage === 'cerrado' || stage === 'perdido' ? 'oferta' : stage}s`);
+      if (!container) return;
+      const existing = container.querySelector(`[data-lead-id="${lead.id}"]`);
+      if (existing) {
+        existing.outerHTML = buildLeadCardHtml(lead);
+      } else {
+        container.insertAdjacentHTML('afterbegin', buildLeadCardHtml(lead));
+      }
+    }
+
+    function removeLeadCard(id) {
+      document.querySelectorAll('.lead-card[data-lead-id]').forEach(el => {
+        if (el.dataset.leadId === id) el.remove();
+      });
+    }
+
+    function upsertPropertyRow(prop) {
+      const tbody = $('#propertiesTableBody');
+      if (!tbody) return;
+      const existing = tbody.querySelector(`tr[data-id="${prop.id}"]`);
+      if (existing) {
+        existing.outerHTML = buildPropertyRowHtml(prop);
+      } else {
+        tbody.insertAdjacentHTML('afterbegin', buildPropertyRowHtml(prop));
+      }
+    }
+
+    function removePropertyRow(id) {
+      const row = $('#propertiesTableBody')?.querySelector(`tr[data-id="${id}"]`);
+      if (row) row.remove();
+    }
+
+    function upsertAgentRow(agent) {
+      const tbody = $('#agentsTableBody');
+      if (!tbody) return;
+      const existing = tbody.querySelector(`tr[data-id="${agent.id}"]`);
+      if (existing) {
+        existing.outerHTML = buildAgentRowHtml(agent);
+      } else {
+        tbody.insertAdjacentHTML('afterbegin', buildAgentRowHtml(agent));
+      }
+    }
+
+    function removeAgentRow(id) {
+      const row = $('#agentsTableBody')?.querySelector(`tr[data-id="${id}"]`);
+      if (row) row.remove();
+    }
+
+    function upsertOwnerRow(owner) {
+      const tbody = $('#ownersTableBody');
+      if (!tbody) return;
+      const existing = tbody.querySelector(`tr[data-id="${owner.id}"]`);
+      if (existing) {
+        existing.outerHTML = buildOwnerRowHtml(owner);
+      } else {
+        tbody.insertAdjacentHTML('afterbegin', buildOwnerRowHtml(owner));
+      }
+    }
+
+    function removeOwnerRow(id) {
+      const row = $('#ownersTableBody')?.querySelector(`tr[data-id="${id}"]`);
+      if (row) row.remove();
+    }
+
+    function upsertTasacionRow(t) {
+      const tbody = $('#tasacionesTableBody');
+      if (!tbody) return;
+      const existing = tbody.querySelector(`tr[data-id="${t.id}"]`);
+      if (existing) {
+        existing.outerHTML = buildTasacionRowHtml(t);
+      } else {
+        tbody.insertAdjacentHTML('afterbegin', buildTasacionRowHtml(t));
+      }
+    }
+
+    function removeTasacionRow(id) {
+      const row = $('#tasacionesTableBody')?.querySelector(`tr[data-id="${id}"]`);
+      if (row) row.remove();
+    }
+
+    function upsertCommissionRow(c) {
+      const body = $('#commPendingBody');
+      if (!body) return;
+      const existing = body.querySelector(`tr[data-id="${c.id}"]`);
+      if (existing) {
+        existing.outerHTML = buildCommissionRowHtml(c);
+      } else {
+        body.insertAdjacentHTML('afterbegin', buildCommissionRowHtml(c));
+      }
+    }
+
+    function removeCommissionRow(id) {
+      const row = $('#commPendingBody')?.querySelector(`tr[data-id="${id}"]`);
+      if (row) row.remove();
+    }
+
+    // Helper: extract row builders from existing load functions
+    function buildLeadCardHtml(l) {
+      const leadVisits = (window._visitsByLeadCache?.[l.id] || []);
+      const upcomingVisit = leadVisits.find(v => v.status === 'pendiente' || v.status === 'confirmada');
+      const hasFutureVisit = !!upcomingVisit;
+      const showScheduleBtn = (l.stage === 'contactado' || l.stage === 'visita') && !hasFutureVisit;
+      const budgetHtml = l.budget_usd ? '<div style="color:var(--accent); font-size:12px; font-weight:500;">USD ' + l.budget_usd.toLocaleString('es-AR') + '</div>' : '';
+      const prefType = l.preferred_type ? l.preferred_type.charAt(0).toUpperCase() + l.preferred_type.slice(1) : '';
+      const prefZone = l.preferred_zone ? '· ' + esc(l.preferred_zone) : '';
+      const scoreVal = l.score || 0;
+      const scoreColor = scoreVal >= 80 ? 'rgba(239,68,68,0.2)' : scoreVal >= 50 ? 'rgba(255,184,0,0.2)' : 'rgba(255,255,255,0.06)';
+      const scoreTextColor = scoreVal >= 80 ? '#ef4444' : scoreVal >= 50 ? 'var(--warning)' : 'var(--text-dim)';
+      let visitInfo = '';
+      if (upcomingVisit) {
+        const badgeColor = upcomingVisit.status === 'confirmada' ? 'rgba(0,200,120,0.2)' : 'rgba(255,184,0,0.2)';
+        const badgeTextColor = upcomingVisit.status === 'confirmada' ? 'var(--success)' : 'var(--warning)';
+        const visitDate = new Date(upcomingVisit.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        visitInfo = '<div style="margin-top:6px; padding:6px 8px; background:rgba(31,200,195,0.08); border-radius:4px; font-size:11px; color:var(--accent); display:flex; align-items:center; gap:6px;">' +
+          '<i class="fas fa-calendar-day"></i>' +
+          '<span>' + esc(visitDate) + '</span>' +
+          '<span class="nav-badge" style="font-size:9px; background:' + badgeColor + '; color:' + badgeTextColor + ';">' + esc(upcomingVisit.status) + '</span>' +
+          '</div>';
+      }
+      let scheduleBtn = '';
+      if (showScheduleBtn) {
+        scheduleBtn = '<button class="btn-action" style="padding:4px 8px; font-size:10px; margin-top:8px; width:100%; background:rgba(31,200,195,0.15); color:var(--accent); border:1px solid var(--accent);" ' +
+          'onclick="event.stopPropagation(); window.adminApp.openVisitModal({ lead_id: \'' + esc(l.id) + '\', client_name: \'' + esc(l.full_name) + '\', client_phone: \'' + esc(l.phone || l.whatsapp || '') + '\', property_id: \'' + esc(l.property_id || '') + '\' })">' +
+          '<i class="fas fa-calendar-plus"></i> Agendar visita' +
+          '</button>';
+      }
+      return `
+        <div class="lead-card" data-lead-id="${l.id}" style="background:var(--surface-2); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:14px; margin-bottom:10px; cursor:pointer;" onclick="window.adminApp.editLead('${esc(l.id)}')">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <div style="font-weight:600; color:#fff; font-size:13px;">${esc(l.full_name || 'Sin nombre')}</div>
+            <span class="nav-badge" style="font-size:10px; background:rgba(31,200,195,0.12); color:var(--accent); font-weight:600; padding:2px 6px; border-radius:10px;">${l.score || 0}</span>
+          </div>
+          <div style="color:var(--text-dim); font-size:11px; margin-bottom:6px;">${esc(l.preferred_type || '')}${l.preferred_zone ? ' · ' + esc(l.preferred_zone) : ''}</div>
+          ${budgetHtml}
+          ${visitInfo}
+          ${scheduleBtn}
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:8px; border-top:1px solid var(--border-subtle);">
+            <span style="color:var(--text-dim); font-size:10px;">${new Date(l.created_at).toLocaleDateString('es-AR')}</span>
+            <div style="display:flex; gap:4px;">
+              <button class="btn-action" style="padding:4px 6px; font-size:10px;" title="Editar" onclick="event.stopPropagation(); window.adminApp.editLead('${esc(l.id)}')"><i class="fas fa-pen"></i></button>
+              <button class="btn-action danger" style="padding:4px 6px; font-size:10px;" title="Eliminar" onclick="event.stopPropagation(); window.adminApp.deleteLead('${esc(l.id)}')"><i class="fas fa-trash"></i></button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function buildPropertyRowHtml(p) {
+      return `<tr data-id="${p.id}">
+        <td style="font-weight:600; color:#fff;">${esc(p.title)}</td>
+        <td>${esc(p.property_code || '')}</td>
+        <td>${esc(p.zone)}</td>
+        <td>${p.surface_total ? p.surface_total + ' m²' : '-'}</td>
+        <td>${p.rooms || '-'}</td>
+        <td style="font-weight:600; color:var(--accent);">${p.price_usd ? '$ ' + Number(p.price_usd).toLocaleString('es-AR') : '-'}</td>
+        <td><span class="nav-badge" style="background:${p.status === 'venta' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${p.status === 'venta' ? 'var(--accent)' : 'var(--warning)'};">${esc(p.status || 'venta')}</span></td>
+        <td style="color:${p.owner_id ? '#fff' : 'var(--text-dim)'};">${esc(p.owner_id ? '?' : '—')}</td>
+        <td>
+          <div style="display:flex; gap:4px; flex-wrap:wrap;">
+            ${p.is_published ? '<span class="nav-badge" style="background:rgba(0,200,120,0.15); color:var(--success);">Publicada</span>' : '<span class="nav-badge" style="background:rgba(255,255,255,0.06); color:var(--text-dim);">Borrador</span>'}
+            ${p.featured ? '<span class="nav-badge" style="background:rgba(255,184,0,0.15); color:var(--warning);"><i class="fas fa-star" style="margin-right:4px;"></i>Destacada</span>' : ''}
+            ${p.is_retasada ? '<span class="nav-badge" style="background:rgba(139,92,246,0.15); color:#8b5cf6;"><i class="fas fa-tag" style="margin-right:4px;"></i>Retasada</span>' : ''}
+            ${p.is_oportunidad ? '<span class="nav-badge" style="background:rgba(239,68,68,0.15); color:#ef4444;"><i class="fas fa-bolt" style="margin-right:4px;"></i>Oportunidad</span>' : ''}
+          </div>
+        </td>
+        <td>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="btn-action" title="Editar" onclick="window.adminApp.editProperty(\'${p.id}\')"><i class="fas fa-pen"></i></button>
+            <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteProperty(\'${p.id}\')"><i class="fas fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>`;
+    }
+
+    function buildAgentRowHtml(a) {
+      return `<tr data-id="${a.id}">
+        <td>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <img style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:1px solid var(--border-subtle);" src="${esc(a.photo_url || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=100&q=60&fit=crop')}" alt="" />
+            <div>
+              <div style="font-weight:600; color:#fff; font-size:13px;">${esc(a.full_name || 'Sin nombre')}</div>
+              <div style="color:var(--text-dim); font-size:11px;">${esc(a.email || '')}</div>
+            </div>
+          </td>
+          <td>${esc(a.matricula || '-')}</td>
+          <td>${(a.specialties && a.specialties.length) ? a.specialties.map(s => '<span class="nav-badge" style="background:rgba(16,185,129,0.12); color:#10b981; font-size:10px; margin-right:3px;">${esc(s)}</span>').join('') : '<span style="color:var(--text-dim);">—</span>'}</td>
+          <td style="color:var(--accent);">${a.commission_rate != null ? esc(a.commission_rate + '%') : '3%'}</td>
+          <td><span class="nav-badge" style="background:${a.status === 'activo' ? 'rgba(0,200,120,0.15)' : a.status === 'vacaciones' ? 'rgba(255,184,0,0.15)' : 'rgba(255,255,255,0.06)'}; color:${a.status === 'activo' ? 'var(--success)' : a.status === 'vacaciones' ? 'var(--warning)' : 'var(--text-dim)'}; font-size:11px;">${esc(a.status || 'activo')}</span></td>
+          <td>${esc(a.phone || '-')}</td>
+          <td>
+            <div style="display:flex; gap:6px;">
+              <button class="btn-action" title="Editar" onclick="window.adminApp.editAgent(\'${a.id}\')"><i class="fas fa-pen"></i></button>
+              <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteAgent(\'${a.id}\')"><i class="fas fa-trash"></i></button>
+            </div>
+          </td>
+        </tr>`;
+    }
+
+    function buildOwnerRowHtml(o) {
+      return `<tr data-id="${o.id}">
+        <td>${esc(o.full_name)}</td>
+        <td>${esc(o.dni_cuit || '-')}</td>
+        <td>${esc(o.email || '-')}</td>
+        <td>${esc(o.phone || '-')}</td>
+        <td>${esc(o.address || '-')}</td>
+        <td>
+          <div style="display:flex; gap:6px;">
+            <button class="btn-action" title="Editar" onclick="window.adminApp.editOwner('${o.id}')"><i class="fas fa-pen"></i></button>
+            <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteOwner('${o.id}')"><i class="fas fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>`;
+    }
+
+    function buildTasacionRowHtml(t) {
+      const statusLabel = t.status === 'finalized' ? 'Finalizada' : 'Borrador';
+      const statusClass = t.status === 'finalized' ? 'active' : 'pending';
+      const date = t.created_at ? new Date(t.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+      const valuation = t.valuation_usd ? '$ ' + Number(t.valuation_usd).toLocaleString('es-AR') : '-';
+      return `<tr data-id="${t.id}">
+        <td style="font-weight:600; color:#fff;">${esc(t.title || 'Sin título')}</td>
+        <td style="color:var(--text-muted);">${t.properties ? esc(t.properties.code + ' - ' + t.properties.title) : '-'}</td>
+        <td style="color:var(--text-muted);">${t.owners ? esc(t.owners.full_name) : '-'}</td>
+        <td style="color:var(--accent); font-weight:600;">${valuation}</td>
+        <td><span class="status-pill" style="background:rgba(201,169,110,0.12); color:#c9a96e;">${t.type === 'venta' ? 'Venta' : t.type === 'alquiler' ? 'Alquiler' : t.type || '-'}</span></td>
+        <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
+        <td>${date}</td>
+        <td>
+          <button class="icon-badge-btn" title="Abrir" data-open-tasacion="${t.id}" data-tasacion-title="${esc(t.title || '')}"><i class="fas fa-external-link-alt"></i></button>
+          <button class="icon-badge-btn" title="Exportar PDF" data-pdf-tasacion="${t.id}" data-tasacion-title="${esc(t.title || '')}"><i class="fas fa-file-pdf" style="color:var(--danger);"></i></button>
+          <button class="icon-badge-btn" title="Eliminar" data-del-tasacion="${t.id}"><i class="fas fa-trash" style="color:var(--danger);"></i></button>
+        </td>
+      </tr>`;
+    }
+
+    function buildCommissionRowHtml(c) {
+      const statusClass = c.status === 'pendiente' ? 'comm-pendiente' : c.status === 'liquidada' ? 'comm-liquidada' : c.status === 'pagada' ? 'comm-pagada' : '';
+      const statusLabel = { pendiente: 'Pendiente', liquidada: 'Liquidada', pagada: 'Pagada', cancelada: 'Cancelada' }[c.status] || c.status;
+      const netArs = c.net_amount_ars || (c.commission_amount_ars - (c.iibb_amount_ars || 0) - (c.ganancias_amount_ars || 0));
+      return `<tr data-id="${c.id}">
+        <td>${esc(c.owners?.full_name || '—')}</td>
+        <td>${esc(c.properties?.title || c.properties?.property_code || '—')}</td>
+        <td>${esc(c.agents?.full_name || '—')}</td>
+        <td>${esc(c.operation_type === 'venta' ? 'Venta' : 'Alquiler')}</td>
+        <td>USD ${(c.commission_amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+        <td>${c.iibb_rate || 0}%</td>
+        <td>${c.ganancias_rate || 0}%</td>
+        <td class="price-cell">${formatNumber(netArs)}</td>
+        <td>${c.due_date ? new Date(c.due_date).toLocaleDateString('es-AR') : '—'}</td>
+        <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+        <td>
+          <button class="btn-action" title="Marcar pagada" onclick="window.adminApp.markCommissionPaid('${c.id}')" style="${c.status === 'pagada' ? 'display:none' : ''}"><i class="fas fa-check"></i></button>
+          <button class="btn-action" title="Ver liquidación" onclick="window.adminApp.viewCommissionLiquidation('${c.id}')"><i class="fas fa-eye"></i></button>
+        </td>
+      </tr>`;
+    }
+
+    function upsertVisitRow(v) {
+      const tbody = $('#visitsTableBody');
+      if (!tbody) return;
+      const existing = tbody.querySelector('tr[data-id="' + v.id + '"]');
+      const rowHtml = visitRowHtml(v);
+      if (existing) {
+        existing.outerHTML = rowHtml;
+      } else {
+        tbody.insertAdjacentHTML('afterbegin', rowHtml);
+      }
+    }
+
+    function removeVisitRow(id) {
+      const row = $('#visitsTableBody')?.querySelector('tr[data-id="' + id + '"]');
+      if (row) row.remove();
+    }
+
+    function upsertPropertyRow(p) {
+      const tbody = $('#propertiesTableBody');
+      if (!tbody) return;
+      const existing = tbody.querySelector('tr[data-id="' + p.id + '"]');
+      if (existing) {
+        existing.outerHTML = buildPropertyRowHtml(p);
+      } else {
+        tbody.insertAdjacentHTML('afterbegin', buildPropertyRowHtml(p));
+      }
+    }
+
+    function removePropertyRow(id) {
+      const row = $('#propertiesTableBody')?.querySelector('tr[data-id="' + id + '"]');
+      if (row) row.remove();
+    }
+
+    function upsertAgentRow(agent) {
+      const tbody = $('#agentsTableBody');
+      if (!tbody) return;
+      const existing = tbody.querySelector('tr[data-id="' + agent.id + '"]');
+      if (existing) {
+        existing.outerHTML = buildAgentRowHtml(agent);
+      } else {
+        tbody.insertAdjacentHTML('afterbegin', buildAgentRowHtml(agent));
+      }
+    }
+
+    function removeAgentRow(id) {
+      const row = $('#agentsTableBody')?.querySelector('tr[data-id="' + id + '"]');
+      if (row) row.remove();
+    }
+
+    function upsertOwnerRow(owner) {
+      const tbody = $('#ownersTableBody');
+      if (!tbody) return;
+      const existing = tbody.querySelector('tr[data-id="' + owner.id + '"]');
+      if (existing) {
+        existing.outerHTML = buildOwnerRowHtml(owner);
+      } else {
+        tbody.insertAdjacentHTML('afterbegin', buildOwnerRowHtml(owner));
+      }
+    }
+
+    function removeOwnerRow(id) {
+      const row = $('#ownersTableBody')?.querySelector('tr[data-id="' + id + '"]');
+      if (row) row.remove();
+    }
+
+    function upsertTasacionRow(t) {
+      const tbody = $('#tasacionesTableBody');
+      if (!tbody) return;
+      const existing = tbody.querySelector('tr[data-id="' + t.id + '"]');
+      if (existing) {
+        existing.outerHTML = buildTasacionRowHtml(t);
+      } else {
+        tbody.insertAdjacentHTML('afterbegin', buildTasacionRowHtml(t));
+      }
+    }
+
+    function removeTasacionRow(id) {
+      const row = $('#tasacionesTableBody')?.querySelector('tr[data-id="' + id + '"]');
+      if (row) row.remove();
+    }
+
+    function upsertCommissionRow(c) {
+      const body = $('#commPendingBody');
+      if (!body) return;
+      const existing = body.querySelector('tr[data-id="' + c.id + '"]');
+      if (existing) {
+        existing.outerHTML = buildCommissionRowHtml(c);
+      } else {
+        body.insertAdjacentHTML('afterbegin', buildCommissionRowHtml(c));
+      }
+    }
+
+    function removeCommissionRow(id) {
+      const row = $('#commPendingBody')?.querySelector('tr[data-id="' + id + '"]');
+      if (row) row.remove();
+    }
+
+    // Lead card helper (for CRM kanban)
+    function upsertLeadCard(lead) {
+      const stage = lead.stage || 'nuevo';
+      const container = document.querySelector('#cards-' + (stage === 'cerrado' || stage === 'perdido' ? 'oferta' : stage));
+      if (!container) return;
+      const existing = container.querySelector('[data-lead-id="' + lead.id + '"]');
+      if (existing) {
+        existing.outerHTML = buildLeadCardHtml(lead);
+      } else {
+        container.insertAdjacentHTML('afterbegin', buildLeadCardHtml(lead));
+      }
+    }
+
+    function removeLeadCard(id) {
+      document.querySelectorAll('.lead-card[data-lead-id]').forEach(el => {
+        if (el.dataset.leadId === id) el.remove();
+      });
+    }
 
   /* Create visit */
   on($('#btnNewVisit'), 'click', () => {
@@ -2111,7 +2491,7 @@ let dayCount = 1;
         }
       }
 
-      /* Prompt: visita completada → mover lead a Oferta */
+      /* Prompt: visita completada ? mover lead a Oferta */
       if (newStatus === 'completada' && oldStatus !== 'completada' && newLeadId) {
         try {
           const { data: leadData } = await window.supabaseClient
@@ -2132,8 +2512,8 @@ let dayCount = 1;
         } catch (_) {}
       }
 
-      /* Si se asignó lead_id nuevo (era NULL) → el trigger DB actualizará lead a "visita" */
-      /* Si se quitó lead_id (era valor → NULL) → no hacemos nada en lead */
+      /* Si se asignó lead_id nuevo (era NULL) ? el trigger DB actualizará lead a "visita" */
+      /* Si se quitó lead_id (era valor ? NULL) ? no hacemos nada en lead */
 
       closeModal('visitModal');
       /* Limpiar flag pendiente */
@@ -2198,7 +2578,7 @@ let dayCount = 1;
       }
 
       const severityColors = { critical: '#EF4444', high: '#F97316', medium: '#FFB800', low: '#3B82F6', info: '#1FC8C3' };
-      const severityLabels = { critical: '🔴 Crítica', high: '🟠 Alta', medium: '🟡 Media', low: '🔵 Baja', info: '⚪ Info' };
+      const severityLabels = { critical: '?? Crítica', high: '?? Alta', medium: '?? Media', low: '?? Baja', info: '? Info' };
       const statusLabels = { open: 'Abierta', acknowledged: 'Reconocida', investigating: 'Investigando', resolved: 'Resuelta', dismissed: 'Descartada', false_positive: 'Falso Positivo' };
       const statusPillClass = {
         open: 'pending', acknowledged: 'active', investigating: 'active',
@@ -2302,7 +2682,7 @@ let dayCount = 1;
       const { data } = await window.supabaseClient.from('supervision_anomalies').select('*').eq('id', id).single();
       if (!data) return;
       const severityColors = { critical: '#EF4444', high: '#F97316', medium: '#FFB800', low: '#3B82F6', info: '#1FC8C3' };
-      const severityLabels = { critical: '🔴 Crítica', high: '🟠 Alta', medium: '🟡 Media', low: '🔵 Baja', info: '⚪ Info' };
+      const severityLabels = { critical: '?? Crítica', high: '?? Alta', medium: '?? Media', low: '?? Baja', info: '? Info' };
       const statusLabels = { open: 'Abierta', acknowledged: 'Reconocida', investigating: 'Investigando', resolved: 'Resuelta', dismissed: 'Descartada', false_positive: 'Falso Positivo' };
       const color = severityColors[data.severity] || 'var(--text-secondary)';
       
@@ -2401,7 +2781,7 @@ let dayCount = 1;
               const opt = document.createElement('option');
               opt.value = l.id;
               opt.textContent = `${l.full_name} (${l.stage})`;
-              if (l.property_id) opt.textContent += ' 🏠';
+              if (l.property_id) opt.textContent += ' ??';
               leadSelect.appendChild(opt);
             });
           }
@@ -2433,7 +2813,7 @@ let dayCount = 1;
                 infoEl.style.display = 'block';
                 infoEl.innerHTML = `
                   <strong>${esc(leadData.full_name)}</strong> · Etapa: ${esc(leadData.stage)}
-                  ${leadData.property_id ? ' · <span style="color:var(--accent);">🏠 Propiedad asignada</span>' : ' · <span style="color:var(--warning);">⚠️ Sin propiedad asignada</span>'}
+                  ${leadData.property_id ? ' · <span style="color:var(--accent);">?? Propiedad asignada</span>' : ' · <span style="color:var(--warning);">?? Sin propiedad asignada</span>'}
                 `;
                 /* Auto-rellenar campos si no estaban llenos */
                 if (!form.elements.client_name.value) form.elements.client_name.value = leadData.full_name || '';
@@ -2793,7 +3173,7 @@ let dayCount = 1;
 
   async function globalResetCMS() {
     const confirmed = confirm(
-      '⚠️ REINICIO GLOBAL DE CMS\n\n' +
+      '?? REINICIO GLOBAL DE CMS\n\n' +
       'Esta acción ELIMINARÁ todo el contenido del CMS (Hero, Servicios, Equipo, Stats, Proceso) ' +
       'y restaurará los valores por defecto de fábrica.\n\n' +
       '¿Estás seguro de que querés continuar?'
@@ -2801,7 +3181,7 @@ let dayCount = 1;
     if (!confirmed) return;
 
     const doubleConfirmed = confirm(
-      '⚠️ CONFIRMACIÓN FINAL\n\n' +
+      '?? CONFIRMACIÓN FINAL\n\n' +
       'Se borrarán TODOS los registros de site_content.\n' +
       'Esta acción NO se puede deshacer.\n\n' +
       'Escribí "RESET" para confirmar:'
@@ -2841,7 +3221,7 @@ let dayCount = 1;
 
       invalidateRequestCache('site_content');
 
-      showToast('✅ CMS reiniciado a valores de fábrica', 'success');
+      showToast('? CMS reiniciado a valores de fábrica', 'success');
     } catch (err) {
       console.error('Global reset error:', err);
       showToast('Error en reinicio global: ' + err.message, 'error');
@@ -2884,7 +3264,7 @@ let dayCount = 1;
         if (!window.BH_Cloudinary) { showToast('Cloudinary no disponible', 'error'); return; }
         const url = await window.BH_Cloudinary.uploadImage(file, 'bienenhaus/hero');
         if (heroBgHidden) heroBgHidden.value = url;
-        heroBgPreview.innerHTML = '<img src="' + esc(url) + '" alt="Hero background" /><span style="position:absolute;bottom:2px;right:2px;font-size:9px;background:rgba(0,0,0,.7);padding:2px 5px;border-radius:3px;">Cloudinary ✓</span>';
+        heroBgPreview.innerHTML = '<img src="' + esc(url) + '" alt="Hero background" /><span style="position:absolute;bottom:2px;right:2px;font-size:9px;background:rgba(0,0,0,.7);padding:2px 5px;border-radius:3px;">Cloudinary ?</span>';
         heroBgPreview.style.position = 'relative';
         showToast('Imagen subida a Cloudinary', 'success');
       } catch (err) {
@@ -3070,7 +3450,7 @@ let dayCount = 1;
     const statusEl = $('#zernioTestStatus');
     const keyInput = $('#cfg_zernio_api_key');
     const apiKey = keyInput?.value?.trim();
-    if (!apiKey) { statusEl.textContent = '⚠ Ingresá tu API Key primero'; statusEl.style.color = 'var(--warning)'; return; }
+    if (!apiKey) { statusEl.textContent = '? Ingresá tu API Key primero'; statusEl.style.color = 'var(--warning)'; return; }
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Probando...';
     statusEl.textContent = 'Conectando...';
@@ -3084,10 +3464,10 @@ let dayCount = 1;
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error en respuesta');
-      statusEl.textContent = '✓ Conectado · ' + data.count + ' cuenta(s) sincronizada(s)';
+      statusEl.textContent = '? Conectado · ' + data.count + ' cuenta(s) sincronizada(s)';
       statusEl.style.color = 'var(--success)';
     } catch (err) {
-      statusEl.textContent = '✗ ' + err.message;
+      statusEl.textContent = '? ' + err.message;
       statusEl.style.color = 'var(--danger)';
     } finally {
       btn.disabled = false;
@@ -3350,8 +3730,8 @@ let dayCount = 1;
         docAlertEl.innerHTML = `
           <i class="fas fa-id-card"></i>
           <div>
-            <h4>⚠️ Documentos por vencer</h4>
-            <p>${dniExpiring + cuitExpiring} DNI/CUIT vencen en ≤90 días${dniExpired + cuitExpired > 0 ? ' · ' + (dniExpired + cuitExpired) + ' vencidos' : ''}.</p>
+            <h4>?? Documentos por vencer</h4>
+            <p>${dniExpiring + cuitExpiring} DNI/CUIT vencen en =90 días${dniExpired + cuitExpired > 0 ? ' · ' + (dniExpired + cuitExpired) + ' vencidos' : ''}.</p>
           </div>
         `;
       } else if (docAlertEl) {
@@ -3707,12 +4087,12 @@ let dayCount = 1;
       const statusLabel = { pendiente: 'Pendiente', liquidada: 'Liquidada', pagada: 'Pagada', cancelada: 'Cancelada' }[c.status] || c.status;
       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Comisión ${c.id.slice(0,8)}</title>
         <style>body{font-family:Inter,sans-serif;padding:24px;color:#1a1a2e;} h1{border-bottom:2px solid #1fc8c3;padding-bottom:8px;font-size:20px;}
-        .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-top:12px;} .label{color:#666;} @media print{body{padding:0;}}</style>
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-top:12px;} .label{color:#666;} @media print{body{padding:0;}</style>
         </head><body>
         <h1>Detalle de Comisión</h1>
         <div class="grid">
           <div><span class="label">Estado:</span> ${esc(statusLabel)}</div>
-          <div><span class="label">Operación:</span> ${esc(c.operation_type === 'venta' ? 'Venta' : 'Alquiler')}</div>
+          <div><span class="label">Operación:</span> ${esc(c.operation_type === 'venta' ? 'Venta' : 'Alquiler')}/div>
           <div><span class="label">Propietario:</span> ${esc(c.owners?.full_name || '—')}</div>
           <div><span class="label">Broker:</span> ${esc(c.agents?.full_name || '—')}</div>
           <div><span class="label">Propiedad:</span> ${esc(c.properties?.title || c.properties?.property_code || '—')}</div>
@@ -4585,7 +4965,7 @@ let dayCount = 1;
     } catch (err) {
       let msg = err.message || 'No se pudo enviar la invitación';
       if (/rate limit|too many|429/i.test(msg)) {
-        msg = 'Se alcanzó el límite de emails por hora del servidor. Usá "Crear sin email" o configurá un SMTP propio (Authentication → SMTP).';
+        msg = 'Se alcanzó el límite de emails por hora del servidor. Usá "Crear sin email" o configurá un SMTP propio (Authentication ? SMTP).';
       }
       showToast(msg, 'error');
     } finally {
@@ -6385,7 +6765,7 @@ on(chip, 'click', () => {
             footerRow?.appendChild(ticksEl);
           }
           ticksEl.style.color = 'var(--danger)';
-          ticksEl.textContent = '⚠';
+          ticksEl.textContent = '?';
           tempEl.title = err.message;
         }
       }
@@ -6417,7 +6797,7 @@ on(chip, 'click', () => {
       if (empty) empty.remove();
       const isOut = m.direction === 'out';
       const time = m.occurred_at ? new Date(m.occurred_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
-      const ticks = m.status === 'sent' ? '✓' : m.status === 'delivered' ? '✓✓' : m.status === 'read' ? '✓✓' : '⏳';
+      const ticks = m.status === 'sent' ? '?' : m.status === 'delivered' ? '??' : m.status === 'read' ? '??' : '?';
       const div = document.createElement('div');
       div.className = 'chat-bubble ' + (m.direction === 'out' ? 'out' : 'in');
       div.dataset.tempId = m.id;
@@ -6436,10 +6816,10 @@ on(chip, 'click', () => {
     }
 
     function getTicks(status) {
-      if (status === 'read') return '✓✓';
-      if (status === 'delivered') return '✓✓';
-      if (status === 'sent') return '✓';
-      return '⏳';
+      if (status === 'read') return '??';
+      if (status === 'delivered') return '??';
+      if (status === 'sent') return '?';
+      return '?';
     }
 
     function getPlatformIcon(platform) {
@@ -6489,35 +6869,69 @@ function setupCoreRealtime() {
 
           switch (table) {
             case 'visits':
-              loadVisits();
-              updateSidebarBadges();
+              if (event === 'INSERT') {
+                upsertVisitRow(newRecord);
+                updateSidebarBadges();
+                if (newRecord?.lead_id) loadCRM();
+              } else if (event === 'UPDATE') {
+                upsertVisitRow(newRecord);
+                updateSidebarBadges();
+              } else if (event === 'DELETE') {
+                removeVisitRow(oldRecord.id);
+                updateSidebarBadges();
+              }
               if (event === 'INSERT' && newRecord?.lead_id) loadCRM();
               break;
             case 'leads':
-              loadCRM();
+              if (event === 'INSERT' || event === 'UPDATE') {
+                upsertLeadCard(newRecord);
+              } else if (event === 'DELETE') {
+                removeLeadCard(oldRecord.id);
+              }
               updateSidebarBadges();
               break;
             case 'properties':
-              loadProperties();
+              if (event === 'INSERT' || event === 'UPDATE') {
+                upsertPropertyRow(newRecord);
+              } else if (event === 'DELETE') {
+                removePropertyRow(oldRecord.id);
+              }
               updateSidebarBadges();
               break;
             case 'agents':
-              loadAgents();
-              populateBrokerFilters();
+              if (event === 'INSERT' || event === 'UPDATE') {
+                upsertAgentRow(newRecord);
+                populateBrokerFilters();
+              } else if (event === 'DELETE') {
+                removeAgentRow(oldRecord.id);
+              }
               updateSidebarBadges();
               break;
             case 'owners':
-              loadOwners();
+              if (event === 'INSERT' || event === 'UPDATE') {
+                upsertOwnerRow(newRecord);
+              } else if (event === 'DELETE') {
+                removeOwnerRow(oldRecord.id);
+              }
               updateSidebarBadges();
               break;
             case 'tasaciones':
-              loadTasaciones();
+              if (event === 'INSERT' || event === 'UPDATE') {
+                upsertTasacionRow(newRecord);
+              } else if (event === 'DELETE') {
+                removeTasacionRow(oldRecord.id);
+              }
               updateSidebarBadges();
               break;
             case 'commissions':
             case 'commission_liquidations':
             case 'commission_payments':
-              loadCommissionDashboard();
+              if (event === 'INSERT' || event === 'UPDATE') {
+                upsertCommissionRow(newRecord);
+              } else if (event === 'DELETE') {
+                removeCommissionRow(oldRecord.id);
+              }
+              updateSidebarBadges();
               break;
           }
         })
@@ -6758,7 +7172,7 @@ async function mutate(table, fn) {
 
       // Supervisión: alertas critical/high abiertas
       const severityColors = { critical: '#EF4444', high: '#F97316' };
-      const severityLabels = { critical: '🔴 Crítica', high: '🟠 Alta' };
+      const severityLabels = { critical: '?? Crítica', high: '?? Alta' };
       const severityIcons = { critical: 'fas fa-shield-alt', high: 'fas fa-exclamation-triangle' };
       (alertsRes.data || []).forEach(a => {
         items.push({
@@ -7336,7 +7750,7 @@ on(document, 'keydown', (e) => {
       const meta = a.metadata ? `<br><span style="color:var(--text-dim); font-size:10px;">${esc(JSON.stringify(a.metadata)).slice(0, 200)}</span>` : '';
       return `<div style="border-bottom:1px solid var(--border-subtle); padding:8px 0; font-family:monospace; font-size:11px; line-height:1.6;">
         <span style="color:var(--text-dim);">[${esc(time)}]</span>
-        <span style="color:${color}; margin:0 8px;">●</span>
+        <span style="color:${color}; margin:0 8px;">?</span>
         <span style="color:var(--accent);">${esc(a.module || 'general')}</span>
         <span style="color:var(--text-secondary);">${esc(a.action)}</span>
         <span style="color:var(--text-muted);">por ${esc(a.user_id || 'sistema')}</span>
@@ -7386,7 +7800,7 @@ on(document, 'keydown', (e) => {
         const lastAct = stats.lastActivity ? new Date(stats.lastActivity).toLocaleString('es-AR') : '—';
         const alertCount = alertCounts[uid] || 0;
         const statusClass = alertCount > 5 ? 'danger' : alertCount > 0 ? 'warning' : 'success';
-        const statusText = alertCount > 5 ? '⚠️ Crítico' : alertCount > 0 ? '⚠️ Alerta' : '✅ OK';
+        const statusText = alertCount > 5 ? '?? Crítico' : alertCount > 0 ? '?? Alerta' : '? OK';
         return `<tr style="border-bottom:1px solid var(--border-subtle);">
           <td style="padding:10px 16px; color:#fff;">${name}</td>
           <td style="padding:10px 16px; color:var(--text-secondary);">${role}</td>
@@ -7532,7 +7946,7 @@ on(document, 'keydown', (e) => {
       }
 
       const severityColors = { critical: '#EF4444', high: '#F97316', medium: '#FFB800', low: '#3B82F6', info: '#1FC8C3' };
-      const severityLabels = { critical: '🔴 Crítica', high: '🟠 Alta', medium: '🟡 Media', low: '🔵 Baja', info: '⚪ Info' };
+      const severityLabels = { critical: '?? Crítica', high: '?? Alta', medium: '?? Media', low: '?? Baja', info: '? Info' };
       const statusLabels = { open: 'Abierta', assigned: 'Asignada', investigating: 'Investigando', acknowledged: 'Reconocida', resolved: 'Resuelta', dismissed: 'Descartada' };
       const statusPillClass = {
         open: 'pending', assigned: 'active', investigating: 'active',
@@ -7549,7 +7963,7 @@ on(document, 'keydown', (e) => {
           <td style="padding:10px 12px; color:#fff;">${esc(a.user_name || a.user_id || '—')}</td>
           <td style="padding:10px 12px; color:var(--text-secondary);">${esc(a.module || '—')}</td>
           <td style="padding:10px 12px; color:var(--text-secondary);">${esc(a.description || '—').slice(0, 80)}${a.description && a.description.length > 80 ? '...' : ''}</td>
-          <td style="padding:10px 12px; font-family:monospace; font-size:10px; color:var(--text-dim);">${a.evidence ? '📎 Ver' : '—'}</td>
+          <td style="padding:10px 12px; font-family:monospace; font-size:10px; color:var(--text-dim);">${a.evidence ? '?? Ver' : '—'}</td>
           <td style="padding:10px 12px; color:var(--text-secondary);">${a.created_at ? new Date(a.created_at).toLocaleString('es-AR') : '—'}</td>
           <td style="padding:10px 12px; color:var(--accent); font-weight:500; font-size:12px;">${esc(assignedName)}</td>
           <td style="padding:10px 12px;"><span class="status-pill ${statusPillClass[a.status] || 'pending'}" style="font-size:10px;">${statusLabels[a.status] || a.status}</span></td>
@@ -7674,7 +8088,7 @@ on(document, 'keydown', (e) => {
           <div><strong>Descripción:</strong> ${esc(data.description || '—')}</div>
           <div><strong>Evidencia:</strong><pre style="background:rgba(255,255,255,0.03); padding:12px; border-radius:8px; font-size:11px; overflow:auto; max-height:200px; margin-top:8px;">${esc(evidence)}</pre></div>
           <div style="margin-top:16px; padding:12px; background:rgba(31,200,195,0.1); border:1px solid rgba(31,200,195,0.3); border-radius:8px;">
-            <div style="font-weight:600; color:var(--accent); margin-bottom:8px;">🔗 Vincular con Auditoría</div>
+            <div style="font-weight:600; color:var(--accent); margin-bottom:8px;">?? Vincular con Auditoría</div>
             <div style="font-size:12px; color:var(--text-secondary);">Si la alerta se generó desde un evento de auditoría, puedes buscar el evento original:</div>
             <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
               ${requestId !== '—' ? `<button class="btn-action" onclick="goToAuditFromAlert('request_id', '${esc(requestId)}')" title="Buscar por Request ID"><i class="fas fa-search"></i> Request ID: ${esc(requestId).slice(0,20)}...</button>` : ''}
@@ -8005,7 +8419,7 @@ on(document, 'keydown', (e) => {
             <div style="font-size:11px; color:var(--text-dim);">${r.count} eventos en la ventana</div>
           </div>
           <span class="status-pill ${r.wouldAlert ? 'pending' : 'success'}" style="font-size:10px;">
-            ${r.wouldAlert ? '🔔 Generaría alerta' : '⏳ Bloqueado por cooldown'}
+            ${r.wouldAlert ? '?? Generaría alerta' : '? Bloqueado por cooldown'}
           </span>
         </div>
       `).join('');
@@ -8786,7 +9200,7 @@ let _execToDate = '';
       const audit = auditRes.data || [];
       const brokers = brokerRes.data || [];
 
-      // KPI: Conversión Lead→Cierre
+      // KPI: Conversión Lead?Cierre
       const totalLeads = leads.length;
       const totalClosed = closed.length;
       const convRate = totalLeads > 0 ? ((totalClosed / totalLeads) * 100).toFixed(1) : 0;
@@ -8992,7 +9406,7 @@ let _execToDate = '';
       let html = '<div style="display:flex; flex-direction:column; gap:12px;">';
 
       if (alerts.length) {
-        html += '<div><strong style="color:#EF4444;">🔴 Alertas Críticas/Alta</strong></div>';
+        html += '<div><strong style="color:#EF4444;">?? Alertas Críticas/Alta</strong></div>';
         alerts.forEach(a => {
           html += `<div style="padding:10px; background:rgba(239,68,68,0.1); border:1px solid #EF4444; border-radius:8px;">
             <div style="font-weight:600; color:#EF4444;">${a.title || a.rule_name || a.alert_type}</div>
@@ -9002,7 +9416,7 @@ let _execToDate = '';
       }
 
       if (anomalies.length) {
-        html += '<div style="margin-top:8px;"><strong style="color:#F97316;">🟠 Anomalías Detectadas</strong></div>';
+        html += '<div style="margin-top:8px;"><strong style="color:#F97316;">?? Anomalías Detectadas</strong></div>';
         anomalies.forEach(a => {
           html += `<div style="padding:10px; background:rgba(249,115,22,0.1); border:1px solid #F97316; border-radius:8px;">
             <div style="font-weight:600; color:#F97316;">${a.module} • ${a.action} (${a.metric})</div>
@@ -9012,7 +9426,7 @@ let _execToDate = '';
       }
 
       if (criticalAudit.length) {
-        html += '<div style="margin-top:8px;"><strong style="color:#EF4444;">🔴 Eventos Críticos (24h)</strong></div>';
+        html += '<div style="margin-top:8px;"><strong style="color:#EF4444;">?? Eventos Críticos (24h)</strong></div>';
         criticalAudit.forEach(a => {
           html += `<div style="padding:10px; background:rgba(239,68,68,0.1); border:1px solid #EF4444; border-radius:8px;">
             <div style="font-weight:600; color:#EF4444;">${a.action} en ${a.module}</div>
@@ -9121,3 +9535,5 @@ let _execToDate = '';
     showToast('KPIs ejecutivos exportados', 'success');
   }
 })();
+
+
