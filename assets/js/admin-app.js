@@ -131,6 +131,7 @@ function esc(s) {
     is_retasada: z.boolean().default(false),
     is_oportunidad: z.boolean().default(false),
     owner_id: z.string().uuid('ID de propietario inválido').optional().nullable(),
+    agent_id: z.string().uuid('ID de broker inválido').optional().nullable(),
   });
 
   // Lead validation
@@ -1025,10 +1026,11 @@ function esc(s) {
 
   } // end loadProperties
 
-  /* Create button */
+/* Create button */
   on($('#btnNewProp'), 'click', () => {
     editingPropertyId = null;
     resetPropertyForm();
+    loadBrokersForVisit();
     openModal('propertyModal');
   });
 
@@ -1036,6 +1038,7 @@ function esc(s) {
   on($('#topbarNewProp'), 'click', () => {
     editingPropertyId = null;
     resetPropertyForm();
+    loadBrokersForVisit();
     openModal('propertyModal');
   });
 
@@ -1196,6 +1199,12 @@ function esc(s) {
 
         const ownerSel = $('#propOwnerSelect');
         if (ownerSel) ownerSel.value = data.owner_id || '';
+
+        const agentSel = $('#propAgentSelect');
+        if (agentSel) {
+          await loadBrokersForVisit();
+          agentSel.value = data.agent_id || '';
+        }
 
         // Trigger currency field toggle
         const currencySelect = document.getElementById('priceCurrencySelect');
@@ -1421,6 +1430,7 @@ function esc(s) {
   on($('#btnNewLead'), 'click', () => {
     editingLeadId = null;
     $('#leadForm')?.reset();
+    loadBrokersForVisit();
     openModal('leadModal');
   });
 
@@ -1510,6 +1520,7 @@ function esc(s) {
         form.elements.preferred_type.value = lead.preferred_type || '';
         form.elements.preferred_zone.value = lead.preferred_zone || '';
         form.elements.notes.value = lead.notes || '';
+        form.elements.broker_id.value = lead.broker_id || '';
       }
 
       /* Visitas asociadas en el modal */

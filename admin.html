@@ -1819,14 +1819,26 @@ MODALES
 </div>
 </div>
 <div class="form-grid-2">
-<div class="form-field">
-<label>Operación</label>
-<select name="status" id="propertyStatusSelect">
-<option value="venta">Venta</option>
-<option value="alquiler">Alquiler</option>
-</select>
+  <div class="form-field">
+    <label>Operación</label>
+    <select name="status" id="propertyStatusSelect">
+      <option value="venta">Venta</option>
+      <option value="alquiler">Alquiler</option>
+      <option value="vendido">Vendido</option>
+      <option value="alquilado">Alquilado</option>
+      <option value="pausado">Pausado</option>
+    </select>
+  </div>
+  <div class="form-field"><label>Zona / Barrio</label><input type="text" name="zone" placeholder="Palermo, Villa Belgrano..." /></div>
 </div>
-<div class="form-field"><label>Zona / Barrio</label><input type="text" name="zone" placeholder="Palermo, Villa Belgrano..." /></div>
+<div class="form-grid-2">
+  <div class="form-field">
+    <label>Broker Asignado</label>
+    <select name="agent_id" id="propAgentSelect">
+      <option value="">Sin broker asignado</option>
+    </select>
+  </div>
+  <div class="form-field"><label>Zona / Barrio</label><input type="text" name="zone" placeholder="Palermo, Villa Belgrano..." /></div>
 </div>
 <div class="form-grid-2" id="priceFieldsContainer">
 <div class="form-field" id="priceUsdField"><label>Precio en USD *</label><input type="number" name="price_usd" required placeholder="150000" step="1000" /></div>
@@ -1912,30 +1924,41 @@ MODALES
 <div class="form-field"><label>Email</label><input type="email" name="email" placeholder="cliente@email.com" /></div>
 </div>
 <div class="form-grid-2">
-<div class="form-field"><label>Presupuesto Máximo (USD)</label><input type="number" name="budget_usd" placeholder="750000" /></div>
-<div class="form-field">
-<label>Etapa Inicial</label>
-<select name="stage">
-<option value="nuevo">1. Nuevo</option>
-<option value="contactado">2. Contactado</option>
-<option value="visita">3. Visita Agendada</option>
-<option value="oferta">4. Oferta / Cierre</option>
-</select>
-</div>
+  <div class="form-field"><label>Presupuesto Máximo (USD)</label><input type="number" name="budget_usd" placeholder="750000" /></div>
+  <div class="form-field">
+    <label>Etapa Inicial</label>
+    <select name="stage">
+      <option value="nuevo">1. Nuevo</option>
+      <option value="contactado">2. Contactado</option>
+      <option value="visita">3. Visita Agendada</option>
+      <option value="oferta">4. Oferta / Cierre</option>
+      <option value="cerrado">5. Cerrado</option>
+      <option value="perdido">6. Perdido</option>
+    </select>
+  </div>
 </div>
 <div class="form-grid-2">
-<div class="form-field">
-<label>Tipo Preferido</label>
-<select name="preferred_type">
-<option value="">Sin preferencia</option>
-<option value="casa">Casa</option>
-<option value="departamento">Departamento</option>
-<option value="terreno">Terreno</option>
-<option value="local">Local</option>
-<option value="oficina">Oficina</option>
-</select>
+  <div class="form-field">
+    <label>Broker Asignado</label>
+    <select name="broker_id" id="leadBrokerSelect">
+      <option value="">Sin broker asignado</option>
+    </select>
+  </div>
+  <div class="form-field"><label>Zona Preferida</label><input type="text" name="preferred_zone" placeholder="Villa Belgrano..." /></div>
 </div>
-<div class="form-field"><label>Zona Preferida</label><input type="text" name="preferred_zone" placeholder="Villa Belgrano..." /></div>
+<div class="form-grid-2">
+  <div class="form-field">
+    <label>Tipo Preferido</label>
+    <select name="preferred_type">
+      <option value="">Sin preferencia</option>
+      <option value="casa">Casa</option>
+      <option value="departamento">Departamento</option>
+      <option value="terreno">Terreno</option>
+      <option value="local">Local</option>
+      <option value="oficina">Oficina</option>
+    </select>
+  </div>
+  <div class="form-field"><label>Zona Preferida</label><input type="text" name="preferred_zone" placeholder="Villa Belgrano..." /></div>
 </div>
 <div class="form-field"><label>Notas / Interés</label><textarea name="notes" placeholder="Interés en casas en Villa Belgrano..."></textarea></div>
 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
@@ -2412,6 +2435,6 @@ setTimeout(function() { checkCDN(); }, 6000);
 <script src="assets/js/config.js?v=5"></script>
 <script src="assets/js/supabase-client.js?v=4"></script>
 <script src="assets/js/cloudinary.js?v=6"></script>
-<script src="assets/js/admin-app.js?v=104"></script>
+<script src="assets/js/admin-app.js?v=106"></script>
 </body>
 </html>
