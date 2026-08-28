@@ -6325,6 +6325,7 @@ window.exportAnomaliesCSV = async function() {
      ------------------------------------------------ */
   document.body.dataset.bhChatVarsStart = 'true';
   let _chatRealtimeChannel = null;
+  let _coreRealtimeChannel = null;
   let _chatCurrentConv = null;
   let _chatPlatformFilter = 'all';
   let _chatSearchTerm = '';
@@ -6616,7 +6617,7 @@ on(chip, 'click', () => {
                 phone: _chatCurrentConv.contact_handle || '',
                 source: 'chat',
                 stage: 'nuevo',
-                broker_id: _chatCurrentConv.broker_id || null,
+                assigned_to: _chatCurrentConv.broker_id || null,
                 property_id: _chatCurrentConv.property_id || null,
                 notes: `Creado desde chat Zernio (conv: ${_chatCurrentConv.id})`
               }])
