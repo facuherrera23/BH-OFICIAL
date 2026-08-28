@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal Propietario | BIENENHAUS</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self' https://rnldqiwwzhjnurkguihu.supabase.co https://cdn.jsdelivr.net;">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="assets/css/landing.css?v=30">
+  <style>
+    .portal-page { min-height: 100vh; background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%); padding: 40px 20px; }
+    .portal-container { max-width: 1000px; margin: 0 auto; }
+    .portal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid rgba(255,255,255,0.08); flex-wrap: wrap; gap: 16px; }
+    .portal-brand { display: flex; align-items: center; gap: 16px; }
+    .portal-brand img { height: 48px; }
+    .portal-brand h1 { font-family: 'Playfair Display', serif; font-size: 28px; color: #fff; margin: 0; }
+    .portal-user { display: flex; align-items: center; gap: 16px; color: var(--text-dim); font-size: 14px; }
+    .portal-user .avatar { width: 40px; height: 40px; border-radius: 50%; background: rgba(31,200,195,0.2); display: flex; align-items: center; justify-content: center; color: var(--accent); font-weight: 600; }
+    .portal-tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 4px; flex-wrap: wrap; }
+    .portal-tab { padding: 10px 20px; background: none; border: none; color: var(--text-dim); font-size: 13px; font-weight: 500; cursor: pointer; border-radius: 6px 6px 0 0; transition: all 0.2s; position: relative; }
+    .portal-tab:hover { color: var(--accent); }
+    .portal-tab.is-active { color: var(--accent); background: rgba(31,200,195,0.1); }
+    .portal-tab .badge { background: rgba(239,68,68,0.2); color: #ef4444; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 6px; font-weight: 600; }
+    .portal-panel { display: none; }
+    .portal-panel.is-active { display: block; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .portal-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 24px; margin-bottom: 20px; }
+    .portal-card h3 { font-family: 'Playfair Display', serif; font-size: 20px; color: #fff; margin: 0 0 16px; display: flex; align-items: center; gap: 10px; }
+    .portal-card h3 i { color: var(--accent); }
+    .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+    .info-item { display: flex; flex-direction: column; gap: 4px; }
+    .info-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+    .info-value { font-size: 14px; color: #fff; font-weight: 500; }
+    .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+    .status-vigente { background: rgba(0,200,120,0.2); color: #00c878; }
+    .status-vencida { background: rgba(239,68,68,0.2); color: #ef4444; }
+    .status-por-vencer { background: rgba(255,184,0,0.15); color: #FFB800; }
+    .table-responsive { overflow-x: auto; }
+    .portal-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .portal-table th { text-align: left; padding: 12px 16px; color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .portal-table td { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); color: #fff; }
+    .portal-table tr:last-child td { border-bottom: none; }
+    .portal-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .property-title { font-weight: 500; color: #fff; }
+    .property-sub { font-size: 11px; color: var(--text-dim); }
+    .price-cell { font-weight: 600; color: var(--accent); }
+    .doc-list { display: flex; flex-direction: column; gap: 10px; }
+    .doc-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; }
+    .doc-main { display: flex; align-items: center; gap: 12px; }
+    .doc-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .doc-icon.pdf { background: rgba(239,68,68,0.2); color: #ef4444; }
+    .doc-icon.image { background: rgba(31,200,195,0.2); color: var(--accent); }
+    .doc-icon.doc { background: rgba(255,184,0,0.15); color: #FFB800; }
+    .doc-icon.other { background: rgba(255,255,255,0.1); color: var(--text-dim); }
+    .doc-info { display: flex; flex-direction: column; gap: 2px; }
+    .doc-name { font-weight: 500; color: #fff; font-size: 13px; }
+    .doc-meta { font-size: 11px; color: var(--text-dim); }
+    .doc-status { display: flex; align-items: center; gap: 8px; }
+    .check-icon { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; }
+    .check-done { background: rgba(0,200,120,0.2); color: #00c878; }
+    .check-pending { background: rgba(255,184,0,0.15); color: #FFB800; }
+    .check-missing { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .commission-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; margin-bottom: 10px; }
+    .commission-main { display: flex; flex-direction: column; gap: 4px; }
+    .commission-property { font-weight: 500; color: #fff; }
+    .commission-meta { font-size: 11px; color: var(--text-dim); }
+    .commission-amount { font-weight: 600; color: var(--accent); font-size: 14px; }
+    .commission-status { font-size: 11px; padding: 4px 10px; border-radius: 12px; font-weight: 600; }
+    .comm-pendiente { background: rgba(255,184,0,0.15); color: #FFB800; }
+    .comm-liquidada { background: rgba(31,200,195,0.15); color: var(--accent); }
+    .comm-pagada { background: rgba(0,200,120,0.2); color: #00c878; }
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--text-dim); }
+    .empty-state i { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+    .btn-portal { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 10px; font-size: 13px; font-weight: 500; text-decoration: none; border: none; cursor: pointer; transition: all 0.2s; }
+    .btn-portal-primary { background: linear-gradient(135deg, var(--accent) 0%, #1a9a9a 100%); color: #000; }
+    .btn-portal-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(31,200,195,0.4); }
+    .btn-portal-outline { background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.15); }
+    .btn-portal-outline:hover { background: rgba(255,255,255,0.1); }
+    .alert-banner { background: rgba(255,184,0,0.1); border: 1px solid rgba(255,184,0,0.3); border-radius: 12px; padding: 16px; margin-bottom: 24px; display: flex; align-items: flex-start; gap: 12px; color: #FFB800; }
+    .alert-banner i { font-size: 20px; margin-top: 2px; }
+    .alert-banner h4 { margin: 0 0 8px; color: #fff; }
+    .alert-banner p { margin: 0; font-size: 13px; line-height: 1.5; }
+    .loading { display: flex; align-items: center; justify-content: center; padding: 40px; color: var(--text-dim); }
+    .loading i { animation: spin 1s linear infinite; margin-right: 10px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 640px) {
+      .portal-header { flex-direction: column; align-items: flex-start; }
+      .portal-tabs { overflow-x: auto; padding-bottom: 8px; }
+      .portal-tab { white-space: nowrap; }
+    }
+  </style>
+</head>
+<body>
+  <div class="portal-page">
+    <div class="portal-container">
+      <!-- Header -->
+      <header class="portal-header">
+        <div class="portal-brand">
+          <img src="assets/img/logo-bh.png" alt="BIENENHAUS" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+          <i class="fas fa-building" style="display:none; font-size: 32px; color: var(--accent);"></i>
+          <h1>Portal Propietario</h1>
+        </div>
+        <div class="portal-user" id="portalUser">
+          <div class="avatar" id="userAvatar">P</div>
+          <div>
+            <div id="userName" style="font-weight: 500; color: #fff;">Cargando...</div>
+            <div id="userDni" style="font-size: 12px;"></div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Alert banner for expiring exclusivity -->
+      <div class="alert-banner" id="alertBanner" style="display: none;">
+        <i class="fas fa-exclamation-triangle"></i>
+        <div>
+          <h4 id="alertTitle">Exclusividad por vencer</h4>
+          <p id="alertText">Su contrato de exclusividad vence en X días.</p>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <nav class="portal-tabs" id="portalTabs" role="tablist">
+        <button class="portal-tab is-active" data-tab="dashboard" role="tab" aria-selected="true">
+          <i class="fas fa-home"></i> Inicio
+        </button>
+        <button class="portal-tab" data-tab="properties" role="tab" aria-selected="false">
+          <i class="fas fa-building"></i> Mis Propiedades
+        </button>
+        <button class="portal-tab" data-tab="commissions" role="tab" aria-selected="false">
+          <i class="fas fa-dollar-sign"></i> Comisiones
+        </button>
+        <button class="portal-tab" data-tab="documents" role="tab" aria-selected="false">
+          <i class="fas fa-folder"></i> Documentos
+        </button>
+        <button class="portal-tab" data-tab="exclusivity" role="tab" aria-selected="false">
+          <i class="fas fa-shield-alt"></i> Exclusividad
+        </button>
+      </nav>
+
+      <!-- Dashboard Panel -->
+      <section class="portal-panel is-active" id="panel-dashboard" role="tabpanel">
+        <div class="portal-card">
+          <h3><i class="fas fa-user"></i> Datos del Titular</h3>
+          <div class="info-grid" id="ownerInfoGrid"></div>
+        </div>
+        <div class="portal-card">
+          <h3><i class="fas fa-chart-line"></i> Resumen</h3>
+          <div class="info-grid" id="dashboardSummary">
+            <div class="info-item"><span class="info-label">Propiedades Publicadas</span><span class="info-value" id="sumProps">—</span></div>
+            <div class="info-item"><span class="info-label">En Exclusividad</span><span class="info-value" id="sumExcl">—</span></div>
+            <div class="info-item"><span class="info-label">Comisiones Pendientes</span><span class="info-value" id="sumComm">—</span></div>
+            <div class="info-item"><span class="info-label">Documentos Completos</span><span class="info-value" id="sumDocs">—</span></div>
+          </div>
+        </div>
+        <div class="portal-card">
+          <h3><i class="fas fa-clock"></i> Próximos Vencimientos</h3>
+          <div id="upcomingExpiry" class="doc-list"></div>
+        </div>
+      </section>
+
+      <!-- Properties Panel -->
+      <section class="portal-panel" id="panel-properties" role="tabpanel">
+        <div class="portal-card">
+          <h3><i class="fas fa-building"></i> Mis Propiedades</h3>
+          <div class="table-responsive">
+            <table class="portal-table" id="propsTable">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Propiedad</th>
+                  <th>Zona</th>
+                  <th>Tipo</th>
+                  <th>Estado</th>
+                  <th>Precio</th>
+                  <th>Publicada</th>
+                </tr>
+              </thead>
+              <tbody id="propsBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="propsEmpty" style="display: none;">
+            <i class="fas fa-home"></i>
+            <p>No tiene propiedades vinculadas</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Commissions Panel -->
+      <section class="portal-panel" id="panel-commissions" role="tabpanel">
+        <div class="portal-card">
+          <h3><i class="fas fa-dollar-sign"></i> Mis Comisiones</h3>
+          <div id="commissionsList"></div>
+          <div class="empty-state" id="commEmpty" style="display: none;">
+            <i class="fas fa-dollar-sign"></i>
+            <p>No hay comisiones registradas</p>
+          </div>
+        </div>
+        <div class="portal-card">
+          <h3><i class="fas fa-file-invoice-dollar"></i> Liquidaciones</h3>
+          <div class="table-responsive">
+            <table class="portal-table" id="liquidationsTable">
+              <thead>
+                <tr>
+                  <th>Período</th>
+                  <th>Bruto (USD)</th>
+                  <th>IIBB</th>
+                  <th>Ganancias</th>
+                  <th>Neto (ARS)</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="liquidationsBody"></tbody>
+            </table>
+          </div>
+          <div class="empty-state" id="liqEmpty" style="display: none;">
+            <i class="fas fa-file-invoice-dollar"></i>
+            <p>No hay liquidaciones generadas</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Documents Panel -->
+      <section class="portal-panel" id="panel-documents" role="tabpanel">
+        <div class="portal-card">
+          <h3><i class="fas fa-folder"></i> Mis Documentos</h3>
+          <div class="doc-list" id="docsList"></div>
+          <div class="empty-state" id="docsEmpty" style="display: none;">
+            <i class="fas fa-folder-open"></i>
+            <p>No hay documentos cargados</p>
+          </div>
+        </div>
+        <div class="portal-card">
+          <h3><i class="fas fa-check-circle"></i> Checklist por Operación</h3>
+          <div id="checklistContainer"></div>
+        </div>
+      </section>
+
+      <!-- Exclusivity Panel -->
+      <section class="portal-panel" id="panel-exclusivity" role="tabpanel">
+        <div class="portal-card">
+          <h3><i class="fas fa-shield-alt"></i> Contrato de Exclusividad</h3>
+          <div class="info-grid" id="exclInfo"></div>
+          <div id="exclAlert" class="alert-banner" style="display: none; margin-top: 16px;"></div>
+        </div>
+        <div class="portal-card">
+          <h3><i class="fas fa-file-contract"></i> Detalles del Contrato</h3>
+          <div class="info-grid" id="contractDetails"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="assets/js/config.js?v=1"></script>
+  <script>
+    (async function() {
+      const token = new URLSearchParams(window.location.search).get('token');
+      if (!token) {
+        document.body.innerHTML = `
+          <div class="portal-page" style="display:flex; align-items:center; justify-content:center;">
+            <div style="text-align:center; padding:40px; background:rgba(255,255,255,0.03); border-radius:20px; border:1px solid rgba(255,255,255,0.08); max-width:480px;">
+              <i class="fas fa-key" style="font-size:48px; color:#ef4444; margin-bottom:16px;"></i>
+              <h2 style="font-family:'Playfair Display',serif; color:#fff; margin-bottom:12px;">Token Requerido</h2>
+              <p style="color:var(--text-dim); margin-bottom:24px;">Acceda al portal usando el enlace mágico enviado por su broker.</p>
+              <p style="font-size:12px; color:var(--text-dim);">Formato: <code>portal-propietario.html?token=UUID</code></p>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      if (!window.BH_CONFIG?.SUPABASE_URL || !window.BH_CONFIG?.SUPABASE_ANON_KEY) {
+        showError('Configuración no disponible');
+        return;
+      }
+
+      const { createClient } = supabase;
+      const supabaseClient = createClient(window.BH_CONFIG.SUPABASE_URL, window.BH_CONFIG.SUPABASE_ANON_KEY);
+
+      let currentOwner = null;
+      let currentTokenData = null;
+
+      // Validar token
+      async function validateToken() {
+        const { data, error } = await supabaseClient
+          .from('owner_portal_tokens')
+          .select('*, owners(*)')
+          .eq('token', token)
+          .single();
+
+        if (error || !data) {
+          showError('Token inválido o expirado');
+          return false;
+        }
+
+        if (data.revoked_at) {
+          showError('Este enlace ha sido revocado');
+          return false;
+        }
+
+        if (data.expires_at && new Date(data.expires_at) < new Date()) {
+          showError('Este enlace ha expirado');
+          return false;
+        }
+
+        currentTokenData = data;
+        currentOwner = data.owners;
+        return true;
+      }
+
+      function showError(msg) {
+        document.body.innerHTML = `
+          <div class="portal-page" style="display:flex; align-items:center; justify-content:center;">
+            <div style="text-align:center; padding:40px; background:rgba(255,255,255,0.03); border-radius:20px; border:1px solid rgba(255,255,255,0.08); max-width:480px;">
+              <i class="fas fa-exclamation-triangle" style="font-size:48px; color:#ef4444; margin-bottom:16px;"></i>
+              <h2 style="font-family:'Playfair Display',serif; color:#fff; margin-bottom:12px;">Acceso Denegado</h2>
+              <p style="color:var(--text-dim);">${msg}</p>
+            </div>
+          </div>
+        `;
+      }
+
+      function initTabs() {
+        const tabs = document.querySelectorAll('.portal-tab');
+        const panels = document.querySelectorAll('.portal-panel');
+        tabs.forEach(tab => {
+          tab.addEventListener('click', () => {
+            tabs.forEach(t => { t.classList.remove('is-active'); t.setAttribute('aria-selected', 'false'); });
+            panels.forEach(p => p.classList.remove('is-active'));
+            tab.classList.add('is-active');
+            tab.setAttribute('aria-selected', 'true');
+            document.getElementById('panel-' + tab.dataset.tab).classList.add('is-active');
+          });
+        });
+      }
+
+      function renderOwnerInfo() {
+        const o = currentOwner;
+        const avatar = document.getElementById('userAvatar');
+        const name = document.getElementById('userName');
+        const dni = document.getElementById('userDni');
+        if (avatar) avatar.textContent = (o.full_name || 'P').charAt(0).toUpperCase();
+        if (name) name.textContent = o.full_name || 'Propietario';
+        if (dni) dni.textContent = o.dni_cuit ? `CUIT: ${o.dni_cuit}` : '';
+
+        const grid = document.getElementById('ownerInfoGrid');
+        if (grid) {
+          grid.innerHTML = `
+            <div class="info-item"><span class="info-label">Nombre Completo</span><span class="info-value">${esc(o.full_name || '—')}</span></div>
+            <div class="info-item"><span class="info-label">DNI / CUIT / CUIL</span><span class="info-value">${esc(o.dni_cuit || '—')}</span></div>
+            <div class="info-item"><span class="info-label">Teléfono / WhatsApp</span><span class="info-value"><a href="https://wa.me/${(o.phone || '').replace(/\D/g, '')}" target="_blank" style="color:var(--accent); text-decoration:none;">${esc(o.phone || '—')}</a></span></div>
+            <div class="info-item"><span class="info-label">Email</span><span class="info-value"><a href="mailto:${esc(o.email || '')}" style="color:var(--accent); text-decoration:none;">${esc(o.email || '—')}</a></span></div>
+            <div class="info-item"><span class="info-label">Dirección</span><span class="info-value">${esc(o.address || '—')}</span></div>
+            <div class="info-item"><span class="info-label">Preferencia Contacto</span><span class="info-value">${esc(o.preferred_contact || 'whatsapp')}</span></div>
+            <div class="info-item"><span class="info-label">Banco</span><span class="info-value">${esc(o.bank_name || '—')}</span></div>
+            <div class="info-item"><span class="info-label">CBU / CVU</span><span class="info-value">${esc(o.cbu_cvu || '—')}</span></div>
+            <div class="info-item"><span class="info-label">Alias CBU</span><span class="info-value">${esc(o.alias_cbu || '—')}</span></div>
+          `;
+        }
+      }
+
+      async function loadDashboard() {
+        if (!currentOwner) return;
+
+        // Props count
+        const { data: props } = await supabaseClient
+          .from('properties')
+          .select('id, is_published')
+          .eq('owner_id', currentOwner.id);
+        const published = props?.filter(p => p.is_published).length || 0;
+
+        // Exclusivity
+        const excl = currentOwner.exclusive;
+        const exclEnd = currentOwner.exclusive_end;
+
+        // Commissions pending
+        const { data: comms } = await supabaseClient
+          .from('commissions')
+          .select('id, commission_amount_usd, status')
+          .eq('owner_id', currentOwner.id)
+          .eq('status', 'pendiente');
+        const pendingComm = comms?.reduce((sum, c) => sum + (c.commission_amount_usd || 0), 0) || 0;
+
+        // Documents
+        const { data: owner } = await supabaseClient.from('owners').select('documents').eq('id', currentOwner.id).single();
+        const docs = owner?.documents || [];
+        const docCount = docs.length;
+
+        document.getElementById('sumProps')?.textContent = published || '—';
+        document.getElementById('sumExcl')?.textContent = excl ? 'Sí' : 'No';
+        document.getElementById('sumComm')?.textContent = pendingComm > 0 ? 'USD ' + pendingComm.toLocaleString('es-AR', { minimumFractionDigits: 2 }) : '—';
+        document.getElementById('sumDocs')?.textContent = docCount;
+
+        // Upcoming expiry (exclusivity + documents)
+        const expiryList = document.getElementById('upcomingExpiry');
+        const items = [];
+
+        if (excl && exclEnd) {
+          const days = Math.ceil((new Date(exclEnd) - new Date()) / (1000 * 60 * 60 * 24));
+          let cls = 'status-vigente', label = 'Vigente';
+          if (days < 0) { cls = 'status-vencida'; label = `Vencida hace ${Math.abs(days)} días`; }
+          else if (days <= 30) { cls = 'status-por-vencer'; label = `Vence en ${days} días`; }
+          items.push(`
+            <div class="doc-item">
+              <div class="doc-main">
+                <div class="doc-icon other"><i class="fas fa-shield-alt"></i></div>
+                <div class="doc-info">
+                  <div class="doc-name">Exclusividad</div>
+                  <div class="doc-meta">Fin: ${new Date(exclEnd).toLocaleDateString('es-AR')}</div>
+                </div>
+              </div>
+              <div class="doc-status"><span class="status-badge ${cls}">${label}</span></div>
+            </div>
+          `);
+        }
+
+        // Document expiries
+        const { data: od } = await supabaseClient.from('owners').select('documents').eq('id', currentOwner.id).single();
+        const odocs = od?.documents || [];
+        odocs.forEach(d => {
+          if (d.expiry) {
+            const days = Math.ceil((new Date(d.expiry) - new Date()) / (1000 * 60 * 60 * 24));
+            let cls = 'status-vigente', label = 'Vigente';
+            if (days < 0) { cls = 'status-vencida'; label = `Vencido hace ${Math.abs(days)} días`; }
+            else if (days <= 30) { cls = 'status-por-vencer'; label = `Vence en ${days} días`; }
+            items.push(`
+              <div class="doc-item">
+                <div class="doc-main">
+                  <div class="doc-icon other"><i class="fas fa-file-alt"></i></div>
+                  <div class="doc-info">
+                    <div class="doc-name">${esc(d.name || 'Documento')}</div>
+                    <div class="doc-meta">Vence: ${new Date(d.expiry).toLocaleDateString('es-AR')}</div>
+                  </div>
+                </div>
+                <div class="doc-status"><span class="status-badge ${cls}">${label}</span></div>
+              </div>
+            `);
+          }
+        });
+
+        if (expiryList) expiryList.innerHTML = items.length ? items.join('') : '<p style="color:var(--text-dim); text-align:center; padding:20px;">Sin vencimientos próximos</p>';
+
+        // Alert banner for exclusivity
+        if (excl && exclEnd) {
+          const days = Math.ceil((new Date(exclEnd) - new Date()) / (1000 * 60 * 60 * 24));
+          const alertBanner = document.getElementById('alertBanner');
+          const alertTitle = document.getElementById('alertTitle');
+          const alertText = document.getElementById('alertText');
+          if (alertBanner && days <= 30 && days >= 0) {
+            alertBanner.style.display = 'flex';
+            alertTitle.textContent = '⚠️ Exclusividad por vencer';
+            alertText.textContent = `Su contrato vence en ${days} día${days !== 1 ? 's' : ''} (${new Date(exclEnd).toLocaleDateString('es-AR')}). Contacte a su broker para renovar.`;
+          } else if (days < 0) {
+            alertBanner.style.display = 'flex';
+            alertBanner.style.background = 'rgba(239,68,68,0.1)';
+            alertBanner.style.borderColor = 'rgba(239,68,68,0.3)';
+            alertTitle.textContent = '🚨 Exclusividad Vencida';
+            alertText.textContent = `Su contrato venció el ${new Date(exclEnd).toLocaleDateString('es-AR')}. Contacte a su broker urgentemente.`;
+          }
+        }
+      }
+
+      async function loadProperties() {
+        if (!currentOwner) return;
+        const { data, error } = await supabaseClient
+          .from('properties')
+          .select('id, code, title, zone, property_type, status, price_usd, price_currency, is_published, created_at')
+          .eq('owner_id', currentOwner.id)
+          .order('created_at', { ascending: false });
+
+        const body = document.getElementById('propsBody');
+        const empty = document.getElementById('propsEmpty');
+        const table = document.getElementById('propsTable');
+
+        if (error || !data?.length) {
+          if (body) body.innerHTML = '';
+          if (empty) empty.style.display = 'block';
+          if (table) table.style.display = 'none';
+          return;
+        }
+
+        if (body) {
+          body.innerHTML = data.map(p => `
+            <tr>
+              <td>${esc(p.code || '—')}</td>
+              <td>
+                <div class="property-title">${esc(p.title || 'Sin título')}</div>
+                <div class="property-sub">${esc(p.zone || 'S/Zona')}</div>
+              </td>
+              <td>${esc(p.zone || '—')}</td>
+              <td>${esc(p.property_type || '—')}</td>
+              <td><span class="status-badge ${p.status === 'publicada' ? 'status-vigente' : p.status === 'pausada' ? 'status-por-vencer' : 'status-vencida'}">${esc(p.status || 'draft')}</span></td>
+              <td class="price-cell">${p.price_usd ? (p.price_currency === 'USD' ? 'USD ' : '$ ') + formatNumber(p.price_usd) : '—'}</td>
+              <td>${p.is_published ? '<span style="color:var(--success);"><i class="fas fa-check"></i> Sí</span>' : '<span style="color:var(--text-dim);">No</span>'}</td>
+            </tr>
+          `).join('');
+        }
+        if (empty) empty.style.display = 'none';
+        if (table) table.style.display = 'table';
+      }
+
+      async function loadCommissions() {
+        if (!currentOwner) return;
+        const { data, error } = await supabaseClient
+          .from('commissions')
+          .select('*, properties(code, title)')
+          .eq('owner_id', currentOwner.id)
+          .order('created_at', { ascending: false });
+
+        const list = document.getElementById('commissionsList');
+        const empty = document.getElementById('commEmpty');
+
+        if (error || !data?.length) {
+          if (list) list.innerHTML = '';
+          if (empty) empty.style.display = 'block';
+          return;
+        }
+
+        if (list) {
+          list.innerHTML = data.map(c => {
+            const statusClass = c.status === 'pendiente' ? 'comm-pendiente' : c.status === 'liquidada' ? 'comm-liquidada' : 'comm-pagada';
+            const statusLabel = { pendiente: 'Pendiente', liquidada: 'Liquidada', pagada: 'Pagada', cancelada: 'Cancelada' }[c.status] || c.status;
+            return `
+              <div class="commission-row">
+                <div class="commission-main">
+                  <div class="commission-property">${esc(c.properties?.title || c.properties?.code || 'Propiedad')}</div>
+                  <div class="commission-meta">${esc(c.operation_type === 'venta' ? 'Venta' : 'Alquiler')} · ${c.operation_type === 'alquiler' ? 'Alquiler mensual' : 'Precio venta'}: ${c.operation_type === 'alquiler' && c.rent_price_usd ? 'USD ' + formatNumber(c.rent_price_usd) : c.sale_price_usd ? 'USD ' + formatNumber(c.sale_price_usd) : '—'} · Comisión: ${c.operation_type === 'alquiler' ? (c.commission_rate_rent || 0) : (c.commission_rate_sale || 0)}%</div>
+                </div>
+                <div style="text-align: right;">
+                  <div class="commission-amount">USD ${(c.commission_amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
+                  <span class="commission-status ${statusClass}">${statusLabel}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+        if (empty) empty.style.display = 'none';
+      }
+
+      async function loadLiquidations() {
+        if (!currentOwner) return;
+        const { data, error } = await supabaseClient
+          .from('commission_liquidations')
+          .select('*')
+          .eq('owner_id', currentOwner.id)
+          .order('period_start', { ascending: false });
+
+        const body = document.getElementById('liquidationsBody');
+        const empty = document.getElementById('liqEmpty');
+        const table = document.getElementById('liquidationsTable');
+
+        if (error || !data?.length) {
+          if (body) body.innerHTML = '';
+          if (empty) empty.style.display = 'block';
+          if (table) table.style.display = 'none';
+          return;
+        }
+
+        if (body) {
+          body.innerHTML = data.map(l => `
+            <tr>
+              <td>${new Date(l.period_start).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</td>
+              <td>USD ${(l.gross_commission_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+              <td>${formatNumber(l.iibb_retention_ars || 0)}</td>
+              <td>${formatNumber(l.ganancias_retention_ars || 0)}</td>
+              <td class="price-cell">${formatNumber(l.net_amount_ars || 0)}</td>
+              <td><span class="status-badge ${l.status === 'pagada' ? 'status-vigente' : l.status === 'confirmada' ? 'status-por-vencer' : ''}">${esc(l.status)}</span></td>
+            </tr>
+          `).join('');
+        }
+        if (empty) empty.style.display = 'none';
+        if (table) table.style.display = 'table';
+      }
+
+      async function loadDocuments() {
+        if (!currentOwner) return;
+        const { data } = await supabaseClient.from('owners').select('documents').eq('id', currentOwner.id).single();
+        const docs = data?.documents || [];
+        const list = document.getElementById('docsList');
+        const empty = document.getElementById('docsEmpty');
+
+        if (!docs.length) {
+          if (list) list.innerHTML = '';
+          if (empty) empty.style.display = 'block';
+          return;
+        }
+
+        if (list) {
+          list.innerHTML = docs.map(d => `
+            <div class="doc-item">
+              <div class="doc-main">
+                <div class="doc-icon ${d.type?.includes('pdf') ? 'pdf' : d.type?.includes('image') ? 'image' : d.type?.includes('word') ? 'doc' : 'other'}">
+                  <i class="fas fa-${d.type?.includes('pdf') ? 'file-pdf' : d.type?.includes('image') ? 'file-image' : d.type?.includes('word') ? 'file-word' : 'file-alt'}"></i>
+                </div>
+                <div class="doc-info">
+                  <div class="doc-name">${esc(d.name || 'Documento')}</div>
+                  <div class="doc-meta">${d.type?.toUpperCase() || 'FILE'} · ${d.size ? (d.size / 1024).toFixed(1) + ' KB' : ''} · ${d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString('es-AR') : ''}${d.expiry ? ' · Vence: ' + new Date(d.expiry).toLocaleDateString('es-AR') : ''}</div>
+                </div>
+              </div>
+              <div class="doc-status">
+                ${d.url ? `<a href="${esc(d.url)}" target="_blank" class="btn-portal btn-portal-outline" style="font-size:11px; padding:6px 12px;"><i class="fas fa-eye"></i> Ver</a>` : ''}
+              </div>
+            </div>
+          `).join('');
+        }
+        if (empty) empty.style.display = 'none';
+      }
+
+      async function loadChecklist() {
+        const container = document.getElementById('checklistContainer');
+        if (!container) return;
+
+        const { data: requirements } = await supabaseClient
+          .from('document_requirements')
+          .select('*')
+          .order('operation_type, sort_order');
+
+        if (!requirements?.length) {
+          container.innerHTML = '<p style="color:var(--text-dim);">No hay requisitos configurados</p>';
+          return;
+        }
+
+        // Get owner's documents
+        const { data: od } = await supabaseClient.from('owners').select('documents').eq('id', currentOwner.id).single();
+        const ownerDocs = od?.documents || [];
+
+        // Group by operation_type
+        const byType = {};
+        requirements.forEach(r => {
+          if (!byType[r.operation_type]) byType[r.operation_type] = [];
+          byType[r.operation_type].push(r);
+        });
+
+        container.innerHTML = Object.entries(byType).map(([type, reqs]) => `
+          <div style="margin-bottom: 24px;">
+            <h4 style="color: var(--accent); margin: 0 0 12px; font-size: 14px; text-transform: capitalize;">${esc(type)}</h4>
+            <div class="doc-list">
+              ${reqs.map(req => {
+                const hasDoc = ownerDocs.some(d => d.name?.toLowerCase().includes(req.document_key.toLowerCase()) || d.document_key === req.document_key);
+                const doc = ownerDocs.find(d => d.name?.toLowerCase().includes(req.document_key.toLowerCase()) || d.document_key === req.document_key);
+                const isMissing = req.is_mandatory && !hasDoc;
+                let cls = 'check-done', label = 'Completo';
+                if (isMissing) { cls = 'check-missing'; label = 'Falta (Obligatorio)'; }
+                else if (!hasDoc) { cls = 'check-pending'; label = 'Pendiente'; }
+                return `
+                  <div class="doc-item">
+                    <div class="doc-main">
+                      <div class="doc-icon other"><i class="fas ${getReqIcon(req.document_key)}"></i></div>
+                      <div class="doc-info">
+                        <div class="doc-name">${esc(req.label)}${req.is_mandatory ? ' <span style="color:#ef4444; font-size:10px;">*</span>' : ''}</div>
+                        <div class="doc-meta">${esc(req.description || '')}</div>
+                      </div>
+                    </div>
+                    <div class="doc-status">
+                      <span class="check-icon ${cls}"><i class="fas ${cls === 'check-done' ? 'fa-check' : cls === 'check-missing' ? 'fa-times' : 'fa-clock'}"></i></span>
+                      <span style="font-size:11px; color:var(--text-dim);">${label}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `).join('');
+      }
+
+      function getReqIcon(key) {
+        const icons = {
+          escritura: 'fa-file-signature',
+          dni: 'fa-id-card',
+          servicios: 'fa-file-invoice',
+          planos: 'fa-drafting-compass',
+          certificado_dominio: 'fa-certificate',
+          inhibiciones: 'fa-gavel',
+          plano_mensura: 'fa-ruler-combined',
+          reglamento_copropiedad: 'fa-book',
+          expensas: 'fa-receipt',
+          libre_deuda: 'fa-check-circle'
+        };
+        return icons[key] || 'fa-file-alt';
+      }
+
+      async function loadExclusivity() {
+        if (!currentOwner) return;
+        const o = currentOwner;
+        const info = document.getElementById('exclInfo');
+        const alert = document.getElementById('exclAlert');
+
+        if (info) {
+          const days = o.exclusive_end ? Math.ceil((new Date(o.exclusive_end) - new Date()) / (1000 * 60 * 60 * 24)) : null;
+          let statusHtml = o.exclusive ? '<span class="status-badge status-vigente">Vigente</span>' : '<span class="status-badge status-vencida">Sin Exclusividad</span>';
+          if (o.exclusive && days !== null) {
+            if (days < 0) statusHtml = '<span class="status-badge status-vencida">Vencida</span>';
+            else if (days <= 30) statusHtml = '<span class="status-badge status-por-vencer">Por Vencer (' + days + ' días)</span>';
+          }
+
+          info.innerHTML = `
+            <div class="info-item"><span class="info-label">Estado</span><span class="info-value">${statusHtml}</span></div>
+            <div class="info-item"><span class="info-label">Fecha Inicio</span><span class="info-value">${o.exclusive_start ? new Date(o.exclusive_start).toLocaleDateString('es-AR') : '—'}</span></div>
+            <div class="info-item"><span class="info-label">Fecha Fin</span><span class="info-value">${o.exclusive_end ? new Date(o.exclusive_end).toLocaleDateString('es-AR') : '—'}</span></div>
+            <div class="info-item"><span class="info-label">Días Restantes</span><span class="info-value">${days !== null ? days + ' días' : '—'}</span></div>
+          `;
+        }
+
+        if (alert && o.exclusive && days !== null && days <= 30) {
+          alert.style.display = 'flex';
+          alert.style.background = days < 0 ? 'rgba(239,68,68,0.1)' : 'rgba(255,184,0,0.1)';
+          alert.style.borderColor = days < 0 ? 'rgba(239,68,68,0.3)' : 'rgba(255,184,0,0.3)';
+          alert.innerHTML = days < 0
+            ? `<i class="fas fa-exclamation-triangle"></i><div><h4>🚨 Exclusividad Vencida</h4><p>Venció el ${new Date(o.exclusive_end).toLocaleDateString('es-AR')}. Contacte a su broker.</p></div>`
+            : `<i class="fas fa-exclamation-triangle"></i><div><h4>⚠️ Por Vencer</h4><p>Vence en ${days} día${days !== 1 ? 's' : ''} (${new Date(o.exclusive_end).toLocaleDateString('es-AR')}).</p></div>`;
+        } else if (alert) {
+          alert.style.display = 'none';
+        }
+
+        const details = document.getElementById('contractDetails');
+        if (details) {
+          details.innerHTML = `
+            <div class="info-item"><span class="info-label">Comisión Venta</span><span class="info-value">${o.commission_sale || '—'}%</span></div>
+            <div class="info-item"><span class="info-label">Comisión Alquiler</span><span class="info-value">${o.commission_rent || '—'}%</span></div>
+            <div class="info-item"><span class="info-label">Split Comisión</span><span class="info-value">${o.commission_split ? 'Configurado' : 'No configurado'}</span></div>
+            <div class="info-item" style="grid-column: 1 / -1;"><span class="info-label">Notas del Contrato</span><span class="info-value">${esc(o.contract_notes || 'Sin notas')}</span></div>
+          `;
+        }
+      }
+
+      // Esc helper
+      function esc(str) {
+        if (!str) return '—';
+        return String(str).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"').replace(/'/g, '&#039;');
+      }
+
+      function formatNumber(n) {
+        if (!n) return '0';
+        return Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2 });
+      }
+
+      // Main init
+      const valid = await validateToken();
+      if (!valid) return;
+
+      initTabs();
+      renderOwnerInfo();
+      await loadDashboard();
+      await loadProperties();
+      await loadCommissions();
+      await loadLiquidations();
+      await loadDocuments();
+      await loadChecklist();
+      await loadExclusivity();
+
+    })();
+  </script>
+</body>
+</html>

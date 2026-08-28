@@ -1113,6 +1113,9 @@ async function saveToSupabase(finalize){
     }
     document.getElementById('lastSaved').textContent = 'Guardado ' + new Date().toLocaleTimeString('es-AR');
     showToast(finalize ? 'Tasación finalizada y guardada' : 'Guardado correctamente');
+    if (finalize) {
+      window.parent?.postMessage({ type: 'tasaciones-finalized', id: TASACION_ID }, window.location.origin);
+    }
   }catch(e){
     showToast('Error al guardar: ' + (e.message || e));
   }finally{
@@ -1491,6 +1494,23 @@ async function init(){
 }
 
 init();
+
+/* Auto-print when opened with ?print=1 (PDF export from admin) */
+if (new URLSearchParams(window.location.search).get('print') === '1') {
+  /* Wait for data to load then trigger print dialog */
+  const _origSave = saveToSupabase;
+  const _autoPrintCheck = setInterval(() => {
+    /* Check if the form has been populated (data loaded) */
+    const hasData = document.getElementById('comparablesContainer')?.children?.length > 0
+      || document.getElementById('dirDomicilio')?.value;
+    if (hasData) {
+      clearInterval(_autoPrintCheck);
+      setTimeout(() => window.print(), 600);
+    }
+  }, 500);
+  /* Fallback: print after 4s even if data check hasn't triggered */
+  setTimeout(() => { clearInterval(_autoPrintCheck); window.print(); }, 4000);
+}
 </script>
 </body>
 </html>

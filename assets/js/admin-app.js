@@ -21,6 +21,7 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   let _submittingProperty = false;
   let _submittingAgent = false;
   let _submittingOwner = false;
+  let _submittingPortal = false;
 
   /* Pagination state */
   let _propPage = 1;
@@ -57,11 +58,11 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
 function esc(s) {
     if (s == null) return '';
     return String(s)
-      .replace(/&/g, '&')
-      .replace(/</g, '<')
-      .replace(/>/g, '>')
-      .replace(/"/g, '"')
-      .replace(/'/g, "'");
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
   // Timezone selector (AR/UTC) for supervision module
   let _supTimezone = 'America/Argentina/Buenos_Aires';
@@ -114,8 +115,8 @@ function esc(s) {
     price_usd: z.number().min(0).default(0),
     price_ars: z.number().min(0).default(0),
     price_currency: z.enum(['USD', 'ARS'], { errorMap: () => ({ message: 'Moneda debe ser USD o ARS' }) }).default('USD'),
-    property_type: z.enum(['casa', 'departamento', 'terreno', 'local', 'oficina', 'galpon', 'quinta', 'otro'], { errorMap: () => ({ message: 'Tipo de propiedad inválido' }) }),
-    status: z.enum(['venta', 'alquiler'], { errorMap: () => ({ message: 'Operación debe ser venta o alquiler' }) }).default('venta'),
+    property_type: z.enum(['casa', 'departamento', 'terreno', 'local', 'oficina', 'galpon', 'quinta', 'otro'], { errorMap: () => ({ message: 'Tipo de propiedad inválido' }) }).default('casa'),
+    status: z.enum(['venta', 'alquiler', 'vendido', 'alquilado', 'pausado'], { errorMap: () => ({ message: 'Operación debe ser venta o alquiler' }) }).default('venta'),
     zone: z.string().min(2, 'Zona/barrio requerido').max(80, 'Máximo 80 caracteres').optional().nullable(),
     address: z.string().max(200, 'Máximo 200 caracteres').optional().nullable(),
     bedrooms: z.number().int().min(0).max(20).default(0),
@@ -129,6 +130,7 @@ function esc(s) {
     featured: z.boolean().default(false),
     is_retasada: z.boolean().default(false),
     is_oportunidad: z.boolean().default(false),
+    owner_id: z.string().uuid('ID de propietario inválido').optional().nullable(),
   });
 
   // Lead validation
@@ -158,7 +160,7 @@ function esc(s) {
   const VisitSchema = z.object({
     lead_id: z.string().uuid('ID de lead inválido').optional().nullable(),
     property_id: z.string().uuid('ID de propiedad inválido').optional().nullable(),
-    broker_id: z.string().uuid('ID de broker inválido').optional().nullable(),
+    agent_id: z.string().uuid('ID de broker inválido').optional().nullable(),
     client_name: z.string().min(2, 'Nombre del cliente requerido').max(100),
     client_phone: z.string().max(30).optional().nullable(),
     client_email: z.string().email('Email inválido').max(150).optional().nullable(),
@@ -186,11 +188,10 @@ function esc(s) {
     full_name: z.string().min(2, 'Nombre completo requerido').max(100),
     email: z.string().email('Email inválido').max(150).optional().nullable(),
     phone: z.string().max(30).optional().nullable(),
-    license_number: z.string().min(5, 'Matrícula requerida').max(30).optional().nullable(),
-    license_expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha de vencimiento inválida (YYYY-MM-DD)').optional().nullable(),
-    commission_sale: z.number().min(0).max(100).default(3),
-    commission_rent: z.number().min(0).max(100).default(4),
-    permissions: z.record(z.boolean()).default({}),
+    matricula: z.string().max(30).optional().nullable(),
+    bio: z.string().max(2000).optional().nullable(),
+    commission_rate: z.number().min(0).max(100).default(3),
+    specialties: z.array(z.string()).default([]),
     status: z.enum(['activo', 'inactivo', 'vacaciones']).default('activo'),
   });
 
@@ -206,24 +207,38 @@ function esc(s) {
     cbu_cvu: z.string().max(30).optional().nullable(),
     alias_cbu: z.string().max(50).optional().nullable(),
     exclusive: z.boolean().default(false),
+    exclusive_start: z.string().optional().nullable(),
+    exclusive_end: z.string().optional().nullable(),
+    commission_sale: z.number().min(0).max(100).optional().nullable(),
+    commission_rent: z.number().min(0).max(100).optional().nullable(),
+    commission_split: z.string().optional().nullable(),
+    contract_notes: z.string().max(2000).optional().nullable(),
+    dni_expiry: z.string().optional().nullable(),
+    cuit_expiry: z.string().optional().nullable(),
     notes: z.string().max(1000).optional().nullable(),
   });
 
   // Helper: parse and validate form data
+  function zodBaseType(field) {
+    let t = field;
+    while (t?._def && ['ZodOptional', 'ZodNullable', 'ZodDefault'].includes(t._def.typeName)) t = t._def.innerType;
+    return t?._def?.typeName || null;
+  }
+
   function validateForm(schema, formData) {
     const data = {};
-    
+    const shape = typeof schema.shape === 'object' ? schema.shape : {};
+
     for (const [key, value] of formData.entries()) {
       if (value === '' || value === undefined) continue;
-      
-      // Checkbox values come as "on" string, convert to boolean
+
+      const fieldType = zodBaseType(shape[key]);
+
+      // HTML checkboxes send "on" when checked; unchecked ones are absent from FormData
       if (value === 'on') {
-        const input = formData.querySelector ? formData.querySelector(`input[name="${key}"]`) : null;
-        const isCheckbox = input && input.type === 'checkbox';
-        data[key] = isCheckbox ? true : value === 'true';
+        data[key] = true;
       }
-      // Convert numeric strings
-      else if (!isNaN(value) && !isNaN(parseFloat(value)) && key !== 'phone' && key !== 'whatsapp' && key !== 'dni_cuit' && key !== 'license_number') {
+      else if (fieldType === 'ZodNumber' && !isNaN(value) && !isNaN(parseFloat(value))) {
         data[key] = parseFloat(value);
       }
       // Boolean strings
@@ -294,11 +309,14 @@ function esc(s) {
     window.supabaseClient.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
         currentUser = session.user;
+        window._bhCurrentUser = currentUser;
         showApp();
         loadProfile().then(updateUserInfo).catch(() => {});
       } else if (event === 'SIGNED_OUT') {
         currentUser = null;
         currentProfile = null;
+        window._bhCurrentUser = null;
+        window._bhCurrentProfile = null;
         showLogin();
       }
     });
@@ -314,6 +332,7 @@ function esc(s) {
         .single();
       if (error) throw error;
       currentProfile = data;
+      window._bhCurrentProfile = currentProfile;
 
       /* El estado is_active es real: la edge function espeja el ban de
          GoTrue al desactivar, pero si la sesion ya estaba abierta sigue
@@ -341,6 +360,7 @@ function esc(s) {
     } catch (err) {
       console.error('Error loading profile:', err);
       currentProfile = null;
+      window._bhCurrentProfile = null;
       showToast('No se pudieron cargar los permisos. Acceso denegado.', 'error');
       setTimeout(() => { window.supabaseClient.auth.signOut(); }, 2000);
     }
@@ -354,6 +374,120 @@ function esc(s) {
     hidePreloader();
   }
 
+  // ── Visit Reminder System ──────────────────────────────────
+
+  function requestNotificationPermission() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted' || Notification.permission === 'denied') return;
+    if (localStorage.getItem('bh_notif_permission_asked')) return;
+    localStorage.setItem('bh_notif_permission_asked', '1');
+    Notification.requestPermission();
+  }
+
+  function sendBrowserNotification(title, body, tag) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    try {
+      new Notification(title, { body, tag, icon: 'assets/images/favicon.ico', renotify: true });
+    } catch (_) { /* service worker fallback not available */ }
+  }
+
+  function reminderKey(visitId, type) {
+    return 'bh_rem_' + visitId + '_' + type;
+  }
+
+  function isReminderSent(visitId, type) {
+    return !!localStorage.getItem(reminderKey(visitId, type));
+  }
+
+  function markReminderSent(visitId, type) {
+    localStorage.setItem(reminderKey(visitId, type), '1');
+  }
+
+  let _reminderInterval = null;
+
+  function initVisitReminders() {
+    if (_reminderInterval) return;
+    checkVisitReminders();
+    _reminderInterval = setInterval(checkVisitReminders, 5 * 60 * 1000);
+  }
+
+  async function checkVisitReminders() {
+    if (!window.supabaseClient) return;
+    try {
+      const now = Date.now();
+      const in24h = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+      const { data: visits, error } = await window.supabaseClient
+        .from('visits')
+        .select('id, client_name, visit_date, status, lead_id')
+        .in('status', ['pendiente', 'confirmada'])
+        .gte('visit_date', new Date(now).toISOString())
+        .lte('visit_date', in24h)
+        .order('visit_date', { ascending: true });
+      if (error || !visits?.length) { updateAgendaBadge(0, null); return; }
+
+      let soonestVisitDate = null;
+      visits.forEach(v => {
+        const visitTime = new Date(v.visit_date).getTime();
+        const diffMs = visitTime - now;
+        const diffH = diffMs / (1000 * 60 * 60);
+        const clientLabel = v.client_name || 'Sin cliente';
+
+        if (diffH <= 1 && diffH > 0 && !isReminderSent(v.id, '1h')) {
+          markReminderSent(v.id, '1h');
+          showToast('Visita en 1 hora: ' + clientLabel, 'warning');
+          sendBrowserNotification('BH — Visita en 1 hora', clientLabel + ' — ' + new Date(v.visit_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }), 'visit-1h-' + v.id);
+        } else if (diffH <= 24 && diffH > 1 && !isReminderSent(v.id, '24h')) {
+          markReminderSent(v.id, '24h');
+          showToast('Visita mañana: ' + clientLabel, 'info');
+          sendBrowserNotification('BH — Visita mañana', clientLabel + ' — ' + new Date(v.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }), 'visit-24h-' + v.id);
+        }
+
+        if (!soonestVisitDate || visitTime < soonestVisitDate) {
+          soonestVisitDate = visitTime;
+        }
+      });
+
+      updateAgendaBadge(visits.length, soonestVisitDate);
+    } catch (_) { /* silent — reminders are non-critical */ }
+  }
+
+  function updateAgendaBadge(count, soonestMs) {
+    const badge = $('#agendaReminderBadge');
+    if (!badge) return;
+    if (count === 0) {
+      badge.style.display = 'none';
+      return;
+    }
+    badge.style.display = 'inline-flex';
+    let label = count + ' visita' + (count !== 1 ? 's' : '') + ' próxim.';
+    if (soonestMs) {
+      const diffMs = soonestMs - Date.now();
+      const diffH = Math.round(diffMs / (1000 * 60 * 60));
+      if (diffH < 1) label += ' (<1h)';
+      else if (diffH === 1) label += ' (1h)';
+      else label += ' (' + diffH + 'h)';
+    }
+    badge.textContent = label;
+  }
+
+  function cleanupOldReminders() {
+    const prefix = 'bh_rem_';
+    const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        try {
+          const ts = parseInt(localStorage.getItem(key), 10);
+          if (!isNaN(ts) && ts < cutoff) localStorage.removeItem(key);
+        } catch (_) { /* ignore */ }
+      }
+    }
+  }
+
+  cleanupOldReminders();
+
+  // ── End Visit Reminder System ──────────────────────────────
+
   function showApp() {
     const loginScreen = $('#loginScreen');
     const appLayout = $('#appLayout');
@@ -364,6 +498,8 @@ function esc(s) {
     updateUserInfo();
     updateSidebarBadges();
     mlCheckStatus().catch(() => {});
+    requestNotificationPermission();
+    initVisitReminders();
     if (wasHidden) navigateTo('tab-dashboard');
   }
 
@@ -781,11 +917,12 @@ function esc(s) {
       const from = (_propPage - 1) * _propPageSize;
       const to = from + _propPageSize - 1;
 
-      const [propsRes, listingsRes] = await Promise.all([
+      const [propsRes, listingsRes, ownersRes] = await Promise.all([
         window.supabaseClient.from('properties').select('*').order('created_at', { ascending: false }).range(from, to),
         ml_connected
           ? window.supabaseClient.from('ml_listings').select('property_id, ml_listing_id, status')
           : Promise.resolve({ data: [] }),
+        window.supabaseClient.from('owners').select('id, full_name').order('full_name'),
       ]);
 
       const data = propsRes.data;
@@ -795,6 +932,17 @@ function esc(s) {
       const mlMap = {};
       (listingsRes.data || []).forEach(l => { if (l.property_id) mlMap[l.property_id] = l; });
 
+      const ownerMap = {};
+      (ownersRes.data || []).forEach(o => { ownerMap[o.id] = o.full_name; });
+
+      const ownerSelect = $('#propOwnerSelect');
+      if (ownerSelect) {
+        const currentVal = ownerSelect.value;
+        ownerSelect.innerHTML = '<option value="">Sin propietario asignado</option>' +
+          (ownersRes.data || []).map(o => `<option value="${esc(o.id)}">${esc(o.full_name)}</option>`).join('');
+        if (currentVal) ownerSelect.value = currentVal;
+      }
+
       // Update pagination UI
       const totalPages = Math.ceil(_propTotalCount / _propPageSize);
       if (pageInfo) pageInfo.textContent = `Página ${_propPage} de ${totalPages || 1}`;
@@ -802,7 +950,7 @@ function esc(s) {
       if (pageNext) pageNext.disabled = _propPage >= totalPages;
 
       if (!data?.length) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-dim);">No hay propiedades cargadas</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px; color:var(--text-dim);">No hay propiedades cargadas</td></tr>';
         return;
       }
 
@@ -845,6 +993,7 @@ function esc(s) {
           <td style="font-size:13px;">${p.rooms || '-'}</td>
           <td style="font-weight:600; color:var(--accent); font-size:13.5px;">${formatPrice(p.price_usd, p.price_currency)}</td>
           <td><span class="nav-badge" style="background:${p.status === 'venta' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${p.status === 'venta' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${esc(p.status || 'venta')}</span></td>
+          <td style="font-size:12px; color:${p.owner_id ? '#fff' : 'var(--text-dim)'};">${esc(ownerMap[p.owner_id] || '—')}</td>
           <td>
               <div style="display:flex; gap:4px; flex-wrap:wrap;">
                 <span class="nav-badge" style="background:${p.is_published ? 'rgba(0,200,120,0.15)' : 'rgba(255,255,255,0.06)'}; color:${p.is_published ? 'var(--success)' : 'var(--text-dim)'}; font-size:11px;">${p.is_published ? 'Publicada' : 'Borrador'}</span>
@@ -864,7 +1013,7 @@ function esc(s) {
       }).join('');
 } catch (err) {
       console.error('Error loading properties:', err);
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar propiedades</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar propiedades</td></tr>';
     }
 
     // Pagination controls
@@ -936,7 +1085,7 @@ function esc(s) {
       
       // Zod validation
       const validated = validateForm(PropertySchema, formData);
-      const { price_currency, ...rest } = validated;
+      const { price_currency, price_ars: _formArs, ...rest } = validated;
       
       let priceUsd;
       if (price_currency === 'ARS' && validated.price_ars > 0) {
@@ -954,6 +1103,7 @@ function esc(s) {
         price_usd: priceUsd,
         price_currency,
         area_m2: validated.surface_covered,
+        owner_id: validated.owner_id || null,
         created_by: currentUser?.id || null,
       };
 
@@ -1038,6 +1188,9 @@ function esc(s) {
         form.elements.is_oportunidad.checked = data.is_oportunidad || false;
         form.elements.video_url.value = data.video_url || '';
 
+        const ownerSel = $('#propOwnerSelect');
+        if (ownerSel) ownerSel.value = data.owner_id || '';
+
         // Trigger currency field toggle
         const currencySelect = document.getElementById('priceCurrencySelect');
         if (currencySelect) {
@@ -1098,6 +1251,36 @@ function esc(s) {
     return window.BH_Cloudinary.uploadImage(file, 'bienenhaus/properties');
   }
 
+  function computeLeadScore(lead) {
+    let score = 0;
+
+    const sourceScores = { walkin: 15, referido: 13, tasacion: 12, chat: 10, ml: 8, landing: 6, manual: 4 };
+    score += sourceScores[lead.source] || 4;
+
+    if (lead.budget_usd > 0) score += 5;
+    if (lead.budget_usd > 100000) score += 5;
+    if (lead.budget_usd > 300000) score += 5;
+    if (lead.budget_usd > 500000) score += 5;
+
+    if (lead.phone || lead.whatsapp) score += 5;
+    if (lead.email) score += 5;
+    if (lead.contact_name) score += 5;
+
+    if (lead.preferred_type) score += 4;
+    if (lead.preferred_zone) score += 4;
+    if (lead.preferred_rooms) score += 3;
+    if (lead.notes && lead.notes.length > 10) score += 5;
+    if (lead.tags && lead.tags.length > 0) score += 4;
+
+    const stageScores = { nuevo: 4, contactado: 8, visita: 14, oferta: 18, cerrado: 20, perdido: 2 };
+    score += stageScores[lead.stage] || 4;
+
+    if (lead.broker_id) score += 3;
+    if (lead.property_id) score += 2;
+
+    return Math.min(100, Math.max(0, score));
+  }
+
   /* ------------------------------------------------
      7. CRM — LEADS PIPELINE
      ------------------------------------------------ */
@@ -1138,9 +1321,11 @@ function esc(s) {
       /* Group by stage */
       const groups = { nuevo: [], contactado: [], visita: [], oferta: [], cerrado: [], perdido: [] };
       (leads || []).forEach(lead => {
+        lead.score = computeLeadScore(lead);
         const stage = lead.stage || 'nuevo';
         if (groups[stage]) groups[stage].push(lead);
       });
+      Object.values(groups).forEach(arr => arr.sort((a, b) => (b.score || 0) - (a.score || 0)));
 
       /* Map stages to columns */
       const columnMap = {
@@ -1163,18 +1348,18 @@ function esc(s) {
           return;
         }
 
-        var htmlParts = [];
+        const htmlParts = [];
         leadsArr.forEach(function(l) {
-          var leadVisits = visitsByLead[l.id] || [];
-          var upcomingVisit = leadVisits.find(function(v) { return v.status === 'pendiente' || v.status === 'confirmada'; });
-          var hasFutureVisit = !!upcomingVisit;
-          var showScheduleBtn = (l.stage === 'contactado' || l.stage === 'visita') && !hasFutureVisit;
+          const leadVisits = visitsByLead[l.id] || [];
+          const upcomingVisit = leadVisits.find(function(v) { return v.status === 'pendiente' || v.status === 'confirmada'; });
+          const hasFutureVisit = !!upcomingVisit;
+          const showScheduleBtn = (l.stage === 'contactado' || l.stage === 'visita') && !hasFutureVisit;
 
-          var visitInfo = '';
+          let visitInfo = '';
           if (upcomingVisit) {
-            var badgeColor = upcomingVisit.status === 'confirmada' ? 'rgba(0,200,120,0.2)' : 'rgba(255,184,0,0.2)';
-            var badgeTextColor = upcomingVisit.status === 'confirmada' ? 'var(--success)' : 'var(--warning)';
-            var visitDate = new Date(upcomingVisit.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+            const badgeColor = upcomingVisit.status === 'confirmada' ? 'rgba(0,200,120,0.2)' : 'rgba(255,184,0,0.2)';
+            const badgeTextColor = upcomingVisit.status === 'confirmada' ? 'var(--success)' : 'var(--warning)';
+            const visitDate = new Date(upcomingVisit.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
             visitInfo = '<div style="margin-top:6px; padding:6px 8px; background:rgba(31,200,195,0.08); border-radius:4px; font-size:11px; color:var(--accent); display:flex; align-items:center; gap:6px;">' +
               '<i class="fas fa-calendar-day"></i>' +
               '<span>' + esc(visitDate) + '</span>' +
@@ -1182,7 +1367,7 @@ function esc(s) {
               '</div>';
           }
 
-          var scheduleBtn = '';
+          let scheduleBtn = '';
           if (showScheduleBtn) {
             scheduleBtn = '<button class="btn-action" style="padding:4px 8px; font-size:10px; margin-top:8px; width:100%; background:rgba(31,200,195,0.15); color:var(--accent); border:1px solid var(--accent);" ' +
               'onclick="event.stopPropagation(); window.adminApp.openVisitModal({ lead_id: \'' + esc(l.id) + '\', client_name: \'' + esc(l.full_name) + '\', client_phone: \'' + esc(l.phone || l.whatsapp || '') + '\', property_id: \'' + esc(l.property_id || '') + '\' })">' +
@@ -1190,14 +1375,21 @@ function esc(s) {
               '</button>';
           }
 
-          var budgetHtml = l.budget_usd ? '<div style="color:var(--accent); font-size:12px; font-weight:500;">USD ' + l.budget_usd.toLocaleString('es-AR') + '</div>' : '';
-          var prefType = l.preferred_type ? l.preferred_type.charAt(0).toUpperCase() + l.preferred_type.slice(1) : '';
-          var prefZone = l.preferred_zone ? '· ' + esc(l.preferred_zone) : '';
-          var createdDate = new Date(l.created_at).toLocaleDateString('es-AR');
+          const budgetHtml = l.budget_usd ? '<div style="color:var(--accent); font-size:12px; font-weight:500;">USD ' + l.budget_usd.toLocaleString('es-AR') + '</div>' : '';
+          const prefType = l.preferred_type ? l.preferred_type.charAt(0).toUpperCase() + l.preferred_type.slice(1) : '';
+          const prefZone = l.preferred_zone ? '· ' + esc(l.preferred_zone) : '';
+          const createdDate = new Date(l.created_at).toLocaleDateString('es-AR');
 
-          var cardHtml =
+          const scoreVal = l.score || 0;
+          const scoreColor = scoreVal >= 80 ? 'rgba(239,68,68,0.2)' : scoreVal >= 50 ? 'rgba(255,184,0,0.2)' : 'rgba(255,255,255,0.06)';
+          const scoreTextColor = scoreVal >= 80 ? '#ef4444' : scoreVal >= 50 ? 'var(--warning)' : 'var(--text-dim)';
+
+          const cardHtml =
             '<div class="lead-card" style="background:var(--surface-2); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:14px; margin-bottom:10px; cursor:pointer;" onclick="window.adminApp.editLead(\'' + esc(l.id) + '\')">' +
-            '<div style="font-weight:600; color:#fff; font-size:13px; margin-bottom:4px;">' + esc(l.full_name || 'Sin nombre') + '</div>' +
+            '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">' +
+              '<div style="font-weight:600; color:#fff; font-size:13px;">' + esc(l.full_name || 'Sin nombre') + '</div>' +
+              '<span class="nav-badge" style="font-size:10px; background:' + scoreColor + '; color:' + scoreTextColor + '; font-weight:600; padding:2px 6px; border-radius:10px;">' + scoreVal + '</span>' +
+            '</div>' +
             '<div style="color:var(--text-dim); font-size:11px; margin-bottom:6px;">' + esc(prefType) + (prefZone ? ' · ' + esc(l.preferred_zone) : '') + '</div>' +
             (l.budget_usd ? '<div style="color:var(--accent); font-size:12px; font-weight:500;">USD ' + l.budget_usd.toLocaleString('es-AR') + '</div>' : '') +
             visitInfo +
@@ -1259,7 +1451,7 @@ function esc(s) {
         contact_preference: validated.contact_preference,
         preferred_rooms: validated.preferred_rooms,
         tags: validated.tags,
-        score: validated.score,
+        score: computeLeadScore(validated),
       };
 
       if (editingLeadId) {
@@ -1368,14 +1560,19 @@ function esc(s) {
     const pagePrev = $('#visitsPagePrev');
     const pageNext = $('#visitsPageNext');
     const pageSize = $('#visitsPageSize');
+    const visitsBrokerFilter = $('#visitsBrokerFilter');
+    const calBrokerFilter = $('#calBrokerFilter');
     if (!tbody) return;
     if (!window.supabaseClient) return;
 
+    /* Get selected broker filter */
+    const brokerFilter = (visitsBrokerFilter?.value || calBrokerFilter?.value || '').trim();
+
     try {
       /* Get total count for pagination */
-      const { count: totalCount, error: countError } = await window.supabaseClient
-        .from('visits')
-        .select('*', { count: 'exact', head: true });
+      let countQuery = window.supabaseClient.from('visits').select('*', { count: 'exact', head: true });
+       if (brokerFilter) countQuery = countQuery.eq('agent_id', brokerFilter);
+      const { count: totalCount, error: countError } = await countQuery;
       if (countError) throw countError;
       _visitsTotalCount = totalCount || 0;
 
@@ -1383,11 +1580,13 @@ function esc(s) {
       const to = from + _visitsPageSize - 1;
 
       /* JOIN con leads para mostrar nombre del lead y link a CRM */
-      const { data, error } = await window.supabaseClient
+      let dataQuery = window.supabaseClient
         .from('visits')
         .select('*, leads(id, full_name, stage)')
         .order('visit_date', { ascending: true })
         .range(from, to);
+      if (brokerFilter) dataQuery = dataQuery.eq('agent_id', brokerFilter);
+      const { data, error } = await dataQuery;
 
       if (error) throw error;
 
@@ -1452,11 +1651,13 @@ function esc(s) {
     if (monthEl) monthEl.textContent = monthNames[calCurrentDate.getMonth()] + ' ' + calCurrentDate.getFullYear();
 
     const statusFilter = $('#calStatusFilter')?.value || '';
+    const brokerFilter = $('#calBrokerFilter')?.value || '';
     const monthVisits = visitsCache.filter(v => {
       if (!v.visit_date) return false;
       const d = new Date(v.visit_date);
       if (d.getFullYear() !== calCurrentDate.getFullYear() || d.getMonth() !== calCurrentDate.getMonth()) return false;
       if (statusFilter && v.status !== statusFilter) return false;
+      if (brokerFilter && v.agent_id !== brokerFilter) return false;
       return true;
     });
 
@@ -1578,6 +1779,55 @@ let dayCount = 1;
   $('#calStatusFilter')?.addEventListener('change', function() {
     renderCalendar();
   });
+  $('#calBrokerFilter')?.addEventListener('change', function() {
+    renderCalendar();
+    loadVisits(); // Also refresh table with same filter
+  });
+  $('#visitsBrokerFilter')?.addEventListener('change', function() {
+    _visitsPage = 1;
+    loadVisits();
+  });
+
+  /* Populate broker filters on load */
+  async function populateBrokerFilters() {
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('agents')
+        .select('id, full_name')
+        .eq('status', 'activo')
+        .order('full_name');
+      if (error) throw error;
+      const brokers = data || [];
+      const calFilter = $('#calBrokerFilter');
+      const tableFilter = $('#visitsBrokerFilter');
+      if (calFilter) {
+        const current = calFilter.value;
+        calFilter.innerHTML = '<option value="">Todos los brokers</option>';
+        brokers.forEach(b => {
+          const opt = document.createElement('option');
+          opt.value = b.id;
+          opt.textContent = b.full_name;
+          calFilter.appendChild(opt);
+        });
+        if (current) calFilter.value = current;
+      }
+      if (tableFilter) {
+        const current = tableFilter.value;
+        tableFilter.innerHTML = '<option value="">Todos los brokers</option>';
+        brokers.forEach(b => {
+          const opt = document.createElement('option');
+          opt.value = b.id;
+          opt.textContent = b.full_name;
+          tableFilter.appendChild(opt);
+        });
+        if (current) tableFilter.value = current;
+      }
+    } catch (_) { /* silent */ }
+  }
+
+  /* Call populate on module init */
+  populateBrokerFilters();
 
   function visitRowHtml(v) {
     const dateStr = v.visit_date
@@ -1590,17 +1840,52 @@ let dayCount = 1;
          </button>`
       : '<span style="color:var(--text-dim); font-size:12px;">—</span>';
 
+    let countdownHtml = '';
+    if ((v.status === 'pendiente' || v.status === 'confirmada') && v.visit_date) {
+      const diffMs = new Date(v.visit_date).getTime() - Date.now();
+      if (diffMs > 0) {
+        const diffH = diffMs / (1000 * 60 * 60);
+        const diffM = diffMs / (1000 * 60);
+        let label, color, bg;
+        if (diffH < 1) { label = Math.round(diffM) + 'min'; color = '#ef4444'; bg = 'rgba(239,68,68,0.15)'; }
+        else if (diffH < 24) { label = Math.round(diffH) + 'h'; color = '#FFB800'; bg = 'rgba(255,184,0,0.15)'; }
+        else { label = Math.round(diffH / 24) + 'd'; color = 'var(--accent)'; bg = 'rgba(31,200,195,0.15)'; }
+        countdownHtml = `<span class="nav-badge" style="font-size:10px; background:${bg}; color:${color}; margin-left:6px; padding:2px 6px; border-radius:8px;"><i class="fas fa-clock" style="margin-right:3px;"></i>${label}</span>`;
+      }
+    }
+
+    /* Check-in / Check-out buttons for pending/confirmed visits */
+    let checkinHtml = '';
+    if ((v.status === 'pendiente' || v.status === 'confirmada') && !v.check_in) {
+      checkinHtml = `<button class="btn-action" title="Marcar llegada" onclick="window.adminApp.checkinVisit('${v.id}')" style="background:rgba(0,200,120,0.15); color:var(--success);"><i class="fas fa-sign-in-alt"></i></button>`;
+    } else if (v.check_in && !v.check_out) {
+      checkinHtml = `<button class="btn-action" title="Marcar salida" onclick="window.adminApp.checkoutVisit('${v.id}')" style="background:rgba(31,200,195,0.15); color:var(--accent);"><i class="fas fa-sign-out-alt"></i></button>`;
+    }
+
+    /* Show check-in/out times if set */
+    let checkinTimeHtml = '';
+    if (v.check_in) {
+      const ci = new Date(v.check_in).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+      checkinTimeHtml = `<div style="font-size:11px; color:var(--success);"><i class="fas fa-sign-in-alt"></i> ${ci}</div>`;
+    }
+    if (v.check_out) {
+      const co = new Date(v.check_out).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+      checkinTimeHtml += `<div style="font-size:11px; color:var(--accent);"><i class="fas fa-sign-out-alt"></i> ${co}</div>`;
+    }
+
     return `
       <tr>
         <td style="font-size:13px;">${dateStr}</td>
         <td style="font-size:13px; font-weight:500;">${esc(v.client_name || 'Sin cliente')}</td>
         <td style="font-size:13px; color:var(--text-dim);">${leadLink}</td>
         <td style="font-size:13px; color:var(--text-dim);">${v.property_id ? '✓' : '—'}</td>
-        <td><span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : v.status === 'completada' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : v.status === 'completada' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${esc(v.status || 'pendiente')}</span></td>
+        <td><span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : v.status === 'completada' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : v.status === 'completada' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${esc(v.status || 'pendiente')}</span>${countdownHtml}</td>
         <td style="font-size:12px; color:var(--text-dim);">${v.lead_id ? '✓' : '—'}</td>
         <td>
-          <div style="display:flex; gap:6px;">
+          <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
             <button class="btn-action" title="Editar" onclick="window.adminApp.editVisit('${v.id}')"><i class="fas fa-pen"></i></button>
+            ${checkinHtml}
+            ${checkinTimeHtml}
             <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteVisit('${v.id}')"><i class="fas fa-trash"></i></button>
           </div>
         </td>
@@ -1647,6 +1932,9 @@ let dayCount = 1;
     const oldInfo = $('#visitLeadInfo');
     if (oldInfo) oldInfo.remove();
 
+    /* Cargar brokers en el dropdown */
+    loadBrokersForVisit();
+
     /* Pre-llenar desde CRM */
     if (prefill.visit_date) {
       const d = new Date(prefill.visit_date);
@@ -1661,19 +1949,51 @@ let dayCount = 1;
       const el = document.querySelector('#visitForm [name="client_phone"]');
       if (el) el.value = prefill.client_phone;
     }
+    if (prefill.client_email) {
+      const el = document.querySelector('#visitForm [name="client_email"]');
+      if (el) el.value = prefill.client_email;
+    }
+    if (prefill.duration_minutes) {
+      const el = document.querySelector('#visitForm [name="duration_minutes"]');
+      if (el) el.value = prefill.duration_minutes;
+    }
+    if (prefill.agent_id) {
+      const el = document.querySelector('#visitForm [name="agent_id"]');
+      if (el) el.value = prefill.agent_id;
+    }
     if (prefill.property_id) {
       const el = document.querySelector('#visitForm [name="property_id"]');
       if (el) el.value = prefill.property_id;
     }
     if (prefill.lead_id) {
-      /* El selector se creará en editVisit al abrir modal, pero para nueva visita
-         necesitamos setear el lead_id después de que se cree el selector.
-         Usamos un flag temporal. */
       window._pendingLeadId = prefill.lead_id;
     }
 
     openModal('visitModal');
   };
+
+  async function loadBrokersForVisit() {
+    const select = $('#visitBrokerSelect');
+    if (!select) return;
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('agents')
+        .select('id, full_name')
+        .eq('status', 'activo')
+        .order('full_name');
+      if (error) throw error;
+      const currentValue = select.value;
+      select.innerHTML = '<option value="">— Seleccionar broker —</option>';
+      (data || []).forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.id;
+        opt.textContent = b.full_name;
+        select.appendChild(opt);
+      });
+      if (currentValue) select.value = currentValue;
+    } catch (_) { /* silent */ }
+  }
 
   /* Save visit */
   let _submittingVisit = false;
@@ -1704,9 +2024,39 @@ let dayCount = 1;
         notes: validated.notes,
         lead_id: validated.lead_id,
         property_id: validated.property_id,
-        broker_id: validated.broker_id,
+        agent_id: validated.agent_id,
         duration_minutes: validated.duration_minutes,
       };
+
+      /* Conflict detection: same broker, overlapping time */
+      if (data.agent_id && data.visit_date && data.duration_minutes) {
+        const visitStart = new Date(data.visit_date).getTime();
+        const visitEnd = visitStart + data.duration_minutes * 60 * 1000;
+        const { data: conflicts, error: conflictError } = await window.supabaseClient
+          .from('visits')
+          .select('id, client_name, visit_date, duration_minutes')
+          .eq('agent_id', data.agent_id)
+          .in('status', ['pendiente', 'confirmada'])
+          .neq('id', editingVisitId || '00000000-0000-0000-0000-000000000000');
+        if (!conflictError && conflicts?.length) {
+          const hasOverlap = conflicts.some(c => {
+            const cStart = new Date(c.visit_date).getTime();
+            const cEnd = cStart + (c.duration_minutes || 60) * 60 * 1000;
+            return visitStart < cEnd && visitEnd > cStart;
+          });
+          if (hasOverlap) {
+            const conflict = conflicts.find(c => {
+              const cStart = new Date(c.visit_date).getTime();
+              const cEnd = cStart + (c.duration_minutes || 60) * 60 * 1000;
+              return visitStart < cEnd && visitEnd > cStart;
+            });
+            if (conflict) {
+              showToast(`Conflicto: ${conflict.client_name} ya tiene visita en ese horario`, 'warning');
+              return;
+            }
+          }
+        }
+      }
 
       const newStatus = data.status;
       const newLeadId = data.lead_id;
@@ -1717,9 +2067,18 @@ let dayCount = 1;
         if (error) throw error;
         showToast('Visita actualizada', 'success');
       } else {
-        const { error } = await window.supabaseClient.from('visits').insert([data]);
+        /* Generate confirmation_token for new visit */
+        const confirmation_token = crypto.randomUUID();
+        const insertData = { ...data, confirmation_token };
+        const { data: inserted, error } = await window.supabaseClient.from('visits').insert([insertData]).select('id').single();
         if (error) throw error;
         showToast('Visita agendada', 'success');
+        /* Show confirmation link */
+        if (inserted?.id && data.client_email) {
+          const confirmUrl = `${window.location.origin}/confirmar-visita.html?token=${confirmation_token}`;
+          showToast(`Link de confirmación: ${confirmUrl} (copiado al portapapeles)`, 'info', 8000);
+          navigator.clipboard.writeText(confirmUrl).catch(() => {});
+        }
       }
 
       /* Prompt: visita completada → mover lead a Oferta */
@@ -1738,8 +2097,27 @@ let dayCount = 1;
                 .update({ stage: 'oferta', updated_at: new Date().toISOString() })
                 .eq('id', newLeadId);
               showToast('Lead movido a Oferta / Cierre', 'success');
-}
-  }
+            }
+          }
+        } catch (_) {}
+      }
+
+      /* Si se asignó lead_id nuevo (era NULL) → el trigger DB actualizará lead a "visita" */
+      /* Si se quitó lead_id (era valor → NULL) → no hacemos nada en lead */
+
+      closeModal('visitModal');
+      /* Limpiar flag pendiente */
+      delete window._pendingLeadId;
+      loadVisits();
+      loadCRM(); // Refrescar CRM por si cambió stage
+      updateSidebarBadges();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    } finally {
+      _submittingVisit = false;
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Confirmar Cita'; }
+    }
+  });
 
   // ============================================================
   // ANOMALÍAS ESTADÍSTICAS
@@ -1941,25 +2319,7 @@ let dayCount = 1;
       openModal('anomDetailModal');
     } catch (err) { showToast('Error: ' + err.message, 'error'); }
   };
-        } catch (_) {}
-      }
 
-      /* Si se asignó lead_id nuevo (era NULL) → el trigger DB actualizará lead a "visita" */
-      /* Si se quitó lead_id (era valor → NULL) → no hacemos nada en lead */
-
-      closeModal('visitModal');
-      /* Limpiar flag pendiente */
-      delete window._pendingLeadId;
-      loadVisits();
-      loadCRM(); // Refrescar CRM por si cambió stage
-      updateSidebarBadges();
-    } catch (err) {
-      showToast('Error: ' + err.message, 'error');
-    } finally {
-      _submittingVisit = false;
-      if (btn) { btn.disabled = false; btn.innerHTML = 'Confirmar Cita'; }
-    }
-  });
 
 /* Edit visit */
   window.adminApp.editVisit = async function (id) {
@@ -1976,6 +2336,9 @@ let dayCount = 1;
       const lead = data.leads;
 
       if (form) {
+        /* Cargar brokers en dropdown existente */
+        await loadBrokersForVisit();
+
         if (data.visit_date) {
           const d = new Date(data.visit_date);
           form.elements.visit_date.value = d.toISOString().slice(0, 16);
@@ -1983,6 +2346,9 @@ let dayCount = 1;
         form.elements.status.value = data.status || 'pendiente';
         form.elements.client_name.value = data.client_name || '';
         form.elements.client_phone.value = data.client_phone || '';
+        form.elements.client_email.value = data.client_email || '';
+        form.elements.duration_minutes.value = data.duration_minutes || 60;
+        form.elements.agent_id.value = data.agent_id || '';
         form.elements.notes.value = data.notes || '';
 
         /* Lead selector para vincular/desvincular */
@@ -2075,6 +2441,150 @@ let dayCount = 1;
     }
   };
 
+  /* Check-in / Check-out */
+  window.adminApp.checkinVisit = async function (id) {
+    try {
+      const { error } = await window.supabaseClient
+        .from('visits')
+        .update({ check_in: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
+      showToast('Llegada registrada', 'success');
+      loadVisits();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  };
+
+  window.adminApp.checkoutVisit = async function (id) {
+    try {
+      const { error } = await window.supabaseClient
+        .from('visits')
+        .update({ check_out: new Date().toISOString() })
+        .eq('id', id);
+      if (error) throw error;
+      showToast('Salida registrada', 'success');
+      loadVisits();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  };
+
+  /* Export ICS / CSV */
+  function generateICS(visits) {
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//BIENENHAUS//Agenda de Visitas//ES',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH'
+    ];
+    visits.forEach(v => {
+      const dtStart = new Date(v.visit_date).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+      const dtEnd = new Date(new Date(v.visit_date).getTime() + (v.duration_minutes || 60) * 60 * 1000)
+        .toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+      const uid = v.id + '@bienenhaus.com.ar';
+      const summary = 'Visita: ' + (v.client_name || 'Sin cliente');
+      const description = [
+        'Cliente: ' + (v.client_name || 'Sin cliente'),
+        'Teléfono: ' + (v.client_phone || '—'),
+        'Email: ' + (v.client_email || '—'),
+        'Broker: ' + (v.agents?.full_name || 'Por asignar'),
+        'Estado: ' + (v.status || 'pendiente'),
+        v.notes ? 'Notas: ' + v.notes : ''
+      ].filter(Boolean).join('\\n');
+      const location = v.property_id ? 'Propiedad asignada' : 'Por confirmar';
+      lines.push(
+        'BEGIN:VEVENT',
+        'UID:' + uid,
+        'DTSTAMP:' + new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z',
+        'DTSTART:' + dtStart,
+        'DTEND:' + dtEnd,
+        'SUMMARY:' + summary,
+        'DESCRIPTION:' + description,
+        'LOCATION:' + location,
+        'STATUS:' + (v.status === 'confirmada' ? 'CONFIRMED' : v.status === 'cancelada' ? 'CANCELLED' : 'TENTATIVE'),
+        'END:VEVENT'
+      );
+    });
+    lines.push('END:VCALENDAR');
+    return lines.join('\r\n');
+  }
+
+  function generateCSV(visits) {
+    const headers = ['Fecha', 'Hora', 'Cliente', 'Teléfono', 'Email', 'Broker', 'Estado', 'Propiedad', 'Lead', 'Notas', 'Check-in', 'Check-out'];
+    const rows = visits.map(v => {
+      const d = v.visit_date ? new Date(v.visit_date) : null;
+      const fecha = d ? d.toLocaleDateString('es-AR') : '';
+      const hora = d ? d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
+      const checkin = v.check_in ? new Date(v.check_in).toLocaleTimeString('es-AR') : '';
+      const checkout = v.check_out ? new Date(v.check_out).toLocaleTimeString('es-AR') : '';
+      return [
+        fecha,
+        hora,
+        v.client_name || '',
+        v.client_phone || '',
+        v.client_email || '',
+        v.agents?.full_name || '',
+        v.status || '',
+        v.property_id ? 'Sí' : 'No',
+        v.leads?.full_name || '',
+        (v.notes || '').replace(/\n/g, ' '),
+        checkin,
+        checkout
+      ].map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',');
+    });
+    return [headers.join(','), ...rows].join('\n');
+  }
+
+  window.adminApp.exportVisitsICS = async function() {
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('visits')
+        .select('*, agents(full_name), leads(full_name)')
+        .order('visit_date', { ascending: true });
+      if (error) throw error;
+      const ics = generateICS(data || []);
+      const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'agenda-visitas-' + new Date().toISOString().slice(0,10) + '.ics';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Archivo .ics descargado', 'success');
+    } catch (err) {
+      showToast('Error exportando ICS: ' + err.message, 'error');
+    }
+  };
+
+  window.adminApp.exportVisitsCSV = async function() {
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('visits')
+        .select('*, agents(full_name), leads(full_name)')
+        .order('visit_date', { ascending: true });
+      if (error) throw error;
+      const csv = generateCSV(data || []);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'agenda-visitas-' + new Date().toISOString().slice(0,10) + '.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Archivo .csv descargado', 'success');
+    } catch (err) {
+      showToast('Error exportando CSV: ' + err.message, 'error');
+    }
+  };
+
+  /* Event listeners for export buttons */
+  $('#btnExportICS')?.addEventListener('click', window.adminApp.exportVisitsICS);
+  $('#btnExportCSV')?.addEventListener('click', window.adminApp.exportVisitsCSV);
+
   /* ------------------------------------------------
      9. CMS EDITOR
      ------------------------------------------------ */
@@ -2094,6 +2604,20 @@ let dayCount = 1;
     stat1_val:     { section: 'stats', path: 'properties_sold' },
     stat1_title:   { section: 'stats', path: 'stat1_label' },
     proc_title:    { section: 'process', path: 'title' }
+  };
+
+  const SECTION_ID_TO_DB_KEY = {
+    hero: 'hero',
+    catalogo: 'catalog',
+    servicios: 'services',
+    equipo: 'team',
+    stats: 'stats',
+    proceso: 'process',
+    contacto: 'contact',
+    formulario: 'form',
+    navbar: 'navbar',
+    footer: 'footer',
+    seo: 'seo'
   };
 
   async function loadCMS() {
@@ -2123,6 +2647,16 @@ let dayCount = 1;
       if (mapping && cmsData[mapping.section]) {
         const content = cmsData[mapping.section].content || {};
         input.value = content[mapping.path] || '';
+        return;
+      }
+      const sectionEl = input.closest('.cms-section-content');
+      if (sectionEl) {
+        const domId = sectionEl.id.replace('cms-', '');
+        const dbSection = SECTION_ID_TO_DB_KEY[domId];
+        if (dbSection && cmsData[dbSection]) {
+          const content = cmsData[dbSection].content || {};
+          input.value = content[key] || '';
+        }
       }
     });
     if (heroBgHidden?.value && heroBgPreview) {
@@ -2151,9 +2685,20 @@ let dayCount = 1;
       fields.forEach(field => {
         const key = field.dataset.key;
         const mapping = CMS_FIELD_MAP[key];
-        if (!mapping) return;
-        if (!updatesBySection[mapping.section]) updatesBySection[mapping.section] = {};
-        updatesBySection[mapping.section][mapping.path] = field.value;
+        if (mapping) {
+          if (!updatesBySection[mapping.section]) updatesBySection[mapping.section] = {};
+          updatesBySection[mapping.section][mapping.path] = field.value;
+          return;
+        }
+        const sectionEl = field.closest('.cms-section-content');
+        if (sectionEl) {
+          const domId = sectionEl.id.replace('cms-', '');
+          const dbSection = SECTION_ID_TO_DB_KEY[domId];
+          if (dbSection) {
+            if (!updatesBySection[dbSection]) updatesBySection[dbSection] = {};
+            updatesBySection[dbSection][key] = field.value;
+          }
+        }
       });
 
       const sectionEntries = Object.entries(updatesBySection);
@@ -2362,8 +2907,8 @@ let dayCount = 1;
     if (!window.supabaseClient) return;
     try {
       const [{ data: rows, error }, prefRes, zernioRes] = await Promise.all([
-        window.supabaseClient.from('site_content').select('*').in('section_key', ['contact', 'footer', 'social']),
-        window.supabaseClient.from('app_settings').select('*'),
+        window.supabaseClient.from('site_content').select('section_key, content').in('section_key', ['contact', 'footer', 'social']),
+        window.supabaseClient.from('app_settings').select('key, value'),
         window.supabaseClient.from('zernio_config').select('value').eq('key', 'api_key').maybeSingle()
       ]);
       if (error) throw error;
@@ -2535,7 +3080,7 @@ let dayCount = 1;
       if (error) throw error;
 
       if (!data?.length) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-dim);">No hay agentes cargados</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">No hay agentes cargados</td></tr>';
         return;
       }
 
@@ -2551,7 +3096,9 @@ let dayCount = 1;
             </div>
           </td>
           <td style="font-size:13px;">${esc(a.matricula || '-')}</td>
-          <td><span class="nav-badge" style="background:${a.status === 'activo' ? 'rgba(0,200,120,0.15)' : 'rgba(255,255,255,0.06)'}; color:${a.status === 'activo' ? 'var(--success)' : 'var(--text-dim)'}; font-size:11px;">${esc(a.status || 'activo')}</span></td>
+          <td style="font-size:12px;">${(a.specialties && a.specialties.length) ? a.specialties.map(s => `<span class="nav-badge" style="background:rgba(16,185,129,0.12); color:#10b981; font-size:10px; margin-right:3px;">${esc(s)}</span>`).join('') : '<span style="color:var(--text-dim);">—</span>'}</td>
+          <td style="font-size:13px; color:var(--accent);">${a.commission_rate != null ? esc(a.commission_rate + '%') : '3%'}</td>
+          <td><span class="nav-badge" style="background:${a.status === 'activo' ? 'rgba(0,200,120,0.15)' : a.status === 'vacaciones' ? 'rgba(255,184,0,0.15)' : 'rgba(255,255,255,0.06)'}; color:${a.status === 'activo' ? 'var(--success)' : a.status === 'vacaciones' ? 'var(--warning)' : 'var(--text-dim)'}; font-size:11px;">${esc(a.status || 'activo')}</span></td>
           <td style="font-size:13px;">${esc(a.phone || '-')}</td>
           <td>
             <div style="display:flex; gap:6px;">
@@ -2588,15 +3135,15 @@ let dayCount = 1;
       
       // Zod validation
       const validated = validateForm(AgentSchema, formData);
+      const specialtiesSel = e.target.elements.specialties;
       const data = {
         full_name: validated.full_name,
         email: validated.email,
         phone: validated.phone,
-        license_number: validated.license_number,
-        license_expiry: validated.license_expiry,
-        commission_sale: validated.commission_sale,
-        commission_rent: validated.commission_rent,
-        permissions: validated.permissions,
+        matricula: validated.matricula,
+        bio: validated.bio,
+        commission_rate: validated.commission_rate,
+        specialties: specialtiesSel ? Array.from(specialtiesSel.selectedOptions).map(o => o.value) : [],
         status: validated.status,
       };
 
@@ -2640,7 +3187,13 @@ let dayCount = 1;
         form.elements.phone.value = data.phone || '';
         form.elements.matricula.value = data.matricula || '';
         form.elements.bio.value = data.bio || '';
+        form.elements.commission_rate.value = data.commission_rate ?? 3;
         form.elements.status.value = data.status || 'activo';
+        if (form.elements.specialties && data.specialties) {
+          Array.from(form.elements.specialties.options).forEach(opt => {
+            opt.selected = (data.specialties || []).includes(opt.value);
+          });
+        }
       }
       const title = $('#agentModalTitle');
       if (title) title.textContent = 'Editar Agente';
@@ -2677,6 +3230,7 @@ let dayCount = 1;
       const { data: owners, error } = await window.supabaseClient
         .from('owners')
         .select('*')
+        .is('deleted_at', null)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -2703,12 +3257,57 @@ let dayCount = 1;
       const exclusiveValue = (owners || [])
         .filter(o => o.exclusive)
         .reduce((sum, o) => sum + (ownerPublishedValue[o.id] || 0), 0);
+
+      /* Expiring exclusivities (next 30 days) */
+      const now = new Date();
+      const in30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const expiringSoon = (owners || []).filter(o => o.exclusive && o.exclusive_end && new Date(o.exclusive_end) <= in30 && new Date(o.exclusive_end) >= now).length;
+      const expiredExcl = (owners || []).filter(o => o.exclusive && o.exclusive_end && new Date(o.exclusive_end) < now).length;
+
+      /* DNI/CUIT expiry alerts (next 90 days) */
+      const in90 = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+      const dniExpiring = (owners || []).filter(o => o.dni_expiry && new Date(o.dni_expiry) <= in90 && new Date(o.dni_expiry) >= now).length;
+      const dniExpired = (owners || []).filter(o => o.dni_expiry && new Date(o.dni_expiry) < now).length;
+      const cuitExpiring = (owners || []).filter(o => o.cuit_expiry && new Date(o.cuit_expiry) <= in90 && new Date(o.cuit_expiry) >= now).length;
+      const cuitExpired = (owners || []).filter(o => o.cuit_expiry && new Date(o.cuit_expiry) < now).length;
+
       setKPI('ownerKpiTotal', totalCount);
       setKPI('ownerKpiValue', 'USD ' + formatNumber(exclusiveValue));
-      setKPI('ownerKpiExpiring', exclusiveCount);
+      setKPI('ownerKpiExpiring', expiringSoon + expiredExcl);
+
+      /* Update sidebar badge for expiring exclusivities + DNI/CUIT */
+      const exclBadge = $('#sideBadgeOwners');
+      const totalDocAlerts = dniExpiring + dniExpired + cuitExpiring + cuitExpired;
+      const totalAlerts = expiringSoon + expiredExcl + totalDocAlerts;
+      if (exclBadge) {
+        if (totalAlerts > 0) {
+          exclBadge.textContent = (owners || []).length + ' Activos · ' + totalAlerts + ' alertas';
+          exclBadge.style.color = 'var(--warning)';
+        } else {
+          exclBadge.textContent = (owners || []).length + ' Activos';
+          exclBadge.style.color = '';
+        }
+      }
+
+      /* Show DNI/CUIT alerts in dashboard if any */
+      const docAlertEl = $('#ownerDocAlert');
+      if (docAlertEl && totalDocAlerts > 0) {
+        docAlertEl.style.display = 'flex';
+        docAlertEl.innerHTML = `
+          <i class="fas fa-id-card"></i>
+          <div>
+            <h4>⚠️ Documentos por vencer</h4>
+            <p>${dniExpiring + cuitExpiring} DNI/CUIT vencen en ≤90 días${dniExpired + cuitExpired > 0 ? ' · ' + (dniExpired + cuitExpired) + ' vencidos' : ''}.</p>
+          </div>
+        `;
+      } else if (docAlertEl) {
+        docAlertEl.style.display = 'none';
+      }
 
       if (!owners?.length) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-dim);">No hay propietarios cargados</td></tr>';
+        updateCommissionsKPI();
+        loadCommissionDashboard();
         return;
       }
 
@@ -2740,7 +3339,427 @@ let dayCount = 1;
     } catch (err) {
       console.error('Owners error:', err);
     }
+    /* Update commission KPI and load dashboard */
+    updateCommissionsKPI();
+    loadCommissionDashboard();
   }
+
+  /* Commission KPI - sum of pending commissions */
+  async function updateCommissionsKPI() {
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('commissions')
+        .select('commission_amount_usd')
+        .eq('status', 'pendiente');
+      if (error) throw error;
+      const total = (data || []).reduce((sum, c) => sum + (c.commission_amount_usd || 0), 0);
+      const el = $('#ownerKpiCommissions');
+      if (el) el.textContent = total > 0 ? 'USD ' + formatNumber(total) : 'USD 0';
+    } catch (_) { /* silent */ }
+  }
+
+  /* Commission Dashboard */
+  async function loadCommissionDashboard() {
+    if (!window.supabaseClient) return;
+
+    /* Populate filter dropdowns */
+    await populateCommissionFilters();
+
+    /* Load all three tabs */
+    await loadPendingCommissions();
+    await loadLiquidations();
+    await loadPayments();
+  }
+
+  async function populateCommissionFilters() {
+    if (!window.supabaseClient) return;
+    try {
+      const [brokersRes, ownersRes] = await Promise.all([
+        window.supabaseClient.from('agents').select('id, full_name').eq('status', 'activo').order('full_name'),
+        window.supabaseClient.from('owners').select('id, full_name').is('deleted_at', null).order('full_name')
+      ]);
+      const brokers = brokersRes.data || [];
+      const owners = ownersRes.data || [];
+
+      const brokerFilter = $('#commFilterBroker');
+      const ownerFilter = $('#commFilterOwner');
+      if (brokerFilter) {
+        const cur = brokerFilter.value;
+        brokerFilter.innerHTML = '<option value="">Todos los Brokers</option>';
+        brokers.forEach(b => { const o = document.createElement('option'); o.value = b.id; o.textContent = b.full_name; brokerFilter.appendChild(o); });
+        if (cur) brokerFilter.value = cur;
+      }
+      if (ownerFilter) {
+        const cur = ownerFilter.value;
+        ownerFilter.innerHTML = '<option value="">Todos los Propietarios</option>';
+        owners.forEach(o => { const opt = document.createElement('option'); opt.value = o.id; opt.textContent = o.full_name; ownerFilter.appendChild(opt); });
+        if (cur) ownerFilter.value = cur;
+      }
+    } catch (_) { /* silent */ }
+  }
+
+  async function loadPendingCommissions() {
+    const body = $('#commPendingBody');
+    if (!body) return;
+    if (!window.supabaseClient) return;
+
+    const broker = $('#commFilterBroker')?.value || '';
+    const owner = $('#commFilterOwner')?.value || '';
+    const status = $('#commFilterStatus')?.value || '';
+
+    try {
+      let query = window.supabaseClient
+        .from('commissions')
+        .select('*, owners(full_name), properties(property_code, title), agents(full_name)')
+        .order('created_at', { ascending: false });
+      if (broker) query = query.eq('broker_id', broker);
+      if (owner) query = query.eq('owner_id', owner);
+      if (status) query = query.eq('status', status);
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      if (!data?.length) {
+        body.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:40px; color:var(--text-dim);">Sin comisiones</td></tr>';
+        return;
+      }
+
+      body.innerHTML = data.map(c => {
+        const statusClass = c.status === 'pendiente' ? 'comm-pendiente' : c.status === 'liquidada' ? 'comm-liquidada' : c.status === 'pagada' ? 'comm-pagada' : '';
+        const statusLabel = { pendiente: 'Pendiente', liquidada: 'Liquidada', pagada: 'Pagada', cancelada: 'Cancelada' }[c.status] || c.status;
+        const netArs = c.net_amount_ars || (c.commission_amount_ars - (c.iibb_amount_ars || 0) - (c.ganancias_amount_ars || 0));
+        return `
+          <tr>
+            <td>${esc(c.owners?.full_name || '—')}</td>
+            <td>${esc(c.properties?.title || c.properties?.property_code || '—')}</td>
+            <td>${esc(c.agents?.full_name || '—')}</td>
+            <td>${esc(c.operation_type === 'venta' ? 'Venta' : 'Alquiler')}</td>
+            <td>USD ${(c.commission_amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+            <td>${c.iibb_rate || 0}%</td>
+            <td>${c.ganancias_rate || 0}%</td>
+            <td class="price-cell">${formatNumber(netArs)}</td>
+            <td>${c.due_date ? new Date(c.due_date).toLocaleDateString('es-AR') : '—'}</td>
+            <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+            <td>
+              <button class="btn-action" title="Marcar pagada" onclick="window.adminApp.markCommissionPaid('${c.id}')" style="${c.status === 'pagada' ? 'display:none' : ''}"><i class="fas fa-check"></i></button>
+              <button class="btn-action" title="Ver liquidación" onclick="window.adminApp.viewCommissionLiquidation('${c.id}')"><i class="fas fa-eye"></i></button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    } catch (err) {
+      console.error('Pending commissions error:', err);
+      body.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:40px; color:var(--danger);">Error cargando comisiones</td></tr>';
+    }
+  }
+
+  async function loadLiquidations() {
+    const body = $('#commLiquidationsBody');
+    if (!body) return;
+    if (!window.supabaseClient) return;
+
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('commission_liquidations')
+        .select('*, agents(full_name), owners(full_name)')
+        .order('period_start', { ascending: false });
+      if (error) throw error;
+
+      if (!data?.length) {
+        body.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px; color:var(--text-dim);">Sin liquidaciones</td></tr>';
+        return;
+      }
+
+      body.innerHTML = data.map(l => `
+        <tr>
+          <td>${new Date(l.period_start).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</td>
+          <td>${esc(l.agents?.full_name || '—')}</td>
+          <td>${esc(l.owners?.full_name || '—')}</td>
+          <td>USD ${(l.gross_commission_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+          <td>${formatNumber(l.iibb_retention_ars || 0)}</td>
+          <td>${formatNumber(l.ganancias_retention_ars || 0)}</td>
+          <td class="price-cell">${formatNumber(l.net_amount_ars || 0)}</td>
+          <td><span class="status-badge ${l.status === 'pagada' ? 'status-vigente' : l.status === 'confirmada' ? 'status-por-vencer' : ''}">${esc(l.status)}</span></td>
+          <td>
+            <button class="btn-action" title="Ver PDF" onclick="window.adminApp.viewLiquidationPDF('${l.id}')"><i class="fas fa-file-pdf"></i></button>
+            <button class="btn-action" title="Marcar pagada" onclick="window.adminApp.markLiquidationPaid('${l.id}')" style="${l.status === 'pagada' ? 'display:none' : ''}"><i class="fas fa-check"></i></button>
+          </td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      console.error('Liquidations error:', err);
+      body.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px; color:var(--danger);">Error cargando liquidaciones</td></tr>';
+    }
+  }
+
+  async function loadPayments() {
+    const body = $('#commPaymentsBody');
+    if (!body) return;
+    if (!window.supabaseClient) return;
+
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('commission_payments')
+        .select('*, agents(full_name), owners(full_name)')
+        .order('payment_date', { ascending: false });
+      if (error) throw error;
+
+      if (!data?.length) {
+        body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">Sin pagos registrados</td></tr>';
+        return;
+      }
+
+      body.innerHTML = data.map(p => `
+        <tr>
+          <td>${new Date(p.payment_date).toLocaleDateString('es-AR')}</td>
+          <td>${esc(p.agents?.full_name || '—')}</td>
+          <td>${esc(p.owners?.full_name || '—')}</td>
+          <td class="price-cell">${formatNumber(p.amount_ars)}</td>
+          <td>${esc(p.payment_method || '—')}</td>
+          <td>${esc(p.reference || '—')}</td>
+          <td><button class="btn-action" title="Eliminar" onclick="window.adminApp.deletePayment('${p.id}')"><i class="fas fa-trash"></i></button></td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      console.error('Payments error:', err);
+      body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--danger);">Error cargando pagos</td></tr>';
+    }
+  }
+
+  /* Commission tab switching */
+  $$('.comm-tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const tab = this.dataset.commTab;
+      $$('.comm-tab-btn').forEach(b => { b.classList.remove('is-active'); b.style.background = 'none'; b.style.color = 'var(--text-dim)'; });
+      $$('.comm-tab-content').forEach(c => c.style.display = 'none');
+      this.classList.add('is-active');
+      this.style.background = 'rgba(31,200,195,0.15)';
+      this.style.color = 'var(--accent)';
+      const target = $('#' + tab);
+      if (target) target.style.display = 'block';
+    });
+  });
+
+  /* Filter events for commissions */
+  $('#commFilterBroker')?.addEventListener('change', loadPendingCommissions);
+  $('#commFilterOwner')?.addEventListener('change', loadPendingCommissions);
+  $('#commFilterStatus')?.addEventListener('change', loadPendingCommissions);
+
+  /* Generate Liquidation button: agrupa comisiones pendientes del período por broker+propietario */
+  $('#btnGenerateLiquidation')?.addEventListener('click', async () => {
+    const periodStart = prompt('Fecha inicio (YYYY-MM-DD):', new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString().split('T')[0]);
+    if (!periodStart) return;
+    const periodEnd = prompt('Fecha fin (YYYY-MM-DD):', new Date(new Date().getFullYear(), new Date().getMonth(), 0).toISOString().split('T')[0]);
+    if (!periodEnd) return;
+    if (!window.supabaseClient) return;
+    try {
+      const { data: pending, error } = await window.supabaseClient
+        .from('commissions')
+        .select('*')
+        .eq('status', 'pendiente')
+        .gte('due_date', periodStart)
+        .lte('due_date', periodEnd);
+      if (error) throw error;
+      if (!pending?.length) {
+        showToast('No hay comisiones pendientes en ese período', 'info');
+        return;
+      }
+
+      const groups = {};
+      pending.forEach(c => {
+        const key = (c.broker_id || 'sin-broker') + '|' + (c.owner_id || 'sin-propietario');
+        if (!groups[key]) groups[key] = { broker_id: c.broker_id || null, owner_id: c.owner_id || null, items: [] };
+        groups[key].items.push(c);
+      });
+
+      let created = 0;
+      for (const g of Object.values(groups)) {
+        const gross_usd = g.items.reduce((s, c) => s + (c.commission_amount_usd || 0), 0);
+        const gross_ars = g.items.reduce((s, c) => s + (c.commission_amount_ars || 0), 0);
+        const iibb = g.items.reduce((s, c) => s + (c.iibb_amount_ars || 0), 0);
+        const ganancias = g.items.reduce((s, c) => s + (c.ganancias_amount_ars || 0), 0);
+        const net = g.items.reduce((s, c) => s + (c.net_amount_ars || (c.commission_amount_ars || 0) - (c.iibb_amount_ars || 0) - (c.ganancias_amount_ars || 0)), 0);
+
+        const { data: liq, error: liqErr } = await window.supabaseClient
+          .from('commission_liquidations')
+          .insert([{
+            period_start: periodStart, period_end: periodEnd,
+            broker_id: g.broker_id, owner_id: g.owner_id,
+            gross_commission_usd: gross_usd, gross_amount_ars: gross_ars,
+            iibb_retention_ars: iibb, ganancias_retention_ars: ganancias,
+            net_amount_ars: net, status: 'confirmada', created_by: currentUser?.id || null
+          }])
+          .select('id')
+          .single();
+        if (liqErr) throw liqErr;
+
+        const ids = g.items.map(c => c.id);
+        const { error: upErr } = await window.supabaseClient
+          .from('commissions')
+          .update({ status: 'liquidada', liquidation_id: liq.id })
+          .in('id', ids);
+        if (upErr) throw upErr;
+        created++;
+      }
+
+      showToast(`${created} liquidación(es) generada(s) sobre ${pending.length} comisión(es)`, 'success');
+      await loadLiquidations();
+      await loadPendingCommissions();
+      await updateCommissionsKPI();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  });
+
+  /* Commission actions */
+  window.adminApp.markCommissionPaid = async function(id) {
+    if (!confirm('¿Marcar comisión como pagada? Se registrará el pago correspondiente.')) return;
+    try {
+      const { data: c, error: fetchErr } = await window.supabaseClient.from('commissions').select('*').eq('id', id).single();
+      if (fetchErr) throw fetchErr;
+      const paidDate = new Date().toISOString().split('T')[0];
+      const { error } = await window.supabaseClient.from('commissions').update({ status: 'pagada', paid_date: paidDate, updated_at: new Date().toISOString() }).eq('id', id);
+      if (error) throw error;
+      const net = c.net_amount_ars || ((c.commission_amount_ars || 0) - (c.iibb_amount_ars || 0) - (c.ganancias_amount_ars || 0));
+      await window.supabaseClient.from('commission_payments').insert([{
+        commission_id: id, liquidation_id: c.liquidation_id || null,
+        broker_id: c.broker_id || null, owner_id: c.owner_id || null,
+        amount_ars: net, payment_method: 'transferencia', payment_date: paidDate,
+        reference: 'Pago directo comisión', created_by: currentUser?.id || null
+      }]);
+      showToast('Comisión marcada como pagada', 'success');
+      await loadPendingCommissions();
+      await loadPayments();
+      await updateCommissionsKPI();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.adminApp.viewCommissionLiquidation = async function(id) {
+    if (!window.supabaseClient) return;
+    try {
+      const { data: c, error } = await window.supabaseClient
+        .from('commissions')
+        .select('*, owners(full_name, bank_name, cbu_cvu, alias_cbu), properties(property_code, title), agents(full_name)')
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      const net = c.net_amount_ars || ((c.commission_amount_ars || 0) - (c.iibb_amount_ars || 0) - (c.ganancias_amount_ars || 0));
+      const statusLabel = { pendiente: 'Pendiente', liquidada: 'Liquidada', pagada: 'Pagada', cancelada: 'Cancelada' }[c.status] || c.status;
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Comisión ${c.id.slice(0,8)}</title>
+        <style>body{font-family:Inter,sans-serif;padding:24px;color:#1a1a2e;} h1{border-bottom:2px solid #1fc8c3;padding-bottom:8px;font-size:20px;}
+        .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-top:12px;} .label{color:#666;} @media print{body{padding:0;}}</style>
+        </head><body>
+        <h1>Detalle de Comisión</h1>
+        <div class="grid">
+          <div><span class="label">Estado:</span> ${esc(statusLabel)}</div>
+          <div><span class="label">Operación:</span> ${esc(c.operation_type === 'venta' ? 'Venta' : 'Alquiler')}</div>
+          <div><span class="label">Propietario:</span> ${esc(c.owners?.full_name || '—')}</div>
+          <div><span class="label">Broker:</span> ${esc(c.agents?.full_name || '—')}</div>
+          <div><span class="label">Propiedad:</span> ${esc(c.properties?.title || c.properties?.property_code || '—')}</div>
+          <div><span class="label">Vencimiento:</span> ${c.due_date ? new Date(c.due_date + 'T00:00:00').toLocaleDateString('es-AR') : '—'}</div>
+          <div><span class="label">Monto USD:</span> USD ${Number(c.commission_amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
+          <div><span class="label">Monto ARS:</span> $ ${formatNumber(c.commission_amount_ars || 0)}</div>
+          <div><span class="label">IIBB (${c.iibb_rate || 0}%):</span> $ ${formatNumber(c.iibb_amount_ars || 0)}</div>
+          <div><span class="label">Ganancias (${c.ganancias_rate || 0}%):</span> $ ${formatNumber(c.ganancias_amount_ars || 0)}</div>
+          <div style="font-weight:700;"><span class="label">Neto a pagar:</span> $ ${formatNumber(net)}</div>
+          ${c.paid_date ? `<div><span class="label">Pagada el:</span> ${new Date(c.paid_date + 'T00:00:00').toLocaleDateString('es-AR')}</div>` : ''}
+          ${c.liquidation_id ? `<div><span class="label">Liquidación:</span> ${c.liquidation_id.slice(0,8)}</div>` : ''}
+        </div>
+        ${c.owners ? `<div style="margin-top:16px; padding-top:12px; border-top:1px solid #eee; font-size:12px;">
+          <strong>Datos de pago del propietario:</strong> ${esc(c.owners.bank_name || '—')} · CBU/CVU ${esc(c.owners.cbu_cvu || '—')} · Alias ${esc(c.owners.alias_cbu || '—')}
+        </div>` : ''}
+        <script>window.print();</script>
+        </body></html>`;
+      const w = window.open('', '_blank');
+      w.document.write(html);
+      w.document.close();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  };
+
+  window.adminApp.viewLiquidationPDF = async function(id) {
+    if (!window.supabaseClient) return;
+    try {
+      const { data: l, error } = await window.supabaseClient
+        .from('commission_liquidations')
+        .select('*, agents(full_name), owners(full_name, bank_name, cbu_cvu, alias_cbu)')
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      const { data: items } = await window.supabaseClient
+        .from('commissions')
+        .select('*, properties(property_code, title)')
+        .eq('liquidation_id', id);
+      const statusLabel = { borrador: 'Borrador', confirmada: 'Confirmada', pagada: 'Pagada' }[l.status] || l.status;
+      const itemRows = (items || []).map(c => `
+        <tr>
+          <td>${esc(c.properties?.property_code || c.properties?.title || '—')}</td>
+          <td>${esc(c.operation_type)}</td>
+          <td style="text-align:right;">USD ${Number(c.commission_amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+          <td style="text-align:right;">$ ${formatNumber(c.commission_amount_ars || 0)}</td>
+          <td style="text-align:right;">$ ${formatNumber(c.iibb_amount_ars || 0)}</td>
+          <td style="text-align:right;">$ ${formatNumber(c.ganancias_amount_ars || 0)}</td>
+          <td style="text-align:right;">$ ${formatNumber(c.net_amount_ars || (c.commission_amount_ars || 0) - (c.iibb_amount_ars || 0) - (c.ganancias_amount_ars || 0))}</td>
+        </tr>`).join('');
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Liquidación ${new Date(l.period_start + 'T00:00:00').toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</title>
+        <style>body{font-family:Inter,sans-serif;padding:24px;color:#1a1a2e;} h1{border-bottom:2px solid #1fc8c3;padding-bottom:8px;font-size:20px;}
+        table{width:100%;border-collapse:collapse;margin-top:16px;font-size:12px;} th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;}
+        .total{font-weight:700;background:#f5f5f5;} @media print{body{padding:0;}}</style>
+        </head><body>
+        <h1>Liquidación de Comisiones — ${esc(statusLabel)}</h1>
+        <p style="font-size:13px;">
+          <strong>Período:</strong> ${new Date(l.period_start + 'T00:00:00').toLocaleDateString('es-AR')} al ${new Date(l.period_end + 'T00:00:00').toLocaleDateString('es-AR')}<br>
+          <strong>Broker:</strong> ${esc(l.agents?.full_name || '—')} &nbsp;·&nbsp; <strong>Propietario:</strong> ${esc(l.owners?.full_name || '—')}
+        </p>
+        <table>
+          <thead><tr><th>Propiedad</th><th>Operación</th><th>Monto USD</th><th>Monto ARS</th><th>IIBB</th><th>Ganancias</th><th>Neto</th></tr></thead>
+          <tbody>${itemRows || '<tr><td colspan="7">Sin comisiones asociadas</td></tr>'}</tbody>
+          <tfoot><tr class="total"><td colspan="2">Totales</td><td style="text-align:right;">USD ${Number(l.gross_commission_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td><td style="text-align:right;">$ ${formatNumber(l.gross_amount_ars || 0)}</td><td style="text-align:right;">$ ${formatNumber(l.iibb_retention_ars || 0)}</td><td style="text-align:right;">$ ${formatNumber(l.ganancias_retention_ars || 0)}</td><td style="text-align:right;">$ ${formatNumber(l.net_amount_ars || 0)}</td></tr></tfoot>
+        </table>
+        ${l.owners ? `<p style="margin-top:16px; font-size:12px;"><strong>Datos de pago:</strong> ${esc(l.owners.bank_name || '—')} · CBU/CVU ${esc(l.owners.cbu_cvu || '—')} · Alias ${esc(l.owners.alias_cbu || '—')}</p>` : ''}
+        <script>window.print();</script>
+        </body></html>`;
+      const w = window.open('', '_blank');
+      w.document.write(html);
+      w.document.close();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  };
+
+  window.adminApp.markLiquidationPaid = async function(id) {
+    if (!confirm('¿Marcar liquidación como pagada? Se marcarán sus comisiones y se registrará el pago.')) return;
+    try {
+      const { data: l, error: fetchErr } = await window.supabaseClient.from('commission_liquidations').select('*').eq('id', id).single();
+      if (fetchErr) throw fetchErr;
+      const { error } = await window.supabaseClient.from('commission_liquidations').update({ status: 'pagada', updated_at: new Date().toISOString() }).eq('id', id);
+      if (error) throw error;
+      const paidDate = new Date().toISOString().split('T')[0];
+      await window.supabaseClient.from('commissions').update({ status: 'pagada', paid_date: paidDate, updated_at: new Date().toISOString() }).eq('liquidation_id', id);
+      await window.supabaseClient.from('commission_payments').insert([{
+        liquidation_id: id, broker_id: l.broker_id || null, owner_id: l.owner_id || null,
+        amount_ars: l.net_amount_ars || 0, payment_method: 'transferencia', payment_date: paidDate,
+        reference: 'Pago liquidación', created_by: currentUser?.id || null
+      }]);
+      showToast('Liquidación marcada como pagada', 'success');
+      await loadLiquidations();
+      await loadPayments();
+      await loadPendingCommissions();
+      await updateCommissionsKPI();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  window.adminApp.deletePayment = async function(id) {
+    if (!confirm('¿Eliminar este pago?')) return;
+    try {
+      const { error } = await window.supabaseClient.from('commission_payments').delete().eq('id', id);
+      if (error) throw error;
+      showToast('Pago eliminado', 'success');
+      await loadPayments();
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
 
   /* Create owner */
   on($('#btnNewOwner'), 'click', () => {
@@ -2764,6 +3783,18 @@ let dayCount = 1;
       
       // Zod validation
       const validated = validateForm(OwnerSchema, formData);
+
+      /* commission_split: JSON válido o vacío */
+      let splitJson = null;
+      const splitRaw = (validated.commission_split || '').trim();
+      if (splitRaw) {
+        try {
+          splitJson = JSON.parse(splitRaw);
+        } catch (_) {
+          throw new Error('Comisión Split: el JSON no es válido');
+        }
+      }
+
       const data = {
         full_name: validated.full_name,
         email: validated.email,
@@ -2775,6 +3806,14 @@ let dayCount = 1;
         cbu_cvu: validated.cbu_cvu || '',
         alias_cbu: validated.alias_cbu || '',
         exclusive: validated.exclusive || false,
+        exclusive_start: validated.exclusive_start || null,
+        exclusive_end: validated.exclusive_end || null,
+        commission_sale: validated.commission_sale ?? null,
+        commission_rent: validated.commission_rent ?? null,
+        commission_split: splitJson,
+        contract_notes: validated.contract_notes || null,
+        dni_expiry: validated.dni_expiry || null,
+        cuit_expiry: validated.cuit_expiry || null,
         notes: validated.notes,
       };
 
@@ -2817,21 +3856,397 @@ let dayCount = 1;
         form.elements.cbu_cvu.value = data.cbu_cvu || '';
         form.elements.alias_cbu.value = data.alias_cbu || '';
         form.elements.exclusive.checked = data.exclusive || false;
+        if (form.elements.exclusive_start) form.elements.exclusive_start.value = data.exclusive_start || '';
+        if (form.elements.exclusive_end) form.elements.exclusive_end.value = data.exclusive_end || '';
+        if (form.elements.commission_sale) form.elements.commission_sale.value = data.commission_sale || '';
+        if (form.elements.commission_rent) form.elements.commission_rent.value = data.commission_rent || '';
+        if (form.elements.commission_split) form.elements.commission_split.value = data.commission_split ? (typeof data.commission_split === 'string' ? data.commission_split : JSON.stringify(data.commission_split)) : '';
+        if (form.elements.contract_notes) form.elements.contract_notes.value = data.contract_notes || '';
+        if (form.elements.dni_expiry) form.elements.dni_expiry.value = data.dni_expiry || '';
+        if (form.elements.cuit_expiry) form.elements.cuit_expiry.value = data.cuit_expiry || '';
         form.elements.notes.value = data.notes || '';
       }
       const title = $('#ownerModalTitle');
       if (title) title.textContent = 'Editar Propietario';
+
+      /* Reset tabs to first */
+      $$('#ownerModal .owner-tab-btn').forEach((btn, i) => {
+        btn.classList.toggle('is-active', i === 0);
+        btn.style.background = i === 0 ? 'rgba(31,200,195,0.15)' : 'none';
+        btn.style.color = i === 0 ? 'var(--accent)' : 'var(--text-dim)';
+      });
+      $$('#ownerModal .owner-tab-content').forEach((c, i) => c.style.display = i === 0 ? 'block' : 'none');
+
       openModal('ownerModal');
+
+      /* Load tab data in background */
+      loadOwnerDocuments(id);
+      loadOwnerProperties(id);
+      loadOwnerTasaciones(id);
+      loadOwnerTimeline(id);
+      loadOwnerChecklist(id);
     } catch (err) {
       showToast('Error al cargar propietario', 'error');
     }
   };
 
+  /* Generate Portal Link for Owner */
+  window.adminApp.generateOwnerPortalLink = async function() {
+    if (!editingOwnerId) return showToast('Primero guarde el propietario', 'warning');
+    if (!window.supabaseClient) return;
+    try {
+      const token = crypto.randomUUID();
+      const { error } = await window.supabaseClient
+        .from('owner_portal_tokens')
+        .upsert([{
+          owner_id: editingOwnerId,
+          token: token,
+          scopes: ['read_properties', 'read_commissions', 'read_documents'],
+          created_by: currentUser?.id || null
+        }], { onConflict: 'owner_id' });
+      if (error) throw error;
+      const portalUrl = `${window.location.origin}/portal-propietario.html?token=${token}`;
+      navigator.clipboard.writeText(portalUrl).then(() => {
+        showToast('Link de portal copiado al portapapeles: ' + portalUrl, 'success', 8000);
+      }).catch(() => {
+        showToast('Link generado: ' + portalUrl + ' (copie manualmente)', 'info', 8000);
+      });
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  };
+
+  $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateOwnerPortalLink);
+
+  /* Owner Checklist */
+  async function loadOwnerChecklist(ownerId) {
+    const select = $('#checklistOperationType');
+    const list = $('#ownerChecklistList');
+    if (!select || !list) return;
+    if (!window.supabaseClient) return;
+
+    const type = select.value;
+    try {
+      const [reqRes, ownerRes] = await Promise.all([
+        window.supabaseClient
+          .from('document_requirements')
+          .select('*')
+          .eq('operation_type', type)
+          .order('sort_order'),
+        window.supabaseClient
+          .from('owners')
+          .select('documents')
+          .eq('id', ownerId)
+          .single()
+      ]);
+
+      const requirements = reqRes.data || [];
+      const ownerDocs = ownerRes.data?.documents || [];
+
+      if (!requirements.length) {
+        list.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Sin requisitos configurados para este tipo</p>';
+        return;
+      }
+
+      list.innerHTML = requirements.map(req => {
+        const hasDoc = ownerDocs.some(d => (d.document_key === req.document_key) || (d.name && d.name.toLowerCase().includes(req.document_key.toLowerCase())));
+        const isMissing = req.is_mandatory && !hasDoc;
+        let cls = 'check-done', label = 'Completo';
+        if (isMissing) { cls = 'check-missing'; label = 'Falta (Obligatorio)'; }
+        else if (!hasDoc) { cls = 'check-pending'; label = 'Pendiente'; }
+        return `
+          <div class="doc-item">
+            <div class="doc-main">
+              <div class="doc-icon other"><i class="fas ${getReqIcon(req.document_key)}"></i></div>
+              <div class="doc-info">
+                <div class="doc-name">${esc(req.label)}${req.is_mandatory ? ' <span style="color:#ef4444; font-size:10px;">*</span>' : ''}</div>
+                <div class="doc-meta">${esc(req.description || '')}</div>
+              </div>
+            </div>
+            <div class="doc-status">
+              <span class="check-icon ${cls}"><i class="fas ${cls === 'check-done' ? 'fa-check' : cls === 'check-missing' ? 'fa-times' : 'fa-clock'}"></i></span>
+              <span style="font-size:11px; color:var(--text-dim);">${label}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } catch (_) {
+      list.innerHTML = '<p style="color:var(--text-dim); text-align:center; padding:20px;">Error cargando checklist</p>';
+    }
+  }
+
+  function getReqIcon(key) {
+    const icons = {
+      escritura: 'fa-file-signature',
+      dni: 'fa-id-card',
+      servicios: 'fa-file-invoice',
+      planos: 'fa-drafting-compass',
+      certificado_dominio: 'fa-certificate',
+      inhibiciones: 'fa-gavel',
+      plano_mensura: 'fa-ruler-combined',
+      reglamento_copropiedad: 'fa-book',
+      expensas: 'fa-receipt',
+      libre_deuda: 'fa-check-circle'
+    };
+    return icons[key] || 'fa-file-alt';
+  }
+
+  $('#checklistOperationType')?.addEventListener('change', function() {
+    if (editingOwnerId) loadOwnerChecklist(editingOwnerId);
+  });
+
+  /* Tab switching for owner modal */
+  $$('#ownerModal .owner-tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      const tab = this.dataset.ownerTab;
+      $$('#ownerModal .owner-tab-btn').forEach(b => {
+        b.classList.remove('is-active');
+        b.style.background = 'none';
+        b.style.color = 'var(--text-dim)';
+      });
+      this.classList.add('is-active');
+      this.style.background = 'rgba(31,200,195,0.15)';
+      this.style.color = 'var(--accent)';
+      $$('#ownerModal .owner-tab-content').forEach(c => c.style.display = 'none');
+      const target = $('#ownerTab-' + tab);
+      if (target) target.style.display = 'block';
+    });
+  });
+
+  /* Owner Documents */
+  async function loadOwnerDocuments(ownerId) {
+    const el = $('#ownerDocsList');
+    if (!el) return;
+    if (!window.supabaseClient) return;
+    try {
+      const { data: owner } = await window.supabaseClient.from('owners').select('documents').eq('id', ownerId).single();
+      const docs = (owner?.documents || []).sort((a, b) => new Date(b.uploaded_at || 0) - new Date(a.uploaded_at || 0));
+      if (!docs.length) {
+        el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Sin documentos cargados</p>';
+        return;
+      }
+      el.innerHTML = docs.map(d => `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:8px; font-size:13px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <i class="fas fa-file-${d.type === 'pdf' ? 'pdf' : d.type === 'image' ? 'image' : 'alt'} ${getDocIcon(d.type)}" style="color:var(--accent); font-size:18px;"></i>
+            <div>
+              <div style="font-weight:500; color:#fff;">${esc(d.name || 'Documento')}</div>
+              <div style="font-size:11px; color:var(--text-dim);">${d.type?.toUpperCase() || 'FILE'} · ${d.size ? (d.size / 1024).toFixed(1) + ' KB' : ''} · ${d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString('es-AR') : ''}${d.expiry ? ' · Vence: ' + new Date(d.expiry).toLocaleDateString('es-AR') : ''}</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            ${d.url ? `<a href="${esc(d.url)}" target="_blank" class="btn-action" title="Ver"><i class="fas fa-eye"></i></a>` : ''}
+            <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteOwnerDoc('${ownerId}', '${esc(d.id)}')"><i class="fas fa-trash"></i></button>
+          </div>
+        </div>
+      `).join('');
+    } catch (_) { /* silent */ }
+  }
+
+  function getDocIcon(type) {
+    if (!type) return '';
+    if (type.includes('pdf')) return 'fa-file-pdf';
+    if (type.includes('image') || type.includes('photo')) return 'fa-file-image';
+    if (type.includes('word') || type.includes('doc')) return 'fa-file-word';
+    return 'fa-file-alt';
+  }
+
+  window.adminApp.deleteOwnerDoc = async function (ownerId, docId) {
+    if (!confirm('¿Eliminar este documento?')) return;
+    try {
+      const { data: owner } = await window.supabaseClient.from('owners').select('documents').eq('id', ownerId).single();
+      const docs = (owner?.documents || []).filter(d => d.id !== docId);
+      const { error } = await window.supabaseClient.from('owners').update({ documents: docs }).eq('id', ownerId);
+      if (error) throw error;
+      showToast('Documento eliminado', 'success');
+      loadOwnerDocuments(ownerId);
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  };
+
+  /* Document upload handler */
+  $('#btnAddOwnerDoc')?.addEventListener('click', async () => {
+    if (!editingOwnerId) return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png,.heic';
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return;
+      if (file.size > 10 * 1024 * 1024) return showToast('Máx 10 MB', 'warning');
+      try {
+        const ext = file.name.split('.').pop();
+        const path = `owners/${editingOwnerId}/${Date.now()}.${ext}`;
+        const { error: upErr } = await window.supabaseClient.storage.from('documents').upload(path, file);
+        if (upErr) throw upErr;
+        const { data: urlData } = window.supabaseClient.storage.from('documents').getPublicUrl(path);
+        const doc = {
+          id: crypto.randomUUID(),
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          url: urlData.publicUrl,
+          uploaded_at: new Date().toISOString(),
+          expiry: null
+        };
+        const { data: owner } = await window.supabaseClient.from('owners').select('documents').eq('id', editingOwnerId).single();
+        const docs = (owner?.documents || []).concat(doc);
+        await window.supabaseClient.from('owners').update({ documents: docs }).eq('id', editingOwnerId);
+        showToast('Documento subido', 'success');
+        loadOwnerDocuments(editingOwnerId);
+      } catch (err) {
+        showToast('Error subiendo: ' + err.message, 'error');
+      }
+    };
+    input.click();
+  });
+
+  /* Owner Properties */
+  async function loadOwnerProperties(ownerId) {
+    const el = $('#ownerPropsList');
+    if (!el) return;
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('properties')
+        .select('id, property_code, title, status, price_usd, price_currency, zone, created_at')
+        .eq('owner_id', ownerId)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      if (!data?.length) {
+        el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Sin propiedades vinculadas</p>';
+        return;
+      }
+      el.innerHTML = data.map(p => `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:8px; font-size:13px;">
+          <div>
+            <div style="font-weight:500; color:#fff;">${esc(p.property_code || 'S/Código')} · ${esc(p.title || 'Sin título')}</div>
+            <div style="font-size:11px; color:var(--text-dim);">${esc(p.zone || 'S/Zona')} · ${p.price_usd ? 'USD ' + formatNumber(p.price_usd) : 'S/Precio'} · ${esc(p.status || 'draft')}</div>
+          </div>
+          <button class="btn-action" title="Ver Propiedad" onclick="window.adminApp.editProperty('${p.id}')"><i class="fas fa-external-link-alt"></i></button>
+        </div>
+      `).join('');
+    } catch (_) { /* silent */ }
+  }
+
+  /* Owner Tasaciones */
+  async function loadOwnerTasaciones(ownerId) {
+    const el = $('#ownerTasacionesList');
+    if (!el) return;
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('tasaciones')
+        .select('id, type, status, valuation_usd, created_at, expires_at, property_id')
+        .eq('owner_id', ownerId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      /* tasaciones no tiene FK a properties: lookup separado */
+      const propIds = [...new Set((data || []).map(t => t.property_id).filter(Boolean))];
+      let propMap = {};
+      if (propIds.length) {
+        const { data: props } = await window.supabaseClient
+          .from('properties')
+          .select('id, property_code, title')
+          .in('id', propIds);
+        (props || []).forEach(p => { propMap[p.id] = p; });
+      }
+      const rows = (data || []).map(t => ({ ...t, properties: propMap[t.property_id] || null }));
+      if (!rows.length) {
+        el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Sin tasaciones registradas</p>';
+        return;
+      }
+      el.innerHTML = rows.map(t => `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:8px; font-size:13px;">
+          <div>
+            <div style="font-weight:500; color:#fff;">${esc(t.type)} · ${esc(t.properties?.title || t.properties?.property_code || 'Propiedad')}</div>
+            <div style="font-size:11px; color:var(--text-dim);">USD ${t.valuation_usd ? formatNumber(t.valuation_usd) : '—'} · ${esc(t.status)} · ${t.created_at ? new Date(t.created_at).toLocaleDateString('es-AR') : ''}${t.expires_at ? ' · Vence: ' + new Date(t.expires_at).toLocaleDateString('es-AR') : ''}</div>
+          </div>
+          <button class="btn-action" title="Ver Tasación" onclick="window.adminApp.editTasacion?.('${t.id}')"><i class="fas fa-external-link-alt"></i></button>
+        </div>
+      `).join('');
+    } catch (err) {
+      console.error('loadOwnerTasaciones error:', err);
+      el.innerHTML = '<p style="color:var(--danger); font-size:12px; text-align:center; padding:20px;">Error cargando tasaciones</p>';
+    }
+  }
+
+  /* Owner Timeline */
+  async function loadOwnerTimeline(ownerId) {
+    const el = $('#ownerTimelineList');
+    if (!el) return;
+    if (!window.supabaseClient) return;
+    try {
+      const { data: timeline, error } = await window.supabaseClient
+        .from('owner_timeline_entries')
+        .select('id, type, text, created_at')
+        .eq('owner_id', ownerId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      if (!timeline?.length) {
+        el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Sin comunicaciones registradas</p>';
+        return;
+      }
+      el.innerHTML = timeline.map(entry => `
+        <div style="display:flex; gap:10px; padding:10px 12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:8px; font-size:12px;">
+          <div style="width:32px; height:32px; border-radius:50%; background:rgba(31,200,195,0.15); display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <i class="fas ${getTimelineIcon(entry.type)}" style="color:var(--accent); font-size:12px;"></i>
+          </div>
+          <div style="flex:1;">
+            <div style="font-weight:500; color:#fff;">${esc(entry.text || '')}</div>
+            <div style="font-size:10px; color:var(--text-dim);">${(entry.type || 'note').toUpperCase()} · ${entry.created_at ? new Date(entry.created_at).toLocaleString('es-AR') : ''}</div>
+          </div>
+          <button class="btn-action" title="Eliminar" onclick="window.adminApp.deleteTimelineEntry('${ownerId}', '${entry.id}')"><i class="fas fa-trash" style="font-size:10px;"></i></button>
+        </div>
+      `).join('');
+    } catch (err) {
+      el.innerHTML = '<p style="color:var(--danger); text-align:center; padding:20px;">Error cargando timeline</p>';
+    }
+  }
+
+  function getTimelineIcon(type) {
+    const icons = { note: 'fa-sticky-note', whatsapp: 'fa-whatsapp', email: 'fa-envelope', call: 'fa-phone', meeting: 'fa-handshake' };
+    return icons[type] || 'fa-comment';
+  }
+
+  window.adminApp.deleteTimelineEntry = async function (ownerId, entryId) {
+    if (!confirm('¿Eliminar esta entrada?')) return;
+    try {
+      const { error } = await window.supabaseClient.from('owner_timeline_entries').delete().eq('id', entryId);
+      if (error) throw error;
+      showToast('Entrada eliminada', 'success');
+      loadOwnerTimeline(ownerId);
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  };
+
+  /* Add timeline entry */
+  $('#btnAddTimelineEntry')?.addEventListener('click', async () => {
+    const text = $('#ownerTimelineNote')?.value?.trim();
+    const type = $('#ownerTimelineType')?.value || 'note';
+    if (!text) return showToast('Ingresá una nota', 'warning');
+    if (!editingOwnerId) return showToast('Primero guarde el propietario', 'warning');
+    try {
+      const { error } = await window.supabaseClient
+        .from('owner_timeline_entries')
+        .insert([{ owner_id: editingOwnerId, type, text, created_by: currentUser?.id || null }]);
+      if (error) throw error;
+      $('#ownerTimelineNote').value = '';
+      showToast('Comunicación agregada', 'success');
+      loadOwnerTimeline(editingOwnerId);
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  });
+
   /* Delete owner */
   window.adminApp.deleteOwner = async function (id) {
-    if (!confirm('¿Eliminar este propietario?')) return;
+    if (!confirm('¿Eliminar este propietario? Se archivará su expediente (soft delete).')) return;
     try {
-      const { error } = await window.supabaseClient.from('owners').delete().eq('id', id);
+      const { error } = await window.supabaseClient.from('owners').update({ deleted_at: new Date().toISOString() }).eq('id', id);
       if (error) throw error;
       showToast('Propietario eliminado', 'success');
       loadOwners();
@@ -2848,6 +4263,108 @@ let dayCount = 1;
       row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
     });
   });
+
+  /* Export Owners CSV / PDF */
+  window.adminApp.exportOwnersCSV = async function() {
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('owners')
+        .select('*')
+        .is('deleted_at', null)
+        .order('full_name');
+      if (error) throw error;
+      const headers = ['Nombre', 'DNI/CUIT', 'Teléfono', 'Email', 'Dirección', 'Banco', 'CBU/CVU', 'Alias CBU', 'Preferencia Contacto', 'Exclusivo', 'Fecha Inicio Excl.', 'Fecha Fin Excl.', 'Comisión Venta %', 'Comisión Alquiler %', 'Notas'];
+      const rows = (data || []).map(o => [
+        o.full_name || '',
+        o.dni_cuit || '',
+        o.phone || '',
+        o.email || '',
+        o.address || '',
+        o.bank_name || '',
+        o.cbu_cvu || '',
+        o.alias_cbu || '',
+        o.preferred_contact || '',
+        o.exclusive ? 'Sí' : 'No',
+        o.exclusive_start || '',
+        o.exclusive_end || '',
+        o.commission_sale || '',
+        o.commission_rent || '',
+        (o.notes || '').replace(/\n/g, ' ')
+      ].map(c => '"' + String(c).replace(/"/g, '""') + '"').join(','));
+      const csv = [headers.join(','), ...rows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'propietarios-' + new Date().toISOString().slice(0,10) + '.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Archivo .csv descargado', 'success');
+    } catch (err) {
+      showToast('Error exportando CSV: ' + err.message, 'error');
+    }
+  };
+
+  window.adminApp.exportOwnersPDF = async function() {
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('owners')
+        .select('*')
+        .is('deleted_at', null)
+        .order('full_name');
+      if (error) throw error;
+      const content = (data || []).map(o => `
+        <div style="page-break-inside: avoid; margin-bottom: 24px; padding: 16px; border: 1px solid #ddd; border-radius: 8px;">
+          <h3 style="margin: 0 0 12px; color: #1a1a2e;">${esc(o.full_name || 'Sin nombre')}</h3>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px;">
+            <div><strong>DNI/CUIT:</strong> ${esc(o.dni_cuit || '—')}</div>
+            <div><strong>Teléfono:</strong> ${esc(o.phone || '—')}</div>
+            <div><strong>Email:</strong> ${esc(o.email || '—')}</div>
+            <div><strong>Dirección:</strong> ${esc(o.address || '—')}</div>
+            <div><strong>Banco:</strong> ${esc(o.bank_name || '—')}</div>
+            <div><strong>CBU/CVU:</strong> ${esc(o.cbu_cvu || '—')}</div>
+            <div><strong>Alias CBU:</strong> ${esc(o.alias_cbu || '—')}</div>
+            <div><strong>Contacto:</strong> ${esc(o.preferred_contact || 'whatsapp')}</div>
+            <div><strong>Exclusivo:</strong> ${o.exclusive ? 'Sí' : 'No'}</div>
+            <div><strong>Ini. Exclusividad:</strong> ${o.exclusive_start || '—'}</div>
+            <div><strong>Fin Exclusividad:</strong> ${o.exclusive_end || '—'}</div>
+            <div><strong>Com. Venta:</strong> ${o.commission_sale || '—'}%</div>
+            <div><strong>Com. Alquiler:</strong> ${o.commission_rent || '—'}%</div>
+          </div>
+          ${o.notes ? `<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;"><strong>Notas:</strong><br>${esc(o.notes).replace(/\n/g, '<br>')}</div>` : ''}
+        </div>
+      `).join('');
+      const html = `
+        <!DOCTYPE html>
+        <html><head>
+          <meta charset="UTF-8">
+          <title>Reporte Propietarios</title>
+          <style>
+            body { font-family: Inter, sans-serif; padding: 24px; color: #1a1a2e; }
+            h1 { color: #1a1a2e; border-bottom: 2px solid #1fc8c3; padding-bottom: 8px; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head><body>
+          <h1>Reporte de Propietarios — ${new Date().toLocaleDateString('es-AR')}</h1>
+          ${content}
+        </body></html>
+      `;
+      const w = window.open('', '_blank');
+      w.document.write(html);
+      w.document.close();
+      w.focus();
+      setTimeout(() => w.print(), 300);
+      showToast('PDF generado (imprimir/guardar)', 'success');
+    } catch (err) {
+      showToast('Error generando PDF: ' + err.message, 'error');
+    }
+  };
+
+  /* Event listeners for export buttons */
+  $('#btnExportOwnersCSV')?.addEventListener('click', window.adminApp.exportOwnersCSV);
+  $('#btnExportOwnersPDF')?.addEventListener('click', window.adminApp.exportOwnersPDF);
 
   /* ------------------------------------------------
      12. USERS MANAGEMENT
@@ -3199,6 +4716,7 @@ let dayCount = 1;
       await loadUsers();
       if (isSelf) {
         currentProfile = { ...currentProfile, full_name: fullName, phone };
+        window._bhCurrentProfile = currentProfile;
         updateUserInfo();
       }
     } catch (err) {
@@ -3270,7 +4788,7 @@ let dayCount = 1;
     /* Get published property count + portal settings from DB */
     const [propsRes, settingsRes] = await Promise.all([
       window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('is_published', true),
-      window.supabaseClient.from('portal_settings').select('*'),
+      window.supabaseClient.from('portal_settings').select('portal_name, is_active'),
     ]);
 
     const count = propsRes.count || 0;
@@ -3389,9 +4907,11 @@ let dayCount = 1;
 
   on($('#portalApiForm'), 'submit', async (e) => {
     e.preventDefault();
+    if (_submittingPortal) return;
+    _submittingPortal = true;
     const index = parseInt($('#portalIndex')?.value, 10);
     const portal = PORTALS[index];
-    if (!portal) return;
+    if (!portal) { _submittingPortal = false; return; }
     const btn = e.target.querySelector('button[type="submit"]');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
 
@@ -3407,7 +4927,7 @@ let dayCount = 1;
     } catch (err) {
       showToast('Error al guardar: ' + err.message, 'error');
     } finally {
-      _submittingOwner = false;
+      _submittingPortal = false;
       if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar Expediente'; }
     }
   });
@@ -3716,10 +5236,52 @@ let dayCount = 1;
   on($('#btnBackToList'), 'click', hideTasacionEditor);
 
   window.addEventListener('message', (e) => {
-    /* Security: solo aceptar mensajes de origen propio (tasacion.html vive en el mismo origin) */
     if (e.origin !== window.location.origin) return;
     if (e.data?.type === 'tasaciones-back') hideTasacionEditor();
+    if (e.data?.type === 'tasaciones-finalized' && e.data?.id) {
+      _handleTasacionFinalized(e.data.id);
+      loadTasaciones();
+    }
   });
+
+  async function _handleTasacionFinalized(tasacionId) {
+    try {
+      const { data: t, error } = await window.supabaseClient
+        .from('tasaciones')
+        .select('id, property_id, owner_id, broker_id, type, valuation_usd, title')
+        .eq('id', tasacionId)
+        .single();
+      if (error || !t) return;
+
+      if (t.owner_id) {
+        const { data: existingLead } = await window.supabaseClient
+          .from('leads')
+          .select('id')
+          .eq('source', 'tasacion')
+          .eq('contact_name', t.title || 'Propietario')
+          .maybeSingle();
+        if (existingLead) return;
+
+        const ownerRes = t.owner_id ? await window.supabaseClient.from('owners').select('full_name, phone, email').eq('id', t.owner_id).single() : null;
+        const owner = ownerRes?.data;
+        if (!owner) return;
+
+        await window.supabaseClient.from('leads').insert({
+          property_id: t.property_id || null,
+          broker_id: t.broker_id || null,
+          source: 'tasacion',
+          stage: 'contactado',
+          tags: ['tasacion', t.type || 'venta'],
+          score: 40,
+          contact_name: owner.full_name || 'Propietario',
+          contact_phone: owner.phone || null,
+          contact_email: owner.email || null,
+          notes: 'Lead generado desde tasación ' + (t.title || '') + (t.valuation_usd ? '. Valor estimado: USD ' + Number(t.valuation_usd).toLocaleString('es-AR') : ''),
+        });
+        showToast('Lead creado desde tasación para ' + (owner.full_name || 'propietario'), 'success');
+      }
+    } catch (_) { /* silent */ }
+  }
 
   async function loadTasaciones() {
     invalidateSearchCache();
@@ -3744,10 +5306,19 @@ let dayCount = 1;
 
       const { data, error } = await window.supabaseClient
         .from('tasaciones')
-        .select('id, title, status, created_at')
+        .select('id, title, status, created_at, property_id, owner_id, type, data, valuation_usd')
         .order('created_at', { ascending: false })
         .range(from, to);
       if (error) throw error;
+
+      const propIds = [...new Set((data || []).map(t => t.property_id).filter(Boolean))];
+      const ownerIds = [...new Set((data || []).map(t => t.owner_id).filter(Boolean))];
+      const [propsRes, ownersRes] = await Promise.all([
+        propIds.length ? window.supabaseClient.from('properties').select('id, code, title').in('id', propIds) : { data: [] },
+        ownerIds.length ? window.supabaseClient.from('owners').select('id, full_name').in('id', ownerIds) : { data: [] }
+      ]);
+      const propMap = new Map((propsRes.data || []).map(p => [p.id, p]));
+      const ownerMap = new Map((ownersRes.data || []).map(o => [o.id, o]));
 
       /* Update pagination UI */
       const totalPages = Math.ceil(_tasacionesTotalCount / _tasacionesPageSize);
@@ -3756,7 +5327,7 @@ let dayCount = 1;
       if (pageNext) pageNext.disabled = _tasacionesPage >= totalPages;
 
       if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color:var(--text-dim);">No hay tasaciones registradas</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-dim);">No hay tasaciones registradas</td></tr>';
         return;
       }
 
@@ -3764,12 +5335,27 @@ let dayCount = 1;
         const statusLabel = t.status === 'finalized' ? 'Finalizada' : 'Borrador';
         const statusClass = t.status === 'finalized' ? 'active' : 'pending';
         const date = t.created_at ? new Date(t.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+        const prop = t.property_id ? propMap.get(t.property_id) : null;
+        const propName = prop ? (prop.code ? prop.code + ' - ' + (prop.title || '') : (prop.title || '')) : '-';
+        const owner = t.owner_id ? ownerMap.get(t.owner_id) : null;
+        const ownerName = owner ? (owner.full_name || '-') : '-';
+        const typeLabel = t.type === 'venta' ? 'Venta' : t.type === 'alquiler' ? 'Alquiler' : t.type || '-';
+        let valuation = t.valuation_usd;
+        if (!valuation && t.data && typeof t.data === 'object') {
+          valuation = t.data.valuation_usd || t.data.final_valuation || null;
+        }
+        const valuationStr = valuation ? '$ ' + Number(valuation).toLocaleString('es-AR') : '-';
         return `<tr>
           <td style="font-weight:600; color:#fff;">${esc(t.title || 'Sin título')}</td>
+          <td style="color:var(--text-muted); font-size:13px;">${esc(propName)}</td>
+          <td style="color:var(--text-muted); font-size:13px;">${esc(ownerName)}</td>
+          <td style="color:var(--accent); font-weight:600; font-size:13px;">${valuationStr}</td>
+          <td><span class="status-pill" style="background:rgba(201,169,110,0.12); color:#c9a96e;">${esc(typeLabel)}</span></td>
           <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
           <td style="color:var(--text-muted); font-size:13px;">${date}</td>
           <td>
             <button class="icon-badge-btn" title="Abrir" data-open-tasacion="${esc(t.id)}" data-tasacion-title="${esc(t.title || '')}"><i class="fas fa-external-link-alt"></i></button>
+            <button class="icon-badge-btn" title="Exportar PDF" data-pdf-tasacion="${esc(t.id)}" data-tasacion-title="${esc(t.title || '')}"><i class="fas fa-file-pdf" style="color:var(--danger);"></i></button>
             <button class="icon-badge-btn" title="Eliminar" data-del-tasacion="${esc(t.id)}"><i class="fas fa-trash" style="color:var(--danger);"></i></button>
           </td>
         </tr>`;
@@ -3782,7 +5368,7 @@ let dayCount = 1;
 
     } catch (err) {
       console.error('loadTasaciones error:', err);
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar tasaciones</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar tasaciones</td></tr>';
     }
   }
 
@@ -3803,6 +5389,11 @@ let dayCount = 1;
     }
   }
   window.deleteTasacion = _deleteTasacion;
+
+  function _openTasacionPDF(id) {
+    const url = 'tasacion.html?id=' + encodeURIComponent(id) + '&print=1&token=' + encodeURIComponent(window.__bhAdminToken || '');
+    window.open(url, '_blank');
+  }
 
   /* ------------------------------------------------
      Security: delegated handlers (sin onclick inline; datos externos viajan en data-* esc()'
@@ -3826,26 +5417,54 @@ let dayCount = 1;
     if (open) { window.navigateToTasacion(open.dataset.openTasacion, open.dataset.tasacionTitle || ''); return; }
     const del = e.target.closest('[data-del-tasacion]');
     if (del) _deleteTasacion(del.dataset.delTasacion);
+    const pdf = e.target.closest('[data-pdf-tasacion]');
+    if (pdf) { _openTasacionPDF(pdf.dataset.pdfTasacion); return; }
   });
 
   async function createNewTasacion() {
+    const propSelect = $('#tasaProperty');
+    const ownerSelect = $('#tasaOwner');
+    if (!propSelect || !ownerSelect) return;
     try {
-      const userId = currentUser?.id;
-      if (!userId) { showToast('No hay sesión activa', 'error'); return; }
+      const [propsRes, ownersRes] = await Promise.all([
+        window.supabaseClient.from('properties').select('id, code, title').eq('deleted_at', null).order('code'),
+        window.supabaseClient.from('owners').select('id, full_name').order('full_name')
+      ]);
+      propSelect.innerHTML = '<option value="">Sin vincular</option>' +
+        (propsRes.data || []).map(p => '<option value="' + esc(p.id) + '">' + esc(p.code || '') + ' - ' + esc(p.title || '') + '</option>').join('');
+      ownerSelect.innerHTML = '<option value="">Sin vincular</option>' +
+        (ownersRes.data || []).map(o => '<option value="' + esc(o.id) + '">' + esc(o.full_name || '') + '</option>').join('');
+    } catch (_) { /* silent: dropdowns stay with defaults */ }
+    openModal('newTasacionModal');
+  }
+
+  on($('#btnNewTasacion'), 'click', createNewTasacion);
+
+  on($('#newTasacionForm'), 'submit', async (e) => {
+    e.preventDefault();
+    const userId = currentUser?.id;
+    if (!userId) { showToast('No hay sesión activa', 'error'); return; }
+    const type = $('#tasaType')?.value || 'venta';
+    const propertyId = $('#tasaProperty')?.value || null;
+    const ownerId = $('#tasaOwner')?.value || null;
+    const title = type.charAt(0).toUpperCase() + type.slice(1) + (propertyId ? ' — ' + ($('#tasaProperty')?.selectedOptions?.[0]?.textContent || '') : '');
+    try {
+      const payload = { title: title, status: 'draft', type: type, created_by: userId };
+      if (propertyId) payload.property_id = propertyId;
+      if (ownerId) payload.owner_id = ownerId;
       const { data, error } = await window.supabaseClient
         .from('tasaciones')
-        .insert({ title: 'Nueva Tasación', status: 'draft', created_by: userId })
+        .insert(payload)
         .select('id')
         .single();
       if (error) throw error;
-      showTasacionEditor(data.id, 'Nueva Tasación');
+      closeModal('newTasacionModal');
+      showTasacionEditor(data.id, title);
       updateSidebarBadges();
     } catch (err) {
       showToast('Error al crear tasación: ' + err.message, 'error');
     }
-  }
-
-  on($('#btnNewTasacion'), 'click', createNewTasacion);
+  });
 
   /* ------------------------------------------------
      14. MODALS
@@ -3902,7 +5521,7 @@ let dayCount = 1;
      ------------------------------------------------ */
   function escapeCSV(val) {
     if (val == null) return '';
-    var s = String(val);
+    const s = String(val);
     if (s.indexOf(',') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\\n') !== -1) {
       return '"' + s.replace(/"/g, '""') + '"';
     }
@@ -3910,13 +5529,13 @@ let dayCount = 1;
   }
 
   function downloadCSV(filename, rows, headers) {
-    var csv = headers.map(escapeCSV).join(',') + '\n';
+    let csv = headers.map(escapeCSV).join(',') + '\n';
     rows.forEach(function(row) {
       csv += row.map(escapeCSV).join(',') + '\n';
     });
-    var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
     a.href = url;
     a.download = filename;
     document.body.appendChild(a);
@@ -3927,39 +5546,53 @@ let dayCount = 1;
 
   window.exportLeadsCSV = async function() {
     if (!window.supabaseClient) return;
-    var { data, error } = await window.supabaseClient.from('leads').select('*').order('created_at', { ascending: false });
+    const { data, error } = await window.supabaseClient.from('leads').select('*').order('created_at', { ascending: false });
     if (error) { showToast('Error exportando: ' + error.message, 'error'); return; }
-    var headers = ['ID', 'Nombre', 'Email', 'Teléfono', 'Mensaje', 'Propiedad', 'Estado', 'Fecha'];
-    var rows = data.map(function(l) {
+    const headers = ['ID', 'Nombre', 'Email', 'Teléfono', 'Mensaje', 'Propiedad', 'Estado', 'Fecha'];
+    const rows = data.map(function(l) {
       return [l.id, l.name, l.email, l.phone, l.message, l.property_title, l.status, l.created_at];
     });
-    var date = new Date().toISOString().slice(0, 10);
+    const date = new Date().toISOString().slice(0, 10);
     downloadCSV('leads-' + date + '.csv', rows, headers);
     showToast('Leads exportados (' + rows.length + ')');
   };
 
   window.exportPropertiesCSV = async function() {
     if (!window.supabaseClient) return;
-    var { data, error } = await window.supabaseClient.from('properties').select('*').order('created_at', { ascending: false });
+    const { data, error } = await window.supabaseClient.from('properties').select('*').order('created_at', { ascending: false });
     if (error) { showToast('Error exportando: ' + error.message, 'error'); return; }
-    var headers = ['ID', 'Título', 'Tipo', 'Zona', 'Dirección', 'Precio', 'Moneda', 'Dormitorios', 'Baños', 'm²', 'Estado', 'Publicada', 'Fecha'];
-    var rows = data.map(function(p) {
+    const headers = ['ID', 'Título', 'Tipo', 'Zona', 'Dirección', 'Precio', 'Moneda', 'Dormitorios', 'Baños', 'm²', 'Estado', 'Publicada', 'Fecha'];
+    const rows = data.map(function(p) {
       return [p.id, p.title, p.property_type, p.zone, p.address, p.price_usd, p.price_currency || 'USD', p.bedrooms, p.bathrooms, p.area_m2, p.status, p.published, p.created_at];
     });
-    var date = new Date().toISOString().slice(0, 10);
+    const date = new Date().toISOString().slice(0, 10);
     downloadCSV('propiedades-' + date + '.csv', rows, headers);
     showToast('Propiedades exportadas (' + rows.length + ')');
   };
 
   window.exportTasacionesCSV = async function() {
     if (!window.supabaseClient) return;
-    var { data, error } = await window.supabaseClient.from('tasaciones').select('*').order('created_at', { ascending: false });
+    const { data, error } = await window.supabaseClient
+      .from('tasaciones')
+      .select('id, title, status, type, created_at, updated_at, valuation_usd, property_id, owner_id')
+      .order('created_at', { ascending: false });
     if (error) { showToast('Error exportando: ' + error.message, 'error'); return; }
-    var headers = ['ID', 'Título', 'Estado', 'Fecha creación', 'Última edición'];
-    var rows = data.map(function(t) {
-      return [t.id, t.title, t.status, t.created_at, t.updated_at];
+    const propIds = [...new Set((data || []).map(t => t.property_id).filter(Boolean))];
+    const ownerIds = [...new Set((data || []).map(t => t.owner_id).filter(Boolean))];
+    const [propsRes, ownersRes] = await Promise.all([
+      propIds.length ? window.supabaseClient.from('properties').select('id, code, title').in('id', propIds) : { data: [] },
+      ownerIds.length ? window.supabaseClient.from('owners').select('id, full_name').in('id', ownerIds) : { data: [] }
+    ]);
+    const propMap = new Map((propsRes.data || []).map(p => [p.id, p]));
+    const ownerMap = new Map((ownersRes.data || []).map(o => [o.id, o]));
+    const headers = ['ID', 'Título', 'Tipo', 'Estado', 'Propiedad', 'Propietario', 'Valor Estimado (USD)', 'Fecha creación', 'Última edición'];
+    const rows = data.map(function(t) {
+      const prop = t.property_id ? propMap.get(t.property_id) : null;
+      const propName = prop ? (prop.code || '') + ' - ' + (prop.title || '') : '';
+      const owner = t.owner_id ? ownerMap.get(t.owner_id) : null;
+      return [t.id, t.title, t.type || '', t.status, propName, owner?.full_name || '', t.valuation_usd || '', t.created_at, t.updated_at];
     });
-    var date = new Date().toISOString().slice(0, 10);
+    const date = new Date().toISOString().slice(0, 10);
     downloadCSV('tasaciones-' + date + '.csv', rows, headers);
     showToast('Tasaciones exportadas (' + rows.length + ')');
   };
@@ -3997,7 +5630,7 @@ let dayCount = 1;
     try {
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const [auditRes, profilesRes] = await Promise.all([
-        window.supabaseClient.from('audit_log').select('user_id, action, severity, created_at, metadata').gte('created_at', weekAgo),
+        window.supabaseClient.from('audit_log').select('user_id, action, status, created_at, metadata').gte('created_at', weekAgo),
         window.supabaseClient.from('profiles').select('id, full_name, email, role')
       ]);
       if (auditRes.error) throw auditRes.error;
@@ -4011,7 +5644,7 @@ let dayCount = 1;
         const uid = a.user_id || 'unknown';
         if (!userStats[uid]) userStats[uid] = { actions: 0, errors: 0, sensitive: 0, exports: 0, bulk: 0, lastActivity: null };
         userStats[uid].actions++;
-        if (a.severity === 'error' || a.severity === 'critical') userStats[uid].errors++;
+        if (a.status === 'error' || a.status === 'critical') userStats[uid].errors++;
         if (a.metadata?.sensitive === true) userStats[uid].sensitive++;
         if (a.action === 'export' || a.action?.includes('export')) userStats[uid].exports++;
         if (a.action?.includes('bulk') || a.metadata?.bulk === true) userStats[uid].bulk++;
@@ -4050,7 +5683,7 @@ let dayCount = 1;
     if (!window.supabaseClient) return;
     try {
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const { data, error } = await window.supabaseClient.from('audit_log').select('module, action, severity, user_id').gte('created_at', weekAgo);
+      const { data, error } = await window.supabaseClient.from('audit_log').select('module, action, status, user_id').gte('created_at', weekAgo);
       if (error) throw error;
       const audit = data || [];
 
@@ -4061,7 +5694,7 @@ let dayCount = 1;
         modStats[mod].total++;
         modStats[mod].actions.add(a.action);
         modStats[mod].users.add(a.user_id);
-        if (a.severity === 'error' || a.severity === 'critical') modStats[mod].errors++;
+        if (a.status === 'error' || a.status === 'critical') modStats[mod].errors++;
       });
 
       const headers = ['Módulo', 'Total acciones', 'Usuarios únicos', 'Acciones únicas', 'Errores', 'Tasa error %'];
@@ -5063,7 +6696,7 @@ on(document, 'keydown', (e) => {
     
     try {
       const [auditRes, alertsRes] = await Promise.all([
-        window.supabaseClient.from('audit_log').select('user_id, action, module, severity, created_at, metadata').gte('created_at', weekAgo),
+        window.supabaseClient.from('audit_log').select('user_id, action, module, status, created_at, metadata').gte('created_at', weekAgo),
         window.supabaseClient.from('supervision_alerts').select('*').eq('status', 'open')
       ]);
 
@@ -5073,8 +6706,8 @@ on(document, 'keydown', (e) => {
       // KPIs
       const uniqueUsers = new Set(audit.map(a => a.user_id).filter(Boolean)).size;
       const actionsToday = audit.filter(a => a.created_at >= todayStart).length;
-      const successCount = audit.filter(a => a.severity === 'success' || a.severity === 'info').length;
-      const errorCount = audit.filter(a => a.severity === 'error' || a.severity === 'critical').length;
+      const successCount = audit.filter(a => a.status === 'success' || a.status === 'info').length;
+      const errorCount = audit.filter(a => a.status === 'error' || a.status === 'critical').length;
       const sensitiveCount = audit.filter(a => a.metadata?.sensitive === true).length;
       const openAlerts = alerts.length;
       const criticalAlerts = alerts.filter(a => a.severity === 'critical').length;
@@ -5135,7 +6768,7 @@ on(document, 'keydown', (e) => {
 
     // Errors by User
     const errorsByUser = {};
-    audit.filter(a => a.severity === 'error' || a.severity === 'critical').forEach(a => {
+    audit.filter(a => a.status === 'error' || a.status === 'critical').forEach(a => {
       const uid = a.user_id || 'unknown';
       errorsByUser[uid] = (errorsByUser[uid] || 0) + 1;
     });
@@ -5388,7 +7021,7 @@ on(document, 'keydown', (e) => {
 
     listEl.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding:20px;">Cargando actividad...</div>';
     try {
-      const { data } = await window.supabaseClient.from('audit_log').select('user_id, action, module, severity, metadata, created_at').order('created_at', { ascending: false }).limit(200);
+      const { data } = await window.supabaseClient.from('audit_log').select('user_id, action, module, status, metadata, created_at').order('created_at', { ascending: false }).limit(200);
       window._supActivityCache = data || [];
       renderSupActivity();
     } catch (err) {
@@ -5417,12 +7050,12 @@ on(document, 'keydown', (e) => {
       );
     }
     if (_supActivitySeverity) {
-      filtered = filtered.filter(a => a.severity === _supActivitySeverity);
+      filtered = filtered.filter(a => a.status === _supActivitySeverity);
     }
 
     const severityColors = { critical: '#EF4444', error: '#EF4444', high: '#F97316', medium: '#FFB800', low: '#3B82F6', info: '#1FC8C3', success: 'var(--success)' };
     listEl.innerHTML = filtered.slice(0, 100).map(a => {
-      const color = severityColors[a.severity] || 'var(--text-secondary)';
+      const color = severityColors[a.status] || 'var(--text-secondary)';
       const time = a.created_at ? new Date(a.created_at).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
       const meta = a.metadata ? `<br><span style="color:var(--text-dim); font-size:10px;">${esc(JSON.stringify(a.metadata)).slice(0, 200)}</span>` : '';
       return `<div style="border-bottom:1px solid var(--border-subtle); padding:8px 0; font-family:monospace; font-size:11px; line-height:1.6;">
@@ -5445,7 +7078,7 @@ on(document, 'keydown', (e) => {
     try {
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const [auditRes, profilesRes] = await Promise.all([
-        window.supabaseClient.from('audit_log').select('user_id, action, severity, created_at, metadata').gte('created_at', weekAgo),
+        window.supabaseClient.from('audit_log').select('user_id, action, status, created_at, metadata').gte('created_at', weekAgo),
         window.supabaseClient.from('profiles').select('id, full_name, email, role')
       ]);
       const audit = auditRes.data || [];
@@ -5457,7 +7090,7 @@ on(document, 'keydown', (e) => {
         const uid = a.user_id || 'unknown';
         if (!userStats[uid]) userStats[uid] = { actions: 0, errors: 0, sensitive: 0, exports: 0, bulk: 0, lastActivity: null };
         userStats[uid].actions++;
-        if (a.severity === 'error' || a.severity === 'critical') userStats[uid].errors++;
+        if (a.status === 'error' || a.status === 'critical') userStats[uid].errors++;
         if (a.metadata?.sensitive === true) userStats[uid].sensitive++;
         if (a.action === 'export' || a.action?.includes('export')) userStats[uid].exports++;
         if (a.action?.includes('bulk') || a.metadata?.bulk === true) userStats[uid].bulk++;
@@ -5524,7 +7157,7 @@ on(document, 'keydown', (e) => {
     $('#udRecentEvents').innerHTML = userAudit.slice(0, 20).map(a => {
       const time = a.created_at ? new Date(a.created_at).toLocaleString('es-AR') : '';
       return `<div style="border-bottom:1px solid var(--border-subtle); padding:4px 0; font-family:monospace; font-size:11px;">
-        [${esc(time)}] ${esc(a.action)} en ${esc(a.module || 'general')} <span style="color:${a.severity === 'error' ? 'var(--danger)' : a.severity === 'critical' ? '#EF4444' : 'var(--text-secondary)'}">[${esc(a.severity)}]</span>
+        [${esc(time)}] ${esc(a.action)} en ${esc(a.module || 'general')} <span style="color:${a.status === 'error' ? 'var(--danger)' : a.status === 'critical' ? '#EF4444' : 'var(--text-secondary)'}">[${esc(a.status)}]</span>
       </div>`;
     }).join('');
     
@@ -5551,7 +7184,7 @@ on(document, 'keydown', (e) => {
     grid.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding:40px;">Cargando módulos...</div>';
     try {
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const { data } = await window.supabaseClient.from('audit_log').select('module, action, severity, created_at').gte('created_at', weekAgo);
+      const { data } = await window.supabaseClient.from('audit_log').select('module, action, status, created_at').gte('created_at', weekAgo);
       const audit = data || [];
       
       const modStats = {};
@@ -5561,7 +7194,7 @@ on(document, 'keydown', (e) => {
         modStats[mod].total++;
         modStats[mod].actions.add(a.action);
         modStats[mod].users.add(a.user_id);
-        if (a.severity === 'error' || a.severity === 'critical') modStats[mod].errors++;
+        if (a.status === 'error' || a.status === 'critical') modStats[mod].errors++;
       });
 
       grid.innerHTML = Object.entries(modStats).map(([mod, stats]) => {
@@ -5875,7 +7508,7 @@ on(document, 'keydown', (e) => {
 
       const resultColors = { success: 'var(--success)', error: 'var(--danger)', critical: '#EF4444', info: 'var(--accent)', warning: 'var(--warning)' };
       const renderRows = rows.map(a => {
-        const color = resultColors[a.severity] || 'var(--text-secondary)';
+        const color = resultColors[a.status] || 'var(--text-secondary)';
         return `<tr style="border-bottom:1px solid var(--border-subtle); cursor:pointer;" onclick="openSupAuditDetail('${esc(a.id)}')">
           <td style="padding:8px 10px; font-family:monospace; font-size:11px; color:var(--text-secondary);">${a.created_at ? new Date(a.created_at).toLocaleString('es-AR') : '—'}</td>
           <td style="padding:8px 10px; color:#fff;">${esc(a.user_id || 'sistema')}</td>
@@ -5883,7 +7516,7 @@ on(document, 'keydown', (e) => {
           <td style="padding:8px 10px; color:var(--accent); font-size:12px;">${esc(a.module || 'general')}</td>
           <td style="padding:8px 10px; color:#fff; font-weight:500;">${esc(a.action)}</td>
           <td style="padding:8px 10px; color:var(--text-secondary); font-family:monospace; font-size:11px;">${esc(a.entity_type || '—')}:${esc(a.entity_id || '—').slice(0, 20)}</td>
-          <td style="padding:8px 10px; text-align:center;"><span style="color:${color}; font-weight:600; text-transform:uppercase; font-size:11px;">${esc(a.severity || 'info')}</span></td>
+          <td style="padding:8px 10px; text-align:center;"><span style="color:${color}; font-weight:600; text-transform:uppercase; font-size:11px;">${esc(a.status || 'info')}</span></td>
           <td style="padding:8px 10px; color:var(--text-dim); font-family:monospace; font-size:10px;">${esc(a.ip_address || '—')}</td>
           <td style="padding:8px 10px; color:var(--text-dim); font-family:monospace; font-size:10px;">${esc(a.request_id || '—').slice(0, 20)}</td>
         </tr>`;
@@ -5925,7 +7558,7 @@ on(document, 'keydown', (e) => {
         <div style="margin-bottom:12px;"><strong>Módulo:</strong> <span style="color:var(--accent);">${esc(data.module || 'general')}</span></div>
         <div style="margin-bottom:12px;"><strong>Acción:</strong> <span style="color:#fff; font-weight:600;">${esc(data.action)}</span></div>
         <div style="margin-bottom:12px;"><strong>Entidad:</strong> ${esc(data.entity_type || '—')}:${esc(data.entity_id || '—')}</div>
-        <div style="margin-bottom:12px;"><strong>Severidad:</strong> <span style="color:${resultColors[data.severity] || 'var(--text-secondary)'}; font-weight:600; text-transform:uppercase;">${esc(data.severity || 'info')}</span></div>
+        <div style="margin-bottom:12px;"><strong>Severidad:</strong> <span style="color:${resultColors[data.status] || 'var(--text-secondary)'}; font-weight:600; text-transform:uppercase;">${esc(data.status || 'info')}</span></div>
         <div style="margin-bottom:12px;"><strong>IP:</strong> ${esc(data.ip_address || '—')}</div>
         <div style="margin-bottom:12px;"><strong>Request ID:</strong> <code style="color:var(--accent);">${esc(data.request_id || '—')}</code></div>
         <div style="margin-bottom:12px;"><strong>Metadata:</strong><pre style="background:rgba(255,255,255,0.03); padding:12px; border-radius:8px; font-size:11px; overflow:auto; max-height:200px;">${esc(JSON.stringify(data.metadata || {}, null, 2))}</pre></div>
@@ -6045,7 +7678,7 @@ on(document, 'keydown', (e) => {
       const v_threshold = threshold;
       const v_filter = filterJson;
 
-      let query = window.supabaseClient.from('audit_log').select('user_id, action, module, severity, changed_fields, metadata, created_at').gte('created_at', new Date(Date.now() - parseInterval(v_window)).toISOString());
+      let query = window.supabaseClient.from('audit_log').select('user_id, action, module, status, changed_fields, metadata, created_at').gte('created_at', new Date(Date.now() - parseInterval(v_window)).toISOString());
       if (module) query = query.eq('module', module);
       if (action) query = query.eq('action', action);
 
@@ -6830,6 +8463,8 @@ let _execToDate = '';
 
   // Load Executive Dashboard
   window.loadExecutiveDashboard = async function() {
+    const currentUser = window._bhCurrentUser;
+    const currentProfile = window._bhCurrentProfile;
     if (!currentUser || !window.supabaseClient) return;
     if (currentProfile?.role !== 'super_admin') return;
 
@@ -6864,7 +8499,7 @@ let _execToDate = '';
         window.supabaseClient.from('visits').select('id, visit_date, lead_id').gte('visit_date', _execFromDate).lte('visit_date', _execToDate),
         window.supabaseClient.from('leads').select('id, stage, created_at, budget_usd').in('stage', ['cerrado']).gte('closed_at', _execFromDate).lte('closed_at', _execToDate),
         window.supabaseClient.from('properties').select('price_usd, price_currency, status, is_published').eq('is_published', true).neq('status', 'vendido'),
-        window.supabaseClient.from('audit_log').select('user_id, action, severity, created_at, metadata').gte('created_at', new Date(_execFromDate).toISOString()).lte('created_at', new Date(_execToDate).toISOString()),
+        window.supabaseClient.from('audit_log').select('user_id, action, status, created_at, metadata').gte('created_at', new Date(_execFromDate).toISOString()).lte('created_at', new Date(_execToDate).toISOString()),
         window.supabaseClient.from('agents').select('id, full_name, sales_ytd').eq('status', 'activo')
       ]);
 
@@ -7071,7 +8706,7 @@ let _execToDate = '';
       const [alertsRes, anomaliesRes, auditRes] = await Promise.all([
         window.supabaseClient.from('supervision_alerts').select('*').eq('status', 'open').in('severity', ['critical', 'high']).order('created_at', { ascending: false }).limit(5),
         window.supabaseClient.from('supervision_anomalies').select('*').eq('status', 'open').in('severity', ['critical', 'high']).order('created_at', { ascending: false }).limit(5),
-        window.supabaseClient.from('audit_log').select('*').eq('severity', 'critical').gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).order('created_at', { ascending: false }).limit(5)
+        window.supabaseClient.from('audit_log').select('*').eq('status', 'critical').gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).order('created_at', { ascending: false }).limit(5)
       ]);
 
       const alerts = alertsRes.data || [];

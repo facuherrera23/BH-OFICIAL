@@ -8,6 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://*.supabase.co https://r.ldngts.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://*.cloudinary.com https://images.unsplash.com https://*.supabase.co https://res.cloudinary.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.mercadolibre.com https://api.telegram.org https://r.ldngts.com; frame-src 'self';" />
 <meta name="theme-color" content="#020305" />
 <link rel="icon" href="/assets/images/favicon.ico">
 <!-- Google Fonts -->
@@ -264,6 +265,7 @@ LAYOUT PRINCIPAL
 <div class="kpi-top"><span class="kpi-title">Visitas Registradas</span><div class="kpi-icon"><i class="fas fa-calendar-days"></i></div></div>
 <div class="kpi-value" id="kpiVisitas">0</div>
 <div class="kpi-trend"><i class="fas fa-clock"></i> En agenda</div>
+<span id="agendaReminderBadge" class="nav-badge" style="display:none; position:absolute; top:6px; right:8px; font-size:10px; background:rgba(239,68,68,0.15); color:#ef4444; padding:2px 8px; border-radius:10px; font-weight:600;"></span>
 </div>
 <div class="kpi-card">
 <div class="kpi-top"><span class="kpi-title">Brokers Asignados</span><div class="kpi-icon"><i class="fas fa-user-tie"></i></div></div>
@@ -341,12 +343,13 @@ LAYOUT PRINCIPAL
 <th>Ambientes</th>
 <th>Precio</th>
 <th>Operación</th>
+<th>Propietario</th>
 <th>Estado</th>
 <th>Acciones</th>
 </tr>
 </thead>
 <tbody id="propertiesTableBody">
-<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando propiedades...</td></tr>
+<tr><td colspan="9" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando propiedades...</td></tr>
 </tbody>
 </table>
 <div id="propertiesPagination" style="display:flex; justify-content:center; align-items:center; gap:12px; margin-top:16px; padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-md);">
@@ -404,6 +407,8 @@ LAYOUT PRINCIPAL
 <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
 <button class="btn-luxury-action" id="btnNewVisit">+ Agendar Visita</button>
 <div style="display:flex; gap:6px; margin-left:auto;">
+<button class="status-pill" id="btnExportICS" title="Exportar a Calendario (ICS)"><i class="fas fa-calendar-plus"></i> .ics</button>
+<button class="status-pill" id="btnExportCSV" title="Exportar a Excel (CSV)"><i class="fas fa-file-csv"></i> .csv</button>
 <button class="status-pill" id="viewCalendarBtn" title="Vista Calendario"><i class="fas fa-calendar-alt"></i> Calendario</button>
 <button class="status-pill active" id="viewTableBtn" title="Vista Tabla"><i class="fas fa-table"></i> Tabla</button>
 </div>
@@ -425,6 +430,9 @@ LAYOUT PRINCIPAL
 <option value="confirmada">Confirmada</option>
 <option value="completada">Completada</option>
 <option value="cancelada">Cancelada</option>
+</select>
+<select id="calBrokerFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
+<option value="">Todos los brokers</option>
 </select>
 </div>
 </div>
@@ -459,7 +467,10 @@ LAYOUT PRINCIPAL
 <tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando visitas...</td></tr>
 </tbody>
 </table>
-<div id="visitsPagination" style="display:flex; justify-content:center; align-items:center; gap:12px; margin-top:16px; padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-md);">
+<div id="visitsPagination" style="display:flex; justify-content:center; align-items:center; gap:12px; margin-top:16px; padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-md); flex-wrap:wrap;">
+<select id="visitsBrokerFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
+<option value="">Todos los brokers</option>
+</select>
 <button id="visitsPagePrev" class="btn-action" title="Página anterior" disabled><i class="fas fa-chevron-left"></i></button>
 <span id="visitsPageInfo" style="color:var(--text-secondary); font-size:13px;">Página 1 de 1</span>
 <button id="visitsPageNext" class="btn-action" title="Página siguiente" disabled><i class="fas fa-chevron-right"></i></button>
@@ -486,9 +497,9 @@ LAYOUT PRINCIPAL
 <div class="kpi-trend"><i class="fas fa-shield-alt"></i> Contratos vigentes</div>
 </div>
 <div class="kpi-card">
-<div class="kpi-top"><span class="kpi-title">Comisión Promedio</span><div class="kpi-icon"><i class="fas fa-percent"></i></div></div>
-<div class="kpi-value">3.0% + IVA</div>
-<div class="kpi-trend"><i class="fas fa-tag"></i> Honorarios pactados</div>
+<div class="kpi-top"><span class="kpi-title">Comisiones Pendientes</span><div class="kpi-icon"><i class="fas fa-dollar-sign"></i></div></div>
+<div class="kpi-value" id="ownerKpiCommissions">USD 0</div>
+<div class="kpi-trend"><i class="fas fa-clock"></i> Por liquidar</div>
 </div>
 <div class="kpi-card">
 <div class="kpi-top"><span class="kpi-title">Exclusividades por Vencer</span><div class="kpi-icon"><i class="fas fa-stopwatch"></i></div></div>
@@ -496,14 +507,17 @@ LAYOUT PRINCIPAL
 <div class="kpi-trend" style="color:var(--warning);"><i class="fas fa-bell"></i> Requieren renovación</div>
 </div>
 </div>
+<div id="ownerDocAlert" class="alert-banner" style="display: none; margin-bottom: 24px;"></div>
 <div class="glass-panel">
 <div class="panel-header">
 <div>
-<h2 class="panel-title">Padrón de Propietarios &amp; Contratos de Venta</h2>
+<h2 class="panel-title">Padrón de Propietarios & Contratos de Venta</h2>
 <p style="color:var(--text-muted); font-size:12.5px;">Gestión de expedientes legales, cuentas bancarias, seguimiento y reportes automáticos.</p>
 </div>
 <div style="display:flex; gap:10px; flex-wrap:wrap;">
 <input type="text" id="ownerSearchInput" placeholder="Buscar por nombre, CUIT o inmueble..." style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); padding:8px 14px; border-radius:var(--radius-sm); font-size:13px; outline:none; min-width:240px; color:#fff;" />
+<button class="status-pill" id="btnExportOwnersCSV" title="Exportar a Excel (CSV)"><i class="fas fa-file-csv"></i> .csv</button>
+<button class="status-pill" id="btnExportOwnersPDF" title="Exportar a PDF"><i class="fas fa-file-pdf"></i> .pdf</button>
 <button class="btn-luxury-action" id="btnNewOwner"><i class="fas fa-user-plus"></i> Registrar Propietario</button>
 </div>
 </div>
@@ -512,7 +526,7 @@ LAYOUT PRINCIPAL
 <thead>
 <tr>
 <th>Titular / CUIT</th>
-<th>Contacto &amp; WhatsApp</th>
+<th>Contacto & WhatsApp</th>
 <th>Estado</th>
 <th>Banco / CBU</th>
 <th>Acciones</th>
@@ -523,6 +537,107 @@ LAYOUT PRINCIPAL
 </tbody>
 </table>
 </div>
+</div>
+
+<!-- Commission Dashboard -->
+<div class="glass-panel" style="margin-top: 24px;">
+<div class="panel-header">
+<div>
+<h2 class="panel-title">Dashboard de Comisiones & Liquidaciones</h2>
+<p style="color:var(--text-muted); font-size:12.5px;">Seguimiento de comisiones por propietario, liquidaciones mensuales y pagos.</p>
+</div>
+<div style="display:flex; gap:10px; flex-wrap:wrap;">
+<select id="commFilterBroker" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
+<option value="">Todos los Brokers</option>
+</select>
+<select id="commFilterOwner" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
+<option value="">Todos los Propietarios</option>
+</select>
+<select id="commFilterStatus" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
+<option value="">Todos los Estados</option>
+<option value="pendiente">Pendiente</option>
+<option value="liquidada">Liquidada</option>
+<option value="pagada">Pagada</option>
+</select>
+<button class="btn-luxury-action" id="btnGenerateLiquidation"><i class="fas fa-calculator"></i> Generar Liquidación Mes</button>
+</div>
+</div>
+
+<div class="commission-tabs" style="display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid var(--border-subtle); padding-bottom:4px; flex-wrap:wrap;">
+<button class="comm-tab-btn is-active" data-comm-tab="comm-pending" style="padding:8px 16px; background:none; border:none; color:var(--text-dim); font-size:12.5px; font-weight:500; cursor:pointer; border-radius:6px 6px 0 0; transition:all 0.2s;">Comisiones Pendientes</button>
+<button class="comm-tab-btn" data-comm-tab="comm-liquidations" style="padding:8px 16px; background:none; border:none; color:var(--text-dim); font-size:12.5px; font-weight:500; cursor:pointer; border-radius:6px 6px 0 0; transition:all 0.2s;">Liquidaciones</button>
+<button class="comm-tab-btn" data-comm-tab="comm-payments" style="padding:8px 16px; background:none; border:none; color:var(--text-dim); font-size:12.5px; font-weight:500; cursor:pointer; border-radius:6px 6px 0 0; transition:all 0.2s;">Pagos</button>
+</div>
+
+<div id="commTab-pending" class="comm-tab-content" style="display:block;">
+<div class="table-responsive">
+<table class="luxury-table">
+<thead>
+<tr>
+<th>Propietario</th>
+<th>Propiedad</th>
+<th>Broker</th>
+<th>Operación</th>
+<th>Monto USD</th>
+<th>IIBB %</th>
+<th>Ganancias %</th>
+<th>Neto ARS</th>
+<th>Vencimiento</th>
+<th>Estado</th>
+<th>Acciones</th>
+</tr>
+</thead>
+<tbody id="commPendingBody">
+<tr><td colspan="11" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando comisiones...</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<div id="commTab-liquidations" class="comm-tab-content" style="display:none;">
+<div class="table-responsive">
+<table class="luxury-table">
+<thead>
+<tr>
+<th>Período</th>
+<th>Broker</th>
+<th>Propietario</th>
+<th>Bruto USD</th>
+<th>IIBB ARS</th>
+<th>Ganancias ARS</th>
+<th>Neto ARS</th>
+<th>Estado</th>
+<th>Acciones</th>
+</tr>
+</thead>
+<tbody id="commLiquidationsBody">
+<tr><td colspan="9" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando liquidaciones...</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<div id="commTab-payments" class="comm-tab-content" style="display:none;">
+<div class="table-responsive">
+<table class="luxury-table">
+<thead>
+<tr>
+<th>Fecha</th>
+<th>Broker</th>
+<th>Propietario</th>
+<th>Monto ARS</th>
+<th>Método</th>
+<th>Referencia</th>
+<th>Acciones</th>
+</tr>
+</thead>
+<tbody id="commPaymentsBody">
+<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando pagos...</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+
 </div>
 </section>
 <!-- 6. SITIO WEB (CMS) -->
@@ -871,9 +986,9 @@ LAYOUT PRINCIPAL
 </div>
 <div class="table-responsive">
 <table class="luxury-table">
-<thead><tr><th>Agente</th><th>Matrícula</th><th>Estado</th><th>Teléfono</th><th>Acción</th></tr></thead>
+<thead><tr><th>Agente</th><th>Matrícula</th><th>Especialidades</th><th>Comisión</th><th>Estado</th><th>Teléfono</th><th>Acción</th></tr></thead>
 <tbody id="agentsTableBody">
-<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando agentes...</td></tr>
+<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando agentes...</td></tr>
 </tbody>
 </table>
 </div>
@@ -895,9 +1010,9 @@ LAYOUT PRINCIPAL
 </div>
 <div class="table-responsive">
 <table class="luxury-table">
-<thead><tr><th>Título</th><th>Estado</th><th>Fecha</th><th>Acción</th></tr></thead>
+<thead><tr><th>Título</th><th>Propiedad</th><th>Propietario</th><th>Valor Estimado</th><th>Tipo</th><th>Estado</th><th>Fecha</th><th>Acción</th></tr></thead>
 <tbody id="tasacionesTableBody">
-<tr><td colspan="4" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando tasaciones...</td></tr>
+<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando tasaciones...</td></tr>
 </tbody>
 </table>
 </div>
@@ -1729,6 +1844,12 @@ MODALES
 <div class="form-grid-2">
 <div class="form-field"><label>Cocheras</label><input type="number" name="garage_spaces" placeholder="1" /></div>
 </div>
+<div class="form-field">
+<label>Propietario</label>
+<select name="owner_id" id="propOwnerSelect">
+<option value="">Sin propietario asignado</option>
+</select>
+</div>
 <div class="form-field"><label>Descripción</label><textarea name="description" placeholder="Descripción de la propiedad" rows="3"></textarea></div>
 <div class="form-field">
 <label>Imágenes</label>
@@ -1830,6 +1951,9 @@ MODALES
 <input type="hidden" name="property_id" id="visitPropertyId" />
 <div class="form-grid-2">
 <div class="form-field"><label>Fecha y Hora *</label><input type="datetime-local" name="visit_date" required /></div>
+<div class="form-field"><label>Duración (min)</label><input type="number" name="duration_minutes" min="15" max="480" value="60" step="15" /></div>
+</div>
+<div class="form-grid-2">
 <div class="form-field"><label>Estado</label>
 <select name="status">
 <option value="pendiente">Pendiente</option>
@@ -1838,9 +1962,17 @@ MODALES
 <option value="cancelada">Cancelada</option>
 </select>
 </div>
+<div class="form-field"><label>Broker Asignado</label>
+<select name="agent_id" id="visitBrokerSelect">
+<option value="">— Seleccionar broker —</option>
+</select>
+</div>
 </div>
 <div class="form-field"><label>Nombre del Cliente *</label><input type="text" name="client_name" required placeholder="Dr. Carlos Varela" /></div>
+<div class="form-grid-2">
 <div class="form-field"><label>Teléfono del Cliente</label><input type="text" name="client_phone" placeholder="+54 9 387 000-0000" /></div>
+<div class="form-field"><label>Email del Cliente</label><input type="email" name="client_email" placeholder="cliente@email.com" /></div>
+</div>
 <div class="form-field"><label>Notas</label><textarea name="notes" placeholder="Detalles de la visita..."></textarea></div>
 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
 <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
@@ -1866,6 +1998,20 @@ MODALES
 <select name="status">
 <option value="activo">Activo</option>
 <option value="inactivo">Inactivo</option>
+<option value="vacaciones">Vacaciones</option>
+</select>
+</div>
+</div>
+<div class="form-grid-2">
+<div class="form-field"><label>Comisión Venta (%)</label><input type="number" name="commission_rate" value="3" min="0" max="100" step="0.5" /></div>
+<div class="form-field">
+<label>Especialidades</label>
+<select name="specialties" multiple size="3" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:12px; padding:8px 12px; color:#fff; font-size:13.5px; width:100%;">
+<option value="venta">Venta</option>
+<option value="alquiler">Alquiler</option>
+<option value="terrenos">Terrenos</option>
+<option value="comercial">Comercial</option>
+<option value="tasaciones">Tasaciones</option>
 </select>
 </div>
 </div>
@@ -1883,10 +2029,23 @@ MODALES
 </div>
 <!-- MODAL PROPIETARIO -->
 <div class="admin-modal" id="ownerModal">
-<div class="modal-box">
+<div class="modal-box" style="max-width:900px;">
 <h3 id="ownerModalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Expediente de Propietario</h3>
+
+<div class="owner-modal-tabs" style="display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid var(--border-subtle); padding-bottom:4px; flex-wrap:wrap;">
+<button class="owner-tab-btn is-active" data-owner-tab="data" style="padding:8px 16px; background:none; border:none; color:var(--text-dim); font-size:12.5px; font-weight:500; cursor:pointer; border-radius:6px 6px 0 0; transition:all 0.2s;">Datos Principales</button>
+<button class="owner-tab-btn" data-owner-tab="docs" style="padding:8px 16px; background:none; border:none; color:var(--text-dim); font-size:12.5px; font-weight:500; cursor:pointer; border-radius:6px 6px 0 0; transition:all 0.2s;">Documentos</button>
+<button class="owner-tab-btn" data-owner-tab="checklist" style="padding:8px 16px; background:none; border:none; color:var(--text-dim); font-size:12.5px; font-weight:500; cursor:pointer; border-radius:6px 6px 0 0; transition:all 0.2s;">Checklist</button>
+<button class="owner-tab-btn" data-owner-tab="props" style="padding:8px 16px; background:none; border:none; color:var(--text-dim); font-size:12.5px; font-weight:500; cursor:pointer; border-radius:6px 6px 0 0; transition:all 0.2s;">Propiedades</button>
+<button class="owner-tab-btn" data-owner-tab="tasaciones" style="padding:8px 16px; background:none; border:none; color:var(--text-dim); font-size:12.5px; font-weight:500; cursor:pointer; border-radius:6px 6px 0 0; transition:all 0.2s;">Tasaciones</button>
+<button class="owner-tab-btn" data-owner-tab="timeline" style="padding:8px 16px; background:none; border:none; color:var(--text-dim); font-size:12.5px; font-weight:500; cursor:pointer; border-radius:6px 6px 0 0; transition:all 0.2s;">Timeline</button>
+<button class="owner-tab-btn" data-owner-tab="contract" style="padding:8px 16px; background:none; border:none; color:var(--text-dim); font-size:12.5px; font-weight:500; cursor:pointer; border-radius:6px 6px 0 0; transition:all 0.2s;">Exclusividad</button>
+</div>
+
 <form id="ownerForm" novalidate>
 <input type="hidden" name="id" id="ownerId" />
+
+<div id="ownerTab-data" class="owner-tab-content" style="display:block;">
 <div class="form-grid-2">
 <div class="form-field"><label>Nombre Completo / Titular *</label><input type="text" name="full_name" required placeholder="Ing. Roberto Gómez" /></div>
 <div class="form-field"><label>DNI / CUIT / CUIL</label><input type="text" name="dni_cuit" placeholder="20-24891002-4" /></div>
@@ -1920,8 +2079,92 @@ MODALES
 </div>
 </div>
 <div class="form-field"><label>Notas Privadas / Preferencias</label><textarea name="notes" placeholder="Prefiere comunicarse por WhatsApp. Acepta permuta..."></textarea></div>
-<div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+</div>
+
+<div id="ownerTab-docs" class="owner-tab-content" style="display:none;">
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+<h4 style="color:#fff; font-size:14px; font-weight:600;">Documentos del Expediente</h4>
+<div style="display:flex; gap:8px;">
+<button type="button" class="btn-luxury-action" id="btnAddOwnerDoc" style="font-size:12px; padding:8px 16px;"><i class="fas fa-upload"></i> Subir Documento</button>
+</div>
+</div>
+<div id="ownerDocsList" style="min-height:100px; max-height:300px; overflow-y:auto;">
+<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Sin documentos cargados</p>
+</div>
+</div>
+
+<div id="ownerTab-checklist" class="owner-tab-content" style="display:none;">
+<h4 style="color:#fff; font-size:14px; font-weight:600; margin-bottom:12px;">Checklist de Documentos por Operación</h4>
+<div style="margin-bottom:12px;">
+<label style="font-size:12px; color:var(--text-dim); margin-right:8px;">Tipo de operación:</label>
+<select id="checklistOperationType" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
+<option value="venta">Venta</option>
+<option value="alquiler">Alquiler</option>
+<option value="tasacion">Tasación</option>
+<option value="exclusividad">Exclusividad</option>
+</select>
+</div>
+<div id="ownerChecklistList" style="min-height:100px; max-height:300px; overflow-y:auto;">
+<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Seleccione un tipo de operación</p>
+</div>
+</div>
+
+<div id="ownerTab-props" class="owner-tab-content" style="display:none;">
+<h4 style="color:#fff; font-size:14px; font-weight:600; margin-bottom:12px;">Propiedades Vinculadas</h4>
+<div id="ownerPropsList" style="min-height:100px; max-height:300px; overflow-y:auto;">
+<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Sin propiedades vinculadas</p>
+</div>
+</div>
+
+<div id="ownerTab-tasaciones" class="owner-tab-content" style="display:none;">
+<h4 style="color:#fff; font-size:14px; font-weight:600; margin-bottom:12px;">Tasaciones del Propietario</h4>
+<div id="ownerTasacionesList" style="min-height:100px; max-height:300px; overflow-y:auto;">
+<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Sin tasaciones registradas</p>
+</div>
+</div>
+
+<div id="ownerTab-timeline" class="owner-tab-content" style="display:none;">
+<h4 style="color:#fff; font-size:14px; font-weight:600; margin-bottom:12px;">Timeline de Comunicaciones</h4>
+<div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+<input type="text" id="ownerTimelineNote" placeholder="Agregar nota / comunicación..." style="flex:1; min-width:200px; background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:10px 12px; color:#fff; font-size:13px;" />
+<select id="ownerTimelineType" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:10px 12px; color:#fff; font-size:13px;">
+<option value="note">Nota Interna</option>
+<option value="whatsapp">WhatsApp</option>
+<option value="email">Email</option>
+<option value="call">Llamada</option>
+<option value="meeting">Reunión</option>
+</select>
+<button type="button" class="btn-luxury-action" id="btnAddTimelineEntry" style="padding:10px 16px;"><i class="fas fa-plus"></i> Agregar</button>
+</div>
+<div id="ownerTimelineList" style="min-height:100px; max-height:300px; overflow-y:auto;">
+<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Sin comunicaciones registradas</p>
+</div>
+</div>
+
+<div id="ownerTab-contract" class="owner-tab-content" style="display:none;">
+<h4 style="color:#fff; font-size:14px; font-weight:600; margin-bottom:12px;">Contrato de Exclusividad</h4>
+<div class="form-grid-2" style="margin-bottom:16px;">
+<div class="form-field"><label>Fecha Inicio Exclusividad</label><input type="date" name="exclusive_start" /></div>
+<div class="form-field"><label>Fecha Fin Exclusividad</label><input type="date" name="exclusive_end" /></div>
+</div>
+<div class="form-grid-2" style="margin-bottom:16px;">
+<div class="form-field"><label>Comisión Venta (%)</label><input type="number" name="commission_sale" min="0" max="100" step="0.1" placeholder="3.0" /></div>
+<div class="form-field"><label>Comisión Alquiler (%)</label><input type="number" name="commission_rent" min="0" max="100" step="0.1" placeholder="4.0" /></div>
+</div>
+<div class="form-grid-2" style="margin-bottom:16px;">
+<div class="form-field"><label>Vencimiento DNI / Doc. identidad</label><input type="date" name="dni_expiry" /></div>
+<div class="form-field"><label>Vencimiento Constancia CUIT</label><input type="date" name="cuit_expiry" /></div>
+</div>
+<div class="form-field" style="margin-bottom:16px;">
+<label>Comisión Split (JSON)</label>
+<textarea name="commission_split" placeholder='{"co_broker_id": "uuid", "percentage": 50}' rows="3" style="font-family:monospace; font-size:11px;"></textarea>
+</div>
+<div class="form-field"><label>Notas del Contrato</label><textarea name="contract_notes" placeholder="Cláusulas especiales, condiciones de renovación..."></textarea></div>
+</div>
+
+<div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px; padding-top:16px; border-top:1px solid var(--border-subtle);">
 <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+<button type="button" class="btn-luxury-action" id="btnGeneratePortalLink" style="background:linear-gradient(135deg, #1fc8c3 0%, #1a9a9a 100%);"><i class="fas fa-link"></i> Generar Link Portal</button>
 <button type="submit" class="btn-luxury-action" id="ownerSaveBtn">Guardar Expediente</button>
 </div>
 </form>
@@ -2048,6 +2291,22 @@ MODALES
 </form>
 </div>
 </div>
+<!-- MODAL NUEVA TASACIÓN -->
+<div class="admin-modal" id="newTasacionModal">
+<div class="modal-box">
+<h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:6px;">Nueva Tasación</h3>
+<p style="color:var(--text-muted); font-size:12.5px; margin-bottom:22px;">Vinculá la tasación a una propiedad y propietario (opcional).</p>
+<form id="newTasacionForm">
+<div class="form-field"><label>Tipo de Tasación</label><select id="tasaType"><option value="venta">Venta</option><option value="alquiler">Alquiler</option><option value="hipotecario">Hipotecario</option><option value="judicial">Judicial</option></select></div>
+<div class="form-field"><label>Propiedad (opcional)</label><select id="tasaProperty"><option value="">Sin vincular</option></select></div>
+<div class="form-field"><label>Propietario (opcional)</label><select id="tasaOwner"><option value="">Sin vincular</option></select></div>
+<div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+<button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+<button type="submit" class="btn-luxury-action"><i class="fas fa-plus"></i> Crear Tasación</button>
+</div>
+</form>
+</div>
+</div>
 <!-- TOAST NOTIFICATION -->
 <div class="toast-msg" id="toastMsg">
 <i class="fas fa-circle-check" style="color:var(--accent); font-size:18px;"></i>
@@ -2153,6 +2412,6 @@ setTimeout(function() { checkCDN(); }, 6000);
 <script src="assets/js/config.js?v=5"></script>
 <script src="assets/js/supabase-client.js?v=4"></script>
 <script src="assets/js/cloudinary.js?v=6"></script>
-<script src="assets/js/admin-app.js?v=77"></script>
+<script src="assets/js/admin-app.js?v=91"></script>
 </body>
 </html>

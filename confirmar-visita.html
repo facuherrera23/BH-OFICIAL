@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirmar Visita | BIENENHAUS</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self' https://rnldqiwwzhjnurkguihu.supabase.co https://cdn.jsdelivr.net;">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="assets/css/landing.css?v=30">
+  <style>
+    .confirm-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 20px; background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%); }
+    .confirm-card { width: 100%; max-width: 480px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 40px; backdrop-filter: blur(20px); text-align: center; }
+    .confirm-icon { width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; font-size: 32px; }
+    .confirm-icon.success { background: rgba(0,200,120,0.2); color: #00c878; }
+    .confirm-icon.warning { background: rgba(255,184,0,0.2); color: #FFB800; }
+    .confirm-icon.danger { background: rgba(239,68,68,0.2); color: #ef4444; }
+    .confirm-icon.pending { background: rgba(31,200,195,0.2); color: #1fc8c3; }
+    h1 { font-family: 'Playfair Display', serif; font-size: 28px; color: #fff; margin-bottom: 8px; }
+    .confirm-subtitle { color: var(--text-muted); font-size: 15px; margin-bottom: 32px; }
+    .visit-details { background: rgba(0,0,0,0.3); border-radius: 12px; padding: 20px; margin-bottom: 24px; text-align: left; }
+    .detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-label { color: var(--text-dim); font-size: 13px; }
+    .detail-value { color: #fff; font-weight: 500; font-size: 14px; }
+    .btn-group { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+    .btn-confirm { background: linear-gradient(135deg, #00c878 0%, #00a664 100%); color: #000; }
+    .btn-confirm:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,200,120,0.4); }
+    .btn-cancel { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+    .btn-cancel:hover { background: rgba(239,68,68,0.25); }
+    .btn-wa { background: rgba(37,211,102,0.15); color: #25d366; border: 1px solid rgba(37,211,102,0.3); }
+    .btn-wa:hover { background: rgba(37,211,102,0.25); }
+    .status-badge { display: inline-block; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-bottom: 16px; }
+    .status-pendiente { background: rgba(255,184,0,0.2); color: #FFB800; }
+    .status-confirmada { background: rgba(0,200,120,0.2); color: #00c878; }
+    .status-completada { background: rgba(31,200,195,0.2); color: #1fc8c3; }
+    .status-cancelada { background: rgba(239,68,68,0.2); color: #ef4444; }
+    .error-state { color: #ef4444; }
+    .loading { color: var(--text-dim); }
+  </style>
+</head>
+<body>
+  <div class="confirm-page">
+    <div class="confirm-card" id="confirmCard">
+      <div class="confirm-icon pending" id="confirmIcon"><i class="fas fa-clock"></i></div>
+      <h1 id="confirmTitle">Cargando...</h1>
+      <p class="confirm-subtitle" id="confirmSubtitle">Verificando tu visita...</p>
+      <span class="status-badge status-pendiente" id="statusBadge">Pendiente</span>
+      
+      <div class="visit-details" id="visitDetails" style="display:none;">
+        <div class="detail-row">
+          <span class="detail-label">Cliente</span>
+          <span class="detail-value" id="detailClient">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Fecha y Hora</span>
+          <span class="detail-value" id="detailDate">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Duración</span>
+          <span class="detail-value" id="detailDuration">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Broker</span>
+          <span class="detail-value" id="detailBroker">—</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Notas</span>
+          <span class="detail-value" id="detailNotes">—</span>
+        </div>
+      </div>
+
+      <div class="btn-group" id="actionButtons" style="display:none;">
+        <button class="btn-luxury-action btn-confirm" id="btnConfirm" style="padding:14px 32px; font-size:15px;">
+          <i class="fas fa-check"></i> Confirmar Visita
+        </button>
+        <button class="btn-luxury-action btn-cancel" id="btnCancel" style="padding:14px 32px; font-size:15px;">
+          <i class="fas fa-times"></i> Cancelar
+        </button>
+        <a class="btn-luxury-action btn-wa" id="btnWhatsApp" target="_blank" style="padding:14px 32px; font-size:15px; text-decoration:none; display:inline-flex; align-items:center; gap:8px;">
+          <i class="fab fa-whatsapp"></i> WhatsApp
+        </a>
+      </div>
+
+      <p style="margin-top:24px; font-size:12px; color:var(--text-dim);">
+        ¿No eres tú? Ignora este mensaje.
+      </p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="assets/js/config.js?v=1"></script>
+  <script>
+    (async function() {
+      const token = new URLSearchParams(window.location.search).get('token');
+      if (!token) {
+        showError('Token inválido');
+        return;
+      }
+
+      if (!window.BH_CONFIG?.SUPABASE_URL || !window.BH_CONFIG?.SUPABASE_ANON_KEY) {
+        showError('Configuración no disponible');
+        return;
+      }
+
+      const { createClient } = supabase;
+      const supabaseClient = createClient(window.BH_CONFIG.SUPABASE_URL, window.BH_CONFIG.SUPABASE_ANON_KEY);
+
+      try {
+        const { data, error } = await supabaseClient
+          .from('visits')
+          .select('*, agents(full_name)')
+          .eq('confirmation_token', token)
+          .single();
+
+        if (error || !data) {
+          showError('Visita no encontrada o enlace expirado');
+          return;
+        }
+
+        renderVisit(data);
+
+      } catch (err) {
+        console.error(err);
+        showError('Error al cargar la visita');
+      }
+
+      function renderVisit(v) {
+        const icon = document.getElementById('confirmIcon');
+        const title = document.getElementById('confirmTitle');
+        const subtitle = document.getElementById('confirmSubtitle');
+        const badge = document.getElementById('statusBadge');
+        const details = document.getElementById('visitDetails');
+        const actions = document.getElementById('actionButtons');
+        const btnConfirm = document.getElementById('btnConfirm');
+        const btnCancel = document.getElementById('btnCancel');
+        const btnWhatsApp = document.getElementById('btnWhatsApp');
+
+        // Status styling
+        const statusMap = {
+          pendiente: { icon: 'fa-clock', class: 'pending', label: 'Pendiente', badge: 'status-pendiente' },
+          confirmada: { icon: 'fa-check-circle', class: 'success', label: 'Confirmada', badge: 'status-confirmada' },
+          completada: { icon: 'fa-flag-checkered', class: 'success', label: 'Completada', badge: 'status-completada' },
+          cancelada: { icon: 'fa-times-circle', class: 'danger', label: 'Cancelada', badge: 'status-cancelada' }
+        };
+        const s = statusMap[v.status] || statusMap.pendiente;
+        icon.className = 'confirm-icon ' + s.class;
+        icon.innerHTML = '<i class="fas ' + s.icon + '"></i>';
+        badge.className = 'status-badge ' + s.badge;
+        badge.textContent = s.label;
+
+        if (v.status === 'confirmada' || v.status === 'completada') {
+          title.textContent = 'Visita Confirmada ✓';
+          subtitle.textContent = 'Tu visita está confirmada. Te esperamos.';
+          actions.style.display = 'none';
+        } else if (v.status === 'cancelada') {
+          title.textContent = 'Visita Cancelada';
+          subtitle.textContent = 'Esta visita ha sido cancelada.';
+          actions.style.display = 'none';
+        } else {
+          title.textContent = 'Confirmar tu Visita';
+          subtitle.textContent = 'Por favor confirma o cancela tu asistencia.';
+          actions.style.display = 'flex';
+        }
+
+        // Fill details
+        document.getElementById('detailClient').textContent = v.client_name || '—';
+        document.getElementById('detailDate').textContent = v.visit_date 
+          ? new Date(v.visit_date).toLocaleString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+          : '—';
+        document.getElementById('detailDuration').textContent = v.duration_minutes ? v.duration_minutes + ' min' : '60 min';
+        document.getElementById('detailBroker').textContent = v.agents?.full_name || 'Por asignar';
+        document.getElementById('detailNotes').textContent = v.notes || '—';
+        details.style.display = 'block';
+
+        // WhatsApp link
+        if (v.client_phone) {
+          const msg = encodeURIComponent(`Hola, confirmo mi visita del ${new Date(v.visit_date).toLocaleDateString('es-AR')} a las ${new Date(v.visit_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}.`);
+          btnWhatsApp.href = `https://wa.me/${v.client_phone.replace(/\D/g, '')}?text=${msg}`;
+        }
+
+        // Confirm action
+        btnConfirm.onclick = async () => {
+          btnConfirm.disabled = true;
+          btnConfirm.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Confirmando...';
+          try {
+            const { error } = await supabaseClient
+              .from('visits')
+              .update({ status: 'confirmada', confirmed_at: new Date().toISOString() })
+              .eq('id', v.id);
+            if (error) throw error;
+            showToast('Visita confirmada correctamente', 'success');
+            setTimeout(() => window.location.reload(), 1500);
+          } catch (err) {
+            showToast('Error: ' + err.message, 'error');
+            btnConfirm.disabled = false;
+            btnConfirm.innerHTML = '<i class="fas fa-check"></i> Confirmar Visita';
+          }
+        };
+
+        // Cancel action
+        btnCancel.onclick = async () => {
+          if (!confirm('¿Cancelar esta visita?')) return;
+          btnCancel.disabled = true;
+          btnCancel.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cancelando...';
+          try {
+            const { error } = await supabaseClient
+              .from('visits')
+              .update({ status: 'cancelada', cancel_reason: 'Cancelado por cliente' })
+              .eq('id', v.id);
+            if (error) throw error;
+            showToast('Visita cancelada', 'success');
+            setTimeout(() => window.location.reload(), 1500);
+          } catch (err) {
+            showToast('Error: ' + err.message, 'error');
+            btnCancel.disabled = false;
+            btnCancel.innerHTML = '<i class="fas fa-times"></i> Cancelar';
+          }
+        };
+      }
+
+      function showError(msg) {
+        document.getElementById('confirmTitle').textContent = 'Error';
+        document.getElementById('confirmSubtitle').textContent = msg;
+        document.getElementById('confirmIcon').className = 'confirm-icon danger';
+        document.getElementById('confirmIcon').innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
+        document.getElementById('statusBadge').style.display = 'none';
+      }
+
+      function showToast(msg, type) {
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed; bottom:24px; right:24px; padding:14px 24px; border-radius:12px; font-weight:600; z-index:9999; animation:slideUp 0.3s ease; background:' + (type === 'success' ? 'rgba(0,200,120,0.95)' : 'rgba(239,68,68,0.95)') + '; color:#fff;';
+        toast.textContent = msg;
+        document.body.appendChild(toast);
+        setTimeout(() => { toast.style.animation = 'slideUp 0.3s ease reverse'; setTimeout(() => toast.remove(), 300); }, 3000);
+      }
+    })();
+  </script>
+  <style>
+    @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+  </style>
+</body>
+</html>
