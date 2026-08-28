@@ -1122,17 +1122,21 @@ function esc(s) {
       data.image_urls = [...existingUrls, ...newUrls];
 
       if (editingPropertyId) {
-        const { error } = await window.supabaseClient
-          .from('properties')
-          .update(data)
-          .eq('id', editingPropertyId);
-        if (error) throw error;
+        await mutate('properties', async () => {
+          const { error } = await window.supabaseClient
+            .from('properties')
+            .update(data)
+            .eq('id', editingPropertyId);
+          if (error) throw error;
+        });
         showToast('Propiedad actualizada correctamente', 'success');
       } else {
-        const { error } = await window.supabaseClient
-          .from('properties')
-          .insert([data]);
-        if (error) throw error;
+        await mutate('properties', async () => {
+          const { error } = await window.supabaseClient
+            .from('properties')
+            .insert([data]);
+          if (error) throw error;
+        });
         showToast('Propiedad creada correctamente', 'success');
       }
 
@@ -1457,12 +1461,16 @@ function esc(s) {
       };
 
       if (editingLeadId) {
-        const { error } = await window.supabaseClient.from('leads').update(data).eq('id', editingLeadId);
-        if (error) throw error;
+        await mutate('leads', async () => {
+          const { error } = await window.supabaseClient.from('leads').update(data).eq('id', editingLeadId);
+          if (error) throw error;
+        });
         showToast('Lead actualizado', 'success');
       } else {
-        const { error } = await window.supabaseClient.from('leads').insert([data]);
-        if (error) throw error;
+        await mutate('leads', async () => {
+          const { error } = await window.supabaseClient.from('leads').insert([data]);
+          if (error) throw error;
+        });
         showToast('Lead registrado', 'success');
       }
 
@@ -2068,15 +2076,21 @@ let dayCount = 1;
       const leadIdChanged = oldLeadId !== newLeadId;
 
       if (editingVisitId) {
-        const { error } = await window.supabaseClient.from('visits').update(data).eq('id', editingVisitId);
-        if (error) throw error;
+        await mutate('visits', async () => {
+          const { error } = await window.supabaseClient.from('visits').update(data).eq('id', editingVisitId);
+          if (error) throw error;
+        });
         showToast('Visita actualizada', 'success');
       } else {
         /* Generate confirmation_token for new visit */
         const confirmation_token = crypto.randomUUID();
         const insertData = { ...data, confirmation_token };
-        const { data: inserted, error } = await window.supabaseClient.from('visits').insert([insertData]).select('id').single();
-        if (error) throw error;
+        let inserted = null;
+        await mutate('visits', async () => {
+          const { data: insertedData, error } = await window.supabaseClient.from('visits').insert([insertData]).select('id').single();
+          if (error) throw error;
+          inserted = insertedData;
+        });
         showToast('Visita agendada', 'success');
         /* Show confirmation link */
         if (inserted?.id && data.client_email) {
@@ -3175,12 +3189,16 @@ let dayCount = 1;
 
       if (editingAgentId) {
         if (!data.photo_url) delete data.photo_url;
-        const { error } = await window.supabaseClient.from('agents').update(data).eq('id', editingAgentId);
-        if (error) throw error;
+        await mutate('agents', async () => {
+          const { error } = await window.supabaseClient.from('agents').update(data).eq('id', editingAgentId);
+          if (error) throw error;
+        });
         showToast('Agente actualizado', 'success');
       } else {
-        const { error } = await window.supabaseClient.from('agents').insert([data]);
-        if (error) throw error;
+        await mutate('agents', async () => {
+          const { error } = await window.supabaseClient.from('agents').insert([data]);
+          if (error) throw error;
+        });
         showToast('Agente creado', 'success');
       }
 
@@ -3644,15 +3662,20 @@ let dayCount = 1;
       const { data: c, error: fetchErr } = await window.supabaseClient.from('commissions').select('*').eq('id', id).single();
       if (fetchErr) throw fetchErr;
       const paidDate = new Date().toISOString().split('T')[0];
-      const { error } = await window.supabaseClient.from('commissions').update({ status: 'pagada', paid_date: paidDate, updated_at: new Date().toISOString() }).eq('id', id);
-      if (error) throw error;
+      await mutate('commissions', async () => {
+        const { error } = await window.supabaseClient.from('commissions').update({ status: 'pagada', paid_date: paidDate, updated_at: new Date().toISOString() }).eq('id', id);
+        if (error) throw error;
+      });
       const net = c.net_amount_ars || ((c.commission_amount_ars || 0) - (c.iibb_amount_ars || 0) - (c.ganancias_amount_ars || 0));
-      await window.supabaseClient.from('commission_payments').insert([{
-        commission_id: id, liquidation_id: c.liquidation_id || null,
-        broker_id: c.broker_id || null, owner_id: c.owner_id || null,
-        amount_ars: net, payment_method: 'transferencia', payment_date: paidDate,
-        reference: 'Pago directo comisión', created_by: currentUser?.id || null
-      }]);
+      await mutate('commission_payments', async () => {
+        const { error } = await window.supabaseClient.from('commission_payments').insert([{
+          commission_id: id, liquidation_id: c.liquidation_id || null,
+          broker_id: c.broker_id || null, owner_id: c.owner_id || null,
+          amount_ars: net, payment_method: 'transferencia', payment_date: paidDate,
+          reference: 'Pago directo comisión', created_by: currentUser?.id || null
+        }]);
+        if (error) throw error;
+      });
       showToast('Comisión marcada como pagada', 'success');
       await loadPendingCommissions();
       await loadPayments();
@@ -3779,8 +3802,10 @@ let dayCount = 1;
   window.adminApp.deletePayment = async function(id) {
     if (!confirm('¿Eliminar este pago?')) return;
     try {
-      const { error } = await window.supabaseClient.from('commission_payments').delete().eq('id', id);
-      if (error) throw error;
+      await mutate('commission_payments', async () => {
+        const { error } = await window.supabaseClient.from('commission_payments').delete().eq('id', id);
+        if (error) throw error;
+      });
       showToast('Pago eliminado', 'success');
       await loadPayments();
     } catch (err) { showToast('Error: ' + err.message, 'error'); }
@@ -3843,12 +3868,16 @@ let dayCount = 1;
       };
 
       if (editingOwnerId) {
-        const { error } = await window.supabaseClient.from('owners').update(data).eq('id', editingOwnerId);
-        if (error) throw error;
+        await mutate('owners', async () => {
+          const { error } = await window.supabaseClient.from('owners').update(data).eq('id', editingOwnerId);
+          if (error) throw error;
+        });
         showToast('Propietario actualizado', 'success');
       } else {
-        const { error } = await window.supabaseClient.from('owners').insert([data]);
-        if (error) throw error;
+        await mutate('owners', async () => {
+          const { error } = await window.supabaseClient.from('owners').insert([data]);
+          if (error) throw error;
+        });
         showToast('Propietario creado', 'success');
       }
 
@@ -4988,8 +5017,7 @@ let dayCount = 1;
     if (!portal) { _submittingPortal = false; return; }
     const btn = e.target.querySelector('button[type="submit"]');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
-
-    try {
+try {
       const fields = PORTAL_CONFIG_FIELDS[portal.name] || [];
       const upsertData = { portal_name: portal.name };
       fields.forEach(f => {
@@ -4997,10 +5025,12 @@ let dayCount = 1;
         if (input) upsertData[f.name] = input.value?.trim() || '';
       });
 
-      const { error } = await window.supabaseClient
-        .from('portal_settings')
-        .upsert(upsertData, { onConflict: 'portal_name' });
-      if (error) throw error;
+      await mutate('portal_settings', async () => {
+        const { error } = await window.supabaseClient
+          .from('portal_settings')
+          .upsert(upsertData, { onConflict: 'portal_name' });
+        if (error) throw error;
+      });
       showToast(`${portal.name} configurado correctamente`, 'success');
       closeModal('portalModal');
     } catch (err) {
@@ -5458,8 +5488,10 @@ let dayCount = 1;
   async function _deleteTasacion(id) {
     if (!confirm('¿Eliminar esta tasación permanentemente?')) return;
     try {
-      const { error } = await window.supabaseClient.from('tasaciones').delete().eq('id', id);
-      if (error) throw error;
+      await mutate('tasaciones', async () => {
+        const { error } = await window.supabaseClient.from('tasaciones').delete().eq('id', id);
+        if (error) throw error;
+      });
       showToast('Tasación eliminada', 'success');
       loadTasaciones();
       updateSidebarBadges();
@@ -5531,14 +5563,18 @@ let dayCount = 1;
       const payload = { title: title, status: 'draft', type: type, created_by: userId };
       if (propertyId) payload.property_id = propertyId;
       if (ownerId) payload.owner_id = ownerId;
-      const { data, error } = await window.supabaseClient
-        .from('tasaciones')
-        .insert(payload)
-        .select('id')
-        .single();
-      if (error) throw error;
+      let newTasacionId = null;
+      await mutate('tasaciones', async () => {
+        const { data, error } = await window.supabaseClient
+          .from('tasaciones')
+          .insert(payload)
+          .select('id')
+          .single();
+        if (error) throw error;
+        newTasacionId = data.id;
+      });
       closeModal('newTasacionModal');
-      showTasacionEditor(data.id, title);
+      showTasacionEditor(newTasacionId, title);
       updateSidebarBadges();
     } catch (err) {
       showToast('Error al crear tasación: ' + err.message, 'error');
