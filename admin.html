@@ -1948,7 +1948,7 @@ MODALES
 <div class="form-grid-2">
   <div class="form-field">
     <label>Broker Asignado</label>
-    <select name="broker_id" id="leadBrokerSelect">
+    <select name="assigned_to" id="leadBrokerSelect">
       <option value="">Sin broker asignado</option>
     </select>
   </div>
@@ -2033,20 +2033,17 @@ MODALES
   <small style="color:var(--text-dim); font-size:11px;">Vincular a un usuario de auth para acceso al panel</small>
 </div>
 <div class="form-grid-2">
-<div class="form-field"><label>Matrícula C.R.I.</label><input type="text" name="matricula" placeholder="C.R.I. 9941" /></div>
-<div class="form-field">
-<label>Estado</label>
-<select name="status">
-<option value="activo">Activo</option>
-<option value="inactivo">Inactivo</option>
-<option value="vacaciones">Vacaciones</option>
-</select>
+  <div class="form-field"><label>Matrícula C.R.I.</label><input type="text" name="matricula" placeholder="C.R.I. 9941" /></div>
+  <div class="form-field">
+    <label>Estado</label>
+    <select name="status">
+      <option value="activo">Activo</option>
+      <option value="inactivo">Inactivo</option>
+      <option value="vacaciones">Vacaciones</option>
+    </select>
+  </div>
 </div>
-</div>
-<div class="form-grid-2">
-  <div class="form-field"><label>Comisión Venta (%)</label><input type="number" name="commission_sale" value="3" min="0" max="100" step="0.1" placeholder="3.0" /></div>
-  <div class="form-field"><label>Comisión Alquiler (%)</label><input type="number" name="commission_rent" value="4" min="0" max="100" step="0.1" placeholder="4.0" /></div>
-</div>
+<div class="form-field"><label>Comisión General (%)</label><input type="number" name="commission_rate" value="3" min="0" max="100" step="0.1" placeholder="3.0" /></div>
 <div class="form-field">
 <label>Foto</label>
 <input type="file" name="photo_file" accept="image/*" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:12px; padding:12px 16px; color:#fff; font-size:13.5px; width:100%;" />
@@ -2284,9 +2281,10 @@ MODALES
 </div>
 <p id="userEditEmailNote" style="display:none; font-size:11px; color:var(--text-dim); margin-top:12px;"></p>
 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
-<button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
-<button type="submit" class="btn-luxury-action" id="userEditSaveBtn">Guardar Cambios</button>
-</div>
+      <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+      <button type="button" class="status-pill danger" id="userEditDeleteBtn" style="background:#dc2626; border-color:#dc2626;">Eliminar Usuario</button>
+      <button type="submit" class="btn-luxury-action" id="userEditSaveBtn">Guardar Cambios</button>
+    </div>
 </form>
 </div>
 </div>
@@ -2515,6 +2513,6 @@ setTimeout(function() { checkCDN(); }, 6000);
 <script src="assets/js/config.js?v=5"></script>
 <script src="assets/js/supabase-client.js?v=4"></script>
 <script src="assets/js/cloudinary.js?v=6"></script>
-<script src="assets/js/admin-app.js?v=107"></script>
+<script src="assets/js/admin-app.js?v=209"></script>
 </body>
 </html>

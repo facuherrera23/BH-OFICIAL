@@ -140,21 +140,15 @@ function esc(s) {
     email: z.string().email('Email inválido').max(150).optional().nullable(),
     phone: z.string().max(30).optional().nullable(),
     whatsapp: z.string().max(30).optional().nullable(),
-    contact_name: z.string().min(2, 'Nombre de contacto requerido').max(100),
-    contact_phone: z.string().max(30).optional().nullable(),
-    contact_email: z.string().email('Email de contacto inválido').max(150).optional().nullable(),
-    contact_preference: z.enum(['whatsapp', 'email', 'call', 'chat']).optional().nullable(),
     source: z.enum(['landing', 'ml', 'chat', 'referido', 'tasacion', 'walkin', 'manual']).default('manual'),
     stage: z.enum(['nuevo', 'contactado', 'visita', 'oferta', 'cerrado', 'perdido']).default('nuevo'),
     property_id: z.string().uuid('ID de propiedad inválido').optional().nullable(),
-    broker_id: z.string().uuid('ID de broker inválido').optional().nullable(),
+    assigned_to: z.string().uuid('ID de broker inválido').optional().nullable(),
     budget_usd: z.number().min(0).max(10000000).default(0),
     preferred_zone: z.string().max(80).optional().nullable(),
     preferred_type: z.string().max(50).optional().nullable(),
     preferred_rooms: z.number().int().min(0).max(20).optional().nullable(),
     notes: z.string().max(2000).optional().nullable(),
-    tags: z.array(z.string()).default([]),
-    score: z.number().int().min(0).max(100).default(0),
   });
 
   // Visit validation
@@ -165,7 +159,7 @@ function esc(s) {
     client_name: z.string().min(2, 'Nombre del cliente requerido').max(100),
     client_phone: z.string().max(30).optional().nullable(),
     client_email: z.string().email('Email inválido').max(150).optional().nullable(),
-    visit_date: z.string().datetime({ offset: true }, { message: 'Fecha de visita inválida' }),
+    visit_date: z.string().transform(v => v.length === 16 ? v + ':00' : v).pipe(z.string().datetime({ offset: false, message: 'Fecha de visita inválida' })),
     duration_minutes: z.number().int().min(15).max(480).default(60),
     status: z.enum(['pendiente', 'confirmada', 'completada', 'cancelada']).default('pendiente'),
     notes: z.string().max(1000).optional().nullable(),
@@ -191,8 +185,7 @@ function esc(s) {
     phone: z.string().max(30).optional().nullable(),
     matricula: z.string().max(30).optional().nullable(),
     bio: z.string().max(2000).optional().nullable(),
-    commission_sale: z.number().min(0).max(100).default(3),
-    commission_rent: z.number().min(0).max(100).default(4),
+    commission_rate: z.number().min(0).max(100).default(3),
     specialties: z.array(z.string()).default([]),
     status: z.enum(['activo', 'inactivo', 'vacaciones']).default('activo'),
     profile_id: z.string().uuid('ID de usuario inválido').optional().nullable(),
@@ -325,10 +318,26 @@ function esc(s) {
     });
   }
 
+  /* Cliente autenticado: usa el access token de la sesión para queries autenticadas */
+  let authedSupabaseClient = null;
+
+  async function getAuthedClient() {
+    if (authedSupabaseClient) return authedSupabaseClient;
+    if (!window.supabaseClient || !currentUser) return window.supabaseClient;
+    const { data: { session } } = await window.supabaseClient.auth.getSession();
+    if (!session?.access_token) return window.supabaseClient;
+    const { createClient } = window.supabase;
+    authedSupabaseClient = createClient(window.BH_CONFIG.SUPABASE_URL, window.BH_CONFIG.SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${session.access_token}` } }
+    });
+    return authedSupabaseClient;
+  }
+
   async function loadProfile() {
     if (!currentUser) return;
     try {
-      const { data, error } = await window.supabaseClient
+      const client = await getAuthedClient();
+      const { data, error } = await client
         .from('profiles')
         .select('*')
         .eq('id', currentUser.id)
@@ -351,7 +360,7 @@ function esc(s) {
          asi que este update propio de email esta permitido. */
       const sessionEmail = currentUser?.email || '';
       if (sessionEmail && currentProfile.email !== sessionEmail) {
-        const { error: syncErr } = await window.supabaseClient
+        const { error: syncErr } = await client
           .from('profiles')
           .update({ email: sessionEmail })
           .eq('id', currentUser.id);
@@ -708,13 +717,14 @@ function esc(s) {
      4. DASHBOARD
      ------------------------------------------------ */
   async function loadDashboard() {
-    if (!window.supabaseClient) return;
+    const client = await getAuthedClient();
+    if (!client) return;
     try {
       const [propsRes, leadsRes, visitsRes, agentsRes] = await Promise.all([
-        window.supabaseClient.from('properties').select('price_usd, price_currency, zone, status, is_published, created_at, updated_at'),
-        window.supabaseClient.from('leads').select('stage, created_at'),
-        window.supabaseClient.from('visits').select('*').order('visit_date', { ascending: true }).limit(5),
-        window.supabaseClient.from('agents').select('*').eq('status', 'activo').is('deleted_at', null),
+        client.from('properties').select('price_usd, price_currency, zone, status, is_published, created_at, updated_at'),
+        client.from('leads').select('stage, created_at'),
+        client.from('visits').select('*').order('visit_date', { ascending: true }).limit(5),
+        client.from('agents').select('*').eq('status', 'activo').is('deleted_at', null),
       ]);
 
       const props = propsRes.data || [];
@@ -906,11 +916,12 @@ function esc(s) {
     const pageNext = $('#propPageNext');
     const pageSize = $('#propPageSize');
     if (!tbody) return;
-    if (!window.supabaseClient) return;
+    const client = await getAuthedClient();
+    if (!client) return;
 
     try {
       // Get total count for pagination
-      const { count: totalCount, error: countError } = await window.supabaseClient
+      const { count: totalCount, error: countError } = await client
         .from('properties')
         .select('*', { count: 'exact', head: true });
       if (countError) throw countError;
@@ -921,11 +932,11 @@ function esc(s) {
       const to = from + _propPageSize - 1;
 
       const [propsRes, listingsRes, ownersRes] = await Promise.all([
-        window.supabaseClient.from('properties').select('*').order('created_at', { ascending: false }).range(from, to),
+        client.from('properties').select('*').order('created_at', { ascending: false }).range(from, to),
         ml_connected
-          ? window.supabaseClient.from('ml_listings').select('property_id, ml_listing_id, status')
+          ? client.from('ml_listings').select('property_id, ml_listing_id, status')
           : Promise.resolve({ data: [] }),
-        window.supabaseClient.from('owners').select('id, full_name').order('full_name'),
+        client.from('owners').select('id, full_name').order('full_name'),
       ]);
 
       const data = propsRes.data;
@@ -1158,6 +1169,7 @@ function esc(s) {
   /* Edit property */
   window.adminApp = window.adminApp || {};
   window.adminApp.loadSupervision = loadSupervision;
+  window.adminApp.loadAnomaliesTable = loadAnomaliesTable;
   window.adminApp.editProperty = async function (id) {
     try {
       const { data, error } = await window.supabaseClient
@@ -1279,18 +1291,17 @@ function esc(s) {
 
     if (lead.phone || lead.whatsapp) score += 5;
     if (lead.email) score += 5;
-    if (lead.contact_name) score += 5;
+    if (lead.full_name) score += 5;
 
     if (lead.preferred_type) score += 4;
     if (lead.preferred_zone) score += 4;
     if (lead.preferred_rooms) score += 3;
     if (lead.notes && lead.notes.length > 10) score += 5;
-    if (lead.tags && lead.tags.length > 0) score += 4;
 
     const stageScores = { nuevo: 4, contactado: 8, visita: 14, oferta: 18, cerrado: 20, perdido: 2 };
     score += stageScores[lead.stage] || 4;
 
-    if (lead.broker_id) score += 3;
+    if (lead.assigned_to) score += 3;
     if (lead.property_id) score += 2;
 
     return Math.min(100, Math.max(0, score));
@@ -1301,10 +1312,11 @@ function esc(s) {
      ------------------------------------------------ */
   async function loadCRM() {
     invalidateSearchCache();
-    if (!window.supabaseClient) return;
+    const client = await getAuthedClient();
+    if (!client) return;
     try {
       /* Get total count for pagination */
-      const { count: totalCount, error: countError } = await window.supabaseClient
+      const { count: totalCount, error: countError } = await client
         .from('leads')
         .select('*', { count: 'exact', head: true });
       if (countError) throw countError;
@@ -1315,8 +1327,8 @@ function esc(s) {
 
       /* Traer leads y sus visitas (próximas y última) en una sola query */
       const [{ data: leads, error: leadsErr }, { data: visits, error: visitsErr }] = await Promise.all([
-        window.supabaseClient.from('leads').select('*').order('created_at', { ascending: false }).range(from, to),
-        window.supabaseClient.from('visits')
+        client.from('leads').select('*').order('created_at', { ascending: false }).range(from, to),
+        client.from('visits')
           .select('id, lead_id, visit_date, status, client_name')
           .neq('status', 'cancelada')
           .order('visit_date', { ascending: true }),
@@ -1460,14 +1472,8 @@ function esc(s) {
         notes: validated.notes,
         source: validated.source,
         property_id: validated.property_id,
-        broker_id: validated.broker_id,
-        contact_name: validated.contact_name,
-        contact_phone: validated.contact_phone,
-        contact_email: validated.contact_email,
-        contact_preference: validated.contact_preference,
+        assigned_to: validated.assigned_to,
         preferred_rooms: validated.preferred_rooms,
-        tags: validated.tags,
-        score: computeLeadScore(validated),
       };
 
       if (editingLeadId) {
@@ -1520,7 +1526,7 @@ function esc(s) {
         form.elements.preferred_type.value = lead.preferred_type || '';
         form.elements.preferred_zone.value = lead.preferred_zone || '';
         form.elements.notes.value = lead.notes || '';
-        form.elements.broker_id.value = lead.broker_id || '';
+        form.elements.assigned_to.value = lead.assigned_to || '';
       }
 
       /* Visitas asociadas en el modal */
@@ -1584,14 +1590,15 @@ function esc(s) {
     const visitsBrokerFilter = $('#visitsBrokerFilter');
     const calBrokerFilter = $('#calBrokerFilter');
     if (!tbody) return;
-    if (!window.supabaseClient) return;
+    const client = await getAuthedClient();
+    if (!client) return;
 
     /* Get selected broker filter */
     const brokerFilter = (visitsBrokerFilter?.value || calBrokerFilter?.value || '').trim();
 
     try {
       /* Get total count for pagination */
-      let countQuery = window.supabaseClient.from('visits').select('*', { count: 'exact', head: true });
+      let countQuery = client.from('visits').select('*', { count: 'exact', head: true });
        if (brokerFilter) countQuery = countQuery.eq('agent_id', brokerFilter);
       const { count: totalCount, error: countError } = await countQuery;
       if (countError) throw countError;
@@ -1601,7 +1608,7 @@ function esc(s) {
       const to = from + _visitsPageSize - 1;
 
       /* JOIN con leads para mostrar nombre del lead y link a CRM */
-      let dataQuery = window.supabaseClient
+      let dataQuery = client
         .from('visits')
         .select('*, leads(id, full_name, stage)')
         .order('visit_date', { ascending: true })
@@ -3315,12 +3322,13 @@ let dayCount = 1;
   }
 
   async function loadConfig() {
-    if (!window.supabaseClient) return;
+    const client = await getAuthedClient();
+    if (!client) return;
     try {
       const [{ data: rows, error }, prefRes, zernioRes] = await Promise.all([
-        window.supabaseClient.from('site_content').select('section_key, content').in('section_key', ['contact', 'footer', 'social']),
-        window.supabaseClient.from('app_settings').select('key, value'),
-        window.supabaseClient.from('zernio_config').select('value').eq('key', 'api_key').maybeSingle()
+        client.from('site_content').select('id, section_key, content').in('section_key', ['contact', 'footer', 'social']),
+        client.from('app_settings').select('key, value'),
+        client.from('zernio_config').select('value').eq('key', 'api_key').maybeSingle()
       ]);
       if (error) throw error;
       if (!prefRes.error && Array.isArray(prefRes.data)) {
@@ -3353,6 +3361,7 @@ let dayCount = 1;
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
     try {
+      const client = await getAuthedClient();
       const rateRaw = ($('#cfg_usd_rate')?.value ?? '').trim();
       let rateVal = null;
       if (rateRaw !== '') {
@@ -3372,7 +3381,7 @@ let dayCount = 1;
         if (sectionKey === 'zernio') {
           const apiKey = newFields.api_key?.trim();
           if (apiKey) {
-            const { error } = await window.supabaseClient
+            const { error } = await client
               .from('zernio_config')
               .upsert({ key: 'api_key', value: apiKey, updated_at: new Date().toISOString() }, { onConflict: 'key' });
             if (error) throw error;
@@ -3382,19 +3391,19 @@ let dayCount = 1;
         const existing = cfgData[sectionKey];
         const mergedContent = { ...(existing?.content || {}), ...newFields };
         if (existing) {
-          const { error } = await window.supabaseClient
+          const { error } = await client
             .from('site_content').update({ content: mergedContent }).eq('id', existing.id);
           if (error) throw error;
           existing.content = mergedContent;
         } else {
-          const { data, error } = await window.supabaseClient
+          const { data, error } = await client
             .from('site_content').insert([{ section_key: sectionKey, content: mergedContent }]).select().single();
           if (error) throw error;
           cfgData[sectionKey] = data;
         }
       }));
 
-      const { error: upErr } = await window.supabaseClient
+      const { error: upErr } = await client
         .from('app_settings')
         .upsert({ key: 'preferences', value: { usd_rate: rateVal }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
       if (upErr) throw upErr;
@@ -3483,10 +3492,11 @@ let dayCount = 1;
     invalidateSearchCache();
     const tbody = $('#agentsTableBody');
     if (!tbody) return;
-    if (!window.supabaseClient) return;
+    const client = await getAuthedClient();
+    if (!client) return;
 
     try {
-      const { data, error } = await window.supabaseClient
+      const { data, error } = await client
         .from('agents')
         .select('*')
         .is('deleted_at', null)
@@ -3568,8 +3578,7 @@ let dayCount = 1;
         phone: validated.phone,
         matricula: validated.matricula,
         bio: validated.bio,
-        commission_sale: validated.commission_sale,
-        commission_rent: validated.commission_rent,
+        commission_rate: validated.commission_rate,
         specialties: specialtiesSel ? Array.from(specialtiesSel.selectedOptions).map(o => o.value) : [],
         status: validated.status,
       };
@@ -3618,8 +3627,7 @@ let dayCount = 1;
         form.elements.phone.value = data.phone || '';
         form.elements.matricula.value = data.matricula || '';
         form.elements.bio.value = data.bio || '';
-        form.elements.commission_sale.value = data.commission_sale ?? 3;
-        form.elements.commission_rent.value = data.commission_rent ?? 4;
+form.elements.commission_rate.value = data.commission_rate ?? 3;
         form.elements.status.value = data.status || 'activo';
         form.elements.profile_id.value = data.profile_id || '';
         if (form.elements.specialties && data.specialties) {
@@ -3659,10 +3667,11 @@ let dayCount = 1;
     invalidateSearchCache();
     const tbody = $('#ownersTableBody');
     if (!tbody) return;
-    if (!window.supabaseClient) return;
+    const client = await getAuthedClient();
+    if (!client) return;
 
     try {
-      const { data: owners, error } = await window.supabaseClient
+      const { data: owners, error } = await client
         .from('owners')
         .select('*')
         .is('deleted_at', null)
@@ -3671,7 +3680,7 @@ let dayCount = 1;
       if (error) throw error;
 
       /* Load property counts per owner for KPIs */
-      const { data: props } = await window.supabaseClient
+      const { data: props } = await client
         .from('properties')
         .select('owner_id, price_usd, is_published');
 
@@ -4250,8 +4259,7 @@ let dayCount = 1;
         exclusive: validated.exclusive || false,
         exclusive_start: validated.exclusive_start || null,
         exclusive_end: validated.exclusive_end || null,
-        commission_sale: validated.commission_sale ?? null,
-        commission_rent: validated.commission_rent ?? null,
+        commission_rate: validated.commission_rate ?? null,
         commission_split: splitJson,
         contract_notes: validated.contract_notes || null,
         dni_expiry: validated.dni_expiry || null,
@@ -4304,8 +4312,7 @@ let dayCount = 1;
         form.elements.exclusive.checked = data.exclusive || false;
         if (form.elements.exclusive_start) form.elements.exclusive_start.value = data.exclusive_start || '';
         if (form.elements.exclusive_end) form.elements.exclusive_end.value = data.exclusive_end || '';
-        if (form.elements.commission_sale) form.elements.commission_sale.value = data.commission_sale || '';
-        if (form.elements.commission_rent) form.elements.commission_rent.value = data.commission_rent || '';
+if (form.elements.commission_rate) form.elements.commission_rate.value = data.commission_rate || '';
         if (form.elements.commission_split) form.elements.commission_split.value = data.commission_split ? (typeof data.commission_split === 'string' ? data.commission_split : JSON.stringify(data.commission_split)) : '';
         if (form.elements.contract_notes) form.elements.contract_notes.value = data.contract_notes || '';
         if (form.elements.dni_expiry) form.elements.dni_expiry.value = data.dni_expiry || '';
@@ -4855,10 +4862,11 @@ let dayCount = 1;
     invalidateSearchCache();
     const tbody = $('#usersTableBody');
     if (!tbody) return;
-    if (!window.supabaseClient) return;
+    const client = await getAuthedClient();
+    if (!client) return;
 
     try {
-      const { data, error } = await window.supabaseClient
+      const { data, error } = await client
         .from('profiles')
         .select('*')
         .order('created_at', { ascending: true });
@@ -5169,6 +5177,44 @@ let dayCount = 1;
       showToast(err.message || 'No se pudo actualizar el usuario', 'error');
     } finally {
       btn.disabled = false;
+    }
+  });
+
+  /* Eliminar usuario (solo super_admin, nunca uno mismo). Llama a Edge Function manage-users con action=delete-user */
+  on($('#userEditDeleteBtn'), 'click', async () => {
+    const form = $('#userEditForm');
+    if (!form) return;
+    const userId = form.elements.userId.value;
+    if (!userId) return;
+
+    if (!canManageUsers()) {
+      showToast('Solo Super Admin puede eliminar usuarios', 'error');
+      return;
+    }
+    if (userId === currentProfile?.id) {
+      showToast('No podés eliminarte a vos mismo', 'error');
+      return;
+    }
+
+    const row = usersCache.find(u => u.id === userId);
+    const label = row?.full_name || row?.email || 'este usuario';
+    if (!window.confirm(`¿Eliminar definitivamente a ${label}? Se borrará de auth.users y su perfil.`)) {
+      return;
+    }
+
+    const btn = $('#userEditDeleteBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Eliminando...';
+    try {
+      await callManageUsers({ action: 'delete-user', userId });
+      closeModal('userEditModal');
+      showToast('Usuario eliminado', 'success');
+      await loadUsers();
+    } catch (err) {
+      showToast(err.message || 'No se pudo eliminar el usuario', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = 'Eliminar Usuario';
     }
   });
 
@@ -5930,7 +5976,7 @@ try {
     if (!propSelect || !ownerSelect) return;
     try {
       const [propsRes, ownersRes] = await Promise.all([
-        window.supabaseClient.from('properties').select('id, code, title').eq('deleted_at', null).order('code'),
+        window.supabaseClient.from('properties').select('id, code, title').is('deleted_at', null).order('code'),
         window.supabaseClient.from('owners').select('id, full_name').order('full_name')
       ]);
       propSelect.innerHTML = '<option value="">Sin vincular</option>' +
@@ -7030,10 +7076,10 @@ function setupCoreRealtime() {
 
     /* Promise.allSettled: si un módulo falla o falta permiso RLS, los demás siguen funcionando */
     const requests = [
-      ['properties', window.supabaseClient.from('properties').select('id, title, zone, address, price_usd, status').eq('deleted_at', null).order('created_at', { ascending: false }).limit(200)],
-      ['leads', window.supabaseClient.from('leads').select('id, full_name, email, phone, stage').eq('deleted_at', null).order('created_at', { ascending: false }).limit(200)],
-      ['agents', window.supabaseClient.from('agents').select('id, full_name, email, matricula').eq('deleted_at', null).order('created_at', { ascending: false }).limit(100)],
-      ['owners', window.supabaseClient.from('owners').select('id, full_name, email, phone').eq('deleted_at', null).order('created_at', { ascending: false }).limit(100)],
+      ['properties', window.supabaseClient.from('properties').select('id, title, zone, address, price_usd, status').is('deleted_at', null).order('created_at', { ascending: false }).limit(200)],
+      ['leads', window.supabaseClient.from('leads').select('id, full_name, email, phone, stage').is('deleted_at', null).order('created_at', { ascending: false }).limit(200)],
+      ['agents', window.supabaseClient.from('agents').select('id, full_name, email, matricula').is('deleted_at', null).order('created_at', { ascending: false }).limit(100)],
+      ['owners', window.supabaseClient.from('owners').select('id, full_name, email, phone').is('deleted_at', null).order('created_at', { ascending: false }).limit(100)],
       ['visits', window.supabaseClient.from('visits').select('id, client_name, client_phone, visit_date, status').order('visit_date', { ascending: false }).limit(200)],
       ['tasaciones', window.supabaseClient.from('tasaciones').select('id, title, status, created_at').order('created_at', { ascending: false }).limit(200)],
       ['profiles', window.supabaseClient.from('profiles').select('id, full_name, email, role').order('created_at', { ascending: true }).limit(100)],
@@ -8333,6 +8379,7 @@ on(document, 'keydown', (e) => {
 
   // Rules modal handlers
   on($('#supNewRuleBtn'), 'click', () => {
+    switchSupView('rules');
     $('#supRuleForm')?.reset();
     $('#supRuleId').value = '';
     $('#supRuleModalTitle').textContent = 'Nueva Regla';

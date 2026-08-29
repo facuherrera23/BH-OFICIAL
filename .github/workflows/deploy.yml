@@ -1,0 +1,131 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+jobs:
+  lint-and-test:
+    name: Lint & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint JavaScript (node --check)
+        run: |
+          node --check assets/js/admin-app.js
+          node --check assets/js/landing-app.js
+          node --check assets/js/supabase-client.js
+          node --check assets/js/utils.js
+          node --check assets/js/cloudinary.js
+          node --check assets/js/config.js
+        working-directory: ${{ github.workspace }}
+
+      - name: Validate HTML syntax
+        run: |
+          npx -y html-validate admin.html index.html portal-propietario.html confirmar-visita.html tasacion.html --rules html-validate:recommended || true
+
+  auto-version:
+    name: Auto Version Bump
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    outputs:
+      new_version: ${{ steps.version.outputs.new_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump version
+        id: version
+        run: |
+          CURRENT=$(grep -oP '(?<=admin-app\.js\?v=)\d+' admin.html | head -1)
+          NEW=$((CURRENT + 1))
+          sed -i "s/admin-app.js?v=$CURRENT/admin-app.js?v=$NEW/" admin.html
+          sed -i "s/landing-app.js?v=$CURRENT/landing-app.js?v=$NEW/" index.html
+          sed -i "s/supabase-client.js?v=$CURRENT/supabase-client.js?v=$NEW/" admin.html index.html tasacion.html
+          sed -i "s/utils.js?v=$CURRENT/utils.js?v=$NEW/" admin.html index.html tasacion.html
+          sed -i "s/config.js?v=$CURRENT/config.js?v=$NEW/" admin.html index.html tasacion.html
+          sed -i "s/cloudinary.js?v=$CURRENT/cloudinary.js?v=$NEW/" admin.html index.html
+          sed -i "s/landing.css?v=$CURRENT/landing.css?v=$NEW/" index.html portal-propietario.html confirmar-visita.html
+          sed -i "s/admin.css?v=$CURRENT/admin.css?v=$NEW/" admin.html
+          echo "new_version=$NEW" >> $GITHUB_OUTPUT
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add admin.html index.html portal-propietario.html confirmar-visita.html tasacion.html
+          git commit -m "chore: bump cache buster to v${{ steps.version.outputs.new_version }}"
+          git push
+
+  deploy-cloudflare:
+    name: Deploy to Cloudflare Pages
+    needs: [lint-and-test, auto-version]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: bienenhaus
+          directory: .
+          branch: main
+
+  deploy-supabase:
+    name: Deploy Supabase Edge Functions
+    needs: [lint-and-test, auto-version]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy Edge Functions
+        run: |
+          cd supabase/functions
+          for dir in */; do
+            fn=${dir%/}
+            echo "Deploying $fn..."
+            supabase functions deploy "$fn" --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --no-verify-jwt
+          done
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+  notify:
+    name: Notify Deployment
+    needs: [deploy-cloudflare, deploy-supabase]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send notification
+        if: ${{ failure() }}
+        run: echo "Deployment failed! Check GitHub Actions for details."
