@@ -218,13 +218,14 @@ jobs:
           for fn in "${FUNCTIONS_TO_DEPLOY[@]}"; do
             if [ -d "$fn" ]; then
               echo "Deploying $fn..."
-              supabase functions deploy "$fn" --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --no-verify-jwt
+              supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt
             else
               echo "Skipping $fn (not found in repo)"
             fi
           done
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
 
   notify:
     name: Notify Deployment
