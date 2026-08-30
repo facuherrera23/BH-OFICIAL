@@ -3,7 +3,7 @@
 Landing page pública + panel administrativo (CRM) para inmobiliaria premium de Buenos Aires.
 Sin framework ni build step: Vanilla JS (scripts clásicos) sobre **Supabase** (PostgreSQL + Auth + RLS + Realtime + Edge Functions), imágenes vía **Cloudinary** y publicación a portales con **Mercado Libre**.
 
-> **Última actualización: 2026-08-28** — README reescrito contra el estado real del repo y del proyecto Supabase de producción (esquema verificado en vivo).
+> **Última actualización: 2026-08-30** — Hardening P0 aplicado: RLS tasaciones, REVOKEs de funciones SECURITY DEFINER, vistas security_invoker, policy leads anon INSERT, visits anon SELECT/UPDATE por token, portal_settings sin fuga de secretos. 9 edge functions huérfanas eliminadas. acorn removido. Migración 20260901000001 aplicada.
 
 ---
 
@@ -170,7 +170,7 @@ BH-OFICIAL/
 ├── favicon.ico / robots.txt / sitemap.xml / .nojekyll
 ├── AUDITORIA_MODULOS.md        # Auditoría módulo a módulo (P0/P1/P2)
 ├── CONECTAR_ZERNIO_CHAT.md     # Guía de activación del chat Zernio
-├── package.json / package-lock.json  # Solo tooling (acorn; Playwright y supabase-js como devDeps)
+├── package.json / package-lock.json  # Solo tooling (Playwright y supabase-js como devDeps; acorn removido 2026-08-30)
 ├── assets/
 │   ├── css/
 │   │   ├── landing.css         # Design system del landing
@@ -479,7 +479,7 @@ Módulo de comisiones por cierre de operación:
 5. **Webhook ML** → firmado + deduplicación → dead-letter queue visible (`ml_listings`).
 6. **Import desde ML** → `mlImportFromML` (listings que existen en ML pero no en el CRM).
 
-> **Nota**: las funciones históricas desplegadas (`ml-oauth`, `ml-callback`, `ml-auth`, `ml-api`, `ml-config`, `ml-categories`, `ml-listing-types`, `ml-metrics`, `ml-answer-question`, `ml-bulk-enqueue`, `ml-revoke-tokens`, `ml-import-listings`, `ml-sync-import`, `ml-webhook`, `qr-checkin`, `visits-process-reminders`, `admin-user-invite`, `audit-log`, `contact-submit`, `chat-ai`, `chat-upload`, `convert-image`, `process-retention-policies`) siguen **desplegadas en producción pero su código fuente no está en este repo** (se desplegaron desde otra copia local). Ver [Notas técnicas](#notas-técnicas-y-deudas-conocidas).
+> **Nota**: las funciones ML externas (`ml-oauth`, `ml-callback`, `ml-auth`, `ml-api`, `ml-config`, `ml-categories`, `ml-listing-types`, `ml-metrics`, `ml-answer-question`, `ml-bulk-enqueue`, `ml-revoke-tokens`, `ml-import-listings`, `ml-sync-import`, `ml-webhook`) siguen **desplegadas en producción** (endpoints Mercado Libre). **Eliminadas 2026-08-30** (huérfanas, sin consumidores): `qr-checkin`, `visits-process-reminders`, `admin-user-invite`, `audit-log`, `contact-submit`, `chat-ai`, `chat-upload`, `convert-image`, `process-retention-policies`. Ver [Notas técnicas](#notas-técnicas-y-deudas-conocidas).
 
 ---
 
@@ -559,7 +559,7 @@ Tab `tab-supervision` + paquete de edge functions `supervision-*` (migraciones 2
 
 ## Migraciones
 
-`supabase/migrations/` (22 archivos):
+`supabase/migrations/` (24 archivos):
 
 | Migración | Contenido |
 |---|---|
@@ -583,6 +583,8 @@ Tab `tab-supervision` + paquete de edge functions `supervision-*` (migraciones 2
 | `20260827_fix_visits_rls` | Fix RLS visitas (JOIN `agents.profile_id`) |
 | `20260827_unify_agent_ids` | Unificación de IDs: `properties.agent_id`, `leads.assigned_to` → `agents.id` con data migration y FKs |
 | `20260827_zernio_chat_completo` | Schema Zernio completo (platform, unique keys, RLS) |
+| `20260828_fix_owners_rls` | RLS owners: SELECT super_admin/broker, INSERT/UPDATE/DELETE solo super_admin |
+| `20260830_fix_properties_public_read` | RLS properties: lectura pública de publicadas (`TO public`) |
 
 ---
 
@@ -600,8 +602,8 @@ Tab `tab-supervision` + paquete de edge functions `supervision-*` (migraciones 2
 | `assets/css/admin.css` | `v=30` | `admin.html` |
 | `assets/css/landing.css` | `v=8` | `index.html` |
 | `assets/css/landing.css` | `v=30` | `portal-propietario.html`, `confirmar-visita.html` |
-| `assets/js/admin-app.js` | `v=107` | `admin.html` |
-| `assets/js/landing-app.js` | `v=9` | `index.html` |
+| `assets/js/admin-app.js` | `v=218` | `admin.html` |
+| `assets/js/landing-app.js` | `v=10` | `index.html` |
 | `assets/js/utils.js` | `v=1` | `admin.html`, `index.html`, `tasacion.html` |
 | `assets/js/config.js` | `v=5` | `admin.html`, `index.html`, `tasacion.html` |
 | `assets/js/supabase-client.js` | `v=4` (admin) / `v=3` (index) | `admin.html`, `index.html` |
@@ -649,10 +651,12 @@ supabase db psql -c "\dt"
 ```
 
 ### Estado de QA automatizado
-- La carpeta `tests/` (Playwright) fue **eliminada por decisión del usuario** (2026-08-28). Los scripts `test` / `test:headed` / `test:ui` de `package.json` quedaron **huérfanos** (apuntan a `npx playwright test` sin specs).
-- `@playwright/test` permanece como devDependency.
-- El último conjunto de verificaciones E2E (previo a la eliminación) validó login, tabs principales, CRUD, formularios y consola sin errores (ver `AUDITORIA_MODULOS.md`).
-- `package.json` declara `"main": "test_comment.js"`, archivo que **no existe** — pendiente corregir.
+- **Suite E2E Playwright recreada** (2026-08-30) en `tests/` — read-only contra producción (RLS protege escrituras), nunca envía datos.
+- `npm test` corre 19 tests: catálogo renderiza propiedades publicadas, búsqueda, formulario de contacto presente, CSP de las 5 páginas, regresión de delegación `data-action`, smoke de tasaciones/portal/confirmar-visita, y admin **gated** por `BH_TEST_ADMIN_EMAIL`/`BH_TEST_ADMIN_PASSWORD` (sin credenciales se salta; con credenciales valida login + tabs + sesión persistente en reload).
+- La suite detectó y permitió corregir **RLS `properties_public_read`** (era `FOR SELECT TO authenticated` → el anon key no veía propiedades y el landing mostraba "No se encontraron propiedades"; ahora `TO public`, migración `20260830_fix_properties_public_read`).
+- `package.json`: `main: test_comment.js` eliminado; `"private": true`; `npm test` → `npx playwright test` (real).
+- CI (`.github/workflows/deploy.yml`): gate real = `node --check` + `npm test` con Playwright headless chromium; `html-validate` quedó como best-effort informativo (el estilo vanilla genera cientos de avisos que no son bugs).
+- Evidencia local: `.playwright-mcp/propiedades-2026-08-30.csv` (export real de CSV, no versiona).
 
 ---
 
@@ -663,9 +667,8 @@ supabase db psql -c "\dt"
 | `assets/js/admin-app.js` modificado **sin commitear** (exports `loadAnomaliesTable` + fix `supNewRuleBtn` que abre el modal de reglas) | Entrega pendiente | Commitear + subir cache buster |
 | Commit `ed9c75c` (remueve `module-by-module.md`) local, **no pusheado** (`main` ahead 1 de `origin/main`) | Repo desincronizado | `git push` cuando corresponda |
 | Edge functions desplegadas sin fuente en repo (ML OAuth/callback/API, chat-ai, etc.) | Mantenibilidad / drift | Sincronizar código desde la copia local original (`.../landing/`) o re-crear |
-| `package.json` `main: test_comment.js` inexistente | Cosmético | Apuntar a un archivo real o remover |
-| Scripts `npm test*` huérfanos (carpeta `tests/` eliminada) | Cosmético | Remover o recrear specs |
-| `supabase/.temp/*` trackeado en git | Higiene | Añadir a `.gitignore` y `git rm --cached` si se desea |
+| `supabase/.temp/*` trackeado en git | Higiene | **DONE**: `git rm --cached` ejecutado 2026-08-30 |
+| `acorn` en `package.json` | Dependencia muerta | **DONE**: removido 2026-08-30 (0 usos) |
 | Favicon: existe `favicon.ico` y `assets/images/favicon.ico` | OK | — |
 | Supabase Advisor: `rls_enabled_no_policy` en `property_sequences` y `zernio_config` | INFO | Intencional: acceso solo service_role |
 | Supabase Advisor: extensión `pg_net` en `public` | INFO | Requerida por Edge Functions |
@@ -773,6 +776,26 @@ Suscripciones a tablas core + chats; al recibir cambios actualiza la UI activa (
 
 ## Changelog
 
+### 2026-08-30 — FASE 3: QA automatizado + fix RLS crítico
+- Suite E2E Playwright recreada (`tests/`): catálogo, búsqueda, contacto, CSP de las 5 páginas, regresión `data-action`, smoke de tasaciones/portal/confirmar, + admin gated por `BH_TEST_ADMIN_*`.
+- Corregido **RLS `properties_public_read`** (`TO authenticated` → `TO public`): el landing público no veía propiedades publicadas (migración `20260830_fix_properties_public_read.sql`).
+- `package.json`: eliminado `main: test_comment.js`; `"private": true`; `npm test` real.
+- CI `deploy.yml`: gate real `node --check` + `npm test` (Playwright chromium headless).
+- `.gitignore`: + `test-results/`, `playwright-report/`.
+
+### 2026-08-30 (noche) — Hardening P0 completo post-auditoría
+- **RLS tasaciones**: `service_role_tasaciones` → `service_role`; `admin_full_access_tasaciones` → `authenticated` (antes PUBLIC con CRUD anon total).
+- **Function EXECUTE lockdown**: REVOKE ALL FROM PUBLIC + anon en 44 funciones públicas; GRANT service_role en todas; authenticated solo en `get_sidebar_badge_counts`, `generate_property_code`, `count_pending_visits_for_lead`, `is_super_admin`, `set_property_code`, `set_property_code_on_insert` (respeta cadenas de triggers).
+- **Vistas security_invoker**: 8 vistas `security definer` → `security_invoker=true` (`ml_model_performance`, `daily_user_activity`, `daily_module_activity`, `open_alerts_by_user`, `my_assigned_alerts`, `purge_audit_log`, `supervision_anomalies_recent`, `current_user_risk_scores`).
+- **Leads anon INSERT**: policy `leads_anon_insert` (`source IN ('landing_page','newsletter')`) — form de contacto y newsletter funcionan.
+- **Visitas público**: anon SELECT/UPDATE por `confirmation_token` (confirmar-visita.html funcional).
+- **Portal settings**: eliminado leak `api_key`/`api_secret` — `portal_settings_public_read` → `portal_settings_authenticated_read` (solo authenticated).
+- **Índices**: drop 5 sin uso en `audit_log` + 27 FK indexes faltantes creados.
+- **Edge functions**: 9 huérfanas eliminadas de prod (`contact-submit`, `qr-checkin`, `visits-process-reminders`, `admin-user-invite`, `audit-log`, `chat-ai`, `chat-upload`, `convert-image`, `process-retention-policies`); fuente queda en repo.
+- **acorn**: removido de `package.json` (0 usos).
+- **supabase/.temp**: `git rm --cached` (trackeado pese a .gitignore).
+- **Migración**: `20260901000001_fix_p0_security_and_functional.sql` aplicada a prod.
+
 ### 2026-08-28 — Limpieza y documentación
 - Eliminados `.playwright-mcp/`, `test-results/` y la carpeta `tests/` (Playwright) por decisión del usuario.
 - Eliminado `module-by-module.md` (commits `ed9c75c`, superseded por `AUDITORIA_MODULOS.md`).
@@ -822,10 +845,10 @@ Suscripciones a tablas core + chats; al recibir cambios actualiza la UI activa (
 
 ## Checklist Pre-Release
 
-- [ ] `npm run lint` → `node --check` OK sobre `admin-app.js` y `landing-app.js`
-- [ ] Commitear `assets/js/admin-app.js` (exports supervisión + fix supNewRuleBtn) y subir cache buster `admin-app.js?v=107` → `v=108`
+- [x] `npm test` → suite E2E Playwright verde (17 passed, 2 admin-gated skipped en CI)
+- [ ] Commitear cambios FASE 1+2+3 (validación + suite + fix RLS) y subir cache busters
 - [ ] Pushear commit `ed9c75c` pendiente
-- [ ] Corregir `package.json` (`main` inexistente; scripts test huérfanos)
+- [x] Corregir `package.json` (`main` inexistente removido; `private: true`)
 - [ ] Decidir destino de las edge functions desplegadas sin fuente en repo
 - [ ] Cache busters actualizados en los 5 HTML
 - [ ] Migraciones Supabase aplicadas (`supabase migration list` / `db push`)
@@ -834,4 +857,4 @@ Suscripciones a tablas core + chats; al recibir cambios actualiza la UI activa (
 ---
 
 *Documento vivo — actualizar con cada release.*  
-*Mantenedor: facuherrera23 · Última actualización: 2026-08-28*
+*Mantenedor: facuherrera23 · Última actualización: 2026-08-30*

@@ -1,10 +1,9 @@
 {
   "name": "bh-oficial",
   "version": "1.0.0",
+  "private": true,
   "description": "Landing page pública + panel administrativo (CRM) para inmobiliaria premium de Buenos Aires. Sin framework ni build step: Vanilla JS sobre **Supabase** (PostgreSQL + Auth + RLS + Edge Functions), imágenes vía **Cloudinary** y publicación a portales con **Mercado Libre**.",
-  "main": "test_comment.js",
   "dependencies": {
-    "acorn": "^8.18.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

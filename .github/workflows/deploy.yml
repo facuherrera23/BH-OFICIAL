@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+
       - name: Lint JavaScript (node --check)
         run: |
           node --check assets/js/admin-app.js
@@ -42,9 +45,16 @@ jobs:
           node --check assets/js/config.js
         working-directory: ${{ github.workspace }}
 
+      - name: E2E tests (Playwright)
+        run: npm test
+        working-directory: ${{ github.workspace }}
+
       - name: Validate HTML syntax
+        # Best-effort informativo: el estilo vanilla (void-style/inline style) genera
+        # cientos de advertencias en html-validate:recommended que no son bugs.
+        # El gate real de calidad es "E2E tests (Playwright)" + "Lint JavaScript".
         run: |
-          npx -y html-validate admin.html index.html portal-propietario.html confirmar-visita.html tasacion.html --rules html-validate:recommended || true
+          npx -y html-validate admin.html index.html portal-propietario.html confirmar-visita.html tasacion.html || true
 
   auto-version:
     name: Auto Version Bump
@@ -63,24 +73,93 @@ jobs:
       - name: Bump version
         id: version
         run: |
-          CURRENT=$(grep -oP '(?<=admin-app\.js\?v=)\d+' admin.html | head -1)
-          NEW=$((CURRENT + 1))
-          sed -i "s/admin-app.js?v=$CURRENT/admin-app.js?v=$NEW/" admin.html
-          sed -i "s/landing-app.js?v=$CURRENT/landing-app.js?v=$NEW/" index.html
-          sed -i "s/supabase-client.js?v=$CURRENT/supabase-client.js?v=$NEW/" admin.html index.html tasacion.html
-          sed -i "s/utils.js?v=$CURRENT/utils.js?v=$NEW/" admin.html index.html tasacion.html
-          sed -i "s/config.js?v=$CURRENT/config.js?v=$NEW/" admin.html index.html tasacion.html
-          sed -i "s/cloudinary.js?v=$CURRENT/cloudinary.js?v=$NEW/" admin.html index.html
-          sed -i "s/landing.css?v=$CURRENT/landing.css?v=$NEW/" index.html portal-propietario.html confirmar-visita.html
-          sed -i "s/admin.css?v=$CURRENT/admin.css?v=$NEW/" admin.html
-          echo "new_version=$NEW" >> $GITHUB_OUTPUT
+          # Bump each cache buster independently
+          # admin-app.js
+          ADMIN_CURRENT=$(grep -oP '(?<=admin-app\.js\?v=)\d+' admin.html | head -1)
+          ADMIN_NEW=$((ADMIN_CURRENT + 1))
+          sed -i "s/admin-app.js?v=$ADMIN_CURRENT/admin-app.js?v=$ADMIN_NEW/" admin.html
+          
+          # landing-app.js
+          LANDING_CURRENT=$(grep -oP '(?<=landing-app\.js\?v=)\d+' index.html | head -1)
+          LANDING_NEW=$((LANDING_CURRENT + 1))
+          sed -i "s/landing-app.js?v=$LANDING_CURRENT/landing-app.js?v=$LANDING_NEW/" index.html
+          
+          # supabase-client.js
+          SUPABASE_ADMIN_CURRENT=$(grep -oP '(?<=supabase-client\.js\?v=)\d+' admin.html | head -1)
+          SUPABASE_ADMIN_NEW=$((SUPABASE_ADMIN_CURRENT + 1))
+          sed -i "s/supabase-client.js?v=$SUPABASE_ADMIN_CURRENT/supabase-client.js?v=$SUPABASE_ADMIN_NEW/" admin.html
+          
+          SUPABASE_INDEX_CURRENT=$(grep -oP '(?<=supabase-client\.js\?v=)\d+' index.html | head -1)
+          SUPABASE_INDEX_NEW=$((SUPABASE_INDEX_CURRENT + 1))
+          sed -i "s/supabase-client.js?v=$SUPABASE_INDEX_CURRENT/supabase-client.js?v=$SUPABASE_INDEX_NEW/" index.html
+          
+          SUPABASE_TASACION_CURRENT=$(grep -oP '(?<=supabase-client\.js\?v=)\d+' tasacion.html | head -1)
+          SUPABASE_TASACION_NEW=$((SUPABASE_TASACION_CURRENT + 1))
+          sed -i "s/supabase-client.js?v=$SUPABASE_TASACION_CURRENT/supabase-client.js?v=$SUPABASE_TASACION_NEW/" tasacion.html
+          
+          # utils.js
+          UTILS_ADMIN_CURRENT=$(grep -oP '(?<=utils\.js\?v=)\d+' admin.html | head -1)
+          UTILS_ADMIN_NEW=$((UTILS_ADMIN_CURRENT + 1))
+          sed -i "s/utils.js?v=$UTILS_ADMIN_CURRENT/utils.js?v=$UTILS_ADMIN_NEW/" admin.html
+          
+          UTILS_INDEX_CURRENT=$(grep -oP '(?<=utils\.js\?v=)\d+' index.html | head -1)
+          UTILS_INDEX_NEW=$((UTILS_INDEX_CURRENT + 1))
+          sed -i "s/utils.js?v=$UTILS_INDEX_CURRENT/utils.js?v=$UTILS_INDEX_NEW/" index.html
+          
+          UTILS_TASACION_CURRENT=$(grep -oP '(?<=utils\.js\?v=)\d+' tasacion.html | head -1)
+          UTILS_TASACION_NEW=$((UTILS_TASACION_CURRENT + 1))
+          sed -i "s/utils.js?v=$UTILS_TASACION_CURRENT/utils.js?v=$UTILS_TASACION_NEW/" tasacion.html
+          
+          # config.js
+          CONFIG_ADMIN_CURRENT=$(grep -oP '(?<=config\.js\?v=)\d+' admin.html | head -1)
+          CONFIG_ADMIN_NEW=$((CONFIG_ADMIN_CURRENT + 1))
+          sed -i "s/config.js?v=$CONFIG_ADMIN_CURRENT/config.js?v=$CONFIG_ADMIN_NEW/" admin.html
+          
+          CONFIG_INDEX_CURRENT=$(grep -oP '(?<=config\.js\?v=)\d+' index.html | head -1)
+          CONFIG_INDEX_NEW=$((CONFIG_INDEX_CURRENT + 1))
+          sed -i "s/config.js?v=$CONFIG_INDEX_CURRENT/config.js?v=$CONFIG_INDEX_NEW/" index.html
+          
+          CONFIG_TASACION_CURRENT=$(grep -oP '(?<=config\.js\?v=)\d+' tasacion.html | head -1)
+          CONFIG_TASACION_NEW=$((CONFIG_TASACION_CURRENT + 1))
+          sed -i "s/config.js?v=$CONFIG_TASACION_CURRENT/config.js?v=$CONFIG_TASACION_NEW/" tasacion.html
+          
+          # cloudinary.js
+          CLOUDINARY_ADMIN_CURRENT=$(grep -oP '(?<=cloudinary\.js\?v=)\d+' admin.html | head -1)
+          CLOUDINARY_ADMIN_NEW=$((CLOUDINARY_ADMIN_CURRENT + 1))
+          sed -i "s/cloudinary.js?v=$CLOUDINARY_ADMIN_CURRENT/cloudinary.js?v=$CLOUDINARY_ADMIN_NEW/" admin.html
+          
+          CLOUDINARY_INDEX_CURRENT=$(grep -oP '(?<=cloudinary\.js\?v=)\d+' index.html | head -1)
+          CLOUDINARY_INDEX_NEW=$((CLOUDINARY_INDEX_CURRENT + 1))
+          sed -i "s/cloudinary.js?v=$CLOUDINARY_INDEX_CURRENT/cloudinary.js?v=$CLOUDINARY_INDEX_NEW/" index.html
+          
+          # landing.css
+          LANDING_CSS_INDEX_CURRENT=$(grep -oP '(?<=landing\.css\?v=)\d+' index.html | head -1)
+          LANDING_CSS_INDEX_NEW=$((LANDING_CSS_INDEX_CURRENT + 1))
+          sed -i "s/landing.css?v=$LANDING_CSS_INDEX_CURRENT/landing.css?v=$LANDING_CSS_INDEX_NEW/" index.html
+          
+          LANDING_CSS_PORTAL_CURRENT=$(grep -oP '(?<=landing\.css\?v=)\d+' portal-propietario.html | head -1)
+          LANDING_CSS_PORTAL_NEW=$((LANDING_CSS_PORTAL_CURRENT + 1))
+          sed -i "s/landing.css?v=$LANDING_CSS_PORTAL_CURRENT/landing.css?v=$LANDING_CSS_PORTAL_NEW/" portal-propietario.html
+          
+          LANDING_CSS_CONFIRM_CURRENT=$(grep -oP '(?<=landing\.css\?v=)\d+' confirmar-visita.html | head -1)
+          LANDING_CSS_CONFIRM_NEW=$((LANDING_CSS_CONFIRM_CURRENT + 1))
+          sed -i "s/landing.css?v=$LANDING_CSS_CONFIRM_CURRENT/landing.css?v=$LANDING_CSS_CONFIRM_NEW/" confirmar-visita.html
+          
+          # admin.css
+          ADMIN_CSS_CURRENT=$(grep -oP '(?<=admin\.css\?v=)\d+' admin.html | head -1)
+          ADMIN_CSS_NEW=$((ADMIN_CSS_CURRENT + 1))
+          sed -i "s/admin.css?v=$ADMIN_CSS_CURRENT/admin.css?v=$ADMIN_CSS_NEW/" admin.html
+          
+          # Output the max version for summary
+          NEW_VERSIONS=$(printf "%s\n" "$ADMIN_NEW" "$LANDING_NEW" "$SUPABASE_ADMIN_NEW" "$SUPABASE_INDEX_NEW" "$SUPABASE_TASACION_NEW" "$UTILS_ADMIN_NEW" "$UTILS_INDEX_NEW" "$UTILS_TASACION_NEW" "$CONFIG_ADMIN_NEW" "$CONFIG_INDEX_NEW" "$CONFIG_TASACION_NEW" "$CLOUDINARY_ADMIN_NEW" "$CLOUDINARY_INDEX_NEW" "$LANDING_CSS_INDEX_NEW" "$LANDING_CSS_PORTAL_NEW" "$LANDING_CSS_CONFIRM_NEW" "$ADMIN_CSS_NEW" | sort -nr | head -1)
+          echo "new_version=$NEW_VERSIONS" >> $GITHUB_OUTPUT
 
       - name: Commit version bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add admin.html index.html portal-propietario.html confirmar-visita.html tasacion.html
-          git commit -m "chore: bump cache buster to v${{ steps.version.outputs.new_version }}"
+          git commit -m "chore: bump cache busters (independent per file)"
           git push
 
   deploy-cloudflare:
@@ -115,13 +194,34 @@ jobs:
         with:
           version: latest
 
-      - name: Deploy Edge Functions
+      - name: Deploy Edge Functions (only active ones)
         run: |
           cd supabase/functions
-          for dir in */; do
-            fn=${dir%/}
-            echo "Deploying $fn..."
-            supabase functions deploy "$fn" --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --no-verify-jwt
+          # List of functions to deploy (exclude orphaned/deprecated)
+          FUNCTIONS_TO_DEPLOY=(
+            "cloudinary-sign"
+            "cron_exclusivity_renewals"
+            "manage-users"
+            "ml-sync"
+            "monthly_commission_liquidation"
+            "supervision-api"
+            "supervision-digest"
+            "supervision-ml-anomaly"
+            "supervision-notifications"
+            "supervision-notify"
+            "trigger_commission_on_close"
+            "zernio-proxy"
+            "zernio-webhook"
+            "zernio-webhook-test"
+          )
+          
+          for fn in "${FUNCTIONS_TO_DEPLOY[@]}"; do
+            if [ -d "$fn" ]; then
+              echo "Deploying $fn..."
+              supabase functions deploy "$fn" --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --no-verify-jwt
+            else
+              echo "Skipping $fn (not found in repo)"
+            fi
           done
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

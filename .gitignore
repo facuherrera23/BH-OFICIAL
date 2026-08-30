@@ -13,3 +13,7 @@ supabase/.temp/
 dist/
 build/
 .vite/
+
+# Artefactos de tests (Playwright)
+test-results/
+playwright-report/

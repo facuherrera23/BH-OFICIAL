@@ -8,9 +8,18 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
 (function () {
   'use strict';
 
+  /* ------------------------------------------------
+     DEBUG FLAG — false en producción, true solo en desarrollo
+     ------------------------------------------------ */
+  const DEBUG = false;
+
+  function logError(...args) {
+    if (DEBUG) console.error(...args);
+  }
+
   /* Security helpers (assets/js/utils.js). Fail-closed: sin BHUtils no se renderiza data dinamica. */
   if (!window.BHUtils) {
-    console.error('[BH Landing] BHUtils no disponible — abortando init (fail-closed)');
+    logError('[BH Landing] BHUtils no disponible — abortando init (fail-closed)');
     return;
   }
   const { esc, escAttr, safeUrl, safeImageUrl, safeCssUrl } = window.BHUtils;
@@ -419,18 +428,16 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
           preferred_zone: data.zona || '',
         };
 
-        const { data: result, error } = await window.supabaseClient
+        const { error } = await window.supabaseClient
           .from('leads')
-          .insert([payload])
-          .select()
-          .single();
+          .insert([payload]);
 
         if (error) throw error;
 
         contactForm.style.display = 'none';
         if (submitSuccess) submitSuccess.classList.add('show');
       } catch (err) {
-        console.error('Error submitting form:', err);
+        logError('Error submitting form:', err);
         alert('Hubo un error al enviar tu consulta. Por favor intentá de nuevo.');
       } finally {
         if (btnSubmit) {
@@ -1605,7 +1612,7 @@ function renderSocialLinks(social) {
       renderProperties(allProperties);
       updateResultsCount(allProperties.length);
     } catch (err) {
-      console.error('Error loading properties:', err);
+      logError('Error loading properties:', err);
       renderEmptyState(grid, 'No hay propiedades disponibles', 'Estamos preparando nuevas opciones para vos.');
     }
   }
@@ -1870,7 +1877,7 @@ function renderSocialLinks(social) {
       allTeam = data || [];
       renderTeam(allTeam);
     } catch (err) {
-      console.error('Error loading team:', err);
+      logError('Error loading team:', err);
       renderEmptyState(grid, 'Equipo no disponible', 'Proximamente conocé a nuestro equipo.');
     }
   }
@@ -1921,7 +1928,7 @@ function renderSocialLinks(social) {
       setStatNumber('statAgents', agentCount.count || 0);
       setStatNumber('statExperience', expYears.count || 15);
     } catch (err) {
-      console.error('Error loading stats:', err);
+      logError('Error loading stats:', err);
     }
   }
 
@@ -1999,7 +2006,7 @@ function renderSocialLinks(social) {
         applySectionContent(item.section_key, item.content);
       });
     } catch (err) {
-      console.error('Error loading CMS content:', err);
+      logError('Error loading CMS content:', err);
     }
   }
 
@@ -2440,7 +2447,7 @@ function renderSocialLinks(social) {
         if (error) throw error;
         newsletterForm.innerHTML = '<p style="color:var(--accent); font-size:14px; font-weight:500; padding:12px 0;"><i class="fas fa-check-circle"></i> ¡Gracias por suscribirte!</p>';
       } catch (err) {
-        console.error('Newsletter error:', err);
+        logError('Newsletter error:', err);
         if (btn) { btn.disabled = false; btn.innerHTML = 'Suscribirse <i class="fas fa-arrow-right"></i>'; }
         emailInput.value = '';
         emailInput.placeholder = 'Error — intentá de nuevo';

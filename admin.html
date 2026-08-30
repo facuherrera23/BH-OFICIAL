@@ -1,16 +1,23 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>BIENENHAUS PROPIEDADES | Panel de Control &amp; CRM</title>
-<meta name="robots" content="noindex, nofollow" />
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://*.supabase.co https://r.ldngts.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://*.cloudinary.com https://images.unsplash.com https://*.supabase.co https://res.cloudinary.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.mercadolibre.com https://api.telegram.org https://r.ldngts.com; frame-src 'self';" />
-<meta name="theme-color" content="#020305" />
-<link rel="icon" href="/assets/images/favicon.ico">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BIENENHAUS PROPIEDADES | Panel de Control & CRM</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://*.supabase.co https://r.ldngts.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://*.cloudinary.com https://images.unsplash.com https://*.supabase.co https://res.cloudinary.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.mercadolibre.com https://api.telegram.org https://r.ldngts.com https://static.cloudflareinsights.com https://api.cloudflareinsights.com; frame-src 'self';" />
+  <meta name="theme-color" content="#020305" />
+  <link rel="icon" href="/assets/images/favicon.ico">
+  <script nonce="bienenhaus2024">
+    (function() {
+      document.documentElement.setAttribute('csp-nonce', 'bienenhaus2024');
+    })();
+  </script>
+  <meta name="theme-color" content="#020305" />
+  <link rel="icon" href="/assets/images/favicon.ico">
 <!-- Google Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -329,7 +336,7 @@ LAYOUT PRINCIPAL
 </div>
 <div style="display:flex; gap:10px;">
 <input type="text" id="propSearchInput" placeholder="Filtrar por título o zona..." style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); padding:8px 14px; border-radius:var(--radius-sm); font-size:13px; outline:none; color:#fff;" />
-<button class="btn-luxury-action" onclick="exportPropertiesCSV()" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
+<button class="btn-luxury-action" data-action="exportPropertiesCSV" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
 <button class="btn-luxury-action" id="btnNewProp"><i class="fas fa-plus"></i> Publicar</button>
 </div>
 </div>
@@ -373,7 +380,7 @@ LAYOUT PRINCIPAL
 <p style="color:var(--text-muted); font-size:12.5px;">Gestión de etapas comerciales con guardado automático.</p>
 </div>
 <div style="display:flex; gap:10px;">
-<button class="btn-luxury-action" onclick="exportLeadsCSV()" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
+<button class="btn-luxury-action" data-action="exportLeadsCSV" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
 <button class="btn-luxury-action" id="btnNewLead">+ Agregar Lead</button>
 </div>
 </div>
@@ -1015,7 +1022,7 @@ LAYOUT PRINCIPAL
 <p style="color:var(--text-muted); font-size:12.5px;">Listado de tasaciones realizadas.</p>
 </div>
 <div style="display:flex; gap:10px;">
-<button class="btn-luxury-action" onclick="exportTasacionesCSV()" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
+<button class="btn-luxury-action" data-action="exportTasacionesCSV" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV"><i class="fas fa-download"></i> CSV</button>
 <button class="btn-luxury-action" id="btnNewTasacion"><i class="fas fa-plus"></i> Nueva Tasación</button>
 </div>
 </div>
@@ -1306,12 +1313,12 @@ LAYOUT PRINCIPAL
     <div class="toolbar-group" style="display:flex; gap:8px;">
       <button type="button" class="btn-luxury-action" id="supRefreshBtn"><i class="fas fa-arrows-rotate"></i> Actualizar</button>
       <button type="button" class="status-pill active" id="supAutoRefreshBtn" style="background:rgba(31,200,195,0.15); color:var(--accent);"><i class="fas fa-broadcast-tower"></i> <span id="supAutoRefreshText">Realtime ON</span></button>
-      <button type="button" class="status-pill pending" id="supExportBtn" onclick="exportSupOverviewCSV()"><i class="fas fa-file-export"></i> Exportar CSV</button>
-      <button type="button" class="status-pill pending" id="supExportAlertsBtn" style="display:none;" onclick="exportSupAlertsCSV()"><i class="fas fa-file-export"></i> Exportar Alertas</button>
-      <button type="button" class="status-pill pending" id="supExportUsersBtn" style="display:none;" onclick="exportSupUsersCSV()"><i class="fas fa-file-export"></i> Exportar Usuarios</button>
-      <button type="button" class="status-pill pending" id="supExportModulesBtn" style="display:none;" onclick="exportSupModulesCSV()"><i class="fas fa-file-export"></i> Exportar Módulos</button>
-      <button type="button" class="btn-action" id="supAuditLoadMore" style="display:none;" onclick="loadMoreSupAudit()"><i class="fas fa-chevron-down"></i> Cargar más</button>
-      <button type="button" class="btn-action" id="supAlertsLoadMore" style="display:none;" onclick="loadMoreSupAlerts()"><i class="fas fa-chevron-down"></i> Cargar más</button>
+      <button type="button" class="status-pill pending" id="supExportBtn" data-action="exportSupOverviewCSV"><i class="fas fa-file-export"></i> Exportar CSV</button>
+      <button type="button" class="status-pill pending" id="supExportAlertsBtn" style="display:none;" data-action="exportSupAlertsCSV"><i class="fas fa-file-export"></i> Exportar Alertas</button>
+      <button type="button" class="status-pill pending" id="supExportUsersBtn" style="display:none;" data-action="exportSupUsersCSV"><i class="fas fa-file-export"></i> Exportar Usuarios</button>
+      <button type="button" class="status-pill pending" id="supExportModulesBtn" style="display:none;" data-action="exportSupModulesCSV"><i class="fas fa-file-export"></i> Exportar Módulos</button>
+      <button type="button" class="btn-action" id="supAuditLoadMore" style="display:none;" data-action="loadMoreSupAudit"><i class="fas fa-chevron-down"></i> Cargar más</button>
+      <button type="button" class="btn-action" id="supAlertsLoadMore" style="display:none;" data-action="loadMoreSupAlerts"><i class="fas fa-chevron-down"></i> Cargar más</button>
     </div>
   </div>
 
@@ -1559,7 +1566,7 @@ LAYOUT PRINCIPAL
     <div id="supUserDetail" style="display:none; margin-top:16px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
         <h3 id="supUserDetailName" style="font-family:var(--font-heading); font-size:18px; color:#fff; margin:0;">Perfil Operativo</h3>
-        <button type="button" class="status-pill pending" onclick="closeSupUserDetail()"><i class="fas fa-times"></i> Cerrar</button>
+        <button type="button" class="status-pill pending" data-action="closeSupUserDetail"><i class="fas fa-times"></i> Cerrar</button>
       </div>
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px;">
         <div class="detail-section">
@@ -1628,7 +1635,7 @@ LAYOUT PRINCIPAL
       </table>
     </div>
     <div style="display:flex; justify-content:center; margin-top:12px;">
-      <button type="button" class="btn-action" id="supAlertsLoadMore" style="display:none;" onclick="loadMoreSupAlerts()"><i class="fas fa-chevron-down"></i> Cargar más</button>
+      <button type="button" class="btn-action" id="supAlertsLoadMore" style="display:none;" data-action="loadMoreSupAlerts"><i class="fas fa-chevron-down"></i> Cargar más</button>
     </div>
   </div>
 
@@ -1685,7 +1692,7 @@ LAYOUT PRINCIPAL
       </table>
     </div>
     <div style="display:flex; justify-content:center; margin-top:12px;">
-      <button type="button" class="btn-action" id="anomLoadMore" style="display:none;" onclick="loadMoreAnomalies()"><i class="fas fa-chevron-down"></i> Cargar más</button>
+      <button type="button" class="btn-action" id="anomLoadMore" style="display:none;" data-action="loadMoreAnomalies"><i class="fas fa-chevron-down"></i> Cargar más</button>
     </div>
   </div>
 
@@ -1716,7 +1723,7 @@ LAYOUT PRINCIPAL
     <div id="supAuditDetail" style="display:none; position:fixed; right:0; top:0; bottom:0; width:480px; background:#0f0f0f; border-left:1px solid var(--border-subtle); z-index:1000; padding:20px; overflow-y:auto; box-shadow:-4px 0 30px rgba(0,0,0,0.5);">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--border-subtle);">
         <h3 style="font-family:var(--font-heading); font-size:16px; color:#fff; margin:0;">Detalle del Evento</h3>
-        <button type="button" class="status-pill pending" onclick="closeSupAuditDetail()"><i class="fas fa-times"></i></button>
+        <button type="button" class="status-pill pending" data-action="closeSupAuditDetail"><i class="fas fa-times"></i></button>
       </div>
       <div id="supAuditDetailContent" style="font-size:12px; color:var(--text-secondary); line-height:1.7;"></div>
     </div>
@@ -1777,7 +1784,7 @@ LAYOUT PRINCIPAL
           <div class="form-field"><label>Filtro JSON (opcional)</label><textarea name="filter_json" id="supRuleFilterJson" rows="4" placeholder='{"field":"changed_fields","contains":"price_usd"}' style="font-family:monospace; font-size:11px;"></textarea></div>
           <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
             <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
-            <button type="button" class="btn-action" id="supRuleSimulateBtn" style="background:rgba(59,130,246,0.15); color:#3B82F6; border:1px solid rgba(59,130,246,0.3);" onclick="simulateSupRule()"><i class="fas fa-flask"></i> Simular</button>
+            <button type="button" class="btn-action" id="supRuleSimulateBtn" style="background:rgba(59,130,246,0.15); color:#3B82F6; border:1px solid rgba(59,130,246,0.3);" data-action="simulateSupRule"><i class="fas fa-flask"></i> Simular</button>
             <button type="submit" class="btn-luxury-action" id="supRuleSaveBtn">Guardar Regla</button>
           </div>
         </form>
@@ -2438,10 +2445,10 @@ box-shadow: 0 4px 20px rgba(220, 38, 38, 0.4);
 <i class="fas fa-exclamation-triangle"></i>
 Tu bloqueador de anuncios está impidiendo que el panel cargue correctamente.
 <strong>Desactivá las extensiones</strong> para este sitio o abrí en ventana incógnita.
-<a href="#" onclick="document.getElementById('cdnWarningBanner').style.display='none'; return false;">Cerrar</a>
+<a href="#" data-action="closeCdnWarning">Cerrar</a>
 </div>
 <!-- CDN timeout fallback: detect if external scripts fail to load -->
-<script>
+<script nonce="bienenhaus2024">
 (function() {
 function checkCDN() {
 var missing = [];
@@ -2513,6 +2520,6 @@ setTimeout(function() { checkCDN(); }, 6000);
 <script src="assets/js/config.js?v=5"></script>
 <script src="assets/js/supabase-client.js?v=4"></script>
 <script src="assets/js/cloudinary.js?v=6"></script>
-<script src="assets/js/admin-app.js?v=209"></script>
+<script src="assets/js/admin-app.js?v=218"></script>
 </body>
 </html>

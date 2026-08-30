@@ -12,6 +12,15 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   document.body.dataset.bhIifeStarted = 'true';
 
   /* ------------------------------------------------
+     DEBUG FLAG — false en producción, true solo en desarrollo
+     ------------------------------------------------ */
+  const DEBUG = false;
+
+  function logError(...args) {
+    if (DEBUG) console.error(...args);
+  }
+
+  /* ------------------------------------------------
      0. STATE & REFS
      ------------------------------------------------ */
   let currentUser = null;
@@ -260,7 +269,7 @@ function esc(s) {
      ------------------------------------------------ */
   async function initAuth() {
     if (!window.supabaseClient) {
-      console.error('[BH] Supabase client not available — CDN may be blocked by browser extension');
+      logError('[BH] Supabase client not available — CDN may be blocked by browser extension');
       const loginScreen = $('#loginScreen');
       const errorEl = $('#loginError');
       if (loginScreen) loginScreen.classList.remove('is-hidden');
@@ -298,7 +307,7 @@ function esc(s) {
         }
       }
     } catch (err) {
-      console.error('Auth init error:', err);
+      logError('Auth init error:', err);
       showLogin();
     }
 
@@ -320,9 +329,23 @@ function esc(s) {
 
   /* Cliente autenticado: usa el access token de la sesión para queries autenticadas */
   let authedSupabaseClient = null;
+  let authedClientTokenExpiry = 0;
+
+  function parseJwtExpiry(token) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.exp * 1000; // exp is in seconds, convert to ms
+    } catch {
+      return 0;
+    }
+  }
 
   async function getAuthedClient() {
-    if (authedSupabaseClient) return authedSupabaseClient;
+    const now = Date.now();
+    // Si el cliente cacheado existe y su token no ha expirado (con 30s de margen)
+    if (authedSupabaseClient && authedClientTokenExpiry > now + 30000) {
+      return authedSupabaseClient;
+    }
     if (!window.supabaseClient || !currentUser) return window.supabaseClient;
     const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (!session?.access_token) return window.supabaseClient;
@@ -330,6 +353,7 @@ function esc(s) {
     authedSupabaseClient = createClient(window.BH_CONFIG.SUPABASE_URL, window.BH_CONFIG.SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: `Bearer ${session.access_token}` } }
     });
+    authedClientTokenExpiry = parseJwtExpiry(session.access_token);
     return authedSupabaseClient;
   }
 
@@ -370,7 +394,7 @@ function esc(s) {
       /* Con perfil y rol ya resueltos: el guard de Configuración evalúa contra el rol real. */
       loadConfig();
     } catch (err) {
-      console.error('Error loading profile:', err);
+      logError('Error loading profile:', err);
       currentProfile = null;
       window._bhCurrentProfile = null;
       showToast('No se pudieron cargar los permisos. Acceso denegado.', 'error');
@@ -562,7 +586,7 @@ function esc(s) {
     try {
       await window.supabaseClient.auth.signOut();
     } catch (err) {
-      console.error('Logout error:', err);
+      logError('Logout error:', err);
       showToast('No se pudo cerrar sesión, intentá de nuevo', 'error');
     }
   });
@@ -757,7 +781,7 @@ function esc(s) {
       renderDashLeads(leads);
       renderDashBrokers(agents);
     } catch (err) {
-      console.error('Dashboard error:', err);
+      logError('Dashboard error:', err);
     }
   }
 
@@ -1026,7 +1050,7 @@ function esc(s) {
         </tr>`;
       }).join('');
 } catch (err) {
-      console.error('Error loading properties:', err);
+      logError('Error loading properties:', err);
       tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar propiedades</td></tr>';
     }
 
@@ -1158,7 +1182,7 @@ function esc(s) {
       loadProperties();
       updateSidebarBadges();
     } catch (err) {
-      console.error('Error saving property:', err);
+      logError('Error saving property:', err);
       showToast('Error al guardar: ' + err.message, 'error');
     } finally {
       _submittingProperty = false;
@@ -1434,7 +1458,7 @@ function esc(s) {
         container.innerHTML = htmlParts.join('');
       });
     } catch (err) {
-      console.error('CRM error:', err);
+      logError('CRM error:', err);
     }
   }
 
@@ -1558,7 +1582,7 @@ function esc(s) {
 
       openModal('leadModal');
     } catch (err) {
-      console.error('Error al cargar lead:', err);
+      logError('Error al cargar lead:', err);
       showToast('Error al cargar lead', 'error');
     }
   };
@@ -1649,7 +1673,7 @@ function esc(s) {
           </tr>`;
       }
     } catch (err) {
-      console.error('Visits error:', err);
+      logError('Visits error:', err);
       tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar visitas</td></tr>';
     }
   }
@@ -2638,7 +2662,7 @@ let dayCount = 1;
         loadMoreBtn.style.display = _anomHasMore ? 'inline-flex' : 'none';
       }
     } catch (err) {
-      console.error('loadAnomaliesTable error:', err);
+      logError('loadAnomaliesTable error:', err);
       tbody.innerHTML = '<tr><td colspan="12" style="padding:40px; text-align:center; color:var(--danger);">Error cargando anomalías</td></tr>';
       if (loadMoreBtn) loadMoreBtn.style.display = 'none';
     }
@@ -2840,7 +2864,7 @@ let dayCount = 1;
 
       openModal('visitModal');
     } catch (err) {
-      console.error('Error al cargar visita:', err);
+      logError('Error al cargar visita:', err);
       showToast('Error al cargar visita', 'error');
     }
   };
@@ -3054,7 +3078,7 @@ let dayCount = 1;
 
       populateCMSFields();
     } catch (err) {
-      console.error('CMS error:', err);
+      logError('CMS error:', err);
     }
   }
 
@@ -3231,7 +3255,7 @@ let dayCount = 1;
 
       showToast('? CMS reiniciado a valores de fábrica', 'success');
     } catch (err) {
-      console.error('Global reset error:', err);
+      logError('Global reset error:', err);
       showToast('Error en reinicio global: ' + err.message, 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-left"></i> Reinicio Global'; }
@@ -3276,7 +3300,7 @@ let dayCount = 1;
         heroBgPreview.style.position = 'relative';
         showToast('Imagen subida a Cloudinary', 'success');
       } catch (err) {
-        console.error('Upload error:', err);
+        logError('Upload error:', err);
         heroBgPreview.innerHTML = '<i class="fas fa-cloud-arrow-up"></i><span>Error al subir</span>';
         showToast('Error al subir imagen: ' + err.message, 'error');
       }
@@ -3351,7 +3375,7 @@ let dayCount = 1;
       renderCfgStatus();
       renderCfgSession();
     } catch (err) {
-      console.error('Config error:', err);
+      logError('Config error:', err);
       showToast('Error al cargar configuración: ' + err.message, 'error');
     }
   }
@@ -3534,7 +3558,7 @@ let dayCount = 1;
         </tr>
       `).join('');
     } catch (err) {
-      console.error('Agents error:', err);
+      logError('Agents error:', err);
     }
   }
 
@@ -3781,7 +3805,7 @@ form.elements.commission_rate.value = data.commission_rate ?? 3;
         </tr>
       `).join('');
     } catch (err) {
-      console.error('Owners error:', err);
+      logError('Owners error:', err);
     }
     /* Update commission KPI and load dashboard */
     updateCommissionsKPI();
@@ -3893,7 +3917,7 @@ form.elements.commission_rate.value = data.commission_rate ?? 3;
         `;
       }).join('');
     } catch (err) {
-      console.error('Pending commissions error:', err);
+      logError('Pending commissions error:', err);
       body.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:40px; color:var(--danger);">Error cargando comisiones</td></tr>';
     }
   }
@@ -3932,7 +3956,7 @@ form.elements.commission_rate.value = data.commission_rate ?? 3;
         </tr>
       `).join('');
     } catch (err) {
-      console.error('Liquidations error:', err);
+      logError('Liquidations error:', err);
       body.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px; color:var(--danger);">Error cargando liquidaciones</td></tr>';
     }
   }
@@ -3966,7 +3990,7 @@ form.elements.commission_rate.value = data.commission_rate ?? 3;
         </tr>
       `).join('');
     } catch (err) {
-      console.error('Payments error:', err);
+      logError('Payments error:', err);
       body.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--danger);">Error cargando pagos</td></tr>';
     }
   }
@@ -4621,7 +4645,7 @@ if (form.elements.commission_rate) form.elements.commission_rate.value = data.co
         </div>
       `).join('');
     } catch (err) {
-      console.error('loadOwnerTasaciones error:', err);
+      logError('loadOwnerTasaciones error:', err);
       el.innerHTML = '<p style="color:var(--danger); font-size:12px; text-align:center; padding:20px;">Error cargando tasaciones</p>';
     }
   }
@@ -4890,7 +4914,7 @@ if (form.elements.commission_rate) form.elements.commission_rate.value = data.co
           <td>${userEditCellHtml(u)}</td>
         </tr>`).join('');
     } catch (err) {
-      console.error('Users error:', err);
+      logError('Users error:', err);
     }
   }
 
@@ -5914,7 +5938,7 @@ try {
       on(pageSize, 'change', () => { _tasacionesPageSize = parseInt(pageSize.value); _tasacionesPage = 1; loadTasaciones(); });
 
     } catch (err) {
-      console.error('loadTasaciones error:', err);
+      logError('loadTasaciones error:', err);
       tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar tasaciones</td></tr>';
     }
   }
@@ -6511,7 +6535,7 @@ on(chip, 'click', () => {
         if (error) throw error;
         renderConversations(data || []);
       } catch (err) {
-        console.error('loadConversations error:', err);
+        logError('loadConversations error:', err);
         listEl.innerHTML = '<div class="chat-empty" style="text-align:center; padding:40px 20px; color:var(--danger);">Error al cargar conversaciones</div>';
       }
     }
@@ -6788,7 +6812,7 @@ on(chip, 'click', () => {
         // Scroll to bottom
         messagesEl.scrollTop = messagesEl.scrollHeight;
       } catch (err) {
-        console.error('loadMessages error:', err);
+        logError('loadMessages error:', err);
         messagesEl.innerHTML = '<div class="chat-empty" style="text-align:center; padding:40px 20px; color:var(--danger);">Error cargando mensajes</div>';
       }
     }
@@ -6861,7 +6885,7 @@ on(chip, 'click', () => {
         await window.supabaseClient.from('zernio_conversations').update({ unread_count: 0 }).eq('id', convId);
         loadConversations();
       } catch (err) {
-        console.error('markRead error:', err);
+        logError('markRead error:', err);
       }
     }
 
@@ -7149,7 +7173,7 @@ async function mutate(table, fn) {
       if (ownersEl) ownersEl.textContent = (counts.owners || 0) + ' Activos';
       if (tasEl) tasEl.textContent = counts.tasaciones || 0;
     } catch (err) {
-      console.error('Badge update error:', err);
+      logError('Badge update error:', err);
     }
     loadNotifications();
   }
@@ -7278,7 +7302,7 @@ async function mutate(table, fn) {
       _notifItems = items.slice(0, 10);
       renderNotifications();
     } catch (err) {
-      console.error('Notifications load error:', err);
+      logError('Notifications load error:', err);
     }
   }
 
@@ -7387,7 +7411,7 @@ on(document, 'keydown', (e) => {
       _fichaPropsCache = propsRes.data || [];
       _fichaAgentsCache = agentsRes.data || [];
     } catch (err) {
-      console.error('Ficha:', err);
+      logError('Ficha:', err);
       showToast('No se pudieron cargar los datos de la ficha', 'error');
     }
     startFichaFooterRotator();
@@ -7483,7 +7507,7 @@ on(document, 'keydown', (e) => {
       if (badge) badge.textContent = openAlerts;
 
     } catch (err) {
-      console.error('refreshSupervisionKPIs error:', err);
+      logError('refreshSupervisionKPIs error:', err);
       showToast('Error cargando KPIs de supervisión', 'error');
     }
   }
@@ -7568,7 +7592,7 @@ on(document, 'keydown', (e) => {
         select.innerHTML = '<option value="">Todos los usuarios</option>' + data.map(u => `<option value="${esc(u.id)}">${esc(u.full_name || u.email)} (${esc(u.role)})</option>`).join('');
       }
     } catch (err) {
-      console.error('loadSupUsersDropdown error:', err);
+      logError('loadSupUsersDropdown error:', err);
     }
   }
 
@@ -7582,7 +7606,7 @@ on(document, 'keydown', (e) => {
         select.innerHTML = '<option value="">Todos los módulos</option>' + modules.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
       }
     } catch (err) {
-      console.error('loadSupModulesDropdown error:', err);
+      logError('loadSupModulesDropdown error:', err);
     }
   }
 
@@ -7789,7 +7813,7 @@ on(document, 'keydown', (e) => {
       window._supActivityCache = data || [];
       renderSupActivity();
     } catch (err) {
-      console.error('loadSupActivity error:', err);
+      logError('loadSupActivity error:', err);
       listEl.innerHTML = '<div style="color:var(--danger); text-align:center; padding:20px;">Error cargando actividad</div>';
     }
   }
@@ -7902,7 +7926,7 @@ on(document, 'keydown', (e) => {
         });
       });
     } catch (err) {
-      console.error('loadSupUsersTable error:', err);
+      logError('loadSupUsersTable error:', err);
       tbody.innerHTML = '<tr><td colspan="10" style="padding:40px; text-align:center; color:var(--danger);">Error cargando usuarios</td></tr>';
     }
   }
@@ -7975,7 +7999,7 @@ on(document, 'keydown', (e) => {
         </div>`;
       }).join('');
     } catch (err) {
-      console.error('loadSupModulesGrid error:', err);
+      logError('loadSupModulesGrid error:', err);
       grid.innerHTML = '<div style="color:var(--danger); text-align:center; padding:40px;">Error cargando módulos</div>';
     }
   }
@@ -8075,7 +8099,7 @@ on(document, 'keydown', (e) => {
         loadMoreBtn.style.display = _supAlertsHasMore ? 'inline-flex' : 'none';
       }
     } catch (err) {
-      console.error('loadSupAlertsTable error:', err);
+      logError('loadSupAlertsTable error:', err);
       tbody.innerHTML = '<tr><td colspan="10" style="padding:40px; text-align:center; color:var(--danger);">Error cargando alertas</td></tr>';
       if (loadMoreBtn) loadMoreBtn.style.display = 'none';
     }
@@ -8297,7 +8321,7 @@ on(document, 'keydown', (e) => {
         loadMoreBtn.style.display = _supAuditHasMore ? 'inline-flex' : 'none';
       }
     } catch (err) {
-      console.error('loadSupAuditTable error:', err);
+      logError('loadSupAuditTable error:', err);
       tbody.innerHTML = '<tr><td colspan="9" style="padding:40px; text-align:center; color:var(--danger);">Error cargando auditoría</td></tr>';
       if (loadMoreBtn) loadMoreBtn.style.display = 'none';
     }
@@ -8372,7 +8396,7 @@ on(document, 'keydown', (e) => {
         </tr>`;
       }).join('');
     } catch (err) {
-      console.error('loadSupRulesTable error:', err);
+      logError('loadSupRulesTable error:', err);
       tbody.innerHTML = '<tr><td colspan="9" style="padding:40px; text-align:center; color:var(--danger);">Error cargando reglas</td></tr>';
     }
   }
@@ -8527,7 +8551,7 @@ on(document, 'keydown', (e) => {
       openModal('supRuleSimulateResult');
 
     } catch (err) {
-      console.error('simulateSupRule error:', err);
+      logError('simulateSupRule error:', err);
       showToast('Error en simulación: ' + err.message, 'error');
     } finally {
       btn.innerHTML = originalHtml;
@@ -8614,6 +8638,7 @@ on(document, 'keydown', (e) => {
     downloadCSV('supervision-resumen-rankings-' + date + '.csv', rankRows, rankHeaders);
     showToast('Resumen supervisión exportado (KPIs + Rankings)', 'success');
   }
+  window.exportSupOverviewCSV = exportSupOverviewCSV;
 
   function fichaFieldVal(id) {
     const el = $('#' + id);
@@ -8944,7 +8969,7 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
       fichaUpdatePreview();
       renderFichaFilePreviews(results.map(r => r.url));
     }).catch(err => {
-      console.error('Ficha fotos:', err);
+      logError('Ficha fotos:', err);
       showToast('No se pudieron cargar las fotos', 'error');
     });
   });
@@ -9190,7 +9215,7 @@ window.supabaseClient.from('agents').select('id, full_name, phone, email').eq('s
             window.startFichaFooterRotator();
             console.log('[Ficha HTML] CRM data loaded:', window._fichaPropsCache.length, 'properties');
           } catch (err) {
-            console.error('Ficha HTML load error:', err);
+            logError('Ficha HTML load error:', err);
             window.showToast?.('No se pudieron cargar los datos de la ficha', 'error');
           }
         };
@@ -9321,7 +9346,7 @@ let _execToDate = '';
       // Update sidebar badges
       updateSidebarBadges();
     } catch (err) {
-      console.error('loadExecKPIs error:', err);
+      logError('loadExecKPIs error:', err);
     }
   }
 
@@ -9389,7 +9414,7 @@ let _execToDate = '';
         </div>
       `;
     } catch (err) {
-      console.error('loadExecTrendChart error:', err);
+      logError('loadExecTrendChart error:', err);
       const container = $('#execTrendChart');
       if (container) container.innerHTML = '<p style="color:var(--danger); text-align:center; padding:40px;">Error cargando tendencia</p>';
     }
@@ -9455,7 +9480,7 @@ let _execToDate = '';
       const container = $('#execTopOpps');
       if (container) container.innerHTML = html;
     } catch (err) {
-      console.error('loadExecTopOpps error:', err);
+      logError('loadExecTopOpps error:', err);
       const container = $('#execTopOpps');
       if (container) container.innerHTML = '<p style="color:var(--danger); text-align:center; padding:20px;">Error cargando oportunidades</p>';
     }
@@ -9518,7 +9543,7 @@ let _execToDate = '';
       const container = $('#execStrategicAlerts');
       if (container) container.innerHTML = html;
     } catch (err) {
-      console.error('loadExecStrategicAlerts error:', err);
+      logError('loadExecStrategicAlerts error:', err);
       const container = $('#execStrategicAlerts');
       if (container) container.innerHTML = '<p style="color:var(--danger); text-align:center; padding:20px;">Error cargando alertas</p>';
     }
@@ -9583,7 +9608,7 @@ let _execToDate = '';
       const tbody = $('#execMonthlyTableBody');
       if (tbody) tbody.innerHTML = rows;
     } catch (err) {
-      console.error('loadExecMonthlyTable error:', err);
+      logError('loadExecMonthlyTable error:', err);
       const tbody = $('#execMonthlyTableBody');
       if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="padding:40px; text-align:center; color:var(--danger);">Error cargando tabla mensual</td></tr>';
     }
@@ -9609,6 +9634,25 @@ let _execToDate = '';
     downloadCSV('ejecutivo-kpis-' + date + '.csv', rows, headers);
     showToast('KPIs ejecutivos exportados', 'success');
   }
+
+  // FASE 1.1: delega clicks de los botones migrados a data-action (CSP-safe)
+  // vía window[action]; exportSupOverviewCSV se expone en la IIFE principal.
+  window.closeCdnWarning = function () {
+    const bannerEl = document.getElementById('cdnWarningBanner');
+    if (bannerEl) bannerEl.style.display = 'none';
+  };
+  const dataActionWhitelist = ['exportPropertiesCSV', 'exportLeadsCSV', 'exportTasacionesCSV', 'exportSupOverviewCSV', 'exportSupAlertsCSV', 'exportSupUsersCSV', 'exportSupModulesCSV', 'loadMoreSupAudit', 'loadMoreSupAlerts', 'closeSupUserDetail', 'loadMoreAnomalies', 'closeSupAuditDetail', 'simulateSupRule', 'closeCdnWarning'];
+  document.addEventListener('click', function (ev) {
+    const target = ev.target && ev.target.closest ? ev.target.closest('[data-action]') : null;
+    if (!target) return;
+    const action = target.getAttribute('data-action');
+    if (dataActionWhitelist.indexOf(action) === -1) return; // no pisa los quick-action chips (ya bindeados en la sección 16)
+    const fn = window[action];
+    if (typeof fn === 'function') {
+      if (target.tagName === 'A') ev.preventDefault();
+      fn.call(target);
+    }
+  });
 })();
 
 
