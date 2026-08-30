@@ -3,9 +3,9 @@
 // Edge Function: firma uploads a Cloudinary (uploads firmados).
 //
 // Seguridad:
-// - verify_jwt=true (plataforma): rechaza requests sin JWT valido.
-// - Chequeo interno: JWT debe ser de usuario autenticado Y con
-//   perfil role='admin' (via service role key).
+// - JWT validado criptográficamente via supabase.auth.getUser()
+// - Chequeo interno: usuario autenticado Y con
+//   perfil role activo del panel (via service role key).
 // - Carpeta validada contra allowlist (evita firmar rutas arbitrarias).
 // - El API secret NUNCA sale del entorno del servidor.
 //
@@ -17,14 +17,7 @@
 //   CLOUDINARY_CLOUD_NAME (opcional; default bienenhaus)
 // ============================================================
 
-import {
-    auditEvent,
-    auditSensitiveAction,
-    trackToolUsage,
-    auditError,
-    getClientIp,
-    getUserAgent,
-} from '../_shared/audit.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -45,18 +38,6 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
   });
-}
-
-function decodeJwtPayload(jwt: string): { sub?: string; role?: string } | null {
-  try {
-    const part = jwt.split('.')[1];
-    if (!part) return null;
-    let b64 = part.replace(/-/g, '+').replace(/_/g, '/');
-    while (b64.length % 4 !== 0) b64 += '=';
-    return JSON.parse(atob(b64));
-  } catch (_err) {
-    return null;
-  }
 }
 
 async function sha1Hex(input: string): Promise<string> {
@@ -105,17 +86,29 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Method not allowed' }, 405);
     }
 
-    /* 1. JWT presente y de usuario autenticado (no anon key). */
+    // Validar JWT via Supabase Auth (verificación criptográfica real)
     const authHeader = req.headers.get('Authorization') ?? '';
-    const jwt = authHeader.replace(/^Bearer\s+/i, '').trim();
-    const payload = decodeJwtPayload(jwt);
-    if (!payload?.sub || payload.role !== 'authenticated') {
+    if (!authHeader.startsWith('Bearer ')) {
       return json({ error: 'No autorizado' }, 401);
     }
+    const token = authHeader.slice(7);
+
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    if (!serviceKey || !supabaseUrl) return json({ error: 'Servidor mal configurado' }, 500);
+
+    const supabaseClient = createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false },
+    });
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    if (authError || !user) {
+      return json({ error: 'No autorizado' }, 401);
+    }
+    const userId = user.id;
 
     /* 2. Perfil valido y activo verificado server-side contra profiles
           (cualquier rol del panel: super_admin, broker o agente). */
-    const admin = await isAdminUser(payload.sub);
+    const admin = await isAdminUser(userId);
     if (!admin) {
       return json({ error: 'Tu usuario no tiene permiso para subir imágenes' }, 403);
     }

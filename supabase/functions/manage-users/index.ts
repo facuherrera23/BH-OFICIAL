@@ -3,8 +3,8 @@
 // Edge Function: invitacion de usuarios + cambio de roles.
 //
 // Seguridad:
-// - verify_jwt=true (plataforma): rechaza requests sin JWT valido.
-// - Chequeo interno: JWT debe ser de usuario autenticado Y con
+// - JWT validado criptográficamente via supabase.auth.getUser()
+// - Chequeo interno: usuario autenticado Y con
 //   perfil role='super_admin' (via service role key).
 // - Acciones: invite | create-direct | set-role | update-user | update-self
 // - El service role key NUNCA sale del entorno del servidor.
@@ -20,14 +20,15 @@
 //   -> Users del dashboard de Supabase).
 // ============================================================
 
+import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
-    auditEvent,
-    auditSensitiveAction,
-    trackToolUsage,
-    auditError,
-    getClientIp,
-    getUserAgent,
-    genRequestId,
+  auditEvent,
+  auditSensitiveAction,
+  trackToolUsage,
+  auditError,
+  getClientIp,
+  getUserAgent,
+  genRequestId,
 } from '../_shared/audit.ts';
 
 const CORS_HEADERS = {
@@ -45,18 +46,6 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
   });
-}
-
-function decodeJwtPayload(jwt: string): { sub?: string; role?: string } | null {
-  try {
-    const part = jwt.split('.')[1];
-    if (!part) return null;
-    let b64 = part.replace(/-/g, '+').replace(/_/g, '/');
-    while (b64.length % 4 !== 0) b64 += '=';
-    return JSON.parse(atob(b64));
-  } catch (_err) {
-    return null;
-  }
 }
 
 async function isAdminUser(userId: string): Promise<boolean> {
@@ -82,7 +71,8 @@ async function actionInvite(
   body: Record<string, unknown>,
   supabaseUrl: string,
   serviceKey: string,
-  origin = '',
+  origin: string,
+  supabaseClient: ReturnType<typeof createClient>,
 ) {
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const fullName = typeof body.full_name === 'string' ? body.full_name.trim() : '';
@@ -136,7 +126,7 @@ async function actionInvite(
 
   // Auditoría: invitación de usuario
   await auditSensitiveAction(
-    supabase,
+    supabaseClient,
     new Request('internal', { method: 'POST' }),
     'invite',
     'users',
@@ -155,6 +145,7 @@ async function actionSetRole(
   callerId: string,
   supabaseUrl: string,
   serviceKey: string,
+  supabaseClient: ReturnType<typeof createClient>,
 ) {
   const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
   const role = typeof body.role === 'string' ? body.role : '';
@@ -209,7 +200,7 @@ async function actionSetRole(
 
   // Auditoría: cambio de rol
   await auditSensitiveAction(
-    supabase,
+    supabaseClient,
     new Request('internal', { method: 'POST' }),
     'change_role',
     'users',
@@ -227,6 +218,7 @@ async function actionCreateDirect(
   body: Record<string, unknown>,
   supabaseUrl: string,
   serviceKey: string,
+  supabaseClient: ReturnType<typeof createClient>,
 ) {
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const fullName = typeof body.full_name === 'string' ? body.full_name.trim() : '';
@@ -282,7 +274,7 @@ async function actionCreateDirect(
 
   // Auditoría: creación directa de usuario
   await auditSensitiveAction(
-    supabase,
+    supabaseClient,
     new Request('internal', { method: 'POST' }),
     'create',
     'users',
@@ -349,6 +341,7 @@ async function actionUpdateUser(
   callerId: string,
   supabaseUrl: string,
   serviceKey: string,
+  supabaseClient: ReturnType<typeof createClient>,
 ) {
   const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
   if (!userId) return json({ error: 'Falta el usuario a modificar' }, 400);
@@ -451,16 +444,15 @@ async function actionUpdateUser(
   if (banChange !== null) changed.push('is_active');
   if (changed.length) {
     await auditSensitiveAction(
-      supabase,
+      supabaseClient,
       new Request('internal', { method: 'POST' }),
       'update_sensitive',
       'users',
       'user',
       userId,
-      target.full_name || email,
+      String(target.full_name) || newEmail,
       { oldRole: currentRole, oldActive: currentActive },
-      { newRole: nextRole || currentRole, newActive: banChange === null ? currentActive : !banChange },
-      { changed, admin: callerId, selfEdit }
+      { newRole: nextRole || currentRole, newActive: banChange === null ? currentActive : !banChange }
     );
   }
 
@@ -530,18 +522,28 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Method not allowed' }, 405);
     }
 
+    // Validar JWT via Supabase Auth (verificación criptográfica real)
     const authHeader = req.headers.get('Authorization') ?? '';
-    const jwt = authHeader.replace(/^Bearer\s+/i, '').trim();
-    const payload = decodeJwtPayload(jwt);
-    if (!payload?.sub || payload.role !== 'authenticated') {
+    if (!authHeader.startsWith('Bearer ')) {
       return json({ error: 'No autorizado' }, 401);
     }
+    const token = authHeader.slice(7);
 
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     if (!serviceKey || !supabaseUrl) {
       return json({ error: 'Servidor mal configurado' }, 500);
     }
+
+    // Verificar JWT criptográficamente contra Supabase Auth
+    const supabaseClient = createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false },
+    });
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    if (authError || !user) {
+      return json({ error: 'No autorizado' }, 401);
+    }
+    const userId = user.id;
 
     let body: Record<string, unknown>;
     try {
@@ -553,26 +555,26 @@ Deno.serve(async (req: Request) => {
     /* Autogestion basica disponible para cualquier usuario autenticado;
        debe resolverse antes del gate super_admin. */
     if (body.action === 'update-self') {
-      return await actionUpdateSelf(body, payload.sub, supabaseUrl, serviceKey);
+      return await actionUpdateSelf(body, userId, supabaseUrl, serviceKey);
     }
 
-    const admin = await isAdminUser(payload.sub);
+    const admin = await isAdminUser(userId);
     if (!admin) {
       return json({ error: 'Solo super_admin pueden gestionar usuarios' }, 403);
     }
 
     if (body.action === 'invite') {
       const origin = (req.headers.get('origin') || '').replace(/\/+$/, '');
-      return await actionInvite(body, supabaseUrl, serviceKey, origin);
+      return await actionInvite(body, supabaseUrl, serviceKey, origin, supabaseClient);
     }
     if (body.action === 'create-direct') {
-      return await actionCreateDirect(body, supabaseUrl, serviceKey);
+      return await actionCreateDirect(body, supabaseUrl, serviceKey, supabaseClient);
     }
     if (body.action === 'set-role') {
-      return await actionSetRole(body, payload.sub, supabaseUrl, serviceKey);
+      return await actionSetRole(body, userId, supabaseUrl, serviceKey, supabaseClient);
     }
     if (body.action === 'update-user') {
-      return await actionUpdateUser(body, payload.sub, supabaseUrl, serviceKey);
+      return await actionUpdateUser(body, userId, supabaseUrl, serviceKey, supabaseClient);
     }
     return json({ error: 'Accion desconocida' }, 400);
   } catch (err) {
