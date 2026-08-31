@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    BIENENHAUS PROPIEDADES — Admin Panel App (Luxury v2)
    Matches admin.html luxury design system
    ============================================================ */
@@ -196,7 +196,7 @@ function esc(s) {
     bio: z.string().max(2000).optional().nullable(),
     commission_rate: z.number().min(0).max(100).default(3),
     specialties: z.array(z.string()).default([]),
-    status: z.enum(['activo', 'inactivo', 'vacaciones']).default('activo'),
+    status: z.enum(['activo', 'inactivo', 'licencia']).default('activo'),
     profile_id: z.string().uuid('ID de usuario inválido').optional().nullable(),
   });
 
@@ -207,7 +207,7 @@ function esc(s) {
     email: z.string().email('Email inválido').max(150).optional().nullable(),
     phone: z.string().max(30).optional().nullable(),
     address: z.string().max(200).optional().nullable(),
-    preferred_contact: z.enum(['whatsapp', 'email', 'call', 'chat']).optional().nullable().default('whatsapp'),
+    preferred_contact: z.enum(['whatsapp', 'phone', 'email']).optional().nullable().default('whatsapp'),
     bank_name: z.string().max(100).optional().nullable(),
     cbu_cvu: z.string().max(30).optional().nullable(),
     alias_cbu: z.string().max(50).optional().nullable(),
@@ -2175,7 +2175,7 @@ let dayCount = 1;
           <td>${esc(a.matricula || '-')}</td>
           <td>${(a.specialties && a.specialties.length) ? a.specialties.map(s => '<span class="nav-badge" style="background:rgba(16,185,129,0.12); color:#10b981; font-size:10px; margin-right:3px;">${esc(s)}</span>').join('') : '<span style="color:var(--text-dim);">—</span>'}</td>
           <td style="color:var(--accent);">${a.commission_rate != null ? esc(a.commission_rate + '%') : '3%'}</td>
-          <td><span class="nav-badge" style="background:${a.status === 'activo' ? 'rgba(0,200,120,0.15)' : a.status === 'vacaciones' ? 'rgba(255,184,0,0.15)' : 'rgba(255,255,255,0.06)'}; color:${a.status === 'activo' ? 'var(--success)' : a.status === 'vacaciones' ? 'var(--warning)' : 'var(--text-dim)'}; font-size:11px;">${esc(a.status || 'activo')}</span></td>
+          <td><span class="nav-badge" style="background:${a.status === 'activo' ? 'rgba(0,200,120,0.15)' : a.status === 'licencia' ? 'rgba(255,184,0,0.15)' : 'rgba(255,255,255,0.06)'}; color:${a.status === 'activo' ? 'var(--success)' : a.status === 'licencia' ? 'var(--warning)' : 'var(--text-dim)'}; font-size:11px;">${esc(a.status || 'activo')}</span></td>
           <td>${esc(a.phone || '-')}</td>
           <td>
             <div style="display:flex; gap:6px;">
@@ -3565,7 +3565,7 @@ let dayCount = 1;
           <td style="font-size:13px;">${esc(a.matricula || '-')}</td>
           <td style="font-size:12px;">${(a.specialties && a.specialties.length) ? a.specialties.map(s => `<span class="nav-badge" style="background:rgba(16,185,129,0.12); color:#10b981; font-size:10px; margin-right:3px;">${esc(s)}</span>`).join('') : '<span style="color:var(--text-dim);">—</span>'}</td>
           <td style="font-size:13px; color:var(--accent);">${a.commission_rate != null ? esc(a.commission_rate + '%') : '3%'}</td>
-          <td><span class="nav-badge" style="background:${a.status === 'activo' ? 'rgba(0,200,120,0.15)' : a.status === 'vacaciones' ? 'rgba(255,184,0,0.15)' : 'rgba(255,255,255,0.06)'}; color:${a.status === 'activo' ? 'var(--success)' : a.status === 'vacaciones' ? 'var(--warning)' : 'var(--text-dim)'}; font-size:11px;">${esc(a.status || 'activo')}</span></td>
+          <td><span class="nav-badge" style="background:${a.status === 'activo' ? 'rgba(0,200,120,0.15)' : a.status === 'licencia' ? 'rgba(255,184,0,0.15)' : 'rgba(255,255,255,0.06)'}; color:${a.status === 'activo' ? 'var(--success)' : a.status === 'licencia' ? 'var(--warning)' : 'var(--text-dim)'}; font-size:11px;">${esc(a.status || 'activo')}</span></td>
           <td style="font-size:13px;">${esc(a.phone || '-')}</td>
           <td>
             <div style="display:flex; gap:6px;">
@@ -5659,7 +5659,7 @@ try {
       /* Validación previa */
       const { data: prop, error: propErr } = await window.supabaseClient
         .from('properties')
-        .select('title, description, image_urls, zone, price_usd, broker_id, status')
+        .select('title, description, image_urls, zone, price_usd, agent_id, status, is_published')
         .eq('id', propertyId)
         .single();
       if (propErr) throw propErr;
@@ -5669,7 +5669,7 @@ try {
       if (!prop.description || prop.description.length < 100) errors.push('Descripción debe tener al menos 100 caracteres');
       if (!prop.zone) errors.push('Zona/barrio requerido');
       if (!prop.price_usd || prop.price_usd <= 0) errors.push('Precio válido requerido');
-      if (!prop.broker_id) errors.push('Broker asignado requerido');
+      if (!prop.agent_id) errors.push('Broker asignado requerido');
       if (!prop.is_published) errors.push('La propiedad debe estar publicada');
 
       if (errors.length) {
@@ -8099,11 +8099,14 @@ on(document, 'keydown', (e) => {
       const { data: alerts } = await window.supabaseClient.from('supervision_alerts').select('user_id').eq('status', 'open');
       (alerts || []).forEach(a => { alertCounts[a.user_id] = (alertCounts[a.user_id] || 0) + 1; });
 
+      const { data: agentLinks } = await window.supabaseClient.from('agents').select('profile_id').not('profile_id', 'is', null);
+      const agentProfileIds = new Set((agentLinks || []).map(a => a.profile_id));
+
       const rows = Object.entries(userStats).map(([uid, stats]) => {
         const profile = profileMap.get(uid);
         const name = profile ? `${esc(profile.full_name || profile.email)}` : `UID: ${uid.slice(0,8)}...`;
         const role = profile ? esc(profile.role) : '—';
-        const broker = profile?.broker_id ? 'Sí' : 'No';
+        const broker = agentProfileIds.has(uid) ? 'Sí' : 'No';
         const lastAct = stats.lastActivity ? new Date(stats.lastActivity).toLocaleString('es-AR') : '—';
         const alertCount = alertCounts[uid] || 0;
         const statusClass = alertCount > 5 ? 'danger' : alertCount > 0 ? 'warning' : 'success';

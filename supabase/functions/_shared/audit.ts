@@ -89,13 +89,18 @@ export async function getUserProfile(
 ): Promise<{ role: string; broker_id: string | null } | null> {
     const { data, error } = await supabase
         .from('profiles')
-        .select('role, broker_id')
+        .select('role')
         .eq('id', userId)
         .limit(1)
         .single();
     
     if (error || !data) return null;
-    return { role: data.role, broker_id: data.broker_id };
+    const { data: agent } = await supabase
+        .from('agents')
+        .select('id')
+        .eq('profile_id', userId)
+        .maybeSingle();
+    return { role: data.role, broker_id: agent?.id ?? null };
 }
 
 /**
