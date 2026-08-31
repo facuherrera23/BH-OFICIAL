@@ -5,7 +5,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders, jsonResponse, optionsResponse } from '../_shared/http.ts';
-import { withRateLimit, RATE_LIMIT_CONFIG } from '../_shared/rate-limit.ts';
+import { rateLimitMiddleware, RATE_LIMIT_CONFIG } from '../_shared/rate-limit.ts';
 import type { SupabaseClient } from 'npm/@supabase/supabase-js@2';
 
 RATE_LIMIT_CONFIG['supervision-api'] = { requests: 60, windowMs: 60_000 };
@@ -261,7 +261,7 @@ async function handleAlerts(req: Request, params: QueryParams) {
     }, req);
 }
 
-async function handleRules(req: Request, params: QueryParams) {
+async function handleRulesWithParams(req: Request, params: QueryParams) {
     const query = buildRulesQuery(supabase, params);
     const { data, error, count } = await query;
     
@@ -482,7 +482,7 @@ async function handleRules(req: Request, method: string) {
     if (method === 'GET') {
         const url = new URL(req.url);
         const params = await parseQueryParams(url);
-        return handleRules(req, params);
+        return handleRulesWithParams(req, params);
     }
     
     if (method === 'POST') {
@@ -779,7 +779,7 @@ async function handleVerifyIntegrity(req: Request) {
             let previousHash: string | null = null;
             for (const event of events) {
                 total++;
-                const expectedHash = calculateEventHash(
+                const expectedHash = await calculateEventHash(
                     event.id,
                     event.user_id,
                     event.action,
@@ -825,7 +825,7 @@ async function handleVerifyIntegrity(req: Request) {
     }
 }
 
-function calculateEventHash(
+async function calculateEventHash(
     id: string,
     user_id: string | null,
     action: string,
@@ -835,7 +835,7 @@ function calculateEventHash(
     old_data: any,
     new_data: any,
     previous_hash: string | null
-): string {
+): Promise<string> {
     const input = [
         id,
         user_id ?? 'null',
@@ -859,7 +859,7 @@ function calculateEventHash(
 Deno.serve(async (req: Request) => {
     if (req.method === 'OPTIONS') return optionsResponse(req);
     
-    const rateLimitResponse = await withRateLimit('supervision-api', async () => null, req);
+    const rateLimitResponse = await rateLimitMiddleware('supervision-api', req);
     if (rateLimitResponse) return rateLimitResponse;
     
     // Verificar super_admin usando profiles table (consistente con RLS policies)

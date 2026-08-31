@@ -180,7 +180,7 @@ function esc(s) {
     owner_id: z.string().uuid('ID de propietario inválido').optional().nullable(),
     broker_id: z.string().uuid('ID de broker inválido').optional().nullable(),
     type: z.enum(['venta', 'alquiler', 'hipotecario', 'judicial']),
-    status: z.enum(['borrador', 'en_revision', 'entregada', 'vencida']).default('borrador'),
+    status: z.enum(['draft', 'finalized']).default('draft'),
     data: z.record(z.unknown()).default({}),
     valuation_usd: z.number().min(0).max(50000000).optional().nullable(),
     report_url: z.string().url('URL de reporte inválida').optional().nullable(),

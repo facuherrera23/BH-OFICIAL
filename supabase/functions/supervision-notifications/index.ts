@@ -1,6 +1,6 @@
 // ============================================================
 // BIENENHAUS - Supervision Notifications
-// Notificaciones push/email para alertas críticas
+// Notificaciones push/email para alertas crÃ­ticas
 // ============================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -12,7 +12,7 @@ const supabase = createClient(
     { auth: { persistSession: false } }
 );
 
-// Configuración de notificaciones
+// ConfiguraciÃ³n de notificaciones
 const NOTIFICATION_CONFIG = {
     // Email (Brevo/SendGrid)
     brevoApiKey: Deno.env.get('BREVO_API_KEY'),
@@ -77,7 +77,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                sender: { email: NOTIFICATION_CONFIG.brevoSenderEmail, name: 'Bienenhaus Supervisión' },
+                sender: { email: NOTIFICATION_CONFIG.brevoSenderEmail, name: 'Bienenhaus SupervisiÃ³n' },
                 to: [{ email: to }],
                 subject,
                 htmlContent: html,
@@ -92,7 +92,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
 
 async function sendPushNotification(subscription: PushSubscription, payload: Record<string, unknown>): Promise<boolean> {
     // Implementar Web Push con VAPID
-    // Por simplicidad, retorna true si hay configuración
+    // Por simplicidad, retorna true si hay configuraciÃ³n
     return !!NOTIFICATION_CONFIG.vapidPrivateKey;
 }
 
@@ -124,16 +124,16 @@ async function sendNotification(payload: NotificationPayload): Promise<void> {
                      : type === 'medium' ? NOTIFICATION_CONFIG.mediumChannels
                      : [];
     
-    const message = `🚨 *${type.toUpperCase()}: ${title}*\n${description}\nMódulo: ${module}\nEvidencia: ${JSON.stringify(evidence, null, 2)}`;
+    const message = `ðŸš¨ *${type.toUpperCase()}: ${title}*\n${description}\nMÃ³dulo: ${module}\nEvidencia: ${JSON.stringify(evidence, null, 2)}`;
     
     const results = await Promise.allSettled([
-        prefs.email ? sendEmail('superadmin@bienenhaus.com.ar', `[SUPERVISIÓN] ${type.toUpperCase()}: ${title}`, `
+        prefs.email ? sendEmail('superadmin@bienenhaus.com.ar', `[SUPERVISIÃ“N] ${type.toUpperCase()}: ${title}`, `
             <h2>${title}</h2>
             <p><strong>Severidad:</strong> ${type.toUpperCase()}</p>
-            <p><strong>Módulo:</strong> ${module}</p>
-            <p><strong>Descripción:</strong> ${description}</p>
+            <p><strong>MÃ³dulo:</strong> ${module}</p>
+            <p><strong>DescripciÃ³n:</strong> ${description}</p>
             <p><strong>Evidencia:</strong> <pre>${JSON.stringify(evidence, null, 2)}</pre></p>
-            <p><a href="https://bienenhaus.com.ar/admin.html#tab-supervision">Ver en Centro de Supervisión</a></p>
+            <p><a href="https://bienenhaus.com.ar/admin.html#tab-supervision">Ver en Centro de SupervisiÃ³n</a></p>
         `) : Promise.resolve(false),
         
         prefs.slack ? sendSlackNotification(NOTIFICATION_CONFIG.slackWebhookUrl, message) : Promise.resolve(false),
@@ -152,20 +152,20 @@ async function handleTestNotification(req: Request): Promise<Response> {
     const { type = 'critical', title = 'Test Alert', description = 'Test notification', userId } = body;
     
     if (!userId) {
-        return jsonResponse(400, { error: 'userId requerido' });
+        return jsonResponse(400, { error: 'userId requerido' }, req);
     }
     
     await sendNotification({ alertId: 'test', type, title, description, userId, module: 'test', evidence: {} });
     
-    return jsonResponse(200, { ok: true, message: 'Test notification sent' });
+    return jsonResponse(200, { ok: true, message: 'Test notification sent' }, req);
 }
 
-// Endpoint para preferencias de notificación
+// Endpoint para preferencias de notificaciÃ³n
 async function handlePreferences(req: Request, method: string): Promise<Response> {
     const url = new URL(req.url);
     const userId = url.searchParams.get('user_id');
     
-    if (!userId) return jsonResponse(400, { error: 'user_id requerido' });
+    if (!userId) return jsonResponse(400, { error: 'user_id requerido' }, req);
     
     if (method === 'GET') {
         const { data, error } = await supabase
@@ -175,7 +175,7 @@ async function handlePreferences(req: Request, method: string): Promise<Response
             .single();
         
         if (error && error.code !== 'PGRST116') throw error;
-        return jsonResponse(200, data ?? { userId, email: true, push: true, slack: false, criticalOnly: false });
+        return jsonResponse(200, data ?? { userId, email: true, push: true, slack: false, criticalOnly: false }, req);
     }
     
     if (method === 'POST' || method === 'PATCH') {
@@ -189,10 +189,10 @@ async function handlePreferences(req: Request, method: string): Promise<Response
             .single();
         
         if (error) throw error;
-        return jsonResponse(200, data);
+        return jsonResponse(200, data, req);
     }
     
-    return jsonResponse(405, { error: 'Method not allowed' });
+    return jsonResponse(405, { error: 'Method not allowed' }, req);
 }
 
 Deno.serve(async (req: Request) => {
@@ -202,13 +202,13 @@ Deno.serve(async (req: Request) => {
     const path = url.pathname.split('/').pop();
     
     try {
-        // Verificar autenticación super_admin
+        // Verificar autenticaciÃ³n super_admin
         const auth = req.headers.get('authorization') ?? '';
-        if (!auth.startsWith('Bearer ')) return jsonResponse(401, { error: 'No autorizado' });
+        if (!auth.startsWith('Bearer ')) return jsonResponse(401, { error: 'No autorizado' }, req);
         
         const token = auth.slice(7);
         const { data: { user }, error } = await supabase.auth.getUser(token);
-        if (error || !user) return jsonResponse(401, { error: 'Token inválido' });
+        if (error || !user) return jsonResponse(401, { error: 'Token invÃ¡lido' }, req);
         
         const { data: profile } = await supabase
             .from('profiles')
@@ -217,7 +217,7 @@ Deno.serve(async (req: Request) => {
             .single();
         
         if (!profile || profile.role !== 'super_admin') {
-            return jsonResponse(403, { error: 'Solo super_admin' });
+            return jsonResponse(403, { error: 'Solo super_admin' }, req);
         }
         
         switch (path) {
@@ -226,10 +226,10 @@ Deno.serve(async (req: Request) => {
             case 'preferences':
                 return handlePreferences(req, req.method);
             default:
-                return jsonResponse(404, { error: 'Endpoint no encontrado' });
+                return jsonResponse(404, { error: 'Endpoint no encontrado' }, req);
         }
     } catch (error) {
         console.error('[supervision-notifications] Error:', error);
-        return jsonResponse(500, { error: 'Error interno' });
+        return jsonResponse(500, { error: 'Error interno' }, req);
     }
 });

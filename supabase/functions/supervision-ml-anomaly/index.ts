@@ -1,6 +1,6 @@
 // ============================================================
 // BIENENHAUS - ML-based Anomaly Detection (Fase 2)
-// Detección de anomalías usando métodos estadísticos avanzados
+// DetecciÃ³n de anomalÃ­as usando mÃ©todos estadÃ­sticos avanzados
 // ============================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -12,7 +12,7 @@ const supabase = createClient(
     { auth: { persistSession: false } }
 );
 
-// Configuración
+// ConfiguraciÃ³n
 const ML_CONFIG = {
     // Ventanas temporales
     shortWindow: '1 hour',
@@ -20,11 +20,11 @@ const ML_CONFIG = {
     longWindow: '7 days',
     
     // Umbrales
-    zScoreThreshold: 3.0,        // Para detección Z-score
-    iqrMultiplier: 1.5,          // Para detección IQR
+    zScoreThreshold: 3.0,        // Para detecciÃ³n Z-score
+    iqrMultiplier: 1.5,          // Para detecciÃ³n IQR
     isolationForestContamination: 0.1,
     
-    // Mínimos para entrenamiento
+    // MÃ­nimos para entrenamiento
     minSamplesForTraining: 50,
     minSamplesForInference: 10,
     
@@ -60,7 +60,7 @@ interface AnomalyResult {
     details: Record<string, unknown>;
 }
 
-// Utilidades estadísticas
+// Utilidades estadÃ­sticas
 function mean(arr: number[]): number {
     return arr.reduce((a, b) => a + b, 0) / arr.length;
 }
@@ -82,7 +82,7 @@ function zScore(value: number, arr: number[]): number {
     return s === 0 ? 0 : (value - m) / s;
 }
 
-// Detección Z-Score
+// DetecciÃ³n Z-Score
 function detectZScoreAnomalies(features: Record<string, number[]>, threshold: number): Map<string, string[]> {
     const anomalies = new Map<string, string[]>();
     
@@ -105,7 +105,7 @@ function detectZScoreAnomalies(features: Record<string, number[]>, threshold: nu
     return anomalies;
 }
 
-// Detección IQR (Interquartile Range)
+// DetecciÃ³n IQR (Interquartile Range)
 function detectIQRAnomalies(features: Record<string, number[]>, multiplier: number): Map<string, string[]> {
     const anomalies = new Map<string, string[]>();
     
@@ -130,7 +130,7 @@ function detectIQRAnomalies(features: Record<string, number[]>, multiplier: numb
     return anomalies;
 }
 
-// Isolation Forest simplificado (basado en profundidad promedio de árboles aleatorios)
+// Isolation Forest simplificado (basado en profundidad promedio de Ã¡rboles aleatorios)
 class SimpleIsolationForest {
     private trees: IsolationTree[] = [];
     private nTrees: number;
@@ -248,7 +248,7 @@ async function extractUserFeatures(
         unique_entities_accessed: new Set(events?.map(e => e.entity_id).filter(Boolean) ?? []).size,
     };
     
-    // Duración promedio de sesión (aproximado)
+    // DuraciÃ³n promedio de sesiÃ³n (aproximado)
     const sessions = new Set(events?.map(e => e.session_id).filter(Boolean) ?? []);
     let sessionDurations: number[] = [];
     for (const sid of sessions) {
@@ -263,7 +263,7 @@ async function extractUserFeatures(
     return features;
 }
 
-// Función principal de detección
+// FunciÃ³n principal de detecciÃ³n
 async function detectAnomalies(
     supabase: any,
     userIds: string[],
@@ -291,7 +291,7 @@ async function detectAnomalies(
         }
     }
     
-    // Método 1: Z-Score
+    // MÃ©todo 1: Z-Score
     const featureValues: Record<string, number[]> = {};
     for (const fname of featureNames) {
         featureValues[fname] = trainingData.map(row => row[featureNames.indexOf(fname)]);
@@ -299,10 +299,10 @@ async function detectAnomalies(
     
     const zScoreAnomalies = detectZScoreAnomalies(featureValues, ML_CONFIG.zScoreThreshold);
     
-    // Método 2: IQR
+    // MÃ©todo 2: IQR
     const iqrAnomalies = detectIQRAnomalies(featureValues, ML_CONFIG.iqrMultiplier);
     
-    // Método 3: Isolation Forest (si hay suficientes datos)
+    // MÃ©todo 3: Isolation Forest (si hay suficientes datos)
     let iforestScores: Map<string, number> = new Map();
     if (trainingData.length >= ML_CONFIG.minSamplesForTraining) {
         const forest = new SimpleIsolationForest(50, 8);
@@ -314,7 +314,7 @@ async function detectAnomalies(
         }
     }
     
-    // Ensemble: combinar métodos
+    // Ensemble: combinar mÃ©todos
     for (const userId of userIds) {
         let anomalyScore = 0;
         const methods: string[] = [];
@@ -374,7 +374,7 @@ async function saveAnomalyResults(supabase: any, results: AnomalyResult[]): Prom
                     module: 'ml_anomaly',
                     severity: r.anomalyScore > 0.8 ? 'critical' : r.anomalyScore > 0.6 ? 'high' : 'medium',
                     alert_type: 'ml_anomaly_detection',
-                    title: `Anomalía detectada: ${r.method}`,
+                    title: `AnomalÃ­a detectada: ${r.method}`,
                     description: `Score: ${(r.anomalyScore * 100).toFixed(1)}%. Factores: ${r.contributingFeatures.join(', ')}`,
                     evidence: r.details,
                     status: 'open',
@@ -413,11 +413,11 @@ async function handleDetect(req: Request): Promise<Response> {
         usersAnalyzed: userIds.length,
         anomaliesFound: results.filter(r => r.isAnomaly).length,
         results: results.filter(r => r.isAnomaly),
-    });
+    }, req);
 }
 
 async function handleTrain(req: Request): Promise<Response> {
-    // Reentrenar modelo con datos históricos
+    // Reentrenar modelo con datos histÃ³ricos
     const body = await req.json();
     const { days = 30 } = body;
     
@@ -437,7 +437,7 @@ async function handleTrain(req: Request): Promise<Response> {
         message: 'Model trained on historical data',
         users: userIds.length,
         anomalies: results.filter(r => r.isAnomaly).length,
-    });
+    }, req);
 }
 
 Deno.serve(async (req: Request) => {
@@ -448,11 +448,11 @@ Deno.serve(async (req: Request) => {
     
     try {
         const auth = req.headers.get('authorization') ?? '';
-        if (!auth.startsWith('Bearer ')) return jsonResponse(401, { error: 'No autorizado' });
+        if (!auth.startsWith('Bearer ')) return jsonResponse(401, { error: 'No autorizado' }, req);
         
         const token = auth.slice(7);
         const { data: { user }, error } = await supabase.auth.getUser(token);
-        if (error || !user) return jsonResponse(401, { error: 'Token inválido' });
+        if (error || !user) return jsonResponse(401, { error: 'Token invÃ¡lido' }, req);
         
         const { data: profile } = await supabase
             .from('profiles')
@@ -461,7 +461,7 @@ Deno.serve(async (req: Request) => {
             .single();
         
         if (!profile || profile.role !== 'super_admin') {
-            return jsonResponse(403, { error: 'Solo super_admin' });
+            return jsonResponse(403, { error: 'Solo super_admin' }, req);
         }
         
         switch (path) {
@@ -470,10 +470,10 @@ Deno.serve(async (req: Request) => {
             case 'train':
                 return handleTrain(req);
             default:
-                return jsonResponse(404, { error: 'Endpoint no encontrado' });
+                return jsonResponse(404, { error: 'Endpoint no encontrado' }, req);
         }
     } catch (error) {
         console.error('[supervision-ml-anomaly] Error:', error);
-        return jsonResponse(500, { error: 'Error interno' });
+        return jsonResponse(500, { error: 'Error interno' }, req);
     }
 });

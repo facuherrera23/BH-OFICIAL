@@ -52,11 +52,3 @@ export async function requireAdmin(req: Request, supabase: SupabaseClient): Prom
 export async function isAdmin(req: Request, supabase: SupabaseClient): Promise<boolean> {
     return (await requireAdmin(req, supabase)) !== null;
 }
-
-/**
- * Wrapper booleano de `requireAdmin`. Ãštil cuando la funciÃ³n no necesita
- * reutilizar el token downstream (ej. para llamadas a la API de ML).
- */
-export async function isAdmin(req: Request, supabase: SupabaseClient): Promise<boolean> {
-    return (await requireAdmin(req, supabase)) !== null;
-}

@@ -1,0 +1,5 @@
+{
+  "type": "module",
+  "private": true,
+  "//": "Solo para que Node (tests con node --test + type stripping) trate los .ts como ESM. Deno/Supabase no lo usan."
+}
