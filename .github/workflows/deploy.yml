@@ -160,6 +160,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add admin.html index.html portal-propietario.html confirmar-visita.html tasacion.html
           git commit -m "chore: bump cache busters (independent per file)"
+          git pull --rebase origin main
           git push
 
   deploy-cloudflare:
