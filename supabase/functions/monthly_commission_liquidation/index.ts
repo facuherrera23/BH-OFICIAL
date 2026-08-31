@@ -1,9 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/cors.ts";
+import { corsHeaders, jsonResponse, optionsResponse } from "../_shared/http.ts";
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return optionsResponse(req);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -37,10 +37,7 @@ Deno.serve(async (req: Request) => {
     if (error) throw error;
 
     if (!commissions?.length) {
-      return new Response(JSON.stringify({ success: true, message: "No hay comisiones pendientes en el período", count: 0 }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200
-      });
+      return jsonResponse(200, { success: true, message: "No hay comisiones pendientes en el período", count: 0 }, req);
     }
 
     // USD rate desde preferencias
@@ -168,15 +165,9 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    return new Response(JSON.stringify({ success: true, period: { start: startStr, end: endStr }, liquidations: results }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200
-    });
+    return jsonResponse(200, { success: true, period: { start: startStr, end: endStr }, liquidations: results }, req);
   } catch (err) {
     console.error("monthly_commission_liquidation error:", err);
-    return new Response(JSON.stringify({ success: false, error: err.message }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500
-    });
+    return jsonResponse(500, { success: false, error: err.message }, req);
   }
 });

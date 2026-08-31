@@ -115,10 +115,7 @@
 
       try {
         const { data, error } = await supabaseClient
-          .from('visits')
-          .select('*, agents(full_name)')
-          .eq('confirmation_token', token)
-          .single();
+          .rpc('get_visit_by_token', { p_token: token });
 
         if (error || !data) {
           showError('Visita no encontrada o enlace expirado');
@@ -191,11 +188,10 @@
           btnConfirm.disabled = true;
           btnConfirm.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Confirmando...';
           try {
-            const { error } = await supabaseClient
-              .from('visits')
-              .update({ status: 'confirmada', confirmed_at: new Date().toISOString() })
-              .eq('id', v.id);
+            const { data, error } = await supabaseClient
+              .rpc('update_visit_status_by_token', { p_token: token, p_action: 'confirmar' });
             if (error) throw error;
+            if (!data?.ok) throw new Error(data?.error || 'No se pudo confirmar la visita');
             showToast('Visita confirmada correctamente', 'success');
             setTimeout(() => window.location.reload(), 1500);
           } catch (err) {
@@ -211,11 +207,10 @@
           btnCancel.disabled = true;
           btnCancel.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cancelando...';
           try {
-            const { error } = await supabaseClient
-              .from('visits')
-              .update({ status: 'cancelada', cancel_reason: 'Cancelado por cliente' })
-              .eq('id', v.id);
+            const { data, error } = await supabaseClient
+              .rpc('update_visit_status_by_token', { p_token: token, p_action: 'cancelar' });
             if (error) throw error;
+            if (!data?.ok) throw new Error(data?.error || 'No se pudo cancelar la visita');
             showToast('Visita cancelada', 'success');
             setTimeout(() => window.location.reload(), 1500);
           } catch (err) {

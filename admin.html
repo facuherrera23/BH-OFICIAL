@@ -899,7 +899,8 @@ LAYOUT PRINCIPAL
 </div>
 <button class="btn-luxury-action" id="syncAllBtn"><i class="fas fa-arrows-rotate"></i> Sincronizar Todo</button>
 </div>
-<div class="portals-grid" id="portalsContainer"></div>
+        <div class="portals-grid" id="portalsContainer"></div>
+        <div id="relaPortalPanel"></div>
 <div class="glass-panel">
 <h3 class="panel-title" style="font-size:16px; margin-bottom:16px;">Historial de Sincronizaciones</h3>
 <table class="luxury-table">
@@ -2327,7 +2328,36 @@ MODALES
 </form>
 </div>
 </div>
-<!-- MODAL NUEVA TASACIÓN -->
+<!-- MODAL CONFIG RELA -->
+<div class="admin-modal" id="relaConfigModal">
+<div class="modal-box" style="max-width:720px;">
+<h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:6px;">Configurar Open RELA</h3>
+<p style="color:var(--text-muted); font-size:12.5px; margin-bottom:22px;">Credenciales API se definen como secrets del proyecto Supabase (RELA_CLIENT_ID / RELA_CLIENT_SECRET) — nunca acá. Los mapeos se alimentan de los catálogos sincronizados.</p>
+<form id="relaConfigForm">
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+<div class="form-field"><label>Código Inmobiliaria</label><input type="text" id="relaCodigoInmobiliaria" placeholder="Provisto al asociar la inmobiliaria" /></div>
+<div class="form-field"><label>Integrador</label><input type="text" id="relaIntegrador" placeholder="Parámetro INTEGRADOR de Open" /></div>
+<div class="form-field"><label>Plan de publicación</label><input type="text" id="relaPlan" placeholder="SIMPLE" /></div>
+<div class="form-field"><label>Ambiente</label><select id="relaEnv"><option value="sandbox">Sandbox</option><option value="production">Producción</option></select></div>
+<div class="form-field" style="grid-column:1/-1;"><label>Base URL API</label><input type="text" id="relaBaseUrl" placeholder="https://api-zp-sandbox-open.navent.com" /></div>
+<div class="form-field"><label>Contacto — Nombre</label><input type="text" id="relaContactoNombre" /></div>
+<div class="form-field"><label>Contacto — Email</label><input type="email" id="relaContactoEmail" /></div>
+<div class="form-field"><label>Contacto — Teléfono</label><input type="text" id="relaContactoTelefono" placeholder="+54 9 11 xxxx xxxx" /></div>
+<div class="form-field" style="display:flex; align-items:center; gap:10px;">
+<input type="checkbox" id="relaDryRun" checked style="width:auto;" />
+<label for="relaDryRun" style="margin:0;">DRY-RUN (valida y muestra payload sin publicar)</label>
+</div>
+<div class="form-field" style="grid-column:1/-1;"><label>Mapeo características (JSON: SUPERFICIE_TOTAL, SUPERFICIE_CUBIERTA, AMBIENTES, DORMITORIOS, BANOS, GARAGE)</label><textarea id="relaCatalogMapping" rows="4" style="font-family:monospace; font-size:11px;">{}</textarea></div>
+<div class="form-field" style="grid-column:1/-1;"><label>Tipos de propiedad (JSON: casa/departamento/… → {idTipo, idSubTipo})</label><textarea id="relaTipoPropMap" rows="4" style="font-family:monospace; font-size:11px;">{}</textarea></div>
+<div class="form-field" style="grid-column:1/-1;"><label>Ubicaciones (JSON: zona normalizada → idUbicacion RELA)</label><textarea id="relaUbicacionMap" rows="4" style="font-family:monospace; font-size:11px;">{}</textarea></div>
+</div>
+<div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+<button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+<button type="submit" class="btn-luxury-action">Guardar Configuración</button>
+</div>
+</form>
+</div>
+</div>
 <div class="admin-modal" id="newTasacionModal">
 <div class="modal-box">
 <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:6px;">Nueva Tasación</h3>
@@ -2520,6 +2550,6 @@ setTimeout(function() { checkCDN(); }, 6000);
 <script src="assets/js/config.js?v=11"></script>
 <script src="assets/js/supabase-client.js?v=10"></script>
 <script src="assets/js/cloudinary.js?v=12"></script>
-<script src="assets/js/admin-app.js?v=224"></script>
+<script src="assets/js/admin-app.js?v=226"></script>
 </body>
 </html>

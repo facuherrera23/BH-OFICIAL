@@ -130,8 +130,8 @@ function esc(s) {
     address: z.string().max(200, 'Máximo 200 caracteres').optional().nullable(),
     bedrooms: z.number().int().min(0).max(20).default(0),
     bathrooms: z.number().int().min(0).max(20).default(0),
-    surface_covered: z.number().min(0).max(10000).default(0),
-    surface_total: z.number().min(0).max(50000).default(0),
+    surface_covered: z.number().min(0).max(999999).default(0),
+    surface_total: z.number().min(0).max(999999).default(0),
     garage_spaces: z.number().int().min(0).max(10).default(0),
     rooms: z.number().int().min(0).max(20).default(0),
     video_url: z.string().url('URL de video inválida').optional().nullable(),
@@ -955,12 +955,13 @@ function esc(s) {
       const from = (_propPage - 1) * _propPageSize;
       const to = from + _propPageSize - 1;
 
-      const [propsRes, listingsRes, ownersRes] = await Promise.all([
+      const [propsRes, listingsRes, ownersRes, relaRes] = await Promise.all([
         client.from('properties').select('*').order('created_at', { ascending: false }).range(from, to),
         ml_connected
           ? client.from('ml_listings').select('property_id, ml_listing_id, status')
           : Promise.resolve({ data: [] }),
         client.from('owners').select('id, full_name').order('full_name'),
+        client.from('rela_listings').select('property_id, codigo_aviso, status, remote_status, last_error'),
       ]);
 
       const data = propsRes.data;
@@ -969,6 +970,9 @@ function esc(s) {
 
       const mlMap = {};
       (listingsRes.data || []).forEach(l => { if (l.property_id) mlMap[l.property_id] = l; });
+
+      const relaMap = {};
+      (relaRes.data || []).forEach(l => { if (l.property_id) relaMap[l.property_id] = l; });
 
       const ownerMap = {};
       (ownersRes.data || []).forEach(o => { ownerMap[o.id] = o.full_name; });
@@ -1011,6 +1015,20 @@ function esc(s) {
           mlButtons = `<button class="btn-action" style="font-size:11px; color:#FFE600;" title="Publicar en ML" data-ml-publish="${esc(p.id)}"><i class="fas fa-shopping-cart"></i></button>`;
         }
 
+        const relaInfo = relaMap[p.id];
+        let relaBadge = '';
+        let relaButtons = '';
+        if (relaInfo) {
+          const relaColor = relaInfo.status === 'PUBLISHED' ? 'var(--success)' : relaInfo.status === 'ERROR' || relaInfo.status === 'BLOCKED' ? 'var(--danger)' : 'var(--warning)';
+          const relaText = relaInfo.status === 'PUBLISHED' ? 'RELA' : relaInfo.status === 'ERROR' ? 'RELA Error' : relaInfo.status === 'BLOCKED' ? 'RELA Bloqueado' : 'RELA ' + relaInfo.status;
+          relaBadge = `<span class="nav-badge" style="background:rgba(59,130,246,0.15); color:${relaColor}; font-size:10px; margin-left:4px;" title="${esc(relaInfo.last_error || relaInfo.remote_status || '')}">${esc(relaText)}</span>`;
+          relaButtons = `
+              <button class="btn-action" style="font-size:11px; color:#3B82F6;" title="Sincronizar RELA" data-rela-action="update" data-rela-prop="${esc(p.id)}"><i class="fas fa-arrows-rotate"></i></button>
+              <button class="btn-action danger" style="font-size:11px;" title="Despublicar de RELA" data-rela-action="unpublish" data-rela-prop="${esc(p.id)}"><i class="fas fa-cloud-arrow-down"></i></button>`;
+        } else {
+          relaButtons = `<button class="btn-action" style="font-size:11px; color:#3B82F6;" title="Publicar en RELA (ZonaProp)" data-rela-action="publish" data-rela-prop="${esc(p.id)}"><i class="fas fa-cloud-arrow-up"></i></button>`;
+        }
+
         const codeBadge = p.property_code 
           ? `<span style="font-family:monospace; font-size:12px; font-weight:600; color:var(--accent); background:rgba(31,200,195,0.1); padding:2px 6px; border-radius:4px;">${esc(p.property_code)}</span>`
           : '<span style="color:var(--text-dim); font-size:11px;">—</span>';
@@ -1022,7 +1040,7 @@ function esc(s) {
             <div style="display:flex; align-items:center; gap:12px;">
               <img src="${esc(thumb)}" alt="${esc(p.title || '')}" style="width:52px; height:52px; border-radius:var(--radius-sm); object-fit:cover; border:1px solid var(--border-subtle);" />
               <div>
-                <div style="font-weight:600; color:#fff; font-size:13.5px;">${esc(p.title || 'Sin título')}${mlBadge}</div>
+                <div style="font-weight:600; color:#fff; font-size:13.5px;">${esc(p.title || 'Sin título')}${mlBadge}${relaBadge}</div>
                 <div style="color:var(--text-dim); font-size:12px; margin-top:2px;"><i class="fas fa-location-dot" style="margin-right:4px;"></i>${esc(loc || 'Sin ubicación')}</div>
               </div>
             </div>
@@ -1043,6 +1061,7 @@ function esc(s) {
             <td>
             <div style="display:flex; gap:6px; align-items:center;">
               ${mlButtons}
+              ${relaButtons}
               <button class="btn-action" title="Editar" onclick="window.adminApp.editProperty('${p.id}')"><i class="fas fa-pen"></i></button>
               <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteProperty('${p.id}')"><i class="fas fa-trash"></i></button>
             </div>
@@ -1061,11 +1080,11 @@ function esc(s) {
 
   } // end loadProperties
 
-/* Create button */
+  /* Create button */
   on($('#btnNewProp'), 'click', () => {
     editingPropertyId = null;
     resetPropertyForm();
-    loadBrokersForVisit();
+    loadAgentSelect($('#propAgentSelect'));
     openModal('propertyModal');
   });
 
@@ -1073,7 +1092,7 @@ function esc(s) {
   on($('#topbarNewProp'), 'click', () => {
     editingPropertyId = null;
     resetPropertyForm();
-    loadBrokersForVisit();
+    loadAgentSelect($('#propAgentSelect'));
     openModal('propertyModal');
   });
 
@@ -1238,8 +1257,7 @@ function esc(s) {
 
         const agentSel = $('#propAgentSelect');
         if (agentSel) {
-          await loadBrokersForVisit();
-          agentSel.value = data.agent_id || '';
+          await loadAgentSelect(agentSel, data.agent_id);
         }
 
         // Trigger currency field toggle
@@ -1466,7 +1484,7 @@ function esc(s) {
   on($('#btnNewLead'), 'click', () => {
     editingLeadId = null;
     $('#leadForm')?.reset();
-    loadBrokersForVisit();
+    loadAgentSelect($('#leadBrokerSelect'));
     openModal('leadModal');
   });
 
@@ -1542,6 +1560,7 @@ function esc(s) {
       editingLeadId = id;
       const form = $('#leadForm');
       if (form) {
+        await loadAgentSelect($('#leadBrokerSelect'), lead.assigned_to);
         form.elements.full_name.value = lead.full_name || '';
         form.elements.phone.value = lead.phone || '';
         form.elements.email.value = lead.email || '';
@@ -2346,7 +2365,7 @@ let dayCount = 1;
   on($('#btnNewVisit'), 'click', () => {
     editingVisitId = null;
     $('#visitForm')?.reset();
-    loadBrokersForVisit();
+    loadAgentSelect($('#visitBrokerSelect'));
     /* Limpiar selector dinámico si existe */
     const oldSelect = $('#visitLeadSelect');
     if (oldSelect) oldSelect.remove();
@@ -2367,7 +2386,7 @@ let dayCount = 1;
     if (oldInfo) oldInfo.remove();
 
     /* Cargar brokers en el dropdown */
-    loadBrokersForVisit();
+    loadAgentSelect($('#visitBrokerSelect'));
 
     /* Pre-llenar desde CRM */
     if (prefill.visit_date) {
@@ -2406,10 +2425,9 @@ let dayCount = 1;
     openModal('visitModal');
   };
 
-  async function loadBrokersForVisit() {
-    const select = $('#visitBrokerSelect');
-    if (!select) return;
-    if (!window.supabaseClient) return;
+  async function loadAgentSelect(selectEl, selectedValue = null) {
+    if (!selectEl || !window.supabaseClient) return;
+    const placeholder = selectEl.options[0]?.text || 'Sin broker asignado';
     try {
       const { data, error } = await window.supabaseClient
         .from('agents')
@@ -2418,15 +2436,15 @@ let dayCount = 1;
         .is('deleted_at', null)
         .order('full_name');
       if (error) throw error;
-      const currentValue = select.value;
-      select.innerHTML = '<option value="">— Seleccionar broker —</option>';
-      (data || []).forEach(b => {
+      const valueToSet = selectedValue !== null ? selectedValue : selectEl.value;
+      selectEl.innerHTML = `<option value="">${esc(placeholder)}</option>`;
+      (data || []).forEach(a => {
         const opt = document.createElement('option');
-        opt.value = b.id;
-        opt.textContent = b.full_name;
-        select.appendChild(opt);
+        opt.value = a.id;
+        opt.textContent = a.full_name;
+        selectEl.appendChild(opt);
       });
-      if (currentValue) select.value = currentValue;
+      if (valueToSet) selectEl.value = valueToSet;
     } catch (_) { /* silent */ }
   }
 
@@ -2779,7 +2797,7 @@ let dayCount = 1;
 
       if (form) {
         /* Cargar brokers en dropdown existente */
-        await loadBrokersForVisit();
+        await loadAgentSelect($('#visitBrokerSelect'), data.agent_id);
 
         if (data.visit_date) {
           const d = new Date(data.visit_date);
@@ -5377,6 +5395,8 @@ if (form.elements.commission_rate) form.elements.commission_rate.value = data.co
         </div>
       </div>`;
     }).join('');
+
+    loadRelaPanel();
   }
 
   window.adminApp.togglePortal = async function (portalName, isActive) {
@@ -5710,6 +5730,193 @@ try {
     }
   };
 
+  /* ------------------------------------------------
+     13C. OPEN RELA ARGENTINA (ZonaProp / QuintoAndar)
+     ------------------------------------------------ */
+  async function relaApiCall(action, body = {}) {
+    const { data: { session } } = await window.supabaseClient.auth.getSession();
+    if (!session) throw new Error('No hay sesión activa');
+    const res = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/rela-proxy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ action, ...body }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || `Error ${res.status}`);
+    return json;
+  }
+
+  window.adminApp.relaPropertyAction = async function (propertyId, action) {
+    const labels = { publish: 'publicar en', update: 'sincronizar con', unpublish: 'despublicar de' };
+    if (!confirm(`¿Confirmás ${labels[action] || action} RELA esta propiedad?`)) return;
+    try {
+      showToast(`RELA: ${action}…`, 'info');
+      const result = await relaApiCall(action, { property_id: propertyId });
+      if (result.blocked) {
+        showToast('RELA bloqueó la publicación: ' + (result.errors || []).join(' | '), 'error');
+      } else if (result.dry_run) {
+        showToast(`DRY-RUN: el payload es válido (codigo ${result.codigo_aviso}). Desactivá DRY_RUN en Portales → RELA para publicar en serio.`, 'success');
+        console.log('[RELA DRY-RUN payload]', result.payload);
+      } else if (result.skipped) {
+        showToast('RELA: ' + (result.reason || 'sin cambios'), 'info');
+      } else {
+        showToast(`RELA OK: ${result.remote_status || 'procesado'}${result.warnings?.length ? ' (warnings: ' + result.warnings.length + ')' : ''}`, 'success');
+      }
+      loadProperties();
+    } catch (err) {
+      showToast('Error RELA: ' + err.message, 'error');
+    }
+  };
+
+  /* Panel RELA dentro del tab Portales */
+  async function loadRelaPanel() {
+    const el = $('#relaPortalPanel');
+    if (!el || !window.supabaseClient) return;
+    let status = null;
+    let events = [];
+    try {
+      const { data } = await window.supabaseClient.rpc('rela_portal_status');
+      status = data;
+    } catch (err) { logError('rela_portal_status', err); }
+    try {
+      const res = await relaApiCall('events_list');
+      events = res.events || [];
+    } catch (_) { /* requiere sesión/edge fn; se ignora */ }
+
+    const L = status?.listings || {};
+    const dot = (ok) => `<span style="width:8px;height:8px;border-radius:50%;background:${ok ? '#4ade80' : '#f87171'};display:inline-block;box-shadow:0 0 6px ${ok ? '#4ade80' : '#f87171'};"></span>`;
+    const fmtDate = (iso) => iso ? new Date(iso).toLocaleString('es-AR') : '—';
+
+    el.innerHTML = `
+      <div class="glass-panel" style="padding:24px; margin-top:20px; text-align:left;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="width:44px;height:44px;border-radius:12px;background:rgba(59,130,246,0.15);display:flex;align-items:center;justify-content:center;">
+              <i class="fas fa-cloud" style="color:#3B82F6; font-size:18px;"></i>
+            </div>
+            <div>
+              <h3 style="color:#fff; font-size:16px; font-weight:700; margin:0;">Open RELA (ZonaProp)</h3>
+              <div style="font-size:12px; color:var(--text-dim);">${esc(status?.environment || 'sandbox')} · inmobiliaria: ${esc(status?.codigo_inmobiliaria || 'sin configurar')}</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            ${status?.dry_run ? '<span class="nav-badge" style="background:rgba(255,184,0,0.15); color:var(--warning); font-size:11px;"><i class="fas fa-flask"></i> DRY-RUN activo</span>' : ''}
+            <button class="btn-action" onclick="window.adminApp.relaSyncCatalogs()"><i class="fas fa-rotate"></i> Catálogos</button>
+            <button class="btn-action" onclick="window.adminApp.relaReconcile()"><i class="fas fa-arrows-rotate"></i> Reconciliar</button>
+            <button class="btn-action" onclick="window.adminApp.openRelaConfig()"><i class="fas fa-cog"></i> Configurar</button>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-top:16px;">
+          <div style="background:rgba(255,255,255,0.03); border-radius:10px; padding:12px;">
+            <div style="font-size:11px; color:var(--text-dim);">Estado</div>
+            <div style="font-size:13px; color:#fff; display:flex; align-items:center; gap:6px; margin-top:4px;">${dot(!!status?.codigo_inmobiliaria)} ${status?.codigo_inmobiliaria ? 'Configurado' : 'Pendiente credenciales'}</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03); border-radius:10px; padding:12px;">
+            <div style="font-size:11px; color:var(--text-dim);">Última sync</div>
+            <div style="font-size:13px; color:#fff; margin-top:4px;">${fmtDate(status?.last_sync_at)}</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03); border-radius:10px; padding:12px;">
+            <div style="font-size:11px; color:var(--text-dim);">Avisos publicados</div>
+            <div style="font-size:13px; color:#fff; margin-top:4px;">${L.published ?? 0}</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03); border-radius:10px; padding:12px;">
+            <div style="font-size:11px; color:var(--text-dim);">Errores / Bloqueados</div>
+            <div style="font-size:13px; color:${(L.errors || L.blocked) ? 'var(--danger)' : '#fff'}; margin-top:4px;">${(L.errors ?? 0)} / ${(L.blocked ?? 0)}</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03); border-radius:10px; padding:12px;">
+            <div style="font-size:11px; color:var(--text-dim);">Callbacks</div>
+            <div style="font-size:13px; color:#fff; margin-top:4px;">${dot(!!status?.callbacks_enabled)} ${status?.callbacks_enabled ? 'Activos' : 'Sin configurar'}</div>
+          </div>
+        </div>
+        ${status?.last_error ? `<div style="margin-top:12px; font-size:12px; color:var(--danger);">Último error: ${esc(status.last_error)}</div>` : ''}
+        ${events.length ? `
+          <details style="margin-top:14px;">
+            <summary style="cursor:pointer; font-size:12px; color:var(--text-dim);">Últimos eventos de callback (${events.length})</summary>
+            <div style="margin-top:8px; font-size:11px; color:var(--text-muted); max-height:200px; overflow:auto;">
+              ${events.map(ev => `<div style="padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+                ${esc(ev.tipo_evento)} · ${esc(ev.referencia || '—')} · ${fmtDate(ev.received_at)} · ${ev.processed ? '✓ procesado' : '⏳/⚠ pendiente'}${ev.lead_id ? ' · lead creado' : ''}
+              </div>`).join('')}
+            </div>
+          </details>` : ''}
+      </div>`;
+  };
+
+  window.adminApp.relaSyncCatalogs = async function () {
+    try {
+      showToast('Sincronizando catálogos RELA (ubicaciones, tipos, planes)…', 'info');
+      const res = await relaApiCall('catalogs_sync');
+      const okCount = (res.synced || []).length;
+      const failCount = Object.keys(res.failed || {}).length;
+      showToast(`Catálogos: ${okCount} sincronizados${failCount ? ', ' + failCount + ' con error' : ''}`, failCount ? 'warning' : 'success');
+      loadRelaPanel();
+    } catch (err) { showToast('Error catálogos RELA: ' + err.message, 'error'); }
+  };
+
+  window.adminApp.relaReconcile = async function () {
+    if (!confirm('¿Reconciliar estados contra RELA? Consulta el estado real de cada aviso online.')) return;
+    try {
+      showToast('Reconciliando con RELA…', 'info');
+      const res = await relaApiCall('reconcile');
+      showToast(`Reconciliación: ${(res.reconciled || []).length} avisos consultados`, 'success');
+      loadProperties();
+      loadRelaPanel();
+    } catch (err) { showToast('Error reconciliación: ' + err.message, 'error'); }
+  };
+
+  window.adminApp.openRelaConfig = async function () {
+    try {
+      const res = await relaApiCall('config_get');
+      const c = res.config || {};
+      const setId = (id, v) => { const el = $(id); if (el) el.value = v ?? ''; };
+      setId('#relaCodigoInmobiliaria', c.codigo_inmobiliaria);
+      setId('#relaIntegrador', c.integrador);
+      setId('#relaPlan', c.plan_default);
+      setId('#relaContactoNombre', c.contacto_nombre);
+      setId('#relaContactoEmail', c.contacto_email);
+      setId('#relaContactoTelefono', c.contacto_telefono);
+      setId('#relaBaseUrl', c.base_url);
+      setId('#relaEnv', c.environment);
+      setId('#relaCatalogMapping', JSON.stringify(c.catalog_mapping || {}, null, 2));
+      setId('#relaTipoPropMap', JSON.stringify(c.tipo_propiedad_map || {}, null, 2));
+      setId('#relaUbicacionMap', JSON.stringify(c.ubicacion_map || {}, null, 2));
+      const dry = $('#relaDryRun'); if (dry) dry.checked = !!c.dry_run;
+      openModal('relaConfigModal');
+    } catch (err) { showToast('Error al cargar config RELA: ' + err.message, 'error'); }
+  };
+
+  on($('#relaConfigForm'), 'submit', async (e) => {
+    e.preventDefault();
+    const parseJsonField = (id, label) => {
+      const raw = $(id)?.value?.trim() || '{}';
+      try { return JSON.parse(raw); }
+      catch { throw new Error(`JSON inválido en ${label}`); }
+    };
+    try {
+      const patch = {
+        codigo_inmobiliaria: $('#relaCodigoInmobiliaria')?.value?.trim() || null,
+        integrador: $('#relaIntegrador')?.value?.trim() || null,
+        plan_default: $('#relaPlan')?.value?.trim() || 'SIMPLE',
+        contacto_nombre: $('#relaContactoNombre')?.value?.trim() || null,
+        contacto_email: $('#relaContactoEmail')?.value?.trim() || null,
+        contacto_telefono: $('#relaContactoTelefono')?.value?.trim() || null,
+        base_url: $('#relaBaseUrl')?.value?.trim() || 'https://api-zp-sandbox-open.navent.com',
+        environment: $('#relaEnv')?.value === 'production' ? 'production' : 'sandbox',
+        catalog_mapping: parseJsonField('#relaCatalogMapping', 'Mapeo de características'),
+        tipo_propiedad_map: parseJsonField('#relaTipoPropMap', 'Mapeo de tipos de propiedad'),
+        ubicacion_map: parseJsonField('#relaUbicacionMap', 'Mapeo de ubicaciones'),
+        dry_run: !!$('#relaDryRun')?.checked,
+      };
+      const { error } = await window.supabaseClient.from('rela_config').update(patch).eq('id', true);
+      if (error) throw error;
+      showToast('Configuración RELA guardada', 'success');
+      closeModal('relaConfigModal');
+      loadRelaPanel();
+    } catch (err) {
+      showToast('Error al guardar RELA: ' + err.message, 'error');
+    }
+  });
+
+
   /* --- ML Config: get/save credentials from portal_settings --- */
   async function mlConfigGet() {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
@@ -5977,7 +6184,9 @@ try {
     const rem = e.target.closest('[data-ml-remove]');
     if (rem) { window.adminApp.mlRemoveProperty(rem.dataset.mlListing || ''); return; }
     const pub = e.target.closest('[data-ml-publish]');
-    if (pub) { window.adminApp.mlPublishProperty(pub.dataset.mlPublish); }
+    if (pub) { window.adminApp.mlPublishProperty(pub.dataset.mlPublish); return; }
+    const relaBtn = e.target.closest('[data-rela-action]');
+    if (relaBtn) { window.adminApp.relaPropertyAction(relaBtn.dataset.relaProp, relaBtn.dataset.relaAction); }
   });
 
   on($('#imagePreviewGrid'), 'click', (e) => {

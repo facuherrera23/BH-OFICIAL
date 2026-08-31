@@ -18,12 +18,8 @@
 // ============================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+import { jsonResponse, optionsResponse } from '../_shared/http.ts';
+import { rateLimitMiddleware } from '../_shared/rate-limit.ts';
 
 /* Carpetas permitidas dentro del cloud. Cualquier otra -> default. */
 const ALLOWED_FOLDERS = new Set([
@@ -32,13 +28,6 @@ const ALLOWED_FOLDERS = new Set([
   'bienenhaus/hero',
   'bienenhaus/brokers',
 ]);
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-  });
-}
 
 async function sha1Hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
@@ -78,31 +67,35 @@ async function isAdminUser(userId: string): Promise<boolean> {
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS_HEADERS });
+    return optionsResponse(req);
   }
 
   try {
     if (req.method !== 'POST') {
-      return json({ error: 'Method not allowed' }, 405);
+      return jsonResponse(405, { error: 'Method not allowed' }, req);
     }
+
+    // Rate Limiting
+    const rlResponse = await rateLimitMiddleware('cloudinary-sign', req);
+    if (rlResponse) return rlResponse;
 
     // Validar JWT via Supabase Auth (verificación criptográfica real)
     const authHeader = req.headers.get('Authorization') ?? '';
     if (!authHeader.startsWith('Bearer ')) {
-      return json({ error: 'No autorizado' }, 401);
+      return jsonResponse(401, { error: 'No autorizado' }, req);
     }
     const token = authHeader.slice(7);
 
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    if (!serviceKey || !supabaseUrl) return json({ error: 'Servidor mal configurado' }, 500);
+    if (!serviceKey || !supabaseUrl) return jsonResponse(500, { error: 'Servidor mal configurado' }, req);
 
     const supabaseClient = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false },
     });
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
     if (authError || !user) {
-      return json({ error: 'No autorizado' }, 401);
+      return jsonResponse(401, { error: 'No autorizado' }, req);
     }
     const userId = user.id;
 
@@ -110,7 +103,7 @@ Deno.serve(async (req: Request) => {
           (cualquier rol del panel: super_admin, broker o agente). */
     const admin = await isAdminUser(userId);
     if (!admin) {
-      return json({ error: 'Tu usuario no tiene permiso para subir imágenes' }, 403);
+      return jsonResponse(403, { error: 'Tu usuario no tiene permiso para subir imágenes' }, req);
     }
 
     /* 3. Carpeta pedida por el cliente, validada contra allowlist. */
@@ -133,7 +126,7 @@ Deno.serve(async (req: Request) => {
     const cloudName = Deno.env.get('CLOUDINARY_CLOUD_NAME') ?? 'jpyigjrh';
     if (!apiKey || !apiSecret) {
       console.error('cloudinary-sign: secrets CLOUDINARY_API_KEY/CLOUDINARY_API_SECRET no configurados');
-      return json({ error: 'Cloudinary no configurado en el servidor' }, 500);
+      return jsonResponse(500, { error: 'Cloudinary no configurado en el servidor' }, req);
     }
 
     /* 5. Firmar solo folder+timestamp (Cloudinary excluye fetch_format/
@@ -150,14 +143,14 @@ Deno.serve(async (req: Request) => {
         .join('&') + apiSecret;
     const signature = await sha1Hex(toSign);
 
-    return json({
+    return jsonResponse(200, {
       cloudName,
       apiKey,
       signature,
       params: signedParams,
-    });
+    }, req);
   } catch (err) {
     console.error('cloudinary-sign error:', err);
-    return json({ error: 'Error interno generando firma' }, 500);
+    return jsonResponse(500, { error: 'Error interno generando firma' }, req);
   }
 });

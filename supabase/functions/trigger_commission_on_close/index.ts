@@ -1,9 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/cors.ts";
+import { corsHeaders, jsonResponse, optionsResponse } from "../_shared/http.ts";
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return optionsResponse(req);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -15,18 +15,12 @@ Deno.serve(async (req: Request) => {
     const { record } = body; // Supabase Realtime payload: {table, record, old_record}
 
     if (!record || record.stage !== "cerrado") {
-      return new Response(JSON.stringify({ skipped: "not closed" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200
-      });
+      return jsonResponse(200, { skipped: "not closed" }, req);
     }
 
     const propertyId = record.property_id;
     if (!propertyId) {
-      return new Response(JSON.stringify({ skipped: "no property" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200
-      });
+      return jsonResponse(200, { skipped: "no property" }, req);
     }
 
     // Deduplicación: ya existe comisión para esta propiedad
@@ -39,10 +33,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (existing) {
-      return new Response(JSON.stringify({ skipped: "already exists" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200
-      });
+      return jsonResponse(200, { skipped: "already exists" }, req);
     }
 
     // Propiedad vinculada al lead (consulta directa: evita el embedding en array)
@@ -53,20 +44,14 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (propertyErr || !property) {
-      return new Response(JSON.stringify({ skipped: "property not found" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200
-      });
+      return jsonResponse(200, { skipped: "property not found" }, req);
     }
 
     const owner = property.owner_id ? await getOwner(supabase, property.owner_id) : null;
     const broker = record.broker_id ? await getBroker(supabase, record.broker_id) : null;
 
     if (!owner) {
-      return new Response(JSON.stringify({ skipped: "no owner" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200
-      });
+      return jsonResponse(200, { skipped: "no owner" }, req);
     }
 
     // Calcular comisión según tipo de operación
@@ -126,16 +111,10 @@ Deno.serve(async (req: Request) => {
       text: `Comisión generada: USD ${commissionAmountUsd.toLocaleString("es-AR", { minimumFractionDigits: 2 })} por ${isRental ? "alquiler" : "venta"} de ${property.title}`
     });
 
-    return new Response(JSON.stringify({ success: true, commission_id: inserted.id }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200
-    });
+    return jsonResponse(200, { success: true, commission_id: inserted.id }, req);
   } catch (err) {
     console.error("trigger_commission_on_close error:", err);
-    return new Response(JSON.stringify({ success: false, error: err.message }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500
-    });
+    return jsonResponse(500, { success: false, error: err.message }, req);
   }
 });
 
