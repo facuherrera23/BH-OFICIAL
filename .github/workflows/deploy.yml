@@ -196,7 +196,6 @@ jobs:
 
       - name: Deploy Edge Functions (only active ones)
         run: |
-          cd supabase/functions
           # List of functions to deploy (exclude orphaned/deprecated)
           FUNCTIONS_TO_DEPLOY=(
             "cloudinary-sign"
@@ -216,7 +215,7 @@ jobs:
           )
           
           for fn in "${FUNCTIONS_TO_DEPLOY[@]}"; do
-            if [ -d "$fn" ]; then
+            if [ -d "supabase/functions/$fn" ]; then
               echo "Deploying $fn..."
               supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt
             else
