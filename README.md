@@ -304,14 +304,13 @@ window.BH_CONFIG = {
 
 ### Roles y permisos
 
-El permiso se resuelve con `profiles.role`:
+El permiso se resuelve con `profiles.role` (enum `user_role` en BD: `super_admin` | `broker` | `agente`):
 
 | Rol | Descripción |
 |---|---|
 | `super_admin` | Acceso total + gestión usuarios + settings sensibles + supervisión |
-| `admin` | Gestión operativa completa (sin gestión de usuarios) |
-| `broker` | Solo sus asignaciones (via JOIN `agents.profile_id = auth.uid()`) |
-| `viewer` | Solo lectura |
+| `broker` | Gestión operativa completa + sus asignaciones (via JOIN `agents.profile_id = auth.uid()`) |
+| `agente` | Solo sus asignaciones (via JOIN `agents.profile_id = auth.uid()`) |
 
 Mecanismos clave:
 - Trigger `guard_profiles_self_update` impide auto-elevación de rol.

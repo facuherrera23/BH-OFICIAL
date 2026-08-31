@@ -288,13 +288,10 @@
       let currentOwner = null;
       let currentTokenData = null;
 
-      // Validar token
+      // Validar token (RPC SECURITY DEFINER: anon no accede a owner_portal_tokens)
       async function validateToken() {
         const { data, error } = await supabaseClient
-          .from('owner_portal_tokens')
-          .select('*, owners(*)')
-          .eq('token', token)
-          .single();
+          .rpc('portal_validate_token', { p_token: token });
 
         if (error || !data) {
           showError('Token inválido o expirado');

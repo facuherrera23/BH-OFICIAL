@@ -31,6 +31,10 @@ export const RATE_LIMIT_CONFIG = {
     'chat-ai': { requests: 10, windowMs: 60_000 }, // 10/min - AI chat assistant
     'chat-upload': { requests: 10, windowMs: 60_000 }, // 10/min - adjuntos de chat
     'convert-image': { requests: 30, windowMs: 60_000 }, // 30/min - conversiÃ³n de imÃ¡genes
+    'rela-proxy': { requests: 60, windowMs: 60_000 }, // 60/min - acciones panel RELA
+    'rela-callbacks': { requests: 120, windowMs: 60_000 }, // 120/min - webhooks RELA
+    'manage-users': { requests: 10, windowMs: 60_000 }, // 10/min - user management
+    'cloudinary-sign': { requests: 30, windowMs: 60_000 }, // 30/min - image upload signing
 } as const;
 
 export type RateLimitFnName = keyof typeof RATE_LIMIT_CONFIG;
@@ -66,9 +70,9 @@ export async function checkRateLimit(
         .gte('created_at', new Date(windowStart).toISOString());
 
     if (error) {
-        // Fail open en caso de error DB
+        // FAIL-CLOSED: ante error de DB denegamos (fail-safe según §15 de la misión)
         console.error(`[rate-limit] DB error for ${fnName}:`, error);
-        return { allowed: true, remaining: config.requests };
+        return { allowed: false, remaining: 0, retryAfter: 60 };
     }
 
     const count = logs?.length ?? 0;

@@ -30,22 +30,15 @@ import {
   getUserAgent,
   genRequestId,
 } from '../_shared/audit.ts';
-
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+import { corsHeaders, jsonResponse, optionsResponse } from '../_shared/http.ts';
+import { rateLimitMiddleware } from '../_shared/rate-limit.ts';
 
 /* user_role enum: super_admin | broker | agente */
 const VALID_ROLES = new Set(['super_admin', 'broker', 'agente']);
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-  });
+function serviceHeaders(serviceKey: string) {
+  return { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` };
 }
 
 async function isAdminUser(userId: string): Promise<boolean> {
@@ -63,25 +56,22 @@ async function isAdminUser(userId: string): Promise<boolean> {
   return Array.isArray(rows) && rows.length > 0 && rows[0].role === 'super_admin';
 }
 
-function serviceHeaders(serviceKey: string) {
-  return { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` };
-}
-
 async function actionInvite(
   body: Record<string, unknown>,
   supabaseUrl: string,
   serviceKey: string,
   origin: string,
   supabaseClient: ReturnType<typeof createClient>,
+  req: Request,
 ) {
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const fullName = typeof body.full_name === 'string' ? body.full_name.trim() : '';
   const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
   const role = typeof body.role === 'string' ? body.role : '';
 
-  if (!EMAIL_RE.test(email)) return json({ error: 'Email invalido' }, 400);
-  if (!fullName) return json({ error: 'El nombre completo es obligatorio' }, 400);
-  if (!VALID_ROLES.has(role)) return json({ error: 'Rol invalido' }, 400);
+  if (!EMAIL_RE.test(email)) return jsonResponse(400, { error: 'Email invalido' }, req);
+  if (!fullName) return jsonResponse(400, { error: 'El nombre completo es obligatorio' }, req);
+  if (!VALID_ROLES.has(role)) return jsonResponse(400, { error: 'Rol invalido' }, req);
 
   /* El link del mail debe caer en el PANEL (donde se define contraseña),
      no en la landing. Supabase valida redirect_to contra su allowlist;
@@ -101,13 +91,14 @@ async function actionInvite(
   });
   if (!inviteRes.ok) {
     const err = await inviteRes.json().catch(() => ({}));
-    return json(
-      { error: err.msg || err.error_description || err.message || 'No se pudo enviar la invitacion' },
+    return jsonResponse(
       inviteRes.status,
+      { error: err.msg || err.error_description || err.message || 'No se pudo enviar la invitacion' },
+      req,
     );
   }
   const user = await inviteRes.json();
-  if (!user?.id) return json({ error: 'Invitacion enviada pero no se obtuvo el usuario' }, 500);
+  if (!user?.id) return jsonResponse(500, { error: 'Invitacion enviada pero no se obtuvo el usuario' }, req);
 
   const profileRow: Record<string, string> = { id: user.id, email, full_name: fullName, role };
   if (phone) profileRow.phone = phone;
@@ -121,7 +112,7 @@ async function actionInvite(
     body: JSON.stringify([profileRow]),
   });
   if (!upsertRes.ok) {
-    return json({ error: 'Usuario invitado pero no se pudo asignar el rol en profiles' }, 500);
+    return jsonResponse(500, { error: 'Usuario invitado pero no se pudo asignar el rol en profiles' }, req);
   }
 
   // Auditoría: invitación de usuario
@@ -137,7 +128,7 @@ async function actionInvite(
     { email, full_name: fullName, role, phone }
   );
 
-  return json({ ok: true, userId: user.id, email });
+  return jsonResponse(200, { ok: true, userId: user.id, email }, req);
 }
 
 async function actionSetRole(
@@ -146,24 +137,25 @@ async function actionSetRole(
   supabaseUrl: string,
   serviceKey: string,
   supabaseClient: ReturnType<typeof createClient>,
+  req: Request,
 ) {
   const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
   const role = typeof body.role === 'string' ? body.role : '';
 
-  if (!userId) return json({ error: 'Falta el usuario a modificar' }, 400);
-  if (!VALID_ROLES.has(role)) return json({ error: 'Rol invalido' }, 400);
+  if (!userId) return jsonResponse(400, { error: 'Falta el usuario a modificar' }, req);
+  if (!VALID_ROLES.has(role)) return jsonResponse(400, { error: 'Rol invalido' }, req);
   if (userId === callerId) {
-    return json({ error: 'No podes cambiar tu propio rol' }, 400);
+    return jsonResponse(400, { error: 'No podes cambiar tu propio rol' }, req);
   }
 
   const targetRes = await fetch(
     `${supabaseUrl}/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,role`,
     { headers: serviceHeaders(serviceKey) },
   );
-  if (!targetRes.ok) return json({ error: 'No se pudo verificar el usuario' }, 500);
+  if (!targetRes.ok) return jsonResponse(500, { error: 'No se pudo verificar el usuario' }, req);
   const targets = await targetRes.json();
   if (!Array.isArray(targets) || targets.length === 0) {
-    return json({ error: 'Usuario no encontrado' }, 404);
+    return jsonResponse(404, { error: 'Usuario no encontrado' }, req);
   }
   const targetRole = targets[0].role as string;
 
@@ -174,7 +166,7 @@ async function actionSetRole(
     );
     const others = othersRes.ok ? await othersRes.json() : [];
     if (!Array.isArray(others) || others.length === 0) {
-      return json({ error: 'No podes degradar al ultimo super_admin del sistema' }, 400);
+      return jsonResponse(400, { error: 'No podes degradar al ultimo super_admin del sistema' }, req);
     }
   }
 
@@ -186,7 +178,7 @@ async function actionSetRole(
       body: JSON.stringify({ role }),
     },
   );
-  if (!patchProfile.ok) return json({ error: 'No se pudo actualizar el rol' }, 500);
+  if (!patchProfile.ok) return jsonResponse(500, { error: 'No se pudo actualizar el rol' }, req);
 
   /* Espejo del rol en auth.users (visible en Authentication -> Users). */
   const patchAuth = await fetch(
@@ -211,7 +203,7 @@ async function actionSetRole(
     { newRole: role }
   );
 
-  return json({ ok: true, userId, role, authMirror: patchAuth.ok });
+  return jsonResponse(200, { ok: true, userId, role, authMirror: patchAuth.ok }, req);
 }
 
 async function actionCreateDirect(
@@ -219,15 +211,16 @@ async function actionCreateDirect(
   supabaseUrl: string,
   serviceKey: string,
   supabaseClient: ReturnType<typeof createClient>,
+  req: Request,
 ) {
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const fullName = typeof body.full_name === 'string' ? body.full_name.trim() : '';
   const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
   const role = typeof body.role === 'string' ? body.role : '';
 
-  if (!EMAIL_RE.test(email)) return json({ error: 'Email invalido' }, 400);
-  if (!fullName) return json({ error: 'El nombre completo es obligatorio' }, 400);
-  if (!VALID_ROLES.has(role)) return json({ error: 'Rol invalido' }, 400);
+  if (!EMAIL_RE.test(email)) return jsonResponse(400, { error: 'Email invalido' }, req);
+  if (!fullName) return jsonResponse(400, { error: 'El nombre completo es obligatorio' }, req);
+  if (!VALID_ROLES.has(role)) return jsonResponse(400, { error: 'Rol invalido' }, req);
 
   /* Contraseña temporal de un solo uso: se muestra al admin y él la deriva. */
   const rand = crypto.randomUUID().replace(/-/g, '');
@@ -249,13 +242,14 @@ async function actionCreateDirect(
   });
   if (!createRes.ok) {
     const err = await createRes.json().catch(() => ({}));
-    return json(
-      { error: err.msg || err.error_description || err.message || 'No se pudo crear el usuario' },
+    return jsonResponse(
       createRes.status,
+      { error: err.msg || err.error_description || err.message || 'No se pudo crear el usuario' },
+      req,
     );
   }
   const user = await createRes.json();
-  if (!user?.id) return json({ error: 'Usuario creado pero sin id' }, 500);
+  if (!user?.id) return jsonResponse(500, { error: 'Usuario creado pero sin id' }, req);
 
   const profileRow: Record<string, string> = { id: user.id, email, full_name: fullName, role };
   if (phone) profileRow.phone = phone;
@@ -269,7 +263,7 @@ async function actionCreateDirect(
     body: JSON.stringify([profileRow]),
   });
   if (!upsertRes.ok) {
-    return json({ error: 'Usuario creado pero no se pudo asignar el rol en profiles' }, 500);
+    return jsonResponse(500, { error: 'Usuario creado pero no se pudo asignar el rol en profiles' }, req);
   }
 
   // Auditoría: creación directa de usuario
@@ -285,7 +279,7 @@ async function actionCreateDirect(
     { email, full_name: fullName, role, phone, tempPassword: true }
   );
 
-  return json({ ok: true, userId: user.id, email, tempPassword });
+  return jsonResponse(200, { ok: true, userId: user.id, email, tempPassword }, req);
 }
 
 async function fetchProfileRow(
@@ -342,12 +336,13 @@ async function actionUpdateUser(
   supabaseUrl: string,
   serviceKey: string,
   supabaseClient: ReturnType<typeof createClient>,
+  req: Request,
 ) {
   const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
-  if (!userId) return json({ error: 'Falta el usuario a modificar' }, 400);
+  if (!userId) return jsonResponse(400, { error: 'Falta el usuario a modificar' }, req);
 
   const target = await fetchProfileRow(userId, supabaseUrl, serviceKey);
-  if (!target) return json({ error: 'Usuario no encontrado' }, 404);
+  if (!target) return jsonResponse(404, { error: 'Usuario no encontrado' }, req);
   const currentRole = typeof target.role === 'string' ? target.role : 'agente';
   const currentActive = target.is_active !== false;
   const selfEdit = userId === callerId;
@@ -355,7 +350,7 @@ async function actionUpdateUser(
   const profilePatch: Record<string, unknown> = {};
   if (typeof body.full_name === 'string') {
     const fullName = body.full_name.trim();
-    if (!fullName) return json({ error: 'El nombre completo es obligatorio' }, 400);
+    if (!fullName) return jsonResponse(400, { error: 'El nombre completo es obligatorio' }, req);
     profilePatch.full_name = fullName;
   }
   if (typeof body.phone === 'string') {
@@ -364,27 +359,27 @@ async function actionUpdateUser(
   let newEmail = '';
   if (typeof body.email === 'string') {
     newEmail = body.email.trim().toLowerCase();
-    if (!EMAIL_RE.test(newEmail)) return json({ error: 'Email invalido' }, 400);
+    if (!EMAIL_RE.test(newEmail)) return jsonResponse(400, { error: 'Email invalido' }, req);
     profilePatch.email = newEmail;
   }
 
   let nextRole = '';
   if (body.role !== undefined && body.role !== null && body.role !== '') {
     if (typeof body.role !== 'string' || !VALID_ROLES.has(body.role)) {
-      return json({ error: 'Rol invalido' }, 400);
+      return jsonResponse(400, { error: 'Rol invalido' }, req);
     }
     nextRole = body.role;
     if (selfEdit && nextRole !== currentRole) {
-      return json({ error: 'No podes cambiar tu propio rol' }, 400);
+      return jsonResponse(400, { error: 'No podes cambiar tu propio rol' }, req);
     }
     profilePatch.role = nextRole;
   }
 
   let banChange: boolean | null = null;
   if (body.is_active !== undefined && body.is_active !== null) {
-    if (typeof body.is_active !== 'boolean') return json({ error: 'Estado invalido' }, 400);
+    if (typeof body.is_active !== 'boolean') return jsonResponse(400, { error: 'Estado invalido' }, req);
     if (selfEdit && body.is_active !== currentActive) {
-      return json({ error: 'No podes cambiar tu propio estado' }, 400);
+      return jsonResponse(400, { error: 'No podes cambiar tu propio estado' }, req);
     }
     if (body.is_active !== currentActive) {
       profilePatch.is_active = body.is_active;
@@ -393,7 +388,7 @@ async function actionUpdateUser(
   }
 
   if (Object.keys(profilePatch).length === 0) {
-    return json({ error: 'No hay cambios para aplicar' }, 400);
+    return jsonResponse(400, { error: 'No hay cambios para aplicar' }, req);
   }
 
   if (currentRole === 'super_admin') {
@@ -402,7 +397,7 @@ async function actionUpdateUser(
     if (demoting || deactivating) {
       const others = await countOtherActiveSuperAdmins(userId, supabaseUrl, serviceKey);
       if (others === 0) {
-        return json({ error: 'No podes dejar el sistema sin un super_admin activo' }, 400);
+        return jsonResponse(400, { error: 'No podes dejar el sistema sin un super_admin activo' }, req);
       }
     }
   }
@@ -415,7 +410,7 @@ async function actionUpdateUser(
       body: JSON.stringify(profilePatch),
     },
   );
-  if (!patchRes.ok) return json({ error: 'No se pudo actualizar el perfil' }, 500);
+  if (!patchRes.ok) return jsonResponse(500, { error: 'No se pudo actualizar el perfil' }, req);
 
   const authPatch: Record<string, unknown> = {};
   if (newEmail) {
@@ -456,7 +451,7 @@ async function actionUpdateUser(
     );
   }
 
-  return json({ ok: true, userId, authMirror });
+  return jsonResponse(200, { ok: true, userId, authMirror }, req);
 }
 
 /* Autogestion: cualquier usuario del panel actualiza su nombre y telefono.
@@ -468,25 +463,26 @@ async function actionUpdateSelf(
   callerId: string,
   supabaseUrl: string,
   serviceKey: string,
+  req: Request,
 ) {
   if (body.role !== undefined || body.is_active !== undefined) {
-    return json({ error: 'Tu rol y estado solo puede cambiarlos un super_admin' }, 400);
+    return jsonResponse(400, { error: 'Tu rol y estado solo puede cambiarlos un super_admin' }, req);
   }
 
   const target = await fetchProfileRow(callerId, supabaseUrl, serviceKey);
-  if (!target) return json({ error: 'Usuario no encontrado' }, 404);
+  if (!target) return jsonResponse(404, { error: 'Usuario no encontrado' }, req);
 
   const profilePatch: Record<string, unknown> = {};
   if (typeof body.full_name === 'string') {
     const fullName = body.full_name.trim();
-    if (!fullName) return json({ error: 'El nombre completo es obligatorio' }, 400);
+    if (!fullName) return jsonResponse(400, { error: 'El nombre completo es obligatorio' }, req);
     profilePatch.full_name = fullName;
   }
   if (typeof body.phone === 'string') {
     profilePatch.phone = body.phone.trim();
   }
   if (Object.keys(profilePatch).length === 0) {
-    return json({ error: 'No hay cambios para aplicar' }, 400);
+    return jsonResponse(400, { error: 'No hay cambios para aplicar' }, req);
   }
 
   const patchRes = await fetch(
@@ -497,7 +493,7 @@ async function actionUpdateSelf(
       body: JSON.stringify(profilePatch),
     },
   );
-  if (!patchRes.ok) return json({ error: 'No se pudo actualizar tu perfil' }, 500);
+  if (!patchRes.ok) return jsonResponse(500, { error: 'No se pudo actualizar tu perfil' }, req);
 
   const meta: Record<string, string> = {};
   if (typeof profilePatch.full_name === 'string') meta.full_name = profilePatch.full_name;
@@ -509,30 +505,34 @@ async function actionUpdateSelf(
     serviceKey,
   );
 
-  return json({ ok: true, userId: callerId, authMirror });
+  return jsonResponse(200, { ok: true, userId: callerId, authMirror }, req);
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS_HEADERS });
+    return optionsResponse(req);
   }
 
   try {
     if (req.method !== 'POST') {
-      return json({ error: 'Method not allowed' }, 405);
+      return jsonResponse(405, { error: 'Method not allowed' }, req);
     }
+
+    // Rate Limiting
+    const rlResponse = await rateLimitMiddleware('manage-users', req);
+    if (rlResponse) return rlResponse;
 
     // Validar JWT via Supabase Auth (verificación criptográfica real)
     const authHeader = req.headers.get('Authorization') ?? '';
     if (!authHeader.startsWith('Bearer ')) {
-      return json({ error: 'No autorizado' }, 401);
+      return jsonResponse(401, { error: 'No autorizado' }, req);
     }
     const token = authHeader.slice(7);
 
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     if (!serviceKey || !supabaseUrl) {
-      return json({ error: 'Servidor mal configurado' }, 500);
+      return jsonResponse(500, { error: 'Servidor mal configurado' }, req);
     }
 
     // Verificar JWT criptográficamente contra Supabase Auth
@@ -541,7 +541,7 @@ Deno.serve(async (req: Request) => {
     });
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
     if (authError || !user) {
-      return json({ error: 'No autorizado' }, 401);
+      return jsonResponse(401, { error: 'No autorizado' }, req);
     }
     const userId = user.id;
 
@@ -549,36 +549,36 @@ Deno.serve(async (req: Request) => {
     try {
       body = await req.json();
     } catch (_err) {
-      return json({ error: 'Body invalido' }, 400);
+      return jsonResponse(400, { error: 'Body invalido' }, req);
     }
 
     /* Autogestion basica disponible para cualquier usuario autenticado;
        debe resolverse antes del gate super_admin. */
     if (body.action === 'update-self') {
-      return await actionUpdateSelf(body, userId, supabaseUrl, serviceKey);
+      return await actionUpdateSelf(body, userId, supabaseUrl, serviceKey, req);
     }
 
     const admin = await isAdminUser(userId);
     if (!admin) {
-      return json({ error: 'Solo super_admin pueden gestionar usuarios' }, 403);
+      return jsonResponse(403, { error: 'Solo super_admin pueden gestionar usuarios' }, req);
     }
 
     if (body.action === 'invite') {
       const origin = (req.headers.get('origin') || '').replace(/\/+$/, '');
-      return await actionInvite(body, supabaseUrl, serviceKey, origin, supabaseClient);
+      return await actionInvite(body, supabaseUrl, serviceKey, origin, supabaseClient, req);
     }
     if (body.action === 'create-direct') {
-      return await actionCreateDirect(body, supabaseUrl, serviceKey, supabaseClient);
+      return await actionCreateDirect(body, supabaseUrl, serviceKey, supabaseClient, req);
     }
     if (body.action === 'set-role') {
-      return await actionSetRole(body, userId, supabaseUrl, serviceKey, supabaseClient);
+      return await actionSetRole(body, userId, supabaseUrl, serviceKey, supabaseClient, req);
     }
     if (body.action === 'update-user') {
-      return await actionUpdateUser(body, userId, supabaseUrl, serviceKey, supabaseClient);
+      return await actionUpdateUser(body, userId, supabaseUrl, serviceKey, supabaseClient, req);
     }
-    return json({ error: 'Accion desconocida' }, 400);
+    return jsonResponse(400, { error: 'Accion desconocida' }, req);
   } catch (err) {
     console.error('manage-users error:', err);
-    return json({ error: 'Error interno gestionando usuarios' }, 500);
+    return jsonResponse(500, { error: 'Error interno gestionando usuarios' }, req);
   }
 });

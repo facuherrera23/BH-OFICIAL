@@ -1,0 +1,15 @@
+# security.txt for bienenhaus.com.ar
+# Contact for security vulnerability reporting
+
+Contact: mailto:seguridad@bienenhaus.com.ar
+Preferred-Languages: es, en
+Canonical: https://bienenhaus.com.ar/.well-known/security.txt
+Policy: https://bienenhaus.com.ar/politica-seguridad.html
+Encryption: https://bienenhaus.com.ar/pgp-key.txt
+Acknowledgments: https://bienenhaus.com.ar/hall-of-fame.html
+Hiring: https://bienenhaus.com.ar/trabaja-con-nosotros.html
+
+# Notas:
+# - Los reportes de vulnerabilidades se triagean en 48h hábiles
+# - Se sigue proceso de Coordinated Vulnerability Disclosure (CVD)
+# - No se ofrece bounty program formal; se agradece divulgación responsable

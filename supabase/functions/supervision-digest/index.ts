@@ -1,17 +1,11 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import { corsHeaders, jsonResponse, optionsResponse } from '../_shared/http.ts';
 
 interface DigestConfig {
   brevo_api_key?: string;
   brevo_sender_email?: string;
   brevo_sender_name?: string;
-  recipients?: string[];           // super_admins + adicionales
+  recipients?: string[];
   include_kpis?: boolean;
   include_rankings?: boolean;
   include_alerts?: boolean;
@@ -111,7 +105,6 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const now = new Date().toISOString();
 
-  // Parallel queries for performance
   const [
     auditRes,
     alertsRes,
@@ -126,7 +119,6 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
   const alerts = alertsRes.data || [];
   const admins = usersRes.data || [];
 
-  // KPIs
   const uniqueUsers = new Set(audit.map(a => a.user_id).filter(Boolean)).size;
   const actionsTotal = audit.length;
   const actionsToday = audit.filter(a => new Date(a.created_at).toDateString() === new Date().toDateString()).length;
@@ -141,7 +133,6 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
   const highAlerts = alerts.filter(a => a.severity === "high").length;
   const unassignedAlerts = alerts.filter(a => a.status === "open" && !a.assigned_to).length;
 
-  // Rankings: Activity by User
   const byUser: Record<string, { count: number; name: string; email: string; errors: number; sensitive: number }> = {};
   audit.forEach(a => {
     const uid = a.user_id || "sistema";
@@ -150,7 +141,6 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
     if (a.severity === "error" || a.severity === "critical") byUser[uid].errors++;
     if (a.metadata?.sensitive === true) byUser[uid].sensitive++;
   });
-  // Enrich with profile data
   const adminMap = new Map(admins.map(u => [u.id, u]));
   Object.keys(byUser).forEach(uid => {
     const admin = adminMap.get(uid);
@@ -163,7 +153,6 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 10);
 
-  // Rankings: Activity by Module
   const byModule: Record<string, { count: number; errors: number }> = {};
   audit.forEach(a => {
     const mod = a.module || "general";
@@ -175,7 +164,6 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 10);
 
-  // Rankings: Errors by User
   const errorsByUser: Record<string, number> = {};
   audit.filter(a => a.severity === "error" || a.severity === "critical").forEach(a => {
     const uid = a.user_id || "sistema";
@@ -185,7 +173,6 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10);
 
-  // Rankings: Sensitive actions
   const sensitiveByUser: Record<string, number> = {};
   audit.filter(a => a.metadata?.sensitive === true).forEach(a => {
     const uid = a.user_id || "sistema";
@@ -195,7 +182,6 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10);
 
-  // Alerts by severity
   const alertsBySeverity = {
     critical: alerts.filter(a => a.severity === "critical").length,
     high: alerts.filter(a => a.severity === "high").length,
@@ -204,14 +190,12 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
     info: alerts.filter(a => a.severity === "info").length,
   };
 
-  // Alerts by module
   const alertsByModule: Record<string, number> = {};
   alerts.forEach(a => {
     const mod = a.module || "system";
     alertsByModule[mod] = (alertsByModule[mod] || 0) + 1;
   });
 
-  // Unassigned critical/high alerts detail
   const unassignedCritical = alerts
     .filter(a => a.status === "open" && !a.assigned_to && (a.severity === "critical" || a.severity === "high"))
     .slice(0, 10)
@@ -224,7 +208,6 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
       created: formatDateTime(a.created_at),
     }));
 
-  // Trend: daily activity (last 7 days)
   const dailyActivity: Record<string, { total: number; errors: number; alerts: number }> = {};
   for (let i = 6; i >= 0; i--) {
     const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
@@ -279,8 +262,8 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
   };
 }
 
-function buildEmailHTML(data: ReturnType<typeof fetchDigestData> extends Promise<infer T> ? T : never, config: DigestConfig): string {
-  const d = data as any;
+function buildEmailHTML(data: any, config: DigestConfig): string {
+  const d = data;
   const dashboardUrl = config.dashboard_url || "https://bienenhaus.com.ar/admin.html";
   const periodLabel = `${d.period.start} – ${d.period.end}`;
 
@@ -549,24 +532,18 @@ Bienenhaus Propiedades · Panel Administrativo
 `;
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return optionsResponse(req);
   }
 
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  if (req.method !== 'POST') {
+    return jsonResponse(405, { error: 'Method not allowed' }, req);
   }
 
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) {
-    return new Response(JSON.stringify({ error: "Missing authorization" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(401, { error: 'Missing authorization' }, req);
   }
 
   const supabase = createClient(
@@ -576,7 +553,6 @@ serve(async (req) => {
   );
 
   try {
-    // Parse body (opcional: force_run, test_mode)
     let body: { force_run?: boolean; test_mode?: boolean; test_email?: string } = {};
     try {
       body = await req.json();
@@ -585,21 +561,15 @@ serve(async (req) => {
     const config = await getConfig(supabase);
 
     if (!config.brevo_api_key) {
-      return new Response(JSON.stringify({ error: "Brevo API key not configured" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(500, { error: 'Brevo API key not configured' }, req);
     }
 
-    // Fetch data
     const digestData = await fetchDigestData(supabase);
 
-    // Determine recipients
     let recipients = config.recipients;
     if (body.test_mode && body.test_email) {
       recipients = [body.test_email];
     } else if (!recipients.length) {
-      // Fallback: all super_admins
       const { data: admins } = await supabase
         .from("profiles")
         .select("email")
@@ -609,21 +579,15 @@ serve(async (req) => {
     }
 
     if (!recipients.length) {
-      return new Response(JSON.stringify({ error: "No recipients configured" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(400, { error: 'No recipients configured' }, req);
     }
 
-    // Build content
     const subject = `[Bienenhaus Supervisión] Resumen Semanal ${digestData.period.start} – ${digestData.period.end}`;
     const html = buildEmailHTML(digestData, config);
     const text = buildEmailText(digestData, config);
 
-    // Send email
     const result = await sendBrevoEmail(config, recipients, subject, html, text);
 
-    // Log
     await supabase.from("audit_log").insert({
       user_id: null,
       action: "supervision_digest_sent",
@@ -638,20 +602,15 @@ serve(async (req) => {
       },
     }).select().single();
 
-    return new Response(JSON.stringify({
+    return jsonResponse(200, {
       success: result.success,
       recipients: recipients.length,
       period: `${digestData.period.start} – ${digestData.period.end}`,
       kpis: digestData.kpis,
       error: result.error,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    }, req);
   } catch (err) {
     console.error("supervision-digest error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(500, { error: err.message }, req);
   }
 });
