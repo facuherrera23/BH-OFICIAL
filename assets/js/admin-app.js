@@ -21,6 +21,27 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   }
 
   /* ------------------------------------------------
+     PASSWORD SECURITY — HIBP k-anonymity check
+     Fail-open: si la verificación falla, permite (no bloquear usuarios legítimos)
+  ------------------------------------------------ */
+  async function checkPasswordPwned(password) {
+    try {
+      const res = await fetch('https://rnldqiwwzhjnurkguihu.supabase.co/functions/v1/check-password-hash', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Origin': window.location.origin },
+        body: JSON.stringify({ password }),
+      });
+      if (!res.ok) return { pwned: false, count: 0, source: 'http_error' };
+      const data = await res.json();
+      return { pwned: !!data.pwned, count: data.count || 0 };
+    } catch (err) {
+      // Fail-open: error de red, CORS, timeout, etc.
+      console.warn('[checkPasswordPwned] fail-open:', err);
+      return { pwned: false, count: 0, source: 'error' };
+    }
+  }
+
+  /* ------------------------------------------------
      0. STATE & REFS
      ------------------------------------------------ */
   let currentUser = null;
@@ -612,6 +633,13 @@ function esc(s) {
     if (pwd.length < 6) return fail('La contraseña debe tener al menos 6 caracteres.');
     if (pwd !== pwd2) return fail('Las contraseñas no coinciden.');
     if (!btn || !window.supabaseClient) return;
+
+    // HIBP check (fail-open)
+    const pwned = await checkPasswordPwned(pwd);
+    if (pwned.pwned) {
+      return fail(`Esta contraseña apareció en ${pwned.count.toLocaleString('es-AR')} filtraciones de datos. Usa otra más segura.`);
+    }
+
     btn.disabled = true;
     try {
       const { error } = await window.supabaseClient.auth.updateUser({ password: pwd });
@@ -5277,6 +5305,12 @@ if (form.elements.commission_rate) form.elements.commission_rate.value = data.co
     if (!currentPwd) return fail('Ingresá tu contraseña actual.');
     if (pwd.length < 6) return fail('La nueva contraseña debe tener al menos 6 caracteres.');
     if (pwd !== pwd2) return fail('Las contraseñas nuevas no coinciden.');
+
+    // HIBP check (fail-open)
+    const pwned = await checkPasswordPwned(pwd);
+    if (pwned.pwned) {
+      return fail(`Esta contraseña apareció en ${pwned.count.toLocaleString('es-AR')} filtraciones de datos. Usa otra más segura.`);
+    }
 
     btn.disabled = true;
     try {
