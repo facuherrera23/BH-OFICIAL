@@ -372,7 +372,8 @@ function esc(s) {
     if (!session?.access_token) return window.supabaseClient;
     const { createClient } = window.supabase;
     authedSupabaseClient = createClient(window.BH_CONFIG.SUPABASE_URL, window.BH_CONFIG.SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: `Bearer ${session.access_token}` } }
+      global: { headers: { Authorization: `Bearer ${session.access_token}` } },
+      auth: { persistSession: false, storageKey: 'bh-authed-client' },
     });
     authedClientTokenExpiry = parseJwtExpiry(session.access_token);
     return authedSupabaseClient;
@@ -4329,7 +4330,8 @@ form.elements.commission_rate.value = data.commission_rate ?? 3;
         exclusive: validated.exclusive || false,
         exclusive_start: validated.exclusive_start || null,
         exclusive_end: validated.exclusive_end || null,
-        commission_rate: validated.commission_rate ?? null,
+        commission_sale: validated.commission_sale ?? null,
+        commission_rent: validated.commission_rent ?? null,
         commission_split: splitJson,
         contract_notes: validated.contract_notes || null,
         dni_expiry: validated.dni_expiry || null,
@@ -4382,7 +4384,8 @@ form.elements.commission_rate.value = data.commission_rate ?? 3;
         form.elements.exclusive.checked = data.exclusive || false;
         if (form.elements.exclusive_start) form.elements.exclusive_start.value = data.exclusive_start || '';
         if (form.elements.exclusive_end) form.elements.exclusive_end.value = data.exclusive_end || '';
-if (form.elements.commission_rate) form.elements.commission_rate.value = data.commission_rate || '';
+        if (form.elements.commission_sale) form.elements.commission_sale.value = data.commission_sale ?? '';
+        if (form.elements.commission_rent) form.elements.commission_rent.value = data.commission_rent ?? '';
         if (form.elements.commission_split) form.elements.commission_split.value = data.commission_split ? (typeof data.commission_split === 'string' ? data.commission_split : JSON.stringify(data.commission_split)) : '';
         if (form.elements.contract_notes) form.elements.contract_notes.value = data.contract_notes || '';
         if (form.elements.dni_expiry) form.elements.dni_expiry.value = data.dni_expiry || '';
