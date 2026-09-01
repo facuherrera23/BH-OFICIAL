@@ -357,7 +357,6 @@ async function handleSummary(req: Request) {
     const enrichUser = (id: string | null) => 
         id ? (userNames.get(id) ?? id.slice(0, 8)) : 'Sistema';
     
-const reqForResponse: Request | null = null;
     return jsonResponse(200, {
         kpis: {
             activeUsersToday: activeUsersToday ?? 0,
@@ -384,7 +383,7 @@ const reqForResponse: Request | null = null;
             title: a.title,
             status: a.status
         }))
-    }, reqForResponse);
+    }, req);
 }
 
 async function handleLiveActivity(req: Request, url: URL) {
