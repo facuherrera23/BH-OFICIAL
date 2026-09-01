@@ -1091,6 +1091,7 @@ function esc(s) {
             <div style="display:flex; gap:6px; align-items:center;">
               ${mlButtons}
               ${relaButtons}
+              ${p.is_published ? `<button class="btn-action" style="font-size:11px; color:#25D366;" title="Compartir ficha por WhatsApp" data-wa-share="${esc(p.id)}" data-wa-code="${esc(p.property_code || '')}"><i class="fab fa-whatsapp"></i></button>` : ''}
               <button class="btn-action" title="Editar" onclick="window.adminApp.editProperty('${p.id}')"><i class="fas fa-pen"></i></button>
               <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteProperty('${p.id}')"><i class="fas fa-trash"></i></button>
             </div>
@@ -6223,8 +6224,17 @@ try {
     const pub = e.target.closest('[data-ml-publish]');
     if (pub) { window.adminApp.mlPublishProperty(pub.dataset.mlPublish); return; }
     const relaBtn = e.target.closest('[data-rela-action]');
-    if (relaBtn) { window.adminApp.relaPropertyAction(relaBtn.dataset.relaProp, relaBtn.dataset.relaAction); }
+    if (relaBtn) { window.adminApp.relaPropertyAction(relaBtn.dataset.relaProp, relaBtn.dataset.relaAction); return; }
+    const waBtn = e.target.closest('[data-wa-share]');
+    if (waBtn) { window.adminApp.sharePropertyWhatsApp(waBtn.dataset.waShare, waBtn.dataset.waCode || ''); }
   });
+
+  window.adminApp.sharePropertyWhatsApp = function (propertyId, propertyCode) {
+    if (!propertyCode) { showToast('La propiedad no tiene código; no se puede generar la ficha', 'error'); return; }
+    const fichaUrl = `${window.BH_CONFIG.SUPABASE_URL}/functions/v1/ficha?code=${encodeURIComponent(propertyCode)}`;
+    const text = `Mirá esta propiedad de Bienenhaus Propiedades (${propertyCode}): ${fichaUrl}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+  };
 
   on($('#imagePreviewGrid'), 'click', (e) => {
     const btn = e.target.closest('.preview-remove');
