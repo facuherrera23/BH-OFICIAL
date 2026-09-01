@@ -246,22 +246,14 @@ async function handleEvent(type, ev) {
       );
 
       if (inserted === 'inserted') {
-        // Nota: esto tiene una condición de carrera bajo alta concurrencia
-        // (ver sugerencias al final). Para volumen bajo/medio es aceptable.
-        const { data: convRow } = await supabase
-          .from('zernio_conversations')
-          .select('unread_count')
-          .eq('id', convId)
-          .maybeSingle();
-
-        await supabase
-          .from('zernio_conversations')
-          .update({
-            unread_count: (convRow?.unread_count || 0) + 1,
-            last_message_at: occurredAt,
-            last_message_preview: truncate(body)
-          })
-          .eq('id', convId);
+        const { error: incErr } = await supabase.rpc('zernio_increment_unread', {
+          p_conversation_id: convId,
+          p_last_message_at: occurredAt,
+          p_last_message_preview: truncate(body)
+        });
+        if (incErr) {
+          log('warn', { event: type, conv_id: convId, error: 'increment_unread: ' + incErr.message });
+        }
 
         log('info', { event: type, conv_id: convId, message_id: str(msg.id || msg.messageId) });
       } else {
