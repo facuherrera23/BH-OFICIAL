@@ -1972,9 +1972,12 @@ MODALES
       <option value="terreno">Terreno</option>
       <option value="local">Local</option>
       <option value="oficina">Oficina</option>
+      <option value="galpon">Galpón</option>
+      <option value="quinta">Quinta</option>
+      <option value="otro">Otro</option>
     </select>
   </div>
-  <div class="form-field"><label>Zona Preferida</label><input type="text" name="preferred_zone" placeholder="Villa Belgrano..." /></div>
+  <div class="form-field"><label>Ambientes Preferidos</label><input type="number" name="preferred_rooms" min="0" max="20" placeholder="3" /></div>
 </div>
 <div class="form-field"><label>Notas / Interés</label><textarea name="notes" placeholder="Interés en casas en Villa Belgrano..."></textarea></div>
 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
@@ -1990,7 +1993,11 @@ MODALES
 <div class="modal-box">
 <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Agendar Nueva Visita</h3>
 <form id="visitForm" novalidate>
-<input type="hidden" name="property_id" id="visitPropertyId" />
+<div class="form-field"><label>Propiedad *</label>
+<select name="property_id" id="visitPropertySelect" required>
+<option value="">— Seleccionar propiedad —</option>
+</select>
+</div>
 <div class="form-grid-2">
 <div class="form-field"><label>Fecha y Hora *</label><input type="datetime-local" name="visit_date" required /></div>
 <div class="form-field"><label>Duración (min)</label><input type="number" name="duration_minutes" min="15" max="480" value="60" step="15" /></div>
@@ -2550,6 +2557,6 @@ setTimeout(function() { checkCDN(); }, 6000);
 <script src="assets/js/config.js?v=21"></script>
 <script src="assets/js/supabase-client.js?v=20"></script>
 <script src="assets/js/cloudinary.js?v=22"></script>
-<script src="assets/js/admin-app.js?v=237"></script>
+<script src="assets/js/admin-app.js?v=239"></script>
 </body>
 </html>

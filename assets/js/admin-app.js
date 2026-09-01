@@ -184,7 +184,7 @@ function esc(s) {
   // Visit validation
   const VisitSchema = z.object({
     lead_id: z.string().uuid('ID de lead inválido').optional().nullable(),
-    property_id: z.string().uuid('ID de propiedad inválido').optional().nullable(),
+    property_id: z.string().uuid('Seleccioná una propiedad'),
     agent_id: z.string().uuid('ID de broker inválido').optional().nullable(),
     client_name: z.string().min(2, 'Nombre del cliente requerido').max(100),
     client_phone: z.string().max(30).optional().nullable(),
@@ -1597,6 +1597,7 @@ function esc(s) {
         form.elements.budget_usd.value = lead.budget_usd || '';
         form.elements.stage.value = lead.stage || 'nuevo';
         form.elements.preferred_type.value = lead.preferred_type || '';
+        form.elements.preferred_rooms.value = lead.preferred_rooms || '';
         form.elements.preferred_zone.value = lead.preferred_zone || '';
         form.elements.notes.value = lead.notes || '';
         form.elements.assigned_to.value = lead.assigned_to || '';
@@ -1683,7 +1684,7 @@ function esc(s) {
       /* JOIN con leads para mostrar nombre del lead y link a CRM */
       let dataQuery = client
         .from('visits')
-        .select('*, leads(id, full_name, stage)')
+        .select('*, leads(id, full_name, stage), agents(id, full_name), properties(id, title, property_code)')
         .order('visit_date', { ascending: true })
         .range(from, to);
       if (brokerFilter) dataQuery = dataQuery.eq('agent_id', brokerFilter);
@@ -1980,9 +1981,9 @@ let dayCount = 1;
         <td style="font-size:13px;">${dateStr}</td>
         <td style="font-size:13px; font-weight:500;">${esc(v.client_name || 'Sin cliente')}</td>
         <td style="font-size:13px; color:var(--text-dim);">${leadLink}</td>
-        <td style="font-size:13px; color:var(--text-dim);">${v.property_id ? '?' : '—'}</td>
+        <td style="font-size:12px; color:var(--text-dim);">${v.properties?.title ? esc(v.properties.title) : '—'}</td>
         <td><span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : v.status === 'completada' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : v.status === 'completada' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${esc(v.status || 'pendiente')}</span>${countdownHtml}</td>
-        <td style="font-size:12px; color:var(--text-dim);">${v.lead_id ? '?' : '—'}</td>
+        <td style="font-size:12px; color:var(--text-dim);">${v.leads?.full_name ? esc(v.leads.full_name) : '—'}</td>
         <td>
           <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
             <button class="btn-action" title="Editar" onclick="window.adminApp.editVisit('${v.id}')"><i class="fas fa-pen"></i></button>
@@ -2015,24 +2016,6 @@ let dayCount = 1;
     function removeVisitRow(id) {
       const row = $('#visitsTableBody')?.querySelector(`tr[data-id="${id}"]`);
       if (row) row.remove();
-    }
-
-    function upsertLeadCard(lead) {
-      const stage = lead.stage || 'nuevo';
-      const container = $(`#cards-${stage === 'cerrado' || stage === 'perdido' ? 'oferta' : stage}s`);
-      if (!container) return;
-      const existing = container.querySelector(`[data-lead-id="${lead.id}"]`);
-      if (existing) {
-        existing.outerHTML = buildLeadCardHtml(lead);
-      } else {
-        container.insertAdjacentHTML('afterbegin', buildLeadCardHtml(lead));
-      }
-    }
-
-    function removeLeadCard(id) {
-      document.querySelectorAll('.lead-card[data-lead-id]').forEach(el => {
-        if (el.dataset.leadId === id) el.remove();
-      });
     }
 
     function upsertPropertyRow(prop) {
@@ -2374,8 +2357,9 @@ let dayCount = 1;
 
     // Lead card helper (for CRM kanban)
     function upsertLeadCard(lead) {
+      const _stageCol = { nuevo:'nuevos', contactado:'contactados', visita:'visita', oferta:'oferta', cerrado:'oferta', perdido:'oferta' };
       const stage = lead.stage || 'nuevo';
-      const container = document.querySelector('#cards-' + (stage === 'cerrado' || stage === 'perdido' ? 'oferta' : stage));
+      const container = document.querySelector('#cards-' + (_stageCol[stage] || 'nuevos'));
       if (!container) return;
       const existing = container.querySelector('[data-lead-id="' + lead.id + '"]');
       if (existing) {
@@ -2396,6 +2380,7 @@ let dayCount = 1;
     editingVisitId = null;
     $('#visitForm')?.reset();
     loadAgentSelect($('#visitBrokerSelect'));
+    loadPropertySelect($('#visitPropertySelect'));
     /* Limpiar selector dinámico si existe */
     const oldSelect = $('#visitLeadSelect');
     if (oldSelect) oldSelect.remove();
@@ -2445,8 +2430,9 @@ let dayCount = 1;
       if (el) el.value = prefill.agent_id;
     }
     if (prefill.property_id) {
-      const el = document.querySelector('#visitForm [name="property_id"]');
-      if (el) el.value = prefill.property_id;
+      loadPropertySelect($('#visitPropertySelect'), prefill.property_id);
+    } else {
+      loadPropertySelect($('#visitPropertySelect'));
     }
     if (prefill.lead_id) {
       window._pendingLeadId = prefill.lead_id;
@@ -2475,6 +2461,28 @@ let dayCount = 1;
         selectEl.appendChild(opt);
       });
       if (valueToSet) selectEl.value = valueToSet;
+    } catch (_) { /* silent */ }
+  }
+
+  async function loadPropertySelect(selectEl, selectedValue = null) {
+    if (!selectEl || !window.supabaseClient) return;
+    const placeholder = selectEl.options[0]?.text || '— Seleccionar propiedad —';
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('properties')
+        .select('id, title, property_code')
+        .is('deleted_at', null)
+        .order('title');
+      if (error) throw error;
+      selectEl.innerHTML = `<option value="">${esc(placeholder)}</option>`;
+      (data || []).forEach(p => {
+        const code = p.property_code ? ` [${esc(p.property_code)}]` : '';
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.title + code;
+        selectEl.appendChild(opt);
+      });
+      if (selectedValue) selectEl.value = selectedValue;
     } catch (_) { /* silent */ }
   }
 
@@ -2520,7 +2528,6 @@ let dayCount = 1;
           .select('id, client_name, visit_date, duration_minutes')
           .eq('agent_id', data.agent_id)
           .in('status', ['pendiente', 'confirmada'])
-          .is('deleted_at', null)
           .neq('id', editingVisitId || '00000000-0000-0000-0000-000000000000');
         if (!conflictError && conflicts?.length) {
           const hasOverlap = conflicts.some(c => {
@@ -2828,6 +2835,7 @@ let dayCount = 1;
       if (form) {
         /* Cargar brokers en dropdown existente */
         await loadAgentSelect($('#visitBrokerSelect'), data.agent_id);
+        await loadPropertySelect($('#visitPropertySelect'), data.property_id);
 
         if (data.visit_date) {
           const d = new Date(data.visit_date);
@@ -6634,11 +6642,14 @@ window.exportAnomaliesCSV = async function() {
         case 'openLeadModal':
           editingLeadId = null;
           $('#leadForm')?.reset();
+          loadAgentSelect($('#leadBrokerSelect'));
           openModal('leadModal');
           break;
         case 'openVisitModal':
           editingVisitId = null;
           $('#visitForm')?.reset();
+          loadAgentSelect($('#visitBrokerSelect'));
+          loadPropertySelect($('#visitPropertySelect'));
           openModal('visitModal');
           break;
         case 'openOwnerModal':
