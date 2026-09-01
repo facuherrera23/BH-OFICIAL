@@ -6231,7 +6231,7 @@ try {
 
   window.adminApp.sharePropertyWhatsApp = function (propertyId, propertyCode) {
     if (!propertyCode) { showToast('La propiedad no tiene código; no se puede generar la ficha', 'error'); return; }
-    const fichaUrl = `${window.BH_CONFIG.SUPABASE_URL}/functions/v1/ficha?code=${encodeURIComponent(propertyCode)}`;
+    const fichaUrl = `https://bienenhaus.com.ar/ficha/${encodeURIComponent(propertyCode)}`;
     const text = `Mirá esta propiedad de Bienenhaus Propiedades (${propertyCode}): ${fichaUrl}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
   };
