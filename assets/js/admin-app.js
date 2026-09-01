@@ -6231,21 +6231,9 @@ try {
 
   window.adminApp.sharePropertyWhatsApp = async function (propertyId, propertyCode) {
     if (!propertyCode) { showToast('La propiedad no tiene código; no se puede generar la ficha', 'error'); return; }
-    try {
-      showToast('Generando ficha…', 'info');
-      const { data: { session } } = await window.supabaseClient.auth.getSession();
-      const res = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/ficha-publish`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ property_id: propertyId }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.url) throw new Error(json.error || `Error ${res.status}`);
-      const text = `${propertyCode} en Bienenhaus Propiedades: ${json.url}`;
-      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
-    } catch (err) {
-      showToast('Error al generar la ficha: ' + err.message, 'error');
-    }
+    const url = `https://bienenhaus.com.ar/fichas/${encodeURIComponent(propertyCode)}.html`;
+    const text = `${propertyCode} en Bienenhaus Propiedades: ${url}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
   };
 
   on($('#imagePreviewGrid'), 'click', (e) => {

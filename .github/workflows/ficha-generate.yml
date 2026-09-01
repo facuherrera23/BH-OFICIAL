@@ -1,0 +1,35 @@
+name: Generar fichas de propiedades
+
+on:
+  repository_dispatch:
+    types: [generar-ficha]
+  schedule:
+    - cron: '15,45 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generar fichas HTML
+        env:
+          SUPABASE_URL: https://rnldqiwwzhjnurkguihu.supabase.co
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/generate-ficha.mjs
+
+      - name: Commit fichas
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add fichas/
+          git diff --cached --quiet && echo "sin cambios" || git commit -m "chore(fichas): regenerar paginas de propiedades [skip ci-pages]"
+          git push

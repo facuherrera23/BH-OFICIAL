@@ -1,68 +1,32 @@
-// ============================================================
-// ficha - Pagina publica de propiedad (verify_jwt OFF)
-// Sirve HTML estatico con Open Graph para previews (WhatsApp/Telegram).
-// URL canonica: https://bienenhaus.com.ar/ficha/<CODE> via _worker.js.
-// Solo propiedades is_published=true y no borradas.
-// OJO: los textos del template van SIN acentos para evitar problemas
-// de encoding del bundler; los datos vienen de la DB y viajan bien.
-// ============================================================
+// Genera fichas/<code>.html estaticos para GitHub Pages (preview WhatsApp/OG).
+// Se corre en CI (workflow ficha-generate.yml) con SUPABASE_URL y SERVICE_KEY.
+import { writeFileSync, mkdirSync } from 'node:fs';
 
-import { createClient } from 'npm:@supabase/supabase-js@2';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
+const onlyCode = process.env.ONLY_CODE || '';
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
-const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY') ?? '';
-
-function esc(s: unknown): string {
-  if (s === null || s === undefined) return '';
-  return String(s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+if (!SUPABASE_URL || !SERVICE_KEY) {
+  console.error('Faltan SUPABASE_URL / SUPABASE_SERVICE_KEY (o ANON para lectura pública)');
+  process.exit(1);
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  casa: 'Casa', departamento: 'Departamento', terreno: 'Terreno', local: 'Local',
-  oficina: 'Oficina', galpon: 'Galpon', quinta: 'Quinta', otro: 'Otro',
-};
-const STATUS_LABELS: Record<string, string> = {
-  venta: 'Venta', alquiler: 'Alquiler', vendido: 'Vendido', alquilado: 'Alquilado', pausado: 'Pausado',
-};
+const esc = (s) => (s == null ? '' : String(s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
 
-Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204 });
+const TYPE_LABELS = { casa: 'Casa', departamento: 'Departamento', terreno: 'Terreno', local: 'Local', oficina: 'Oficina', galpon: 'Galpon', quinta: 'Quinta', otro: 'Otro' };
+const STATUS_LABELS = { venta: 'Venta', alquiler: 'Alquiler', vendido: 'Vendido', alquilado: 'Alquilado', pausado: 'Pausado' };
 
-  const url = new URL(req.url);
-  const code = url.searchParams.get('code') ?? url.pathname.split('/').filter(Boolean).pop();
-  const id = url.searchParams.get('id');
-  if (!code && !id) return new Response('Falta code o id', { status: 400 });
-
-  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-
-  let q = supabase
-    .from('properties')
-    .select('id, property_code, title, description, property_type, status, zone, address, price_usd, price_currency, area_m2, surface_covered, surface_total, rooms, bedrooms, bathrooms, garage_spaces, image_urls')
-    .eq('is_published', true)
-    .is('deleted_at', null);
-  q = code ? q.eq('property_code', code) : q.eq('id', id!);
-  const { data: p } = await q.maybeSingle();
-
-  const headers = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300', 'Access-Control-Allow-Origin': '*' };
-
-  if (!p) {
-    return new Response(renderError(), { status: 404, headers });
-  }
-
-  const imgs = (p.image_urls || []).filter((u: string) => /^https?:\/\//.test(u));
-  const hero = imgs[0] ?? '';
-  // WhatsApp descarta previews de imagenes pesadas; pedimos un thumb chico a Cloudinary
+function buildHtml(p) {
+  const imgs = (p.image_urls || []).filter((u) => /^https?:\/\//.test(u));
+  const hero = imgs[0] || '';
   const ogThumb = hero.includes('res.cloudinary.com') && hero.includes('/upload/')
     ? hero.replace('/upload/', '/upload/w_1200,h_630,c_fill,f_jpg,q_75/')
     : hero;
-  const price = p.price_usd
-    ? `${p.price_currency === 'ARS' ? '$' : 'USD'} ${Number(p.price_usd).toLocaleString('es-AR')}`
-    : 'Consultar';
-  const siteUrl = 'https://bienenhaus.com.ar';
+  const price = p.price_usd ? `${p.price_currency === 'ARS' ? '$' : 'USD'} ${Number(p.price_usd).toLocaleString('es-AR')}` : 'Consultar';
 
-  const chips: string[] = [];
+  const chips = [];
   if (p.property_type) chips.push(TYPE_LABELS[p.property_type] ?? p.property_type);
   if (p.rooms) chips.push(`${p.rooms} amb.`);
   if (p.bedrooms) chips.push(`${p.bedrooms} dorm.`);
@@ -71,7 +35,7 @@ Deno.serve(async (req: Request) => {
   if (sup) chips.push(`${sup} m2`);
   if (p.garage_spaces) chips.push(`${p.garage_spaces} coch.`);
 
-  const html = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -80,15 +44,15 @@ Deno.serve(async (req: Request) => {
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Bienenhaus Propiedades">
 <meta property="og:title" content="${esc(p.title)}">
-<meta property="og:description" content="${esc((p.description || '').replace(/\s+/g, ' ').slice(0, 180))}">
+<meta property="og:description" content="${esc(String(p.description || '').replace(/\s+/g, ' ').slice(0, 180))}">
 ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
 <meta property="og:image:secure_url" content="${esc(ogThumb)}">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">` : ''}
-<meta property="og:url" content="${esc(url.href)}">
-<script>window.location.replace('https://bienenhaus.com.ar/#prop=' + encodeURIComponent('${esc(p.property_code ?? '')}'));</script>
+<meta property="og:url" content="https://bienenhaus.com.ar/fichas/${esc(p.property_code)}.html">
+<script>window.location.replace('https://bienenhaus.com.ar/#prop=${encodeURIComponent(p.property_code)}');</script>
 <style>
   :root { --gold:#c9a96e; --bg:#0b0b0d; --card:#141417; --line:#26262c; }
   * { box-sizing: border-box; }
@@ -129,20 +93,33 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
   </header>
   <main class="sheet">
     ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="chip">${esc(c)}</span>`).join('')}</div>` : ''}
-    ${(p.description || '').trim() ? `<h2>Descripcion</h2><p class="desc">${esc(p.description)}</p>` : ''}
-    <a class="cta" href="${siteUrl}" target="_blank" rel="noopener">Ver mas en bienenhaus.com.ar</a>
+    ${String(p.description || '').trim() ? `<h2>Descripcion</h2><p class="desc">${esc(p.description)}</p>` : ''}
+    <a class="cta" href="https://bienenhaus.com.ar" target="_blank" rel="noopener">Ver mas en bienenhaus.com.ar</a>
   </main>
   <footer>Bienenhaus Propiedades - CPI 1834</footer>
 </body>
 </html>`;
-
-  const out = new Headers();
-  out.set('Content-Type', 'text/html; charset=utf-8');
-  out.set('Cache-Control', 'public, max-age=300');
-  out.set('Access-Control-Allow-Origin', '*');
-  return new Response(new TextEncoder().encode(html), { status: 200, headers: out });
-});
-
-function renderError(): string {
-  return '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Propiedad no disponible</title></head><body style="font-family:system-ui;background:#111;color:#eee;display:flex;align-items:center;justify-content:center;min-height:100vh;"><p>Propiedad no encontrada o no publicada.</p></body></html>';
 }
+
+async function main() {
+  const url = new URL(`${SUPABASE_URL}/rest/v1/properties`);
+  url.searchParams.set('select', 'id,property_code,title,description,property_type,status,zone,address,price_usd,price_currency,area_m2,surface_covered,surface_total,rooms,bedrooms,bathrooms,garage_spaces,image_urls');
+  url.searchParams.set('is_published', 'eq.true');
+  url.searchParams.set('deleted_at', 'is.null');
+  if (onlyCode) url.searchParams.set('property_code', `eq.${onlyCode}`);
+
+  const res = await fetch(url, { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } });
+  if (!res.ok) throw new Error(`Supabase ${res.status}: ${await res.text()}`);
+  const props = await res.json();
+
+  mkdirSync('fichas', { recursive: true });
+  let count = 0;
+  for (const p of props) {
+    if (!p.property_code) continue;
+    writeFileSync(`fichas/${p.property_code}.html`, buildHtml(p), 'utf8');
+    count++;
+  }
+  console.log(`Fichas generadas: ${count}`);
+}
+
+main().catch((e) => { console.error(e); process.exit(1); });

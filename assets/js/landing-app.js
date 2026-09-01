@@ -2018,6 +2018,15 @@ function renderSocialLinks(social) {
       loadStats()
     ]);
     initLazyLoading();
+    openPropertyFromHash();
+  }
+
+  function openPropertyFromHash() {
+    const m = /^#prop=([A-Za-z0-9-]+)$/.exec(location.hash || '');
+    if (!m) return;
+    const code = m[1];
+    const p = (allProperties || []).find((x) => x.property_code && x.property_code.toUpperCase() === code.toUpperCase());
+    if (p) openPropertyModal(p.id);
   }
 
   function setText(selector, value) {
