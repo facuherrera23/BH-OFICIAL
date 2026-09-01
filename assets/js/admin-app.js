@@ -6248,24 +6248,25 @@ try {
       if (error || !p) throw new Error('No se pudo leer la propiedad');
 
       const TYPE = { casa: 'CASA', departamento: 'DEPARTAMENTO', terreno: 'TERRENO', local: 'LOCAL', oficina: 'OFICINA', galpon: 'GALPÓN', quinta: 'QUINTA', otro: 'PROPIEDAD' };
+      // Restricción: solo caracteres BMP; wa.me degrada a U+FFFD los emojis fuera del BMP.
       const lines = [];
-      lines.push('🏡 *' + (TYPE[p.property_type] || 'PROPIEDAD') + ' EN ' + (p.status === 'alquiler' ? 'ALQUILER' : 'VENTA') + '*');
+      lines.push('\u25C6 *' + (TYPE[p.property_type] || 'PROPIEDAD') + ' EN ' + (p.status === 'alquiler' ? 'ALQUILER' : 'VENTA') + '*');
       lines.push('');
-      lines.push('✨ *' + (p.title || propertyCode) + '*');
-      if (p.zone || p.address) lines.push('📍 ' + [p.zone, p.address].filter(Boolean).join(' · '));
+      lines.push('\u2605 *' + (p.title || propertyCode) + '*');
+      if (p.zone || p.address) lines.push('\u00BB ' + [p.zone, p.address].filter(Boolean).join(' \u00B7 '));
       lines.push('');
-      if (p.price_usd) lines.push('💰 *' + (p.price_currency === 'ARS' ? '$' : 'USD') + ' ' + Number(p.price_usd).toLocaleString('es-AR') + '*');
+      if (p.price_usd) lines.push('\u2713 *' + (p.price_currency === 'ARS' ? '$' : 'USD') + ' ' + Number(p.price_usd).toLocaleString('es-AR') + '*');
       const feats = [];
-      if (p.rooms) feats.push('🛋️ ' + p.rooms + ' ambientes');
-      if (p.bedrooms) feats.push('🛏️ ' + p.bedrooms + ' dorm.');
-      if (p.bathrooms) feats.push('🛁 ' + p.bathrooms + ' baño' + (p.bathrooms === 1 ? '' : 's'));
-      if (p.surface_total || p.surface_covered) feats.push('📐 ' + (p.surface_total || p.surface_covered) + ' m²');
-      if (feats.length) { lines.push(''); lines.push(feats.join('  ·  ')); }
+      if (p.rooms) feats.push('\u2022 ' + p.rooms + ' ambientes');
+      if (p.bedrooms) feats.push('\u2022 ' + p.bedrooms + ' dorm.');
+      if (p.bathrooms) feats.push('\u2022 ' + p.bathrooms + ' ba\u00F1o' + (p.bathrooms === 1 ? '' : 's'));
+      if (p.surface_total || p.surface_covered) feats.push('\u2022 ' + (p.surface_total || p.surface_covered) + ' m\u00B2');
+      if (feats.length) { lines.push(''); lines.push(feats.join('  \u00B7  ')); }
       lines.push('');
-      lines.push('📄 *Ficha completa con fotos 👇*');
+      lines.push('\u25BC *Ficha completa con fotos*');
       lines.push('https://bienenhaus.com.ar/fichas/' + encodeURIComponent(propertyCode) + '.html');
       lines.push('');
-      lines.push('🔑 *BIENENHAUS PROPIEDADES* · Cód. ' + propertyCode);
+      lines.push('\u2605 *BIENENHAUS PROPIEDADES* \u00B7 C\u00F3d. ' + propertyCode);
 
       window.open('https://wa.me/?text=' + encodeURIComponent(lines.join('\n')), '_blank', 'noopener');
     } catch (err) {
