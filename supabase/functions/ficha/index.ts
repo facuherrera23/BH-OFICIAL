@@ -80,7 +80,7 @@ Deno.serve(async (req: Request) => {
 ${hero ? `<meta property="og:image" content="${esc(hero)}">
 <meta property="og:image:secure_url" content="${esc(hero)}">
 <meta name="twitter:card" content="summary_large_image">` : ''}
-<meta property="og:url" content="${siteUrl}/ficha/${esc(p.property_code ?? '')}">
+<meta property="og:url" content="${esc(url.href)}">
 <style>
   :root { --gold:#c9a96e; --bg:#0b0b0d; --card:#141417; --line:#26262c; }
   * { box-sizing: border-box; }
