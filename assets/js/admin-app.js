@@ -989,7 +989,7 @@ function esc(s) {
         ml_connected
           ? client.from('ml_listings').select('property_id, ml_listing_id, status')
           : Promise.resolve({ data: [] }),
-        client.from('owners').select('id, full_name').order('full_name'),
+        client.from('owners').select('id, full_name').is('deleted_at', null).order('full_name'),
         client.from('rela_listings').select('property_id, codigo_aviso, status, remote_status, last_error'),
       ]);
 
@@ -6229,11 +6229,23 @@ try {
     if (waBtn) { window.adminApp.sharePropertyWhatsApp(waBtn.dataset.waShare, waBtn.dataset.waCode || ''); }
   });
 
-  window.adminApp.sharePropertyWhatsApp = function (propertyId, propertyCode) {
+  window.adminApp.sharePropertyWhatsApp = async function (propertyId, propertyCode) {
     if (!propertyCode) { showToast('La propiedad no tiene código; no se puede generar la ficha', 'error'); return; }
-    const fichaUrl = `${window.BH_CONFIG.SUPABASE_URL}/functions/v1/ficha?code=${encodeURIComponent(propertyCode)}`;
-    const text = `${propertyCode} en Bienenhaus Propiedades: ${fichaUrl}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+    try {
+      showToast('Generando ficha…', 'info');
+      const { data: { session } } = await window.supabaseClient.auth.getSession();
+      const res = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/ficha-publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ property_id: propertyId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.url) throw new Error(json.error || `Error ${res.status}`);
+      const text = `${propertyCode} en Bienenhaus Propiedades: ${json.url}`;
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+    } catch (err) {
+      showToast('Error al generar la ficha: ' + err.message, 'error');
+    }
   };
 
   on($('#imagePreviewGrid'), 'click', (e) => {
@@ -6257,7 +6269,7 @@ try {
     try {
       const [propsRes, ownersRes] = await Promise.all([
         window.supabaseClient.from('properties').select('id, code, title').is('deleted_at', null).order('code'),
-        window.supabaseClient.from('owners').select('id, full_name').order('full_name')
+        window.supabaseClient.from('owners').select('id, full_name').is('deleted_at', null).order('full_name')
       ]);
       propSelect.innerHTML = '<option value="">Sin vincular</option>' +
         (propsRes.data || []).map(p => '<option value="' + esc(p.id) + '">' + esc(p.code || '') + ' - ' + esc(p.title || '') + '</option>').join('');
