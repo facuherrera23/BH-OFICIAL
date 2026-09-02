@@ -148,6 +148,7 @@ function esc(s) {
     property_type: z.enum(['casa', 'departamento', 'terreno', 'local', 'oficina', 'galpon', 'quinta', 'otro'], { errorMap: () => ({ message: 'Tipo de propiedad inválido' }) }).default('casa'),
     status: z.enum(['venta', 'alquiler', 'vendido', 'alquilado', 'pausado'], { errorMap: () => ({ message: 'Operación debe ser venta o alquiler' }) }).default('venta'),
     zone: z.string().min(2, 'Zona/barrio requerido').max(80, 'Máximo 80 caracteres').optional().nullable(),
+    locality: z.string().max(80, 'Máximo 80 caracteres').optional().nullable(),
     address: z.string().max(200, 'Máximo 200 caracteres').optional().nullable(),
     bedrooms: z.number().int().min(0).max(20).default(0),
     bathrooms: z.number().int().min(0).max(20).default(0),
@@ -1269,6 +1270,7 @@ function esc(s) {
         form.elements.property_type.value = data.property_type || '';
         form.elements.status.value = data.status || 'venta';
         form.elements.zone.value = data.zone || '';
+        form.elements.locality.value = data.locality || '';
         form.elements.address.value = data.address || '';
         form.elements.bedrooms.value = data.bedrooms || '';
         form.elements.bathrooms.value = data.bathrooms || '';
@@ -1468,8 +1470,7 @@ function esc(s) {
 
           let scheduleBtn = '';
           if (showScheduleBtn) {
-            scheduleBtn = '<button class="btn-action" style="padding:4px 8px; font-size:10px; margin-top:8px; width:100%; background:rgba(31,200,195,0.15); color:var(--accent); border:1px solid var(--accent);" ' +
-              'onclick="event.stopPropagation(); window.adminApp.openVisitModal({ lead_id: \'' + esc(l.id) + '\', client_name: \'' + esc(l.full_name) + '\', client_phone: \'' + esc(l.phone || l.whatsapp || '') + '\', property_id: \'' + esc(l.property_id || '') + '\' })">' +
+            scheduleBtn = '<button class="btn-action" data-open-visit data-lead-id="' + esc(l.id) + '" data-client-name="' + esc(l.full_name) + '" data-client-phone="' + esc(l.phone || l.whatsapp || '') + '" data-property-id="' + esc(l.property_id || '') + '" style="padding:4px 8px; font-size:10px; margin-top:8px; width:100%; background:rgba(31,200,195,0.15); color:var(--accent); border:1px solid var(--accent);">' +
               '<i class="fas fa-calendar-plus"></i> Agendar visita' +
               '</button>';
           }
@@ -1625,7 +1626,7 @@ function esc(s) {
         } else {
           visitsContainer.innerHTML = `
             <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border-subtle); color:var(--text-dim); font-size:12px;">
-              Sin visitas asociadas. <button class="btn-action" style="padding:2px 8px; font-size:10px; margin-left:8px;" onclick="event.stopPropagation(); window.adminApp.openVisitModal({ lead_id: '${editingLeadId}', client_name: '${esc(lead.full_name)}', client_phone: '${esc(lead.phone || lead.whatsapp || '')}', property_id: '${lead.property_id || ''}' })"><i class="fas fa-calendar-plus"></i> Agendar primera visita</button>
+              Sin visitas asociadas. <button type="button" class="btn-action" data-open-visit data-lead-id="${esc(editingLeadId)}" data-client-name="${esc(lead.full_name)}" data-client-phone="${esc(lead.phone || lead.whatsapp || '')}" data-property-id="${esc(lead.property_id || '')}" style="padding:2px 8px; font-size:10px; margin-left:8px;"><i class="fas fa-calendar-plus"></i> Agendar primera visita</button>
             </div>`;
         }
       }
@@ -2123,8 +2124,7 @@ let dayCount = 1;
       }
       let scheduleBtn = '';
       if (showScheduleBtn) {
-        scheduleBtn = '<button class="btn-action" style="padding:4px 8px; font-size:10px; margin-top:8px; width:100%; background:rgba(31,200,195,0.15); color:var(--accent); border:1px solid var(--accent);" ' +
-          'onclick="event.stopPropagation(); window.adminApp.openVisitModal({ lead_id: \'' + esc(l.id) + '\', client_name: \'' + esc(l.full_name) + '\', client_phone: \'' + esc(l.phone || l.whatsapp || '') + '\', property_id: \'' + esc(l.property_id || '') + '\' })">' +
+        scheduleBtn = '<button class="btn-action" data-open-visit data-lead-id="' + esc(l.id) + '" data-client-name="' + esc(l.full_name) + '" data-client-phone="' + esc(l.phone || l.whatsapp || '') + '" data-property-id="' + esc(l.property_id || '') + '" style="padding:4px 8px; font-size:10px; margin-top:8px; width:100%; background:rgba(31,200,195,0.15); color:var(--accent); border:1px solid var(--accent);">' +
           '<i class="fas fa-calendar-plus"></i> Agendar visita' +
           '</button>';
       }
@@ -2378,6 +2378,7 @@ let dayCount = 1;
   /* Create visit */
   on($('#btnNewVisit'), 'click', () => {
     editingVisitId = null;
+    delete window._pendingLeadId;
     $('#visitForm')?.reset();
     loadAgentSelect($('#visitBrokerSelect'));
     loadPropertySelect($('#visitPropertySelect'));
@@ -2436,6 +2437,8 @@ let dayCount = 1;
     }
     if (prefill.lead_id) {
       window._pendingLeadId = prefill.lead_id;
+    } else {
+      delete window._pendingLeadId;
     }
 
     openModal('visitModal');
@@ -2513,7 +2516,7 @@ let dayCount = 1;
         client_phone: validated.client_phone,
         client_email: validated.client_email,
         notes: validated.notes,
-        lead_id: validated.lead_id,
+        lead_id: validated.lead_id ?? window._pendingLeadId ?? null,
         property_id: validated.property_id,
         agent_id: validated.agent_id,
         duration_minutes: validated.duration_minutes,
@@ -6236,6 +6239,21 @@ try {
     const waBtn = e.target.closest('[data-wa-share]');
     if (waBtn) { window.adminApp.sharePropertyWhatsApp(waBtn.dataset.waShare, waBtn.dataset.waCode || ''); }
   });
+
+  /* Delegado "Agendar visita" desde CRM (kanban, detalle de lead, listado).
+     Los datos viajan en data-* con esc(); capture corta el bubble ANTES del onclick
+     inline del card (editLead) y abre el modal con el prefill. */
+  on(document, 'click', (e) => {
+    const btn = e.target.closest('[data-open-visit]');
+    if (!btn) return;
+    e.stopPropagation();
+    window.adminApp.openVisitModal({
+      lead_id: btn.dataset.leadId || null,
+      client_name: btn.dataset.clientName || '',
+      client_phone: btn.dataset.clientPhone || '',
+      property_id: btn.dataset.propertyId || ''
+    });
+  }, true);
 
   window.adminApp.sharePropertyWhatsApp = async function (propertyId, propertyCode) {
     if (!propertyCode) { showToast('La propiedad no tiene código; no se puede generar la ficha', 'error'); return; }
