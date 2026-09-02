@@ -156,7 +156,17 @@ Deno.serve(async (req) => {
                 expires_at: new Date(exp).toISOString(),
             });
         if (error) return respond(500, { error: 'No se pudo iniciar OAuth' });
-        return respond(200, { state, code_challenge: challenge });
+        const { clientId } = await getMlCredentials(supabase);
+        const redirectUri = Deno.env.get('ML_REDIRECT_URI') ?? '';
+        if (!redirectUri) return respond(500, { error: 'ML_REDIRECT_URI no configurado' });
+        const authorizationUrl =
+            `https://auth.mercadolibre.com.ar/authorization?response_type=code` +
+            `&client_id=${encodeURIComponent(clientId)}` +
+            `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+            `&state=${encodeURIComponent(state)}` +
+            `&code_challenge=${encodeURIComponent(challenge)}` +
+            `&code_challenge_method=S256`;
+        return respond(200, { state, code_challenge: challenge, authorizationUrl });
     }
 
     if (req.method !== 'GET') {
