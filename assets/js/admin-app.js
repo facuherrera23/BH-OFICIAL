@@ -2097,22 +2097,6 @@ let dayCount = 1;
       if (row) row.remove();
     }
 
-    function upsertCommissionRow(c) {
-      const body = $('#commPendingBody');
-      if (!body) return;
-      const existing = body.querySelector(`tr[data-id="${c.id}"]`);
-      if (existing) {
-        existing.outerHTML = buildCommissionRowHtml(c);
-      } else {
-        body.insertAdjacentHTML('afterbegin', buildCommissionRowHtml(c));
-      }
-    }
-
-    function removeCommissionRow(id) {
-      const row = $('#commPendingBody')?.querySelector(`tr[data-id="${id}"]`);
-      if (row) row.remove();
-    }
-
     // Helper: extract row builders from existing load functions
     function buildLeadCardHtml(l) {
       const leadVisits = (window._visitsByLeadCache?.[l.id] || []);
@@ -2354,22 +2338,6 @@ let dayCount = 1;
 
     function removeTasacionRow(id) {
       const row = $('#tasacionesTableBody')?.querySelector('tr[data-id="' + id + '"]');
-      if (row) row.remove();
-    }
-
-    function upsertCommissionRow(c) {
-      const body = $('#commPendingBody');
-      if (!body) return;
-      const existing = body.querySelector('tr[data-id="' + c.id + '"]');
-      if (existing) {
-        existing.outerHTML = buildCommissionRowHtml(c);
-      } else {
-        body.insertAdjacentHTML('afterbegin', buildCommissionRowHtml(c));
-      }
-    }
-
-    function removeCommissionRow(id) {
-      const row = $('#commPendingBody')?.querySelector('tr[data-id="' + id + '"]');
       if (row) row.remove();
     }
 
@@ -7377,16 +7345,6 @@ function setupCoreRealtime() {
                 upsertTasacionRow(newRecord);
               } else if (event === 'DELETE') {
                 removeTasacionRow(oldRecord.id);
-              }
-              updateSidebarBadges();
-              break;
-            case 'commissions':
-            case 'commission_liquidations':
-            case 'commission_payments':
-              if (event === 'INSERT' || event === 'UPDATE') {
-                upsertCommissionRow(newRecord);
-              } else if (event === 'DELETE') {
-                removeCommissionRow(oldRecord.id);
               }
               updateSidebarBadges();
               break;
