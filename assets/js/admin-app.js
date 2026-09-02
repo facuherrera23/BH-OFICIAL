@@ -5588,15 +5588,25 @@ try {
 
   const ML_API_TIMEOUT_MS = 15000;
 
+  // Mapeo action -> endpoint. Las nuevas funciones separadas (ml-publish, ml-portal-status,
+  // ml-disconnect) reciben paths limpios; el resto cae al multiplexor legacy ml-api.
+  const ML_FUNCTION_PATHS = {
+    'publish': 'ml-publish',
+    'portal-status': 'ml-portal-status',
+    'disconnect': 'ml-disconnect',
+  };
+
   async function mlApiCall(action, body = {}) {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (!session) throw new Error('No hay sesión activa');
     if (!window.BH_CONFIG?.SUPABASE_URL) throw new Error('Configuración de Supabase no disponible (BH_CONFIG)');
 
+    const fnPath = ML_FUNCTION_PATHS[action] || `ml-api?action=${encodeURIComponent(action)}`;
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ML_API_TIMEOUT_MS);
     try {
-      const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-api?action=${encodeURIComponent(action)}`, {
+      const res = await fetch(`${ML_FUNCTIONS_BASE}/${fnPath}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -5619,11 +5629,11 @@ try {
 
   async function mlCheckStatus() {
     try {
-      const result = await mlApiCall('status');
-      ml_connected = result.connected || false;
-      ml_configured = result.has_credentials || false;
-      ml_user = result.settings || null;
-      ml_listings = result.listings || [];
+      const result = await mlApiCall('portal-status');
+      ml_connected = !!result.connected;
+      ml_configured = !!result.configured;
+      ml_user = result.user || null;
+      ml_listings = Array.isArray(result.listings) ? result.listings : [];
     } catch (err) {
       console.warn('[ML] Status check failed:', err.message);
       ml_connected = false;
@@ -5633,29 +5643,34 @@ try {
     }
   }
 
-  /* Connect to Mercado Libre — opens OAuth popup via ml-auth Edge Function */
+  /* Connect to Mercado Libre — opens OAuth popup via ml-oauth/start Edge Function */
   window.adminApp.mlConnect = async function () {
     try {
       showToast('Abriendo conexión con Mercado Libre...', 'info');
       const { data: { session } } = await window.supabaseClient.auth.getSession();
       if (!session) throw new Error('No hay sesión activa');
 
-      const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-auth`, {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), ML_API_TIMEOUT_MS);
+      const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-oauth/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
+        signal: controller.signal,
       });
+      clearTimeout(timer);
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Error al generar URL de autenticación');
-      const authUrl = result.authUrl;
+      const authUrl = result.authorizationUrl || result.authUrl;
+      if (!authUrl) throw new Error('ml-oauth/start no devolvió authorizationUrl');
 
       /* Open popup for OAuth flow */
       const width = 800, height = 600;
       const left = (screen.width - width) / 2;
       const top = (screen.height - height) / 2;
-      const popup = window.open(authUrl, 'ml_auth',
+      const popup = window.open(authUrl, 'ml_oauth',
         `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`);
 
       /* Listen for message from ml-callback Edge Function */
@@ -5666,6 +5681,7 @@ try {
           showToast('¡Cuenta de Mercado Libre conectada exitosamente!', 'success');
           ml_connected = true;
           ml_user = event.data.user || null;
+          await mlCheckStatus();
           loadPortals();
         } else if (event.data?.type === 'ML_AUTH_ERROR') {
           window.removeEventListener('message', handler);
@@ -5678,7 +5694,11 @@ try {
       /* Timeout — close listener after 2 minutes */
       setTimeout(() => { window.removeEventListener('message', handler); }, 120000);
     } catch (err) {
-      showToast('Error al iniciar conexión ML: ' + err.message, 'error');
+      if (err.name === 'AbortError') {
+        showToast('Tiempo de espera agotado al iniciar conexión ML', 'error');
+      } else {
+        showToast('Error al iniciar conexión ML: ' + err.message, 'error');
+      }
     }
   };
 
@@ -5693,6 +5713,7 @@ try {
       ml_listings = [];
       ml_configured = false;
       showToast('Cuenta de Mercado Libre desconectada', 'success');
+      await mlCheckStatus();
       loadPortals();
     } catch (err) {
       showToast('Error al desconectar: ' + err.message, 'error');
@@ -5730,7 +5751,9 @@ try {
 
       showToast('Publicando en Mercado Libre...', 'info');
       const result = await mlApiCall('publish', { property_id: propertyId });
-      showToast('¡Propiedad publicada en Mercado Libre! ID: ' + (result.listing_id || ''), 'success');
+      const listingId = result.listing_id || result.item_id || result.id || '';
+      showToast('¡Propiedad publicada en Mercado Libre! ID: ' + listingId, 'success');
+      await mlCheckStatus();
       loadProperties();
     } catch (err) {
       showToast('Error al publicar en ML: ' + err.message, 'error');
@@ -5744,6 +5767,7 @@ try {
       showToast('Actualizando en Mercado Libre...', 'info');
       await mlApiCall('update', { property_id: propertyId, listing_id: listingId });
       showToast('¡Propiedad actualizada en Mercado Libre!', 'success');
+      await mlCheckStatus();
       loadProperties();
     } catch (err) {
       showToast('Error al actualizar en ML: ' + err.message, 'error');
@@ -5757,6 +5781,7 @@ try {
       showToast('Eliminando de Mercado Libre...', 'info');
       await mlApiCall('remove', { listing_id: listingId });
       showToast('Propiedad eliminada de Mercado Libre', 'success');
+      await mlCheckStatus();
       loadProperties();
     } catch (err) {
       showToast('Error al eliminar de ML: ' + err.message, 'error');
@@ -9366,6 +9391,30 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
      19. INIT
      ------------------------------------------------ */
   function startApp() {
+
+    // ML OAuth callback via query/hash — ml-oauth/start redirects back to admin.html?ml=connected=1&user_id=...
+    // or ?ml=error=<message>. We parse it once on app start and clean the URL.
+    (function handleMlCallbackQuery() {
+      try {
+        const url = new URL(window.location.href);
+        const mlStatus = url.searchParams.get('ml');
+        if (!mlStatus) return;
+        if (mlStatus === 'connected') {
+          showToast('¡Cuenta de Mercado Libre conectada exitosamente!', 'success');
+          ml_connected = true;
+          setTimeout(async () => { await mlCheckStatus(); loadPortals(); navigateTo('tab-portales'); }, 100);
+        } else if (mlStatus === 'error') {
+          const msg = url.searchParams.get('message') || 'Error desconocido';
+          showToast('Error al conectar con Mercado Libre: ' + decodeURIComponent(msg), 'error');
+        }
+        url.searchParams.delete('ml');
+        url.searchParams.delete('message');
+        url.searchParams.delete('user_id');
+        window.history.replaceState({}, '', url.toString());
+      } catch (e) {
+        console.warn('[ML] callback parse failed:', e.message);
+      }
+    })();
 
     // Deferred initialization - runs after DOM is ready
     const _origLoadProperties = loadProperties;

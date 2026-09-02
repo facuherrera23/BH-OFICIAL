@@ -1957,7 +1957,7 @@ function renderSocialLinks(social) {
   function toEmbedUrl(url) {
     if (!url) return null;
     /* YouTube watch → embed */
-    let m = url.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/);
+    let m = url.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/(?:embed|shorts|live)\/)([A-Za-z0-9_-]{11})/);
     if (m) return 'https://www.youtube.com/embed/' + m[1] + '?autoplay=1&rel=0';
     /* Already an embed URL */
     if (/youtube\.com\/embed\//.test(url)) return url.split('?')[0] + '?autoplay=1&rel=0';
