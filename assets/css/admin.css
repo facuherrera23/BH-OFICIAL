@@ -1293,6 +1293,12 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
     gap: 22px;
     margin-bottom: 22px;
 }
+.form-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 22px;
+    margin-bottom: 22px;
+}
 .form-field { margin-bottom: 18px; }
 .form-field:last-child { margin-bottom: 0; }
 .form-field label {
@@ -2111,6 +2117,9 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
 .modal-box h3 { font-family: var(--font-heading); }
 .modal-box::-webkit-scrollbar { width: 5px; }
 
+.modal-box--wide { max-width: 1200px; padding: 32px 36px; }
+.modal-box--xl   { max-width: 1600px; padding: 32px 40px; }
+
 /* ================================================================
    25. TOAST & FEEDBACK
    ================================================================ */
@@ -2696,7 +2705,17 @@ input[type="range"]::-moz-range-thumb {
     .dashboard-widgets-3col { grid-template-columns: 1fr; }
     .leads-pipeline { grid-template-columns: repeat(2, 1fr); }
     .portals-grid { grid-template-columns: 1fr; }
+    .form-grid-3 { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 1024px) {
+    .modal-box--wide { max-width: 95vw; padding: 28px 24px; }
+    .modal-box--xl   { max-width: 95vw; padding: 28px 24px; }
+}
+
+@media (max-width: 768px) {
     .form-grid-2 { grid-template-columns: 1fr; }
+    .form-grid-3 { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 900px) {
