@@ -253,7 +253,7 @@ Deno.serve(async (req) => {
         ? adminUrl
         : (console.warn('[ml-oauth] blocked external redirect:', adminUrl),
           Deno.env.get('ADMIN_BASE_URL') ?? '/admin');
-    const redirectUri = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/ml-oauth`;
+    const redirectUri = Deno.env.get('ML_REDIRECT_URI') ?? `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/ml-oauth`;
 
     try {
         // Obtener client_id/client_secret para exchangeCode

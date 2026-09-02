@@ -1089,13 +1089,14 @@ function esc(s) {
                 ${p.featured ? '<span class="nav-badge" style="background:rgba(255,184,0,0.15); color:var(--warning); font-size:11px;"><i class="fas fa-star" style="margin-right:4px;"></i>Destacada</span>' : ''}
                 ${p.is_retasada ? '<span class="nav-badge" style="background:rgba(139,92,246,0.15); color:#8b5cf6; font-size:11px;"><i class="fas fa-tag" style="margin-right:4px;"></i>Retasada</span>' : ''}
                 ${p.is_oportunidad ? '<span class="nav-badge" style="background:rgba(239,68,68,0.15); color:#ef4444; font-size:11px;"><i class="fas fa-bolt" style="margin-right:4px;"></i>Oportunidad</span>' : ''}
-                ${p.is_shared ? '<span class="nav-badge" style="background:rgba(6,182,212,0.15); color:#06b6d4; font-size:11px;"><i class="fas fa-share-nodes" style="margin-right:4px;\</i>Compartido</span>' : ''}
-                ${p.is_vendida ? '<span class="nav-badge" style="background:rgba(75,85,99,0.18); color:#4b5563; font-size:11px;"><i class="fas fa-check-circle" style="margin-right:4px;\</i>Vendida</span>' : ''}
-                ${p.is_reservada ? '<span class="nav-badge" style="background:rgba(234,179,8,0.18); color:#ca8a04; font-size:11px;"><i class="fas fa-lock" style="margin-right:4px;\</i>Reservada</span>' : ''}
+                ${p.is_shared ? '<span class="nav-badge" style="background:rgba(6,182,212,0.15); color:#06b6d4; font-size:11px;"><i class="fas fa-share-nodes" style="margin-right:4px;"></i>Compartido</span>' : ''}
+                ${p.is_vendida ? '<span class="nav-badge" style="background:rgba(75,85,99,0.18); color:#4b5563; font-size:11px;"><i class="fas fa-check-circle" style="margin-right:4px;"></i>Vendida</span>' : ''}
+                ${p.is_reservada ? '<span class="nav-badge" style="background:rgba(234,179,8,0.18); color:#ca8a04; font-size:11px;"><i class="fas fa-lock" style="margin-right:4px;"></i>Reservada</span>' : ''}
+
               </div>
             </td>
-            <td>
-            <div style="display:flex; gap:6px; align-items:center;">
+            <td style="white-space:nowrap;">
+            <div style="display:flex; gap:6px; align-items:center; flex-wrap:nowrap; white-space:nowrap;">
               ${mlButtons}
               ${relaButtons}
               ${p.is_published ? `<button class="btn-action" style="font-size:11px; color:#25D366;" title="Compartir ficha por WhatsApp" data-wa-share="${esc(p.id)}" data-wa-code="${esc(p.property_code || '')}"><i class="fab fa-whatsapp"></i></button>` : ''}
@@ -1203,9 +1204,7 @@ function esc(s) {
         created_by: currentUser?.id || null,
       };
 
-      // Vendida and Reservada are incompatible with Publicada.
-      // Force is_published = false so the property disappears from the public catalog.
-      if (data.is_vendida || data.is_reservada) {
+      if (validated.is_vendida || validated.is_reservada) {
         data.is_published = false;
       }
 
@@ -2179,9 +2178,10 @@ let dayCount = 1;
             ${p.featured ? '<span class="nav-badge" style="background:rgba(255,184,0,0.15); color:var(--warning);"><i class="fas fa-star" style="margin-right:4px;"></i>Destacada</span>' : ''}
             ${p.is_retasada ? '<span class="nav-badge" style="background:rgba(139,92,246,0.15); color:#8b5cf6;"><i class="fas fa-tag" style="margin-right:4px;"></i>Retasada</span>' : ''}
             ${p.is_oportunidad ? '<span class="nav-badge" style="background:rgba(239,68,68,0.15); color:#ef4444;"><i class="fas fa-bolt" style="margin-right:4px;"></i>Oportunidad</span>' : ''}
-            ${p.is_shared ? '<span class="nav-badge" style="background:rgba(6,182,212,0.15); color:#06b6d4;"><i class="fas fa-share-nodes" style="margin-right:4px;\</i>Compartido</span>' : ''}
-            ${p.is_vendida ? '<span class="nav-badge" style="background:rgba(75,85,99,0.18); color:#4b5563;"><i class="fas fa-check-circle" style="margin-right:4px;\</i>Vendida</span>' : ''}
-            ${p.is_reservada ? '<span class="nav-badge" style="background:rgba(234,179,8,0.18); color:#ca8a04;"><i class="fas fa-lock" style="margin-right:4px;\</i>Reservada</span>' : ''}
+            ${p.is_shared ? '<span class="nav-badge" style="background:rgba(6,182,212,0.15); color:#06b6d4;"><i class="fas fa-share-nodes" style="margin-right:4px;"></i>Compartido</span>' : ''}
+            ${p.is_vendida ? '<span class="nav-badge" style="background:rgba(75,85,99,0.18); color:#4b5563;"><i class="fas fa-check-circle" style="margin-right:4px;"></i>Vendida</span>' : ''}
+            ${p.is_reservada ? '<span class="nav-badge" style="background:rgba(234,179,8,0.18); color:#ca8a04;"><i class="fas fa-lock" style="margin-right:4px;"></i>Reservada</span>' : ''}
+
           </div>
         </td>
         <td>
@@ -5676,6 +5676,7 @@ try {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
+        body: JSON.stringify({ action: 'start' }),
         signal: controller.signal,
       });
       clearTimeout(timer);
@@ -9410,25 +9411,27 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
      ------------------------------------------------ */
   function startApp() {
 
-    // ML OAuth callback via query/hash — ml-oauth/start redirects back to admin.html?ml=connected=1&user_id=...
-    // or ?ml=error=<message>. We parse it once on app start and clean the URL.
+    // ML OAuth callback via hash — ml-oauth/start redirects back to admin.html#/mercadolibre?ml=connected=1
+    // or #/mercadolibre?ml=error&message=<msg>. Parse from hash (not searchParams).
     (function handleMlCallbackQuery() {
       try {
         const url = new URL(window.location.href);
-        const mlStatus = url.searchParams.get('ml');
+        // El callback redirige a /admin#/mercadolibre?ml=... — leer params dentro del hash, no en ?query
+        const hashPart = url.hash.includes('?') ? url.hash.split('?')[1] : '';
+        const hashParams = new URLSearchParams(hashPart);
+        const mlStatus = hashParams.get('ml');
         if (!mlStatus) return;
         if (mlStatus === 'connected') {
           showToast('¡Cuenta de Mercado Libre conectada exitosamente!', 'success');
           ml_connected = true;
           setTimeout(async () => { await mlCheckStatus(); loadPortals(); navigateTo('tab-portales'); }, 100);
         } else if (mlStatus === 'error') {
-          const msg = url.searchParams.get('message') || 'Error desconocido';
+          const msg = hashParams.get('message') || 'Error desconocido';
           showToast('Error al conectar con Mercado Libre: ' + decodeURIComponent(msg), 'error');
         }
-        url.searchParams.delete('ml');
-        url.searchParams.delete('message');
-        url.searchParams.delete('user_id');
-        window.history.replaceState({}, '', url.toString());
+        // Limpiar params ML del hash para que un reload no repita el toast
+        const cleanHash = url.hash.replace(/\?ml=[^&#]*(&message=[^&#]*)?(&user_id=[^&#]*)?/, '').replace(/(\?|&)+$/, '');
+        window.history.replaceState({}, '', url.pathname + (cleanHash && cleanHash !== '#' ? cleanHash : ''));
       } catch (e) {
         console.warn('[ML] callback parse failed:', e.message);
       }
