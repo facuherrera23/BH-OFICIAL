@@ -104,6 +104,73 @@ function normalizeConvStatus(raw: unknown): string {
     return 'open';
 }
 
+function parseZernioError(rawBody: string, status: number): {
+    code: string;
+    status: number;
+    user_message: string;
+    remediation: string;
+    zernio_error?: string;
+} {
+    let parsed: Record<string, unknown> = {};
+    try { parsed = JSON.parse(rawBody); } catch {}
+
+    const zernioType = String(parsed.type ?? '');
+    const zernioCode = String(parsed.code ?? '');
+    const platformErr = parsed.platformError as Record<string, unknown> | undefined;
+    const platformCode = platformErr ? Number(platformErr.code ?? 0) : 0;
+
+    if (zernioCode === 'missing_required_field' || platformCode === 190 || /has not authorized/i.test(rawBody)) {
+        return {
+            code: 'META_AUTH_REVOKED',
+            status,
+            user_message: 'Meta revocó la autorización de esta cuenta. La cuenta de Instagram/Facebook en Zernio no tiene los permisos necesarios para enviar mensajes.',
+            remediation: '1) Abrí Zernio → Settings → Accounts → Instagram → Disconnect → Reconnect. ' +
+                         '2) Durante el OAuth, seleccioná la página de Facebook vinculada y aceptá TODOS los permisos ' +
+                         '(instagram_business_manage_messages, pages_messaging). ' +
+                         '3) Verificá que la cuenta de Instagram esté vinculada a una página de Facebook desde la app de Instagram.',
+            zernio_error: rawBody.slice(0, 300),
+        };
+    }
+
+    if (status === 429) {
+        return {
+            code: 'RATE_LIMITED',
+            status,
+            user_message: 'Rate limit de Zernio alcanzado. Esperá unos segundos.',
+            remediation: 'Reintentá automáticamente en unos segundos.',
+            zernio_error: rawBody.slice(0, 200),
+        };
+    }
+
+    if (/expired|access.token/i.test(rawBody)) {
+        return {
+            code: 'TOKEN_EXPIRED',
+            status,
+            user_message: 'El token de Zernio expiró o fue revocado.',
+            remediation: 'Refrescá la API key en Zernio → Settings → API Keys y actualizá zernio_config o ZERNIO_API_KEY.',
+            zernio_error: rawBody.slice(0, 300),
+        };
+    }
+
+    if (zernioCode === 'invalid_request_error' || zernioType === 'invalid_request_error') {
+        return {
+            code: 'INVALID_REQUEST',
+            status,
+            user_message: 'Zernio rechazó la solicitud por formato inválido.',
+            remediation: 'Verificá que la conversación tenga account_id válido y que el texto no esté vacío.',
+            zernio_error: rawBody.slice(0, 300),
+        };
+    }
+
+    return {
+        code: 'ZERNIO_API_ERROR',
+        status,
+        user_message: `Zernio respondió con error ${status}.`,
+        remediation: 'Revisá los logs de Zernio o contactá soporte.',
+        zernio_error: rawBody.slice(0, 300),
+    };
+}
+
 async function getZernioApiKey(): Promise<string> {
     const envKey = Deno.env.get('ZERNIO_API_KEY');
     if (envKey) return envKey;
@@ -207,7 +274,8 @@ async function actSendMessage(body: Record<string, unknown>, userId: string): Pr
     if (!res.ok) {
         const errText = await res.text();
         log('warn', { action: 'send_message', conv_id: conversationId, status: res.status, error: errText.slice(0, 300) });
-        throw new Error(`Zernio send failed (${res.status}): ${errText.slice(0, 300)}`);
+        const structured = parseZernioError(errText, res.status);
+        throw new Error(JSON.stringify(structured));
     }
 
     const zData = await res.json();
@@ -461,6 +529,101 @@ async function actBackfillMessages(body: Record<string, unknown>): Promise<unkno
     return { ok: true, total };
 }
 
+async function actDiagnose(): Promise<unknown> {
+    const accountsRes = await zernioRequest('/accounts');
+    if (!accountsRes.ok) {
+        throw new Error(`Zernio accounts failed (${accountsRes.status})`);
+    }
+    const accountsData = await accountsRes.json();
+    const accounts = Array.isArray(accountsData) ? accountsData : (accountsData.accounts ?? accountsData.data ?? []);
+
+    const report: Array<{
+        accountId: string;
+        platform: string;
+        username: string;
+        isActive: boolean;
+        enabled: boolean;
+        health: Record<string, unknown> | null;
+        facebookPage: Record<string, unknown> | string | null;
+        issues: string[];
+        ok: boolean;
+    }> = [];
+
+    for (const acc of accounts) {
+        const accountId = String(acc._id ?? acc.id ?? '');
+        const platform = String(acc.platform ?? '');
+        if (!accountId) continue;
+
+        const issues: string[] = [];
+
+        const healthRes = await zernioRequest(`/accounts/${accountId}/health`);
+        const health = healthRes.ok ? await healthRes.json() : null;
+
+        let facebookPage: Record<string, unknown> | string | null = null;
+        if (platform === 'instagram') {
+            const fbPageRes = await zernioRequest(`/accounts/${accountId}/facebook-page`);
+            if (fbPageRes.ok) {
+                facebookPage = await fbPageRes.json();
+                const errMsg = String((facebookPage as Record<string, unknown>)?.error ?? '');
+                if (errMsg || !facebookPage) {
+                    issues.push(`IG no vinculada a Facebook Page en Zernio: ${errMsg || 'sin page'}`);
+                }
+            }
+        } else if (platform === 'facebook') {
+            const fbPageRes = await zernioRequest(`/accounts/${accountId}/facebook-page`);
+            if (fbPageRes.ok) {
+                facebookPage = await fbPageRes.json();
+                const pages = (facebookPage as Record<string, unknown>)?.pages as unknown[] | undefined;
+                if (!pages || pages.length === 0) {
+                    issues.push('FB account sin páginas disponibles');
+                }
+            }
+        }
+
+        if (health && health.status !== 'healthy') {
+            issues.push(`Status: ${health.status}`);
+        }
+        if (health && health.permissions && Array.isArray((health.permissions as Record<string, unknown>).posting)) {
+            for (const p of (health.permissions as Record<string, unknown>).posting as Array<Record<string, unknown>>) {
+                if (p.required && !p.granted) {
+                    issues.push(`Falta permiso requerido: ${p.scope}`);
+                }
+            }
+        }
+
+        report.push({
+            accountId,
+            platform,
+            username: String(acc.username ?? acc.displayName ?? ''),
+            isActive: Boolean(acc.isActive),
+            enabled: Boolean(acc.enabled),
+            health,
+            facebookPage,
+            issues,
+            ok: issues.length === 0 && Boolean(acc.isActive) && Boolean(acc.enabled),
+        });
+    }
+
+    return {
+        ok: report.every(r => r.ok),
+        total: report.length,
+        healthy: report.filter(r => r.ok).length,
+        with_issues: report.filter(r => !r.ok).length,
+        accounts: report,
+    };
+}
+
+async function actListFacebookPages(body: Record<string, unknown>): Promise<unknown> {
+    const accountId = String(body.accountId ?? '');
+    if (!accountId) throw new Error('accountId requerido');
+    const res = await zernioRequest(`/accounts/${accountId}/facebook-page`);
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Zernio facebook-page failed (${res.status}): ${errText.slice(0, 300)}`);
+    }
+    return await res.json();
+}
+
 // ============================================================
 // Entry point
 // ============================================================
@@ -500,6 +663,14 @@ Deno.serve(async (req) => {
             }
             case 'backfill_messages': {
                 const result = await actBackfillMessages(body);
+                return respond(200, result, req);
+            }
+            case 'diagnose': {
+                const result = await actDiagnose();
+                return respond(200, result, req);
+            }
+            case 'list_facebook_pages': {
+                const result = await actListFacebookPages(body);
                 return respond(200, result, req);
             }
             default:
