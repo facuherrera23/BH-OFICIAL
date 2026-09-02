@@ -161,6 +161,9 @@ function esc(s) {
     featured: z.boolean().default(false),
     is_retasada: z.boolean().default(false),
     is_oportunidad: z.boolean().default(false),
+    is_shared: z.boolean().default(false),
+    is_vendida: z.boolean().default(false),
+    is_reservada: z.boolean().default(false),
     owner_id: z.string().uuid('ID de propietario inválido').optional().nullable(),
     agent_id: z.string().uuid('ID de broker inválido').optional().nullable(),
   });
@@ -1086,6 +1089,9 @@ function esc(s) {
                 ${p.featured ? '<span class="nav-badge" style="background:rgba(255,184,0,0.15); color:var(--warning); font-size:11px;"><i class="fas fa-star" style="margin-right:4px;"></i>Destacada</span>' : ''}
                 ${p.is_retasada ? '<span class="nav-badge" style="background:rgba(139,92,246,0.15); color:#8b5cf6; font-size:11px;"><i class="fas fa-tag" style="margin-right:4px;"></i>Retasada</span>' : ''}
                 ${p.is_oportunidad ? '<span class="nav-badge" style="background:rgba(239,68,68,0.15); color:#ef4444; font-size:11px;"><i class="fas fa-bolt" style="margin-right:4px;"></i>Oportunidad</span>' : ''}
+                ${p.is_shared ? '<span class="nav-badge" style="background:rgba(6,182,212,0.15); color:#06b6d4; font-size:11px;"><i class="fas fa-share-nodes" style="margin-right:4px;\</i>Compartido</span>' : ''}
+                ${p.is_vendida ? '<span class="nav-badge" style="background:rgba(75,85,99,0.18); color:#4b5563; font-size:11px;"><i class="fas fa-check-circle" style="margin-right:4px;\</i>Vendida</span>' : ''}
+                ${p.is_reservada ? '<span class="nav-badge" style="background:rgba(234,179,8,0.18); color:#ca8a04; font-size:11px;"><i class="fas fa-lock" style="margin-right:4px;\</i>Reservada</span>' : ''}
               </div>
             </td>
             <td>
@@ -1197,6 +1203,12 @@ function esc(s) {
         created_by: currentUser?.id || null,
       };
 
+      // Vendida and Reservada are incompatible with Publicada.
+      // Force is_published = false so the property disappears from the public catalog.
+      if (data.is_vendida || data.is_reservada) {
+        data.is_published = false;
+      }
+
       /* Image uploads */
       const imageFiles = formData.getAll('image_files');
       const existingUrls = formData.getAll('existing_image_urls').filter(u => u);
@@ -1282,6 +1294,9 @@ function esc(s) {
         form.elements.featured.checked = data.featured || false;
         form.elements.is_retasada.checked = data.is_retasada || false;
         form.elements.is_oportunidad.checked = data.is_oportunidad || false;
+        form.elements.is_shared.checked = data.is_shared || false;
+        form.elements.is_vendida.checked = data.is_vendida || false;
+        form.elements.is_reservada.checked = data.is_reservada || false;
         form.elements.video_url.value = data.video_url || '';
 
         const ownerSel = $('#propOwnerSelect');
@@ -2164,6 +2179,9 @@ let dayCount = 1;
             ${p.featured ? '<span class="nav-badge" style="background:rgba(255,184,0,0.15); color:var(--warning);"><i class="fas fa-star" style="margin-right:4px;"></i>Destacada</span>' : ''}
             ${p.is_retasada ? '<span class="nav-badge" style="background:rgba(139,92,246,0.15); color:#8b5cf6;"><i class="fas fa-tag" style="margin-right:4px;"></i>Retasada</span>' : ''}
             ${p.is_oportunidad ? '<span class="nav-badge" style="background:rgba(239,68,68,0.15); color:#ef4444;"><i class="fas fa-bolt" style="margin-right:4px;"></i>Oportunidad</span>' : ''}
+            ${p.is_shared ? '<span class="nav-badge" style="background:rgba(6,182,212,0.15); color:#06b6d4;"><i class="fas fa-share-nodes" style="margin-right:4px;\</i>Compartido</span>' : ''}
+            ${p.is_vendida ? '<span class="nav-badge" style="background:rgba(75,85,99,0.18); color:#4b5563;"><i class="fas fa-check-circle" style="margin-right:4px;\</i>Vendida</span>' : ''}
+            ${p.is_reservada ? '<span class="nav-badge" style="background:rgba(234,179,8,0.18); color:#ca8a04;"><i class="fas fa-lock" style="margin-right:4px;\</i>Reservada</span>' : ''}
           </div>
         </td>
         <td>
