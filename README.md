@@ -249,6 +249,7 @@ window.BH_CONFIG = {
 | `properties` | 18 | Propiedades (draft/publicada/vendida/alquilada/pausada), imágenes JSONB, `agent_id` FK a `agents`, `owner_id`, portal_settings |
 | `agents` | 2 | Asesores/brokers: matrícula, comisiones `commission_sale`/`commission_rent`, `profile_id` (link auth), soft-delete `deleted_at` |
 | `owners` | 1 | Propietarios: DNI/CUIT, documentos JSONB (expiración y verificación) |
+| `owner_tasks` | 0 | Tareas de seguimiento del propietario (`type`, `due_date`, `assigned_to`→`agents.id`, `notification_preferences` + `owner_tasks_reminder` Edge Function por cron) |
 | `leads` | 0 | Pipeline CRM: source, stage, tags, score, `assigned_to` FK a `agents` |
 | `visits` | 0 | Visitas: estados pendiente/confirmada/completada/cancelada, `agent_id`, `confirmation_token` |
 | `tasaciones` | 1 | ACM: `data` JSONB, valoración USD/ARS, estatus borrador/en_revision/entregada/vencida |
@@ -343,7 +344,7 @@ Mecanismos clave:
 | **Leads & CRM** | `tab-leads` | Pipeline Kanban, tags, scoring, export CSV, agendado directo de visitas, paginación server-side |
 | **Agenda de Visitas** | `tab-agenda` | Calendario mensual + vista tabla, check-in/out, export Visits CSV/ICS, recordatorios, modal visita con brokers |
 | **Tasaciones** | `tab-tasaciones` | iframe a `tasacion.html` (ACM) + tabla de tasaciones |
-| **Propietarios** | `tab-propietarios` | CRUD expedientes, documentos, timeline, export CSV/PDF, generar link de portal |
+| **Propietarios** | `tab-propietarios` | CRUD expedientes, documentos, tareas de seguimiento, timeline, export CSV/PDF, generar link de portal |
 | **Sitio Web (CMS)** | `tab-sitio-web` | Editor en vivo del landing (sub-tabs: Hero, Catálogo, Servicios, Equipo, Stats, Proceso, Contacto, Formulario, Navbar, Footer, SEO) |
 | **Portales & APIs** | `tab-portales` | OAuth Mercado Libre, config por portal (ZonaProp, Argenprop, etc.), sync, dead-letter, `mlImportFromML` |
 | **Agentes & Brokers** | `tab-agentes` | CRUD asesores, matrícula, comisiones `commission_sale`/`commission_rent`, soft-delete, link `profile_id` |
@@ -540,6 +541,7 @@ Tab `tab-supervision` + paquete de edge functions `supervision-*` (migraciones 2
 | `manage-users` | ON + super_admin | Acciones: `invite`, `create-direct`, `set-role`, `update-user`, `update-self` |
 | `ml-sync` | — (cron) | Sync ML: precio/stock/status, batch 50, webhooks ML |
 | `monthly_commission_liquidation` | — (cron) | Liquidación mensual de comisiones |
+| `owner-tasks-reminder` | — (cron) | Recordatorio de tareas de propietarios por email (Brevo, cada 15 min) |
 | `supervision-api` | ON | Consultas del Centro de Supervisión (auditoría, alertas, métricas), rate limit 60/min |
 | `supervision-digest` | — (cron) | Resumen diario de supervisión vía Brevo |
 | `supervision-ml-anomaly` | ON | Detección de anomalías estadística/ML |
@@ -558,7 +560,7 @@ Tab `tab-supervision` + paquete de edge functions `supervision-*` (migraciones 2
 
 ## Migraciones
 
-`supabase/migrations/` (24 archivos):
+`supabase/migrations/` (25 archivos):
 
 | Migración | Contenido |
 |---|---|
@@ -584,6 +586,7 @@ Tab `tab-supervision` + paquete de edge functions `supervision-*` (migraciones 2
 | `20260827_zernio_chat_completo` | Schema Zernio completo (platform, unique keys, RLS) |
 | `20260828_fix_owners_rls` | RLS owners: SELECT super_admin/broker, INSERT/UPDATE/DELETE solo super_admin |
 | `20260830_fix_properties_public_read` | RLS properties: lectura pública de publicadas (`TO public`) |
+| `20260903000015_owner_tasks_crm` | CRM de tareas de propietarios: tabla `owner_tasks` + RLS + `UPDATE` de `get_sidebar_badge_counts()` (badge de tareas vencidas) + job pg_cron `owner-tasks-reminder` cada 15 min |
 
 ---
 
@@ -598,10 +601,10 @@ Tab `tab-supervision` + paquete de edge functions `supervision-*` (migraciones 2
 
 | Archivo | Cache Buster | Dónde |
 |---|---|---|
-| `assets/css/admin.css` | `v=30` | `admin.html` |
+| `assets/css/admin.css` | `v=58` | `admin.html` |
 | `assets/css/landing.css` | `v=8` | `index.html` |
 | `assets/css/landing.css` | `v=30` | `portal-propietario.html`, `confirmar-visita.html` |
-| `assets/js/admin-app.js` | `v=218` | `admin.html` |
+| `assets/js/admin-app.js` | `v=248` | `admin.html` |
 | `assets/js/landing-app.js` | `v=10` | `index.html` |
 | `assets/js/utils.js` | `v=1` | `admin.html`, `index.html`, `tasacion.html` |
 | `assets/js/config.js` | `v=5` | `admin.html`, `index.html`, `tasacion.html` |
@@ -774,6 +777,16 @@ Suscripciones a tablas core + chats; al recibir cambios actualiza la UI activa (
 ---
 
 ## Changelog
+
+### 2026-09-03 — CRM de Tareas de Seguimiento para Propietarios
+- **Tab "Tareas"** en el expediente del propietario (`#ownerModal`), entre Checklist y Propiedades: formulario de alta (tipo, descripción, fecha límite + hora, prioridad, agente asignado, recordatorio) + lista con acciones completar / cancelar / eliminar.
+- **Tabla `owner_tasks`**: `type` (mismo set que timeline: `note`/`alert`/`commission`/`document`/`contact`), `due_date timestamptz`, `status` (pendiente/en_progreso/completada/cancelada), `priority` (baja/media/alta), `assigned_to` FK a `agents.id` (patrón unificado de responsables), `remind_before_minutes` (select fijo: 30 min a 3 días), `reminder_sent_at` (anti-duplicados), `created_by` (`auth.users.id`), indexes en owner_id/assigned_to/due_date/status + índice parcial de vencidas. RLS activada con política única `owner_tasks_auth` (authenticated full CRUD).
+- **Edge Function `owner-tasks-reminder`** (cron, cada 15 min, `--no-verify-jwt`): selecciona tareas sin recordatorio enviado, resuelve email del agente vía `agents.profile_id` → `profiles.email`, respeta `notification_preferences.email = false`, envía por Brevo y marca `reminder_sent_at` por tarea inmediatamente tras confirmar envío. Error en una tarea no aborta el batch.
+- **Badge en sidebar**: `get_sidebar_badge_counts()` ahora incluye `owner_tasks_overdue` (definición de vencida: `status IN ('pendiente','en_progreso') AND due_date < now()`).
+- **Sincronización con Timeline**: al completar una tarea, el frontend inserta una entrada en `owner_timeline_entries` (decisión: sin trigger SQL; la función no tiene contexto del usuario y la coherencia se garantiza desde el mismo `mutate()` del frontend).
+- **Realtime**: `owner_tasks` agregada a `setupCoreRealtime`; los cambios recargan la lista en el modal abierto y refrescan los badges.
+- **Cache busters**: `admin.css` v=57→58 y `admin-app.js` v=247→248.
+- **Migración**: `20260903000015_owner_tasks_crm.sql` (idempotente, solo `CREATE OR REPLACE` sobre `get_sidebar_badge_counts`; no modifica tablas/funciones/policies existentes).
 
 ### 2026-08-30 — FASE 3: QA automatizado + fix RLS crítico
 - Suite E2E Playwright recreada (`tests/`): catálogo, búsqueda, contacto, CSP de las 5 páginas, regresión `data-action`, smoke de tasaciones/portal/confirmar, + admin gated por `BH_TEST_ADMIN_*`.
