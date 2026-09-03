@@ -6796,10 +6796,10 @@ on(chip, 'click', () => {
       const windowClosed = data.last_message_at && (Date.now() - new Date(data.last_message_at).getTime() > 24 * 60 * 60 * 1000);
       const platform = data.account?.platform || 'desconocido';
       if (windowClosed && (platform === 'whatsapp' || platform === 'instagram')) {
-        composerHint.innerHTML = '<i class="fas fa-clock\</i> ' + platform + ' · fuera de ventana 24h';
+        composerHint.innerHTML = '<i class="fas fa-clock"></i> ' + platform + ' · fuera de ventana 24h';
         composerHint.style.color = 'var(--warning)';
       } else if (data.account?.username) {
-        composerHint.innerHTML = '<i class="fas fa-check-circle" style="color:var(--accent);\</i> ' + platform + ' · ventana abierta';
+        composerHint.innerHTML = '<i class="fas fa-check-circle" style="color:var(--accent);"></i> ' + platform + ' · ventana abierta';
         composerHint.style.color = 'var(--text-dim)';
       } else {
         composerHint.textContent = platform;
@@ -7016,6 +7016,7 @@ on(chip, 'click', () => {
           tempEl.dataset.pendingText = text;
           tempEl.title = err.message + ' (click para reintentar)';
           tempEl.style.cursor = 'pointer';
+          ticksEl.className = 'tick-icon failed';
           ticksEl.textContent = '✕';
           ticksEl.style.color = 'var(--danger)';
           ticksEl.style.cursor = 'pointer';
@@ -7079,7 +7080,8 @@ on(chip, 'click', () => {
         </div>
       `;
       messagesEl.appendChild(div);
-      messagesEl.scrollTop = messagesEl.scrollHeight;
+      const isNearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 150;
+      if (isNearBottom) { messagesEl.scrollTop = messagesEl.scrollHeight; }
     }
 
     function getTicks(status) {
@@ -9511,7 +9513,7 @@ let _execToDate = '';
       const audit = auditRes.data || [];
       const brokers = brokerRes.data || [];
 
-      // KPI: Conversión Lead?Cierre
+      // KPI: Conversión Lead→Cierre
       const totalLeads = leads.length;
       const totalClosed = closed.length;
       const convRate = totalLeads > 0 ? ((totalClosed / totalLeads) * 100).toFixed(1) : 0;
