@@ -1418,20 +1418,37 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
 }
 
 /* ================================================================
-   15. TOGGLES (SWITCHES ON/OFF)
+   15. TOGGLES (SWITCHES ON/OFF) — Card-style premium
    ================================================================ */
 .pf-toggle {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
     cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-secondary);
-    text-transform: none;
-    letter-spacing: 0;
     user-select: none;
-    padding: 4px 0;
+    padding: 16px 20px;
+    min-height: 64px;
+    background: linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-secondary) 100%);
+    border: 1.5px solid var(--border-subtle);
+    border-radius: 12px;
+    transition:
+        background 0.25s var(--ease-out),
+        border-color 0.25s var(--ease-out),
+        transform 0.2s var(--ease-out),
+        box-shadow 0.25s var(--ease-out);
+    -webkit-tap-highlight-color: transparent;
+}
+.pf-toggle:hover {
+    border-color: var(--border-accent);
+    transform: translateY(-1px);
+    box-shadow:
+        0 8px 20px rgba(0, 0, 0, 0.25),
+        0 0 0 1px var(--glow-soft),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.pf-toggle:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
 }
 .pf-toggle input[type="checkbox"] {
     position: absolute;
@@ -1440,73 +1457,100 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
     height: 0;
     pointer-events: none;
 }
-.toggle-slider {
-    position: relative;
-    width: 56px;
-    height: 32px;
-    background: var(--bg-secondary);
-    border-radius: 999px;
-    border: 2px solid var(--border-subtle);
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 1px 0 rgba(255, 255, 255, 0.03);
-    transition: background 0.25s var(--ease-out), border-color 0.25s var(--ease-out), box-shadow 0.25s var(--ease-out);
-    flex-shrink: 0;
+.toggle-label {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    letter-spacing: 0;
+    text-transform: none;
+    white-space: nowrap;
+    transition: color 0.25s var(--ease-out), font-weight 0.25s var(--ease-out);
 }
-.toggle-slider::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 6px;
-    transform: translateY(-50%);
-    width: 18px;
-    height: 18px;
-    background: var(--text-dim);
-    border-radius: 50%;
-    opacity: 0.5;
-    pointer-events: none;
-    transition: opacity 0.2s var(--ease-out);
+.pf-toggle input:checked + .toggle-slider + .toggle-label {
+    color: var(--text-main);
+    font-weight: 600;
+}
+.toggle-slider {
+    margin-left: auto;
+    flex-shrink: 0;
+    position: relative;
+    width: 70px;
+    height: 40px;
+    background: var(--bg-void);
+    border: 1.5px solid var(--border-subtle);
+    border-radius: 999px;
+    box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.45);
+    transition:
+        background 0.32s var(--ease-out),
+        border-color 0.32s var(--ease-out),
+        box-shadow 0.32s var(--ease-out);
 }
 .toggle-slider::after {
     content: '';
     position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 24px;
-    height: 24px;
-    background: var(--text-main);
+    top: 2px;
+    left: 2px;
+    width: 34px;
+    height: 34px;
+    background: linear-gradient(180deg, #ffffff 0%, #e8e8ec 100%);
     border-radius: 50%;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1);
-    transition: transform 0.25s var(--ease-spring), background 0.2s var(--ease-out);
-    z-index: 1;
+    box-shadow:
+        0 2px 4px rgba(0, 0, 0, 0.35),
+        0 6px 14px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.95),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+    transition:
+        transform 0.42s cubic-bezier(0.34, 1.56, 0.64, 1),
+        width 0.18s var(--ease-out),
+        background 0.25s var(--ease-out);
+    z-index: 2;
 }
-.pf-toggle input:checked + .toggle-slider { border-color: transparent; }
-.pf-toggle input:checked + .toggle-slider::before { opacity: 0; }
-.pf-toggle input:checked + .toggle-slider::after { transform: translateX(24px); }
-.pf-toggle:hover .toggle-slider {
-    border-color: var(--border-accent);
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 1px 0 rgba(255, 255, 255, 0.03), 0 0 16px var(--glow-soft);
+.pf-toggle input:checked + .toggle-slider {
+    background: linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 80%, black) 100%);
+    border-color: transparent;
+    box-shadow:
+        inset 0 2px 4px rgba(0, 0, 0, 0.2),
+        0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.pf-toggle input:checked + .toggle-slider::after {
+    transform: translateX(30px);
+    background: linear-gradient(180deg, #ffffff 0%, #f5f5f7 100%);
+    box-shadow:
+        0 3px 6px rgba(0, 0, 0, 0.4),
+        0 8px 18px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 1),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.06);
+}
+.pf-toggle:hover input:checked + .toggle-slider {
+    box-shadow:
+        inset 0 2px 4px rgba(0, 0, 0, 0.2),
+        0 0 24px var(--glow-strong);
+}
+.pf-toggle:active .toggle-slider::after {
+    width: 28px;
+}
+.pf-toggle input:checked + .toggle-slider:active::after {
+    transform: translateX(30px) scaleX(0.82);
 }
 .pf-toggle input:focus-visible + .toggle-slider {
     outline: 2px solid var(--accent);
-    outline-offset: 3px;
+    outline-offset: 4px;
 }
-.toggle-label { white-space: nowrap; transition: color 0.2s var(--ease-out); font-weight: 500; }
-.pf-toggle input:checked + .toggle-slider + .toggle-label { color: var(--text-main); font-weight: 600; }
-
-/* Colores por tipo de etiqueta de propiedad */
-.pf-toggle[data-type="published"] input:checked + .toggle-slider { background: var(--success); }
-.pf-toggle[data-type="published"] input:checked + .toggle-slider::after { background: var(--bg-void); }
-
-.pf-toggle[data-type="featured"] input:checked + .toggle-slider { background: var(--warning); }
-.pf-toggle[data-type="featured"] input:checked + .toggle-slider::after { background: var(--bg-void); }
-
-.pf-toggle[data-type="retasada"] input:checked + .toggle-slider { background: var(--info); }
-.pf-toggle[data-type="retasada"] input:checked + .toggle-slider::after { background: var(--text-main); }
-
-.pf-toggle[data-type="oportunidad"] input:checked + .toggle-slider { background: var(--danger); }
-.pf-toggle[data-type="oportunidad"] input:checked + .toggle-slider::after { background: var(--text-main); }
-
-.pf-toggle.disabled { opacity: 0.5; cursor: not-allowed; }
-.pf-toggle.disabled .toggle-slider { background: var(--bg-surface); border-color: var(--border-subtle); }
+.pf-toggle.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.pf-toggle.disabled .toggle-slider {
+    background: var(--bg-surface);
+    border-color: var(--border-subtle);
+}
+.pf-toggle.disabled .toggle-slider::after {
+    background: var(--bg-secondary);
+    box-shadow: none;
+}
 
 /* Toggle-switch genérico redondo (portales) */
 .toggle-switch {

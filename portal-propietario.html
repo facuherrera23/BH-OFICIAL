@@ -4,760 +4,2348 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Portal Propietario | BIENENHAUS</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'nonce-bienenhaus2024' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://*.supabase.co https://r.ldngts.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://*.cloudinary.com https://images.unsplash.com https://*.supabase.co https://res.cloudinary.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co https://static.cloudflareinsights.com https://api.cloudflareinsights.com https://cdn.jsdelivr.net; frame-src 'self';" />
-  <script nonce="bienenhaus2024">
-    (function() {
-      document.documentElement.setAttribute('csp-nonce', 'bienenhaus2024');
-    })();
+  <link rel="icon" type="image/x-icon" href="assets/images/favicon.ico">
+  <link rel="apple-touch-icon" href="assets/images/pwa-512x512.png">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'nonce-bh2024' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://*.supabase.co https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://*.cloudinary.com https://images.unsplash.com https://*.supabase.co https://res.cloudinary.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co https://static.cloudflareinsights.com https://api.cloudflareinsights.com https://cdn.jsdelivr.net; frame-src 'none';" />
+  <script nonce="bh2024">
+    (function(){ document.documentElement.setAttribute('csp-nonce','bh2024'); })();
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <link rel="stylesheet" href="assets/css/landing.css?v=55">
   <style>
-    .portal-page { min-height: 100vh; background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%); padding: 40px 20px; }
-    .portal-container { max-width: 1000px; margin: 0 auto; }
-    .portal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid rgba(255,255,255,0.08); flex-wrap: wrap; gap: 16px; }
-    .portal-brand { display: flex; align-items: center; gap: 16px; }
-    .portal-brand img { height: 48px; }
-    .portal-brand h1 { font-family: 'Playfair Display', serif; font-size: 28px; color: #fff; margin: 0; }
-    .portal-user { display: flex; align-items: center; gap: 16px; color: var(--text-dim); font-size: 14px; }
-    .portal-user .avatar { width: 40px; height: 40px; border-radius: 50%; background: rgba(31,200,195,0.2); display: flex; align-items: center; justify-content: center; color: var(--accent); font-weight: 600; }
-    .portal-tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 4px; flex-wrap: wrap; }
-    .portal-tab { padding: 10px 20px; background: none; border: none; color: var(--text-dim); font-size: 13px; font-weight: 500; cursor: pointer; border-radius: 6px 6px 0 0; transition: all 0.2s; position: relative; }
-    .portal-tab:hover { color: var(--accent); }
-    .portal-tab.is-active { color: var(--accent); background: rgba(31,200,195,0.1); }
-    .portal-tab .badge { background: rgba(239,68,68,0.2); color: #ef4444; font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 6px; font-weight: 600; }
-    .portal-panel { display: none; }
-    .portal-panel.is-active { display: block; animation: fadeIn 0.3s ease; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-    .portal-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 24px; margin-bottom: 20px; }
-    .portal-card h3 { font-family: 'Playfair Display', serif; font-size: 20px; color: #fff; margin: 0 0 16px; display: flex; align-items: center; gap: 10px; }
-    .portal-card h3 i { color: var(--accent); }
-    .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
-    .info-item { display: flex; flex-direction: column; gap: 4px; }
-    .info-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
-    .info-value { font-size: 14px; color: #fff; font-weight: 500; }
-    .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-    .status-vigente { background: rgba(0,200,120,0.2); color: #00c878; }
-    .status-vencida { background: rgba(239,68,68,0.2); color: #ef4444; }
-    .status-por-vencer { background: rgba(255,184,0,0.15); color: #FFB800; }
-    .table-responsive { overflow-x: auto; }
-    .portal-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    .portal-table th { text-align: left; padding: 12px 16px; color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-    .portal-table td { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); color: #fff; }
-    .portal-table tr:last-child td { border-bottom: none; }
-    .portal-table tr:hover td { background: rgba(255,255,255,0.02); }
-    .property-title { font-weight: 500; color: #fff; }
-    .property-sub { font-size: 11px; color: var(--text-dim); }
-    .price-cell { font-weight: 600; color: var(--accent); }
-    .doc-list { display: flex; flex-direction: column; gap: 10px; }
-    .doc-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; }
-    .doc-main { display: flex; align-items: center; gap: 12px; }
-    .doc-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
-    .doc-icon.pdf { background: rgba(239,68,68,0.2); color: #ef4444; }
-    .doc-icon.image { background: rgba(31,200,195,0.2); color: var(--accent); }
-    .doc-icon.doc { background: rgba(255,184,0,0.15); color: #FFB800; }
-    .doc-icon.other { background: rgba(255,255,255,0.1); color: var(--text-dim); }
-    .doc-info { display: flex; flex-direction: column; gap: 2px; }
-    .doc-name { font-weight: 500; color: #fff; font-size: 13px; }
-    .doc-meta { font-size: 11px; color: var(--text-dim); }
-    .doc-status { display: flex; align-items: center; gap: 8px; }
-    .check-icon { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; }
-    .check-done { background: rgba(0,200,120,0.2); color: #00c878; }
-    .check-pending { background: rgba(255,184,0,0.15); color: #FFB800; }
-    .check-missing { background: rgba(239,68,68,0.15); color: #ef4444; }
-    .commission-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; margin-bottom: 10px; }
-    .commission-main { display: flex; flex-direction: column; gap: 4px; }
-    .commission-property { font-weight: 500; color: #fff; }
-    .commission-meta { font-size: 11px; color: var(--text-dim); }
-    .commission-amount { font-weight: 600; color: var(--accent); font-size: 14px; }
-    .commission-status { font-size: 11px; padding: 4px 10px; border-radius: 12px; font-weight: 600; }
-    .comm-pendiente { background: rgba(255,184,0,0.15); color: #FFB800; }
-    .comm-liquidada { background: rgba(31,200,195,0.15); color: var(--accent); }
-    .comm-pagada { background: rgba(0,200,120,0.2); color: #00c878; }
-    .empty-state { text-align: center; padding: 40px 20px; color: var(--text-dim); }
-    .empty-state i { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
-    .btn-portal { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 10px; font-size: 13px; font-weight: 500; text-decoration: none; border: none; cursor: pointer; transition: all 0.2s; }
-    .btn-portal-primary { background: linear-gradient(135deg, var(--accent) 0%, #1a9a9a 100%); color: #000; }
-    .btn-portal-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(31,200,195,0.4); }
-    .btn-portal-outline { background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.15); }
-    .btn-portal-outline:hover { background: rgba(255,255,255,0.1); }
-    .alert-banner { background: rgba(255,184,0,0.1); border: 1px solid rgba(255,184,0,0.3); border-radius: 12px; padding: 16px; margin-bottom: 24px; display: flex; align-items: flex-start; gap: 12px; color: #FFB800; }
-    .alert-banner i { font-size: 20px; margin-top: 2px; }
-    .alert-banner h4 { margin: 0 0 8px; color: #fff; }
-    .alert-banner p { margin: 0; font-size: 13px; line-height: 1.5; }
-    .loading { display: flex; align-items: center; justify-content: center; padding: 40px; color: var(--text-dim); }
-    .loading i { animation: spin 1s linear infinite; margin-right: 10px; }
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+    :root {
+      --bg-dark: #05070A;
+      --bg-card: rgba(14,19,26,0.85);
+      --bg-card-hover: rgba(20,27,38,0.95);
+      --border: rgba(255,255,255,0.08);
+      --border-accent: rgba(31,200,195,0.35);
+      --gold: #1FC8C3;
+      --gold-dim: rgba(31,200,195,0.16);
+      --green: #10B981;
+      --green-dim: rgba(16,185,129,0.12);
+      --red: #FF4757;
+      --red-dim: rgba(255,71,87,0.12);
+      --blue: #3B82F6;
+      --blue-dim: rgba(59,130,246,0.12);
+      --orange: #F59E0B;
+      --orange-dim: rgba(245,158,11,0.12);
+      --purple: #a78bfa;
+      --purple-dim: rgba(167,139,250,0.14);
+      --text: #F8FAFC;
+      --text-dim: #CBD5E1;
+      --text-muted: #8E9BAE;
+      --radius: 18px;
+      --radius-sm: 10px;
+      --shadow: 0 16px 40px rgba(0,0,0,0.4);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background:
+        radial-gradient(1200px 600px at 80% -10%, rgba(31,200,195,0.06), transparent 60%),
+        radial-gradient(1000px 500px at 10% 10%, rgba(139,92,246,0.05), transparent 60%),
+        var(--bg-dark);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── HEADER ── */
+    .portal-header {
+      background: linear-gradient(135deg, rgba(5,7,10,0.9), rgba(14,19,26,0.92)), url('assets/images/hero-bg.webp');
+      background-size: cover;
+      background-position: center;
+      border-bottom: 1px solid var(--border-accent);
+      padding: 20px 24px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(20px);
+    }
+    .portal-header-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .portal-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    .portal-logo-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      object-fit: cover;
+      flex-shrink: 0;
+      border: 1px solid var(--border-accent);
+      box-shadow: 0 0 0 1px var(--glow-soft), 0 0 20px rgba(31,200,195,0.25);
+    }
+    .portal-logo-text {
+      font-family: 'Playfair Display', serif;
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--text);
+      letter-spacing: 0.5px;
+    }
+    .portal-user-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+    .portal-user-badge .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--gold-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--gold);
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    /* ── ERROR STATES ── */
+    .portal-error {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 80vh;
+      text-align: center;
+      padding: 40px 24px;
+    }
+    .portal-error-icon {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: var(--red-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .portal-error-icon i { font-size: 32px; color: var(--red); }
+    .portal-error h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 24px;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+    .portal-error p {
+      color: var(--text-dim);
+      font-size: 14px;
+      max-width: 400px;
+    }
+
+    /* ── TABS ── */
+    .tabs-bar {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 16px 24px 0;
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      padding: 12px 20px;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-dim);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active {
+      color: var(--gold);
+      border-bottom-color: var(--gold);
+    }
+    .tab-btn .badge {
+      font-size: 11px;
+      background: var(--gold-dim);
+      color: var(--gold);
+      padding: 1px 7px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+
+    /* ── MAIN ── */
+    .portal-main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── GRID ── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    }
+    .stat-card:hover {
+      border-color: var(--border-accent);
+      transform: translateY(-2px);
+      box-shadow: 0 0 0 1px var(--glow-soft), 0 8px 30px rgba(31,200,195,0.10);
+    }
+    .stat-card .label {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .stat-card .label i { font-size: 12px; }
+    .stat-card .value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .stat-card .value.gold { color: var(--gold); }
+    .stat-card .value.green { color: var(--green); }
+    .stat-card .value.blue { color: var(--blue); }
+    .stat-card .sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* ── SECTION ── */
+    .section-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 18px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-title i {
+      font-size: 16px;
+      color: var(--gold);
+    }
+
+    /* ── NEXT VISIT ── */
+    .next-visit {
+      background: linear-gradient(135deg, rgba(31,200,195,0.10), rgba(31,200,195,0.03));
+      border: 1px solid var(--border-accent);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .next-visit-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: var(--gold-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .next-visit-icon i { font-size: 22px; color: var(--gold); }
+    .next-visit-info h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .next-visit-info p {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+    .next-visit-info .date {
+      font-weight: 600;
+      color: var(--gold);
+    }
+
+    /* ── BROKER ── */
+    .broker-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+      transition: border-color 0.2s;
+    }
+    .broker-card:hover { border-color: var(--border-accent); }
+    .broker-photo {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--border-accent);
+      flex-shrink: 0;
+      background: var(--bg-card-hover);
+    }
+    .broker-photo-placeholder {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: var(--gold-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--gold);
+      font-size: 20px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .broker-info h4 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .broker-info p {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+    .broker-info .broker-role {
+      font-size: 11px;
+      color: var(--gold);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+    .broker-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+    }
+    .broker-actions a {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--bg-card-hover);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-dim);
+      text-decoration: none;
+      transition: all 0.2s;
+      font-size: 14px;
+    }
+    .broker-actions a:hover {
+      background: var(--gold-dim);
+      border-color: var(--border-accent);
+      color: var(--gold);
+    }
+
+    /* ── ACTIVITY FEED ── */
+    .activity-list {
+      list-style: none;
+    }
+    .activity-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .activity-item:last-child { border-bottom: none; }
+    .activity-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--gold);
+      margin-top: 6px;
+      flex-shrink: 0;
+    }
+    .activity-dot.publicacion { background: var(--green); }
+    .activity-dot.ml_publicacion { background: var(--blue); }
+    .activity-dot.ml_sync { background: var(--purple); }
+    .activity-dot.consulta { background: var(--orange); }
+    .activity-dot.visita_agendada { background: var(--gold); }
+    .activity-dot.visita_completada { background: var(--green); }
+    .activity-text {
+      font-size: 13px;
+      color: var(--text);
+      flex: 1;
+    }
+    .activity-time {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* ── LEADS BY SOURCE ── */
+    .source-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .source-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .source-bar .source-name {
+      font-size: 12px;
+      color: var(--text-dim);
+      width: 100px;
+      text-transform: capitalize;
+      flex-shrink: 0;
+    }
+    .source-bar .bar-track {
+      flex: 1;
+      height: 6px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .source-bar .bar-fill {
+      height: 100%;
+      background: var(--gold);
+      border-radius: 3px;
+      transition: width 0.6s ease;
+    }
+    .source-bar .bar-count {
+      font-size: 12px;
+      color: var(--text-dim);
+      width: 30px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* ── WELCOME / RESUMEN ── */
+    .welcome-header {
+      background: linear-gradient(135deg, rgba(31,200,195,0.12), rgba(31,200,195,0.04));
+      border: 1px solid var(--border-accent);
+      border-radius: var(--radius);
+      padding: 22px 24px;
+      margin-bottom: 20px;
+    }
+    .welcome-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .welcome-greet {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .welcome-greet .wg-avatar {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: var(--gold-dim);
+      border: 1px solid var(--border-accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--gold);
+      font-size: 18px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .welcome-greet .wg-text h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      font-weight: 600;
+    }
+    .welcome-greet .wg-text .wg-date {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .welcome-portfolio-summary { margin-top: 4px; }
+
+    /* Reutilizamos .prop-summary para la barra de cartera del inicio */
+    .welcome-portfolio-summary .prop-summary { margin-bottom: 0; }
+
+    /* ── QUICK ACTIONS ── */
+    .quick-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 2px;
+    }
+    .quick-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 16px;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .quick-action i { font-size: 13px; color: var(--gold); }
+    .quick-action:hover { border-color: var(--border-accent); background: var(--bg-card-hover); }
+    .quick-action.wa i { color: var(--green); }
+    .quick-action.primary {
+      background: var(--gold-dim);
+      border-color: var(--border-accent);
+      color: var(--gold);
+    }
+    .quick-action.primary:hover { background: var(--gold-dim); }
+
+    /* ── EXCLUSIVIDAD DESTACADA EN INICIO ── */
+    .excl-inicio-card {
+      background: linear-gradient(135deg, rgba(139,92,246,0.12), rgba(31,200,195,0.03));
+      border: 1px solid var(--border-accent);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .excl-inicio-card.vencida { background: linear-gradient(135deg, rgba(255,71,87,0.10), rgba(31,200,195,0.03)); border-color: rgba(255,71,87,0.3); }
+    .excl-inicio-card .ei-icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 12px;
+      background: var(--gold-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--gold);
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .excl-inicio-card.vencida .ei-icon { background: var(--red-dim); color: var(--red); }
+    .excl-inicio-card .ei-body { flex: 1; min-width: 200px; }
+    .excl-inicio-card .ei-body h4 {
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .excl-inicio-card .ei-body p {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 3px;
+    }
+    .excl-inicio-card .ei-cta {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--gold);
+      border: 1px solid var(--border-accent);
+      border-radius: 8px;
+      padding: 8px 14px;
+      background: var(--gold-dim);
+      text-decoration: none;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .excl-inicio-card .ei-cta:hover { background: var(--gold-dim); border-color: var(--gold); }
+    .excl-inicio-card.vencida .ei-cta { color: var(--red); background: var(--red-dim); }
+    .excl-inicio-card.vencida .ei-cta:hover { border-color: var(--red); }
+
+    /* ── EMPTY STATES (inicio) ── */
+    .inicio-empty {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg-card);
+      border: 1px dashed var(--border-accent);
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+      color: var(--text-dim);
+      font-size: 13px;
+      backdrop-filter: blur(12px);
+    }
+    .inicio-empty i { font-size: 16px; color: var(--text-muted); }
+    .inicio-empty.centered { justify-content: center; }
+
+    /* ── PROPERTY CARD ── */
+    .prop-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 16px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    }
+    .prop-card:hover {
+      border-color: var(--border-accent);
+      box-shadow: 0 0 0 1px var(--glow-soft), 0 10px 34px rgba(31,200,195,0.10);
+    }
+    .prop-card-header {
+      display: flex;
+      align-items: stretch;
+      cursor: pointer;
+      user-select: none;
+    }
+    .prop-card-thumb {
+      width: 120px;
+      height: 100px;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: var(--bg-card-hover);
+    }
+    .prop-card-body {
+      flex: 1;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .prop-card-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .prop-card-meta {
+      font-size: 12px;
+      color: var(--text-dim);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      align-items: center;
+    }
+    .prop-card-meta i { font-size: 11px; margin-right: 2px; }
+    .prop-card-badges {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+    .prop-badge {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .prop-badge.oportunidad { background: var(--green-dim); color: var(--green); }
+    .prop-badge.retasada { background: var(--orange-dim); color: var(--orange); }
+    .prop-badge.destacada { background: var(--gold-dim); color: var(--gold); }
+    .prop-badge.ml { background: var(--blue-dim); color: var(--blue); }
+    .prop-badge-exclusive { background: var(--gold-dim); color: var(--gold); }
+    .prop-card-expand {
+      width: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      transition: transform 0.2s;
+    }
+    .prop-card.expanded .prop-card-expand { transform: rotate(180deg); }
+    .prop-card-detail {
+      display: none;
+      padding: 0 16px 16px;
+      border-top: 1px solid var(--border);
+    }
+    .prop-card.expanded .prop-card-detail { display: block; }
+    .prop-detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+      padding-top: 14px;
+    }
+    .prop-detail-item .label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+    .prop-detail-item .val {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .prop-gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .prop-gallery img {
+      width: 100%;
+      height: 80px;
+      object-fit: cover;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .prop-gallery img:hover { opacity: 0.85; }
+    .prop-stats-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    .prop-stat {
+      font-size: 12px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .prop-stat i { font-size: 11px; }
+    .prop-stat .count { font-weight: 600; color: var(--text); }
+
+    /* Timeline */
+    .prop-timeline {
+      margin-top: 12px;
+      border-left: 2px solid var(--border);
+      padding-left: 14px;
+    }
+    .prop-timeline-item {
+      position: relative;
+      padding-bottom: 10px;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+    .prop-timeline-item::before {
+      content: '';
+      position: absolute;
+      left: -18px;
+      top: 5px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--gold);
+    }
+    .prop-timeline-item .tl-date {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 2px;
+    }
+
+    /* ── EXCLUSIVIDAD ── */
+    .excl-banner {
+      background: linear-gradient(135deg, rgba(31,200,195,0.08), rgba(31,200,195,0.02));
+      border: 1px solid rgba(31,200,195,0.2);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .excl-banner h3 {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .excl-banner h3 i { color: var(--gold); }
+    .excl-banner p { font-size: 13px; color: var(--text-dim); }
+    .excl-countdown {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .excl-countdown-item {
+      text-align: center;
+      background: rgba(31,200,195,0.10);
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+      min-width: 72px;
+    }
+    .excl-countdown-item .num {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--gold);
+      line-height: 1;
+    }
+    .excl-countdown-item .unit {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 4px;
+    }
+    .excl-progress-wrap {
+      margin-top: 20px;
+    }
+    .excl-progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+    }
+    .excl-progress-track {
+      width: 100%;
+      height: 8px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .excl-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #159A95, var(--gold));
+      border-radius: 4px;
+      transition: width 0.8s ease;
+    }
+    .excl-benefits {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 24px;
+    }
+    .excl-benefit {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    }
+    .excl-benefit i {
+      font-size: 18px;
+      color: var(--gold);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .excl-benefit h4 { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+    .excl-benefit p { font-size: 12px; color: var(--text-dim); }
+    .excl-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 24px;
+    }
+    .excl-stats-grid .stat-card { text-align: center; }
+    .whatsapp-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 20px;
+      padding: 12px 24px;
+      background: #25d366;
+      color: #fff;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+    .whatsapp-cta:hover { background: #1da851; }
+
+    /* ── EXCL ESTADOS ── */
+    .excl-state-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--font-body);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
+    .excl-state-badge.activa { background: var(--green-dim); color: var(--green); }
+    .excl-state-badge.por-vencer { background: var(--orange-dim); color: var(--orange); }
+    .excl-state-badge.vencida { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .excl-banner.excl-state-por-vencer,
+    .excl-banner.excl-state-vencida {
+      background: linear-gradient(135deg, rgba(239,68,68,0.08), rgba(239,68,68,0.02));
+      border-color: rgba(239,68,68,0.25);
+    }
+    .excl-countdown.excl-warn .excl-countdown-item {
+      background: rgba(239,68,68,0.1);
+    }
+    .excl-countdown.excl-warn .num { color: #ef4444; }
+
+    /* ── EXCL PROGRESS FASE ── */
+    .excl-progress-fill.phase-good { background: linear-gradient(90deg, var(--green), var(--gold)); }
+    .excl-progress-fill.phase-warn { background: linear-gradient(90deg, var(--orange), var(--gold)); }
+    .excl-progress-fill.phase-danger { background: linear-gradient(90deg, #ef4444, var(--orange)); }
+    .excl-progress-days {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      text-align: right;
+    }
+
+    /* ── EXCL CONTRATO ── */
+    .excl-contract {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px dashed var(--border);
+    }
+    .excl-contract-bits {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .excl-contract-pill {
+      font-size: 12px;
+      color: var(--text);
+      background: rgba(31,200,195,0.10);
+      border: 1px solid rgba(31,200,195,0.25);
+      border-radius: 6px;
+      padding: 5px 12px;
+    }
+    .excl-contract-notes {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--text-dim);
+      background: var(--bg-card);
+      border-left: 3px solid var(--gold);
+      border-radius: 4px;
+      padding: 10px 14px;
+      line-height: 1.5;
+    }
+
+    /* ── EXCL COMPARATIVA ── */
+    .excl-deltas {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .excl-delta {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    }
+    .excl-delta-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+    .excl-delta-top i { color: var(--gold); font-size: 13px; }
+    .excl-delta-num {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text);
+      margin: 8px 0 4px;
+    }
+    .excl-delta-foot { font-size: 12px; font-weight: 600; }
+    .excl-delta-foot.up { color: var(--green); }
+    .excl-delta-foot.down { color: #ef4444; }
+    .excl-delta-foot.flat { color: var(--text-muted); }
+    .excl-delta-prev {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* ── EXCL SHARE (portfolio) ── */
+    .excl-share {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .excl-share-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    }
+    .excl-share-num {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--gold);
+    }
+    .excl-share-label { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+
+    /* ── EXCL TIMELINE ── */
+    .excl-timeline {
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .excl-timeline-item {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .excl-timeline-item > i {
+      color: var(--gold);
+      font-size: 13px;
+      margin-top: 3px;
+      width: 18px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .excl-timeline-body {
+      flex: 1;
+      border-left: 2px solid var(--border);
+      padding-left: 14px;
+      padding-bottom: 2px;
+    }
+    .excl-timeline-text { font-size: 13px; color: var(--text); line-height: 1.4; }
+    .excl-timeline-date { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+    /* ── RENOVACIÓN ── */
+    .excl-renew-cta { background: #b45309; }
+    .excl-renew-cta:hover { background: #92400e; }
+    .excl-renew-note {
+      font-size: 13px;
+      color: var(--orange);
+      background: var(--orange-dim);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      margin-top: 20px;
+    }
+
+    /* ── PROPIEDADES: RESUMEN ── */
+    .prop-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .prop-summary-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      text-align: center;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+      transition: border-color 0.2s;
+    }
+    .prop-summary-item:hover { border-color: var(--border-accent); }
+    .prop-summary-item i {
+      font-size: 14px;
+      color: var(--gold);
+      margin-bottom: 6px;
+    }
+    .prop-summary-item .ps-num {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.1;
+    }
+    .prop-summary-item .ps-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    /* ── FILTROS ── */
+    .prop-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .prop-filter {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-dim);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 7px 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .prop-filter i { font-size: 11px; }
+    .prop-filter:hover { border-color: var(--border-accent); color: var(--text); }
+    .prop-filter.active {
+      background: var(--gold-dim);
+      border-color: var(--gold);
+      color: var(--gold);
+    }
+
+    /* ── CABECERA TARJETA ── */
+    .prop-type-tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      background: var(--bg-card-hover);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 7px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .prop-card-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 7px;
+    }
+    .prop-status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 5px;
+    }
+    .prop-status-badge.live { background: var(--green-dim); color: var(--green); }
+    .prop-status-badge.draft { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+    .prop-status-badge.sold { background: var(--blue-dim); color: var(--blue); }
+    .prop-next-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--gold);
+      background: var(--gold-dim);
+      border-radius: 5px;
+      padding: 3px 9px;
+    }
+    .prop-price {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 8px;
+      font-weight: 700;
+      color: var(--gold);
+    }
+    .prop-price-sec {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    /* ── DETALLE ── */
+    .prop-desc {
+      margin-top: 14px;
+      display: flex;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-dim);
+      line-height: 1.55;
+    }
+    .prop-desc i { color: var(--gold); margin-top: 3px; flex-shrink: 0; }
+    .prop-video {
+      margin-top: 14px;
+    }
+    .prop-video a {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--gold);
+      text-decoration: none;
+    }
+    .prop-video a:hover { text-decoration: underline; }
+    .prop-stat-sub {
+      display: block;
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 1px;
+      font-weight: 400;
+    }
+
+    /* Timeline nuevo */
+    .prop-timeline-item {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+    .prop-timeline-item > i {
+      color: var(--gold);
+      font-size: 12px;
+      margin-top: 3px;
+      width: 16px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .prop-timeline-body {
+      display: flex;
+      flex-direction: column;
+      font-size: 13px;
+      color: var(--text);
+    }
+    .prop-timeline-body .tl-date {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Galería ampliada */
+    .prop-gallery { margin-top: 14px; }
+    .prop-gallery-more {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-dim);
+      background: var(--bg-card-hover);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .prop-gallery-more:hover { background: var(--border); color: var(--text); }
+    .prop-lightbox-data { display: none; }
+
+    /* ── LIGHTBOX ── */
+    .lightbox-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(0,0,0,0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .lightbox-content {
+      position: relative;
+      max-width: 90vw;
+      max-height: 90vh;
+    }
+    .lightbox-img {
+      max-width: 90vw;
+      max-height: 88vh;
+      border-radius: 8px;
+      object-fit: contain;
+    }
+    .lightbox-close {
+      position: absolute;
+      top: -40px;
+      right: 0;
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 26px;
+      cursor: pointer;
+    }
+    .lightbox-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: #fff;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 18px;
+    }
+    .lightbox-nav.prev { left: -56px; }
+    .lightbox-nav.next { right: -56px; }
+    .lightbox-count {
+      text-align: center;
+      color: #fff;
+      font-size: 13px;
+      margin-top: 10px;
+    }
+
+    /* ── NO DATA ── */
+    .empty-msg {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-dim);
+    }
+    .empty-msg i { font-size: 40px; margin-bottom: 12px; color: var(--text-muted); }
+    .empty-msg h3 { font-size: 16px; color: var(--text); margin-bottom: 4px; }
+    .empty-msg p { font-size: 13px; }
+
+    /* ── LOADING ── */
+    .portal-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 60vh;
+      gap: 16px;
+    }
+    .activity-card {
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    }
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .portal-loading p {
+      font-size: 14px;
+      color: var(--text-dim);
+    }
+
+    /* ── RESPONSIVE ── */
     @media (max-width: 640px) {
-      .portal-header { flex-direction: column; align-items: flex-start; }
-      .portal-tabs { overflow-x: auto; padding-bottom: 8px; }
-      .portal-tab { white-space: nowrap; }
+      .tabs-bar { padding: 12px 16px 0; overflow-x: auto; }
+      .tab-btn { padding: 10px 14px; font-size: 13px; white-space: nowrap; }
+      .portal-main { padding: 16px; }
+      .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+      .stat-card { padding: 12px; }
+      .stat-card .value { font-size: 20px; }
+      .prop-card-thumb { width: 90px; height: 80px; }
+      .next-visit { flex-direction: column; text-align: center; }
+      .broker-card { flex-direction: column; text-align: center; }
+      .broker-actions { margin-left: 0; }
+      .excl-countdown { justify-content: center; }
+      .excl-stats-grid { grid-template-columns: 1fr; }
+      .excl-deltas { grid-template-columns: 1fr; }
+      .excl-share { grid-template-columns: 1fr; }
+      .excl-state-badge { margin-left: 0; margin-top: 8px; }
+      .portal-user-badge span { display: none; }
+      .welcome-header { padding: 18px 16px; }
+      .welcome-greet .wg-text h2 { font-size: 18px; }
+      .welcome-top { flex-direction: column; align-items: flex-start; }
+      .quick-action { width: 100%; justify-content: center; }
+      .excl-inicio-card { flex-direction: column; align-items: flex-start; }
+      .excl-inicio-card .ei-cta { align-self: stretch; text-align: center; }
     }
   </style>
 </head>
 <body>
-  <div class="portal-page">
-    <div class="portal-container">
-      <!-- Header -->
-      <header class="portal-header">
-        <div class="portal-brand">
-          <img src="assets/img/logo-bh.png" alt="BIENENHAUS" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-          <i class="fas fa-building" style="display:none; font-size: 32px; color: var(--accent);"></i>
-          <h1>Portal Propietario</h1>
-        </div>
-        <div class="portal-user" id="portalUser">
-          <div class="avatar" id="userAvatar">P</div>
-          <div>
-            <div id="userName" style="font-weight: 500; color: #fff;">Cargando...</div>
-            <div id="userDni" style="font-size: 12px;"></div>
-          </div>
-        </div>
-      </header>
+  <header class="portal-header">
+    <div class="portal-header-inner">
+      <a href="/" class="portal-logo">
+        <img src="assets/images/pwa-512x512.png" alt="BIENENHAUS" class="portal-logo-icon">
+        <span class="portal-logo-text">BIENENHAUS</span>
+      </a>
+      <div class="portal-user-badge" id="userBadge" style="display:none;">
+        <div class="avatar" id="userAvatar"></div>
+        <span id="userName"></span>
+      </div>
+    </div>
+  </header>
 
-      <!-- Alert banner for expiring exclusivity -->
-      <div class="alert-banner" id="alertBanner" style="display: none;">
-        <i class="fas fa-exclamation-triangle"></i>
-        <div>
-          <h4 id="alertTitle">Exclusividad por vencer</h4>
-          <p id="alertText">Su contrato de exclusividad vence en X días.</p>
+  <!-- LOADING -->
+  <div class="portal-loading" id="loadingState">
+    <div class="spinner"></div>
+    <p>Cargando tu portal...</p>
+  </div>
+
+  <!-- ERROR -->
+  <div class="portal-error" id="errorState" style="display:none;">
+    <div class="portal-error-icon"><i class="fas fa-exclamation-triangle"></i></div>
+    <h2 id="errorTitle">Link inválido</h2>
+    <p id="errorMsg">El enlace que utilizaste no es válido o expiró. Pedí a tu asesor un nuevo link de acceso.</p>
+  </div>
+
+  <!-- CONTENT -->
+  <div id="contentState" style="display:none;">
+    <nav class="tabs-bar">
+      <button class="tab-btn active" data-tab="inicio"><i class="fas fa-home"></i> Inicio</button>
+      <button class="tab-btn" data-tab="propiedades"><i class="fas fa-building"></i> Mis Propiedades <span class="badge" id="propCount"></span></button>
+      <button class="tab-btn" data-tab="exclusividad"><i class="fas fa-handshake"></i> Exclusividad</button>
+    </nav>
+
+    <main class="portal-main">
+      <!-- ─── INICIO ─── -->
+      <div class="tab-panel active" id="panel-inicio">
+        <div id="welcomeSlot"></div>
+
+        <div id="quickActionsSlot" style="margin-bottom:24px;"></div>
+
+        <div id="nextVisitSlot"></div>
+        <div id="brokerSlot"></div>
+        <div id="exclInicioSlot"></div>
+
+        <div class="section-title"><i class="fas fa-chart-pie"></i> Resumen general</div>
+        <div class="stat-grid" id="statGrid"></div>
+
+        <div id="sourcesSlot" style="margin-bottom:24px;"></div>
+
+        <div class="section-title"><i class="fas fa-clock"></i> Novedades recientes</div>
+        <div class="activity-card" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;">
+          <ul class="activity-list" id="activityList"></ul>
         </div>
       </div>
 
-      <!-- Tabs -->
-      <nav class="portal-tabs" id="portalTabs" role="tablist">
-        <button class="portal-tab is-active" data-tab="dashboard" role="tab" aria-selected="true">
-          <i class="fas fa-home"></i> Inicio
-        </button>
-        <button class="portal-tab" data-tab="properties" role="tab" aria-selected="false">
-          <i class="fas fa-building"></i> Mis Propiedades
-        </button>
-        <button class="portal-tab" data-tab="commissions" role="tab" aria-selected="false">
-          <i class="fas fa-dollar-sign"></i> Comisiones
-        </button>
-        <button class="portal-tab" data-tab="documents" role="tab" aria-selected="false">
-          <i class="fas fa-folder"></i> Documentos
-        </button>
-        <button class="portal-tab" data-tab="exclusivity" role="tab" aria-selected="false">
-          <i class="fas fa-shield-alt"></i> Exclusividad
-        </button>
-      </nav>
+      <!-- ─── PROPIEDADES ─── -->
+      <div class="tab-panel" id="panel-propiedades">
+        <div id="propList"></div>
+      </div>
 
-      <!-- Dashboard Panel -->
-      <section class="portal-panel is-active" id="panel-dashboard" role="tabpanel">
-        <div class="portal-card">
-          <h3><i class="fas fa-user"></i> Datos del Titular</h3>
-          <div class="info-grid" id="ownerInfoGrid"></div>
-        </div>
-        <div class="portal-card">
-          <h3><i class="fas fa-chart-line"></i> Resumen</h3>
-          <div class="info-grid" id="dashboardSummary">
-            <div class="info-item"><span class="info-label">Propiedades Publicadas</span><span class="info-value" id="sumProps">—</span></div>
-            <div class="info-item"><span class="info-label">En Exclusividad</span><span class="info-value" id="sumExcl">—</span></div>
-            <div class="info-item"><span class="info-label">Comisiones Pendientes</span><span class="info-value" id="sumComm">—</span></div>
-            <div class="info-item"><span class="info-label">Documentos Completos</span><span class="info-value" id="sumDocs">—</span></div>
-          </div>
-        </div>
-        <div class="portal-card">
-          <h3><i class="fas fa-clock"></i> Próximos Vencimientos</h3>
-          <div id="upcomingExpiry" class="doc-list"></div>
-        </div>
-      </section>
-
-      <!-- Properties Panel -->
-      <section class="portal-panel" id="panel-properties" role="tabpanel">
-        <div class="portal-card">
-          <h3><i class="fas fa-building"></i> Mis Propiedades</h3>
-          <div class="table-responsive">
-            <table class="portal-table" id="propsTable">
-              <thead>
-                <tr>
-                  <th>Código</th>
-                  <th>Propiedad</th>
-                  <th>Zona</th>
-                  <th>Tipo</th>
-                  <th>Estado</th>
-                  <th>Precio</th>
-                  <th>Publicada</th>
-                </tr>
-              </thead>
-              <tbody id="propsBody"></tbody>
-            </table>
-          </div>
-          <div class="empty-state" id="propsEmpty" style="display: none;">
-            <i class="fas fa-home"></i>
-            <p>No tiene propiedades vinculadas</p>
-          </div>
-        </div>
-      </section>
-
-      <!-- Commissions Panel -->
-      <section class="portal-panel" id="panel-commissions" role="tabpanel">
-        <div class="portal-card">
-          <h3><i class="fas fa-dollar-sign"></i> Mis Comisiones</h3>
-          <div id="commissionsList"></div>
-          <div class="empty-state" id="commEmpty" style="display: none;">
-            <i class="fas fa-dollar-sign"></i>
-            <p>No hay comisiones registradas</p>
-          </div>
-        </div>
-        <div class="portal-card">
-          <h3><i class="fas fa-file-invoice-dollar"></i> Liquidaciones</h3>
-          <div class="table-responsive">
-            <table class="portal-table" id="liquidationsTable">
-              <thead>
-                <tr>
-                  <th>Período</th>
-                  <th>Bruto (USD)</th>
-                  <th>IIBB</th>
-                  <th>Ganancias</th>
-                  <th>Neto (ARS)</th>
-                  <th>Estado</th>
-                </tr>
-              </thead>
-              <tbody id="liquidationsBody"></tbody>
-            </table>
-          </div>
-          <div class="empty-state" id="liqEmpty" style="display: none;">
-            <i class="fas fa-file-invoice-dollar"></i>
-            <p>No hay liquidaciones generadas</p>
-          </div>
-        </div>
-      </section>
-
-      <!-- Documents Panel -->
-      <section class="portal-panel" id="panel-documents" role="tabpanel">
-        <div class="portal-card">
-          <h3><i class="fas fa-folder"></i> Mis Documentos</h3>
-          <div class="doc-list" id="docsList"></div>
-          <div class="empty-state" id="docsEmpty" style="display: none;">
-            <i class="fas fa-folder-open"></i>
-            <p>No hay documentos cargados</p>
-          </div>
-        </div>
-        <div class="portal-card">
-          <h3><i class="fas fa-check-circle"></i> Checklist por Operación</h3>
-          <div id="checklistContainer"></div>
-        </div>
-      </section>
-
-      <!-- Exclusivity Panel -->
-      <section class="portal-panel" id="panel-exclusivity" role="tabpanel">
-        <div class="portal-card">
-          <h3><i class="fas fa-shield-alt"></i> Contrato de Exclusividad</h3>
-          <div class="info-grid" id="exclInfo"></div>
-          <div id="exclAlert" class="alert-banner" style="display: none; margin-top: 16px;"></div>
-        </div>
-        <div class="portal-card">
-          <h3><i class="fas fa-file-contract"></i> Detalles del Contrato</h3>
-          <div class="info-grid" id="contractDetails"></div>
-        </div>
-      </section>
-    </div>
+      <!-- ─── EXCLUSIVIDAD ─── -->
+      <div class="tab-panel" id="panel-exclusividad">
+        <div id="exclContent"></div>
+      </div>
+    </main>
   </div>
 
+  <script src="assets/js/config.js?v=5"></script>
+  <script src="assets/js/utils.js?v=1"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="assets/js/config.js?v=1"></script>
-  <script nonce="bienenhaus2024">
-    (async function() {
-      const token = new URLSearchParams(window.location.search).get('token');
-      if (!token) {
-        document.body.innerHTML = `
-          <div class="portal-page" style="display:flex; align-items:center; justify-content:center;">
-            <div style="text-align:center; padding:40px; background:rgba(255,255,255,0.03); border-radius:20px; border:1px solid rgba(255,255,255,0.08); max-width:480px;">
-              <i class="fas fa-key" style="font-size:48px; color:#ef4444; margin-bottom:16px;"></i>
-              <h2 style="font-family:'Playfair Display',serif; color:#fff; margin-bottom:12px;">Token Requerido</h2>
-              <p style="color:var(--text-dim); margin-bottom:24px;">Acceda al portal usando el enlace mágico enviado por su broker.</p>
-              <p style="font-size:12px; color:var(--text-dim);">Formato: <code>portal-propietario.html?token=UUID</code></p>
-            </div>
-          </div>
-        `;
+  <script nonce="bh2024">
+  (function() {
+    'use strict';
+
+    /* ── Helpers ── */
+    var esc = (window.BHUtils && BHUtils.esc) || function(s){ return s == null ? '' : String(s); };
+    var safeUrl = (window.BHUtils && BHUtils.safeUrl) || function(s){ return s || ''; };
+    var safeImageUrl = (window.BHUtils && BHUtils.safeImageUrl) || function(s){ return s || ''; };
+
+    var FMT_USD = new Intl.NumberFormat('es-AR', { style:'currency', currency:'USD', maximumFractionDigits:0 });
+    var FMT_NUM = new Intl.NumberFormat('es-AR');
+    var FMT_DATE = new Intl.DateTimeFormat('es-AR', { day:'numeric', month:'short', year:'numeric' });
+    var FMT_DATETIME = new Intl.DateTimeFormat('es-AR', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+
+    function fmtUSD(v) { return v != null ? FMT_USD.format(v) : '-'; }
+    function fmtNum(v) { return v != null ? FMT_NUM.format(v) : '0'; }
+    function fmtDate(v) { return v ? FMT_DATE.format(new Date(v)) : ''; }
+    function fmtDateTime(v) { return v ? FMT_DATETIME.format(new Date(v)) : ''; }
+    function fmtDateShort(v) {
+      if (!v) return '';
+      var d = new Date(v);
+      var days = ['dom','lun','mar','mié','jue','vie','sáb'];
+      return days[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth()+1) + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    }
+    function ago(v) {
+      if (!v) return '';
+      var ms = Date.now() - new Date(v).getTime();
+      if (ms < 0) return 'hace un momento';
+      var mins = Math.floor(ms/60000);
+      if (mins < 60) return mins + 'min';
+      var hrs = Math.floor(mins/60);
+      if (hrs < 24) return hrs + 'h';
+      var ds = Math.floor(hrs/24);
+      return ds + 'd';
+    }
+
+    function $(id) { return document.getElementById(id); }
+
+    /* ── Token ── */
+    var params = new URLSearchParams(location.search);
+    var token = params.get('token');
+    if (!token) { showError('Sin acceso', 'No se encontró el token de acceso. Pedí a tu asesor un link válido.'); return; }
+
+    /* ── Init Supabase ── */
+    if (!window.BH_CONFIG) { showError('Error de configuración', 'No se pudo inicializar el sistema.'); return; }
+    var supabase = window.supabase.createClient(BH_CONFIG.SUPABASE_URL, BH_CONFIG.SUPABASE_ANON_KEY);
+
+    /* ── Load ── */
+    loadPortal();
+
+    async function loadPortal() {
+      try {
+        var result = await supabase.rpc('portal_get_portal_data', { p_token: token });
+        if (result.error) { showError('Error', 'No se pudieron cargar los datos. Intentá de nuevo más tarde.'); return; }
+        var data = result.data;
+        if (!data) { showError('Link inválido o expirado', 'El enlace que utilizaste ya no es válido o expiró. Pedí un nuevo link a tu asesor.'); return; }
+        renderAll(data);
+      } catch(e) { showError('Error inesperado', 'Ocurrió un error al cargar el portal.'); }
+    }
+
+    /* ── Show states ── */
+    function showError(title, msg) {
+      $('loadingState').style.display = 'none';
+      $('errorTitle').textContent = title;
+      $('errorMsg').textContent = msg;
+      $('errorState').style.display = '';
+    }
+
+    function showContent() {
+      $('loadingState').style.display = 'none';
+      $('contentState').style.display = '';
+    }
+
+    /* ── RENDER ALL ── */
+    function renderAll(d) {
+      var owner = d.owner || {};
+      var props = d.properties || [];
+
+      /* Header badge */
+      var name = owner.full_name || 'Propietario';
+      $('userName').textContent = name;
+      $('userAvatar').textContent = name.charAt(0).toUpperCase();
+      $('userBadge').style.display = '';
+
+      /* Tab badges */
+      $('propCount').textContent = props.length || '';
+
+      renderInicio(d, owner, props);
+      renderPropiedades(d, props);
+      renderExclusividad(d, owner);
+      setupTabs();
+      showContent();
+    }
+
+    /* ── TABS ── */
+    function setupTabs() {
+      var btns = document.querySelectorAll('.tab-btn');
+      btns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          btns.forEach(function(b){ b.classList.remove('active'); });
+          btn.classList.add('active');
+          document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
+          var panel = $('panel-' + btn.dataset.tab);
+          if (panel) panel.classList.add('active');
+        });
+      });
+    }
+
+    /* ── INICIO ── */
+    function fmtDateLong(v) {
+      if (!v) return '';
+      var d = new Date(v);
+      var mes = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+      var dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+      return dias[d.getDay()] + ', ' + d.getDate() + ' de ' + mes[d.getMonth()] + ' de ' + d.getFullYear();
+    }
+    function renderInicio(d, owner, props) {
+      var visits = d.visits || {};
+      var leadsSrc = d.leads_by_source || [];
+
+      /* ── A1: Saludo y bienvenida personalizada ── */
+      var name = owner.full_name || 'Propietario';
+      var firstName = name.split(' ')[0] || name;
+      var waBroker = (d.broker && d.broker.phone) ? 'https://wa.me/549' + esc(d.broker.phone.replace(/\D/g,'')) + '?text=' + encodeURIComponent('Hola ' + (d.broker.full_name || '') + ', te escribo desde mi portal de propietario en BIENENHAUS.') : '';
+
+      /* ── A2: Resumen de cartera ── */
+      var nVenta = props.filter(function(p){ return p.status === 'venta'; }).length;
+      var nAlquiler = props.filter(function(p){ return p.status === 'alquiler'; }).length;
+      var totalCarteraLeads = props.reduce(function(a,p){ return a + (p.leads_total || 0); }, 0);
+      var totalCarteraVisitas = props.reduce(function(a,p){ return a + (p.visits_total || 0); }, 0);
+      var totalCarteraProx = props.reduce(function(a,p){ return a + (p.visits_next || 0); }, 0);
+      var summaryCards = [
+        { icon:'fas fa-home', label:'Propiedades', val: props.length },
+        { icon:'fas fa-tag', label:'En venta', val: nVenta },
+        { icon:'fas fa-key', label:'En alquiler', val: nAlquiler },
+        { icon:'fas fa-users', label:'Consultas', val: totalCarteraLeads },
+        { icon:'fas fa-calendar-check', label:'Visitas', val: totalCarteraVisitas },
+        { icon:'fas fa-arrow-right', label:'Próximas', val: totalCarteraProx }
+      ];
+      $('welcomeSlot').innerHTML =
+        '<div class="welcome-header">' +
+          '<div class="welcome-top">' +
+            '<div class="welcome-greet">' +
+              '<div class="wg-avatar">' + esc(name.charAt(0).toUpperCase()) + '</div>' +
+              '<div class="wg-text">' +
+                '<h2>Hola, ' + esc(firstName) + ' 👋</h2>' +
+                '<div class="wg-date">' + esc(fmtDateLong(new Date())) + '</div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="welcome-portfolio-summary">' +
+            '<div class="prop-summary">' +
+              summaryCards.map(function(c){
+                return '<div class="prop-summary-item"><i class="' + c.icon + '"></i><div class="ps-num">' + fmtNum(c.val) + '</div><div class="ps-label">' + esc(c.label) + '</div></div>';
+              }).join('') +
+            '</div>' +
+          '</div>' +
+        '</div>';
+
+      /* ── G1: Acciones rápidas ── */
+      var exclStartRaw = owner.exclusive_start || null;
+      var exclEndRaw = owner.exclusive_end || null;
+      var exclStart = exclStartRaw ? new Date(exclStartRaw) : null;
+      var exclEnd = exclEndRaw ? new Date(exclEndRaw) : null;
+      var exclStateInicio = exclState(exclStart, exclEnd);
+      var exclLabelInicio = exclStateLabel(exclStateInicio);
+      var quickActions = [];
+      if (waBroker) quickActions.push('<a class="quick-action wa" href="' + waBroker + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Contactar a mi asesor</a>');
+      if (exclStateInicio.key === 'por_vencer' || exclStateInicio.key === 'vencida') {
+        quickActions.push('<a class="quick-action primary" href="#exclusividad" data-go-tab="exclusividad"><i class="fas fa-handshake"></i> ' + (exclStateInicio.key === 'por_vencer' ? 'Renovar exclusividad' : 'Reactivar exclusividad') + '</a>');
+      }
+      $('quickActionsSlot').innerHTML = quickActions.length
+        ? '<div class="quick-actions">' + quickActions.join('') + '</div>'
+        : '';
+
+      /* ── B1: Próxima visita (siempre visible) ── */
+      if (d.next_visit) {
+        var nv = d.next_visit;
+        $('nextVisitSlot').innerHTML =
+          '<div class="next-visit">' +
+            '<div class="next-visit-icon"><i class="fas fa-calendar-check"></i></div>' +
+            '<div class="next-visit-info">' +
+              '<h3>Próxima visita programada</h3>' +
+              '<p>' +
+                '<span class="date">' + fmtDateShort(nv.visit_date) + '</span> &middot; ' +
+                esc(nv.client_name || 'Cliente') + ' &middot; ' +
+                esc(nv.property_code || '') + ' ' + esc(nv.property_title || '') +
+              '</p>' +
+            '</div>' +
+          '</div>';
+      } else {
+        $('nextVisitSlot').innerHTML =
+          '<div class="inicio-empty">' +
+            '<i class="fas fa-calendar-check"></i>' +
+            '<span>No tenés visitas programadas por ahora. Cuando agendes una, la vas a ver acá.</span>' +
+          '</div>';
+      }
+
+      /* ── C1: Broker / asesor asignado ── */
+      if (d.broker) {
+        var b = d.broker;
+        var photoHtml = b.photo_url
+          ? '<img class="broker-photo" src="' + esc(safeImageUrl(b.photo_url)) + '" alt="' + esc(b.full_name) + '">'
+          : '<div class="broker-photo-placeholder">' + esc((b.full_name || '?').charAt(0)) + '</div>';
+        var actionsHtml = '<div class="broker-actions">';
+        if (b.phone) actionsHtml += '<a href="https://wa.me/' + esc(b.phone.replace(/\D/g,'')) + '" target="_blank" rel="noopener" title="WhatsApp" style="background:var(--green-dim);color:var(--green);border-color:rgba(52,211,153,0.2);"><i class="fab fa-whatsapp"></i></a>';
+        if (b.phone) actionsHtml += '<a href="tel:' + esc(b.phone) + '" title="Llamar"><i class="fas fa-phone"></i></a>';
+        if (b.email) actionsHtml += '<a href="mailto:' + esc(b.email) + '" title="Email"><i class="fas fa-envelope"></i></a>';
+        actionsHtml += '</div>';
+        $('brokerSlot').innerHTML =
+          '<div class="broker-card">' +
+            photoHtml +
+            '<div class="broker-info">' +
+              '<div class="broker-role">Tu asesor asignado</div>' +
+              '<h4>' + esc(b.full_name) + '</h4>' +
+              '<p>' + esc(b.email || '') + (b.phone ? ' · ' + esc(b.phone) : '') + '</p>' +
+            '</div>' +
+            actionsHtml +
+          '</div>';
+      }
+
+      /* ── D2: Card de exclusividad en inicio ── */
+      var exclInicioHtml = '';
+      if (exclStateInicio.key === 'activa' || exclStateInicio.key === 'por_vencer' || exclStateInicio.key === 'vencida') {
+        var eiIcon = exclStateInicio.key === 'vencida' ? 'fa-times-circle' : 'fa-handshake';
+        var eiTitle = 'Tu exclusividad está ' + (exclStateInicio.key === 'activa' ? 'activa' : (exclStateInicio.key === 'por_vencer' ? 'por vencer' : 'vencida'));
+        var eiText = '';
+        if (exclEnd) {
+          var eiDias = Math.max(0, Math.ceil((exclEnd - new Date()) / (24*60*60*1000)));
+          if (exclStateInicio.key === 'activa') eiText = 'Vigente hasta el ' + fmtDate(exclEnd) + (eiDias <= 30 ? ' (' + eiDias + ' días restantes).' : '.');
+          else if (exclStateInicio.key === 'por_vencer') eiText = 'Vence el ' + fmtDate(exclEnd) + ' (' + eiDias + ' días restantes). Contactá a tu asesor para renovarla.';
+          else eiText = 'Vencieron el ' + fmtDate(exclEnd) + '. Renová para mantener el trato preferencial.';
+        }
+        var eiCtaHref = exclStateInicio.key === 'sin' ? (waBroker || '#') : '#exclusividad';
+        var eiCtaTarget = exclStateInicio.key === 'sin' && waBroker ? ' target="_blank" rel="noopener"' : '';
+        var eiCtaText = exclStateInicio.key === 'vencida' ? 'Reactivar exclusividad' : (exclStateInicio.key === 'por_vencer' ? 'Renovar ahora' : 'Ver detalles');
+        exclInicioHtml =
+          '<div class="excl-inicio-card ' + esc(exclStateInicio.key) + '">' +
+            '<div class="ei-icon"><i class="fas ' + eiIcon + '"></i></div>' +
+            '<div class="ei-body">' +
+              '<h4>' + esc(eiTitle) + ' <span class="excl-state-badge ' + esc(exclLabelInicio.cls) + '">' + esc(exclLabelInicio.text) + '</span></h4>' +
+              '<p>' + esc(eiText) + '</p>' +
+            '</div>' +
+            (exclStateInicio.key !== 'sin'
+              ? '<a class="ei-cta" href="' + esc(eiCtaHref) + '"' + eiCtaTarget + ' data-go-tab="exclusividad">' + esc(eiCtaText) + '</a>'
+              : '') +
+          '</div>';
+      }
+      $('exclInicioSlot').innerHTML = exclInicioHtml;
+
+      /* ── D1: Resumen general (stats optimizado) ── */
+      var nPropsActivas = props.filter(function(p){ return p.is_published === true || p.status === 'venta' || p.status === 'alquiler'; }).length;
+      var stats = [
+        { icon:'fas fa-building', label:'Propiedades activas', value:fmtNum(nPropsActivas), sub: props.length ? (fmtNum(props.length) + ' en total') : '', cls:'' },
+        { icon:'fas fa-tag', label:'En venta', value:fmtNum(nVenta), sub: nVenta ? 'en cartera' : '', cls:'' },
+        { icon:'fas fa-key', label:'En alquiler', value:fmtNum(nAlquiler), sub: nAlquiler ? 'en cartera' : '', cls:'' },
+        { icon:'fas fa-users', label:'Consultas totales', value:fmtNum(d.lead_total), sub: (d.lead_last30 != null && d.lead_last30 > 0) ? (fmtNum(d.lead_last30) + ' en 30 días') : '', cls:'' },
+        { icon:'fas fa-calendar', label:'Visitas realizadas', value:fmtNum(visits.completadas || 0), sub: fmtNum(visits.total || 0) + ' totales', cls:'green' },
+        { icon:'fas fa-calendar-plus', label:'Próximas visitas', value:fmtNum(visits.proximas || 0), sub: (visits.confirmadas || 0) + ' confirmadas', cls:'blue' }
+      ];
+      /* Añadir cards no-nulas solo para enriquecer sin ruido */
+      if (visits.pendientes || visits.canceladas) {
+        stats.push({ icon:'fas fa-hourglass-half', label:'Visitas pendientes', value:fmtNum(visits.pendientes || 0), cls:'' });
+        stats.push({ icon:'fas fa-times-circle', label:'Visitas canceladas', value:fmtNum(visits.canceladas || 0), cls:'gold' });
+      }
+      stats.push({ icon:'fas fa-dollar-sign', label:'Cotización USD', value: d.usd_rate ? esc(fmtARS(d.usd_rate)) : '—', sub:'referencia', cls:'gold' });
+      var cardHtml = stats.map(function(s) {
+        return '<div class="stat-card">' +
+          '<div class="label"><i class="' + esc(s.icon) + '"></i> ' + esc(s.label) + '</div>' +
+          '<div class="value ' + esc(s.cls || '') + '">' + esc(s.value) + '</div>' +
+          (s.sub ? '<div class="sub">' + esc(s.sub) + '</div>' : '') +
+        '</div>';
+      }).join('');
+      $('statGrid').innerHTML = cardHtml;
+
+      /* ── E1/E2: Origen de consultas (siempre visible) ── */
+      var sourceNames = { landing_page:'Landing', ml:'Mercado Libre', whatsapp:'WhatsApp', portal:'Portal', facebook:'Facebook', instagram:'Instagram', telefono:'Teléfono', email:'Email', walk_in:'Visita directa', zernio:'Chat', otro:'Otro' };
+      var srcHtml = '<div class="section-title"><i class="fas fa-funnel-dollar"></i> Origen de consultas</div>';
+      if (leadsSrc.length === 0) {
+        srcHtml += '<div class="inicio-empty"><i class="fas fa-funnel-dollar"></i><span>Todavía no tenés consultas registradas. Cuando lleguen, vas a ver acá de qué canales provienen.</span></div>';
+      } else {
+        var sorted = leadsSrc.slice().sort(function(a,b){ return (b.count || 0) - (a.count || 0); });
+        var maxCount = Math.max.apply(null, sorted.map(function(s){ return s.count; }));
+        srcHtml += '<div class="stat-card" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;">' +
+          '<div class="source-bars">' +
+            sorted.map(function(s) {
+              var pct = maxCount > 0 ? Math.round((s.count / maxCount) * 100) : 0;
+              var label = sourceNames[s.source] || s.source;
+              return '<div class="source-bar">' +
+                '<span class="source-name">' + esc(label) + '</span>' +
+                '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>' +
+                '<span class="bar-count">' + fmtNum(s.count) + '</span>' +
+              '</div>';
+            }).join('') +
+          '</div>' +
+        '</div>';
+      }
+      $('sourcesSlot').innerHTML = srcHtml;
+
+      /* ── F1: Novedades recientes ── */
+      var act = d.activity || [];
+      if (act.length === 0) {
+        $('activityList').innerHTML = '<li class="activity-item" style="justify-content:center;color:var(--text-dim);font-size:13px;">Sin novedades recientes</li>';
+      } else {
+        $('activityList').innerHTML = act.map(function(a) {
+          return '<li class="activity-item">' +
+            '<div class="activity-dot ' + esc(a.type) + '"></div>' +
+            '<span class="activity-text">' + esc(a.text) + '</span>' +
+            '<span class="activity-time">' + ago(a.at) + '</span>' +
+          '</li>';
+        }).join('');
+      }
+
+      /* Bind de links que navegan a tabs */
+      document.querySelectorAll('[data-go-tab]').forEach(function(el) {
+        el.addEventListener('click', function(ev) {
+          ev.preventDefault();
+          var t = el.getAttribute('data-go-tab');
+          var btn = document.querySelector('.tab-btn[data-tab="' + t + '"]');
+          if (btn) btn.click();
+        });
+      });
+    }
+
+    /* ── PROPIEDADES ── */
+    var PTYPE_LABEL = {
+      casa:'Casa', departamento:'Departamento', ph:'PH', terreno:'Terreno', lote:'Lote',
+      local_comercial:'Local comercial', oficina:'Oficina', cochera:'Cochera', campo:'Campo'
+    };
+    var STATUS_LABEL = {
+      venta:'En venta', alquiler:'En alquiler', vendida:'Vendida', alquilada:'Alquilada',
+      pausada:'Pausada', draft:'Borrador'
+    };
+    function ptypeLabel(t) { return PTYPE_LABEL[t] || (t ? String(t).replace(/_/g,' ') : 'Propiedad'); }
+    function statusBadge(p) {
+      var sold = p.status === 'vendida' || p.status === 'alquilada';
+      var cls = sold ? 'sold' : (p.is_published === true ? 'live' : 'draft');
+      var op = STATUS_LABEL[p.status] || p.status || (p.is_published ? 'Activa' : 'Inactiva');
+      var pub = p.is_published === true ? (sold ? '' : 'Publicada') : 'Borrador';
+      var txt = op;
+      if (pub) txt += ' · ' + pub;
+      return '<span class="prop-status-badge ' + cls + '"><i class="fas ' + (sold ? 'fa-check-circle' : (p.is_published ? 'fa-circle' : 'fa-pen')) + '"></i> ' + esc(txt) + '</span>';
+    }
+    function fmtARS(v) { return v != null ? new Intl.NumberFormat('es-AR', { style:'currency', currency:'ARS', maximumFractionDigits:0 }).format(v) : ''; }
+    function ownerContactWa(owner) {
+      var ph = (owner && owner.phone || '').replace(/\D/g, '');
+      return ph ? 'https://wa.me/549' + esc(ph) + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS.') : '';
+    }
+
+    function renderPropiedades(d, props) {
+      var owner = d.owner || {};
+      var usdRate = d.usd_rate || 0;
+
+      if (props.length === 0) {
+        var waEmpty = ownerContactWa(owner);
+        $('propList').innerHTML =
+          '<div class="empty-msg">' +
+            '<i class="fas fa-home"></i>' +
+            '<h3>Sin propiedades</h3>' +
+            '<p>No tenés propiedades vinculadas a tu cuenta todavía.</p>' +
+          '</div>' +
+          '<div class="section-title" style="margin-top:24px;"><i class="fas fa-bullhorn"></i> ¿Querés publicar tu propiedad?</div>' +
+          '<div class="excl-benefits" style="margin-top:16px;">' +
+            '<div class="excl-benefit"><i class="fas fa-camera"></i><div><h4>Fotos profesionales</h4><p>Tu propiedad luce mejor con buenas imágenes.</p></div></div>' +
+            '<div class="excl-benefit"><i class="fas fa-bullhorn"></i><div><h4>Difusión amplia</h4><p>Publicación en nuestro sitio y portales.</p></div></div>' +
+            '<div class="excl-benefit"><i class="fas fa-handshake"></i><div><h4>Asesor dedicado</h4><p>Un broker gestiona tu venta o alquiler.</p></div></div>' +
+          '</div>' +
+          (waEmpty ? '<a class="whatsapp-cta" href="' + waEmpty + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Consultar por publicación</a>' : '');
         return;
       }
 
-      if (!window.BH_CONFIG?.SUPABASE_URL || !window.BH_CONFIG?.SUPABASE_ANON_KEY) {
-        showError('Configuración no disponible');
-        return;
+      /* ── Barra de resumen del portfolio ── */
+      var nVenta = props.filter(function(p){ return p.status === 'venta'; }).length;
+      var nAlquiler = props.filter(function(p){ return p.status === 'alquiler'; }).length;
+      var nML = props.filter(function(p){ return p.ml_item_id; }).length;
+      var totalLeads = props.reduce(function(a,p){ return a + (p.leads_total || 0); }, 0);
+      var totalVisitas = props.reduce(function(a,p){ return a + (p.visits_total || 0); }, 0);
+      var proxVisitas = props.reduce(function(a,p){ return a + (p.visits_next || 0); }, 0);
+      var summaryCards = [
+        { icon:'fas fa-home', label:'Propiedades', val: props.length },
+        { icon:'fas fa-tag', label:'En venta', val: nVenta },
+        { icon:'fas fa-key', label:'En alquiler', val: nAlquiler },
+        { icon:'fab fa-envira', label:'En Mercado Libre', val: nML },
+        { icon:'fas fa-users', label:'Consultas', val: totalLeads },
+        { icon:'fas fa-calendar-check', label:'Visitas', val: totalVisitas },
+        { icon:'fas fa-arrow-right', label:'Próximas', val: proxVisitas }
+      ];
+      var summaryHtml = '<div class="prop-summary">' +
+        summaryCards.map(function(c){
+          return '<div class="prop-summary-item"><i class="' + c.icon + '"></i><div class="ps-num">' + fmtNum(c.val) + '</div><div class="ps-label">' + esc(c.label) + '</div></div>';
+        }).join('') +
+      '</div>';
+
+      /* ── Filtros por estado ── */
+      var filters = [
+        { key:'all', label:'Todas', icon:'fas fa-th-large' },
+        { key:'venta', label:'En venta', icon:'fas fa-tag' },
+        { key:'alquiler', label:'En alquiler', icon:'fas fa-key' },
+        { key:'vendidas', label:'Vendidas', icon:'fas fa-check-circle' },
+        { key:'ml', label:'Mercado Libre', icon:'fab fa-envira' }
+      ];
+      var activeFilter = 'all';
+      function matchFilter(p, f) {
+        switch (f) {
+          case 'venta': return p.status === 'venta';
+          case 'alquiler': return p.status === 'alquiler';
+          case 'vendidas': return (p.status === 'vendida' || p.status === 'alquilada');
+          case 'ml': return !!p.ml_item_id;
+          default: return true;
+        }
+      }
+      var filtersHtml = '<div class="prop-filters" id="propFilters">' +
+        filters.map(function(f){
+          return '<button class="prop-filter' + (f.key === activeFilter ? ' active' : '') + '" data-filter="' + f.key + '"><i class="' + f.icon + '"></i> ' + esc(f.label) + '</button>';
+        }).join('') +
+      '</div>';
+
+      function renderList(list) {
+        $('propList').innerHTML = summaryHtml + filtersHtml + list.map(propCardHtml).join('');
+        bindPropEvents(list);
       }
 
-      const { createClient } = supabase;
-      const supabaseClient = createClient(window.BH_CONFIG.SUPABASE_URL, window.BH_CONFIG.SUPABASE_ANON_KEY);
+      /* ── Card HTML ── */
+      function propCardHtml(p) {
+        var img = (p.image_urls && p.image_urls.length > 0) ? p.image_urls[0] : '';
+        var badges = [];
+        if (p.is_oportunidad) badges.push('<span class="prop-badge oportunidad"><i class="fas fa-tag"></i> Oportunidad</span>');
+        if (p.is_retasada) badges.push('<span class="prop-badge retasada"><i class="fas fa-redo"></i> Retasada</span>');
+        if (p.featured) badges.push('<span class="prop-badge destacada"><i class="fas fa-star"></i> Destacada</span>');
+        if (p.ml_item_id) badges.push('<span class="prop-badge ml"><i class="fab fa-envira"></i> ML</span>');
 
-      let currentOwner = null;
-      let currentTokenData = null;
+        var location = [p.zone, p.address].filter(Boolean).join(' · ');
+        var typeLabel = ptypeLabel(p.property_type);
 
-      // Validar token (RPC SECURITY DEFINER: anon no accede a owner_portal_tokens)
-      async function validateToken() {
-        const { data, error } = await supabaseClient
-          .rpc('portal_validate_token', { p_token: token });
-
-        if (error || !data) {
-          showError('Token inválido o expirado');
-          return false;
+        /* Precio con moneda */
+        var priceHtml = '';
+        if (p.price_usd != null && p.price_usd > 0) {
+          var main = p.price_currency === 'ARS' ? fmtARS(p.price_usd) : fmtUSD(p.price_usd);
+          var sec = '';
+          if (p.price_currency !== 'ARS' && usdRate > 0) sec = '<span class="prop-price-sec">' + fmtARS(p.price_usd * usdRate) + '</span>';
+          priceHtml = '<span class="prop-price"><i class="fas fa-dollar-sign"></i> ' + esc(main) + sec + '</span>';
         }
 
-        if (data.revoked_at) {
-          showError('Este enlace ha sido revocado');
-          return false;
+        /* Próxima visita destacada */
+        var nextBadge = '';
+        if (p.visits_next != null && p.visits_next > 0) {
+          nextBadge = '<span class="prop-next-badge"><i class="fas fa-calendar-check"></i> ' + fmtNum(p.visits_next) + (p.visits_next === 1 ? ' próxima visita' : ' próximas visitas') + '</span>';
         }
 
-        if (data.expires_at && new Date(data.expires_at) < new Date()) {
-          showError('Este enlace ha expirado');
-          return false;
+        var pubDateHtml = p.created_at ? '<span><i class="fas fa-clock"></i> Publicada: ' + fmtDate(p.created_at) + '</span>' : '';
+
+        /* Stats con matiz */
+        var stats = [];
+        if (p.leads_total != null) {
+          stats.push({ icon:'fas fa-users', num: fmtNum(p.leads_total), label:'consultas', sub: (p.leads_30d != null && p.leads_30d > 0) ? (fmtNum(p.leads_30d) + ' últimos 30 días') : null });
+        }
+        if (p.visits_total != null) {
+          stats.push({ icon:'fas fa-calendar', num: fmtNum(p.visits_total), label:'visitas', sub: (p.visits_done != null && p.visits_done > 0) ? (fmtNum(p.visits_done) + ' realizadas') : null });
+        }
+        if (p.visits_next != null) {
+          stats.push({ icon:'fas fa-arrow-right', num: fmtNum(p.visits_next), label:'próximas', sub: null });
+        }
+        var statsHtml = '';
+        if (stats.length) {
+          statsHtml = '<div class="prop-stats-row">' + stats.map(function(s){
+            return '<div class="prop-stat"><i class="' + s.icon + '"></i> <span class="count">' + s.num + '</span> ' + esc(s.label) +
+              (s.sub ? '<span class="prop-stat-sub">' + esc(s.sub) + '</span>' : '') + '</div>';
+          }).join('') + '</div>';
         }
 
-        currentTokenData = data;
-        currentOwner = data.owners;
-        return true;
+        /* Timeline con created_at */
+        var timeline = [];
+        if (p.created_at) timeline.push({ date: p.created_at, text: 'Publicada', icon:'fa-home' });
+        if (p.last_lead_at) timeline.push({ date: p.last_lead_at, text: 'Última consulta', icon:'fa-users' });
+        if (p.last_visit_at) timeline.push({ date: p.last_visit_at, text: 'Última visita completada', icon:'fa-check-circle' });
+        if (p.ml_last_sync) timeline.push({ date: p.ml_last_sync, text: 'Última sync ML', icon:'fa-sync' });
+        var timelineHtml = '';
+        if (timeline.length > 0) {
+          timelineHtml = '<div class="prop-timeline">' +
+            timeline.map(function(t) {
+              return '<div class="prop-timeline-item">' +
+                '<i class="fas ' + t.icon + '"></i>' +
+                '<div class="prop-timeline-body"><span class="tl-text">' + esc(t.text) + '</span><span class="tl-date">' + fmtDate(t.date) + '</span></div>' +
+              '</div>';
+            }).join('') +
+          '</div>';
+        }
+
+        /* Características completas */
+        var feats = [
+          { label:'Ambientes', val: p.rooms != null ? p.rooms : null },
+          { label:'Dormitorios', val: p.bedrooms != null ? p.bedrooms : null },
+          { label:'Baños', val: p.bathrooms != null ? p.bathrooms : null },
+          { label:'Cochera', val: p.garage_spaces != null ? p.garage_spaces : null },
+          { label:'Sup. cubierta', val: p.area_covered ? fmtNum(p.area_covered) + ' m²' : null },
+          { label:'Sup. total', val: p.area_total ? fmtNum(p.area_total) + ' m²' : (p.area_m2 ? fmtNum(p.area_m2) + ' m²' : null) },
+          { label:'Tipo', val: typeLabel },
+          { label:'Código', val: p.property_code },
+          { label:'ML ID', val: p.ml_item_id }
+        ].filter(function(f){ return f.val != null && f.val !== '' && f.val !== '-'; });
+        var featsHtml = '<div class="prop-detail-grid">' + feats.map(function(f){
+          return '<div class="prop-detail-item"><div class="label">' + esc(f.label) + '</div><div class="val">' + esc(f.val) + '</div></div>';
+        }).join('') + '</div>';
+
+        /* Descripción */
+        var descHtml = '';
+        if (p.description && String(p.description).trim()) {
+          descHtml = '<div class="prop-desc"><i class="fas fa-align-left"></i> <span>' + esc(p.description) + '</span></div>';
+        }
+
+        /* Video */
+        var videoHtml = '';
+        if (p.video_url && /youtube|youtu\.be|vimeo/ .test(p.video_url)) {
+          videoHtml = '<div class="prop-video"><a href="' + esc(safeUrl(p.video_url)) + '" target="_blank" rel="noopener"><i class="fas fa-play-circle"></i> Ver video de la propiedad</a></div>';
+        }
+
+        /* Gallery */
+        var imgs = p.image_urls || [];
+        var galleryHtml = '';
+        var lightboxData = '';
+        if (imgs.length) {
+          galleryHtml = '<div class="prop-gallery">' +
+            imgs.slice(0, 6).map(function(u){
+              return '<img class="prop-gallery-img" src="' + esc(safeImageUrl(u)) + '" alt="Foto" loading="lazy">';
+            }).join('') +
+            (imgs.length > 6 ? '<div class="prop-gallery-more" data-more="' + esc(p.id) + '">+' + (imgs.length - 6) + '</div>' : '') +
+          '</div>';
+          lightboxData = '<div class="prop-lightbox-data" data-id="' + esc(p.id) + '">' + imgs.map(function(u){
+            return '<span data-src="' + esc(safeImageUrl(u)) + '"></span>';
+          }).join('') + '</div>';
+        }
+
+        return '<div class="prop-card" data-id="' + esc(p.id) + '">' +
+          '<div class="prop-card-header">' +
+            (img ? '<img class="prop-card-thumb" src="' + esc(safeImageUrl(img)) + '" alt="' + esc(p.title || '') + '">' : '<div class="prop-card-thumb" style="background:var(--bg-card-hover);"></div>') +
+            '<div class="prop-card-body">' +
+              '<div class="prop-card-title">' + esc(p.title || 'Sin título') +
+                (typeLabel && typeLabel !== 'Propiedad' ? '<span class="prop-type-tag">' + esc(typeLabel) + '</span>' : '') +
+              '</div>' +
+              '<div class="prop-card-meta">' +
+                '<span><i class="fas fa-map-marker-alt"></i> ' + esc(location || 'Sin ubicación') + '</span>' +
+                priceHtml +
+                pubDateHtml +
+              '</div>' +
+              '<div class="prop-card-row">' +
+                statusBadge(p) +
+                nextBadge +
+              '</div>' +
+              (badges.length ? '<div class="prop-card-badges">' + badges.join('') + '</div>' : '') +
+            '</div>' +
+            '<div class="prop-card-expand"><i class="fas fa-chevron-down"></i></div>' +
+          '</div>' +
+          '<div class="prop-card-detail">' +
+            featsHtml +
+            (statsHtml || '') +
+            (descHtml || '') +
+            (videoHtml || '') +
+            (timelineHtml || '') +
+            (galleryHtml || '') +
+            lightboxData +
+          '</div>' +
+        '</div>';
       }
 
-      function showError(msg) {
-        document.body.innerHTML = `
-          <div class="portal-page" style="display:flex; align-items:center; justify-content:center;">
-            <div style="text-align:center; padding:40px; background:rgba(255,255,255,0.03); border-radius:20px; border:1px solid rgba(255,255,255,0.08); max-width:480px;">
-              <i class="fas fa-exclamation-triangle" style="font-size:48px; color:#ef4444; margin-bottom:16px;"></i>
-              <h2 style="font-family:'Playfair Display',serif; color:#fff; margin-bottom:12px;">Acceso Denegado</h2>
-              <p style="color:var(--text-dim);">${msg}</p>
-            </div>
-          </div>
-        `;
+      function renderListFromFilter() {
+        var filtered = props.filter(function(p){ return matchFilter(p, activeFilter); });
+        if (!filtered.length) {
+          $('propList').innerHTML = summaryHtml + filtersHtml +
+            '<div class="empty-msg" style="margin-top:16px;"><i class="fas fa-filter"></i><h3>Sin resultados</h3><p>No hay propiedades en este filtro.</p></div>';
+          bindFilterButtons();
+          return;
+        }
+        renderList(filtered);
       }
 
-      function initTabs() {
-        const tabs = document.querySelectorAll('.portal-tab');
-        const panels = document.querySelectorAll('.portal-panel');
-        tabs.forEach(tab => {
-          tab.addEventListener('click', () => {
-            tabs.forEach(t => { t.classList.remove('is-active'); t.setAttribute('aria-selected', 'false'); });
-            panels.forEach(p => p.classList.remove('is-active'));
-            tab.classList.add('is-active');
-            tab.setAttribute('aria-selected', 'true');
-            document.getElementById('panel-' + tab.dataset.tab).classList.add('is-active');
+      function bindFilterButtons() {
+        document.querySelectorAll('#propFilters .prop-filter').forEach(function(btn){
+          btn.addEventListener('click', function(){
+            activeFilter = btn.dataset.filter;
+            document.querySelectorAll('#propFilters .prop-filter').forEach(function(b){ b.classList.remove('active'); });
+            btn.classList.add('active');
+            renderListFromFilter();
           });
         });
       }
 
-      function renderOwnerInfo() {
-        const o = currentOwner;
-        const avatar = document.getElementById('userAvatar');
-        const name = document.getElementById('userName');
-        const dni = document.getElementById('userDni');
-        if (avatar) avatar.textContent = (o.full_name || 'P').charAt(0).toUpperCase();
-        if (name) name.textContent = o.full_name || 'Propietario';
-        if (dni) dni.textContent = o.dni_cuit ? `CUIT: ${o.dni_cuit}` : '';
-
-        const grid = document.getElementById('ownerInfoGrid');
-        if (grid) {
-          grid.innerHTML = `
-            <div class="info-item"><span class="info-label">Nombre Completo</span><span class="info-value">${esc(o.full_name || '—')}</span></div>
-            <div class="info-item"><span class="info-label">DNI / CUIT / CUIL</span><span class="info-value">${esc(o.dni_cuit || '—')}</span></div>
-            <div class="info-item"><span class="info-label">Teléfono / WhatsApp</span><span class="info-value"><a href="https://wa.me/${(o.phone || '').replace(/\D/g, '')}" target="_blank" style="color:var(--accent); text-decoration:none;">${esc(o.phone || '—')}</a></span></div>
-            <div class="info-item"><span class="info-label">Email</span><span class="info-value"><a href="mailto:${esc(o.email || '')}" style="color:var(--accent); text-decoration:none;">${esc(o.email || '—')}</a></span></div>
-            <div class="info-item"><span class="info-label">Dirección</span><span class="info-value">${esc(o.address || '—')}</span></div>
-            <div class="info-item"><span class="info-label">Preferencia Contacto</span><span class="info-value">${esc(o.preferred_contact || 'whatsapp')}</span></div>
-            <div class="info-item"><span class="info-label">Banco</span><span class="info-value">${esc(o.bank_name || '—')}</span></div>
-            <div class="info-item"><span class="info-label">CBU / CVU</span><span class="info-value">${esc(o.cbu_cvu || '—')}</span></div>
-            <div class="info-item"><span class="info-label">Alias CBU</span><span class="info-value">${esc(o.alias_cbu || '—')}</span></div>
-          `;
-        }
-      }
-
-      async function loadDashboard() {
-        if (!currentOwner) return;
-
-        // Props count
-        const { data: props } = await supabaseClient
-          .from('properties')
-          .select('id, is_published')
-          .eq('owner_id', currentOwner.id);
-        const published = props?.filter(p => p.is_published).length || 0;
-
-        // Exclusivity
-        const excl = currentOwner.exclusive;
-        const exclEnd = currentOwner.exclusive_end;
-
-        // Commissions pending
-        const { data: comms } = await supabaseClient
-          .from('commissions')
-          .select('id, commission_amount_usd, status')
-          .eq('owner_id', currentOwner.id)
-          .eq('status', 'pendiente');
-        const pendingComm = comms?.reduce((sum, c) => sum + (c.commission_amount_usd || 0), 0) || 0;
-
-        // Documents
-        const { data: owner } = await supabaseClient.from('owners').select('documents').eq('id', currentOwner.id).single();
-        const docs = owner?.documents || [];
-        const docCount = docs.length;
-
-        const elSumProps = document.getElementById('sumProps');
-        const elSumExcl = document.getElementById('sumExcl');
-        const elSumComm = document.getElementById('sumComm');
-        const elSumDocs = document.getElementById('sumDocs');
-        if (elSumProps) elSumProps.textContent = published || '—';
-        if (elSumExcl) elSumExcl.textContent = excl ? 'Sí' : 'No';
-        if (elSumComm) elSumComm.textContent = pendingComm > 0 ? 'USD ' + pendingComm.toLocaleString('es-AR', { minimumFractionDigits: 2 }) : '—';
-        if (elSumDocs) elSumDocs.textContent = docCount;
-
-        // Upcoming expiry (exclusivity + documents)
-        const expiryList = document.getElementById('upcomingExpiry');
-        const items = [];
-
-        if (excl && exclEnd) {
-          const days = Math.ceil((new Date(exclEnd) - new Date()) / (1000 * 60 * 60 * 24));
-          let cls = 'status-vigente', label = 'Vigente';
-          if (days < 0) { cls = 'status-vencida'; label = `Vencida hace ${Math.abs(days)} días`; }
-          else if (days <= 30) { cls = 'status-por-vencer'; label = `Vence en ${days} días`; }
-          items.push(`
-            <div class="doc-item">
-              <div class="doc-main">
-                <div class="doc-icon other"><i class="fas fa-shield-alt"></i></div>
-                <div class="doc-info">
-                  <div class="doc-name">Exclusividad</div>
-                  <div class="doc-meta">Fin: ${new Date(exclEnd).toLocaleDateString('es-AR')}</div>
-                </div>
-              </div>
-              <div class="doc-status"><span class="status-badge ${cls}">${label}</span></div>
-            </div>
-          `);
-        }
-
-        // Document expiries
-        const { data: od } = await supabaseClient.from('owners').select('documents').eq('id', currentOwner.id).single();
-        const odocs = od?.documents || [];
-        odocs.forEach(d => {
-          if (d.expiry) {
-            const days = Math.ceil((new Date(d.expiry) - new Date()) / (1000 * 60 * 60 * 24));
-            let cls = 'status-vigente', label = 'Vigente';
-            if (days < 0) { cls = 'status-vencida'; label = `Vencido hace ${Math.abs(days)} días`; }
-            else if (days <= 30) { cls = 'status-por-vencer'; label = `Vence en ${days} días`; }
-            items.push(`
-              <div class="doc-item">
-                <div class="doc-main">
-                  <div class="doc-icon other"><i class="fas fa-file-alt"></i></div>
-                  <div class="doc-info">
-                    <div class="doc-name">${esc(d.name || 'Documento')}</div>
-                    <div class="doc-meta">Vence: ${new Date(d.expiry).toLocaleDateString('es-AR')}</div>
-                  </div>
-                </div>
-                <div class="doc-status"><span class="status-badge ${cls}">${label}</span></div>
-              </div>
-            `);
-          }
+      function bindPropEvents(list) {
+        document.querySelectorAll('.prop-card-header').forEach(function(h) {
+          h.addEventListener('click', function() {
+            h.closest('.prop-card').classList.toggle('expanded');
+          });
         });
-
-        if (expiryList) expiryList.innerHTML = items.length ? items.join('') : '<p style="color:var(--text-dim); text-align:center; padding:20px;">Sin vencimientos próximos</p>';
-
-        // Alert banner for exclusivity
-        if (excl && exclEnd) {
-          const days = Math.ceil((new Date(exclEnd) - new Date()) / (1000 * 60 * 60 * 24));
-          const alertBanner = document.getElementById('alertBanner');
-          const alertTitle = document.getElementById('alertTitle');
-          const alertText = document.getElementById('alertText');
-          if (alertBanner && days <= 30 && days >= 0) {
-            alertBanner.style.display = 'flex';
-            alertTitle.textContent = '⚠️ Exclusividad por vencer';
-            alertText.textContent = `Su contrato vence en ${days} día${days !== 1 ? 's' : ''} (${new Date(exclEnd).toLocaleDateString('es-AR')}). Contacte a su broker para renovar.`;
-          } else if (days < 0) {
-            alertBanner.style.display = 'flex';
-            alertBanner.style.background = 'rgba(239,68,68,0.1)';
-            alertBanner.style.borderColor = 'rgba(239,68,68,0.3)';
-            alertTitle.textContent = '🚨 Exclusividad Vencida';
-            alertText.textContent = `Su contrato venció el ${new Date(exclEnd).toLocaleDateString('es-AR')}. Contacte a su broker urgentemente.`;
-          }
-        }
+        bindFilterButtons();
+        bindGalleryLightbox(list);
       }
 
-      async function loadProperties() {
-        if (!currentOwner) return;
-        const { data, error } = await supabaseClient
-          .from('properties')
-          .select('id, code, title, zone, property_type, status, price_usd, price_currency, is_published, created_at')
-          .eq('owner_id', currentOwner.id)
-          .order('created_at', { ascending: false });
-
-        const body = document.getElementById('propsBody');
-        const empty = document.getElementById('propsEmpty');
-        const table = document.getElementById('propsTable');
-
-        if (error || !data?.length) {
-          if (body) body.innerHTML = '';
-          if (empty) empty.style.display = 'block';
-          if (table) table.style.display = 'none';
-          return;
-        }
-
-        if (body) {
-          body.innerHTML = data.map(p => `
-            <tr>
-              <td>${esc(p.code || '—')}</td>
-              <td>
-                <div class="property-title">${esc(p.title || 'Sin título')}</div>
-                <div class="property-sub">${esc(p.zone || 'S/Zona')}</div>
-              </td>
-              <td>${esc(p.zone || '—')}</td>
-              <td>${esc(p.property_type || '—')}</td>
-              <td><span class="status-badge ${p.status === 'publicada' ? 'status-vigente' : p.status === 'pausada' ? 'status-por-vencer' : 'status-vencida'}">${esc(p.status || 'draft')}</span></td>
-              <td class="price-cell">${p.price_usd ? (p.price_currency === 'USD' ? 'USD ' : '$ ') + formatNumber(p.price_usd) : '—'}</td>
-              <td>${p.is_published ? '<span style="color:var(--success);"><i class="fas fa-check"></i> Sí</span>' : '<span style="color:var(--text-dim);">No</span>'}</td>
-            </tr>
-          `).join('');
-        }
-        if (empty) empty.style.display = 'none';
-        if (table) table.style.display = 'table';
-      }
-
-      async function loadCommissions() {
-        if (!currentOwner) return;
-        const { data, error } = await supabaseClient
-          .from('commissions')
-          .select('*, properties(code, title)')
-          .eq('owner_id', currentOwner.id)
-          .order('created_at', { ascending: false });
-
-        const list = document.getElementById('commissionsList');
-        const empty = document.getElementById('commEmpty');
-
-        if (error || !data?.length) {
-          if (list) list.innerHTML = '';
-          if (empty) empty.style.display = 'block';
-          return;
-        }
-
-        if (list) {
-          list.innerHTML = data.map(c => {
-            const statusClass = c.status === 'pendiente' ? 'comm-pendiente' : c.status === 'liquidada' ? 'comm-liquidada' : 'comm-pagada';
-            const statusLabel = { pendiente: 'Pendiente', liquidada: 'Liquidada', pagada: 'Pagada', cancelada: 'Cancelada' }[c.status] || c.status;
-            return `
-              <div class="commission-row">
-                <div class="commission-main">
-                  <div class="commission-property">${esc(c.properties?.title || c.properties?.code || 'Propiedad')}</div>
-                  <div class="commission-meta">${esc(c.operation_type === 'venta' ? 'Venta' : 'Alquiler')} · ${c.operation_type === 'alquiler' ? 'Alquiler mensual' : 'Precio venta'}: ${c.operation_type === 'alquiler' && c.rent_price_usd ? 'USD ' + formatNumber(c.rent_price_usd) : c.sale_price_usd ? 'USD ' + formatNumber(c.sale_price_usd) : '—'} · Comisión: ${c.operation_type === 'alquiler' ? (c.commission_rate_rent || 0) : (c.commission_rate_sale || 0)}%</div>
-                </div>
-                <div style="text-align: right;">
-                  <div class="commission-amount">USD ${(c.commission_amount_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
-                  <span class="commission-status ${statusClass}">${statusLabel}</span>
-                </div>
-              </div>
-            `;
-          }).join('');
-        }
-        if (empty) empty.style.display = 'none';
-      }
-
-      async function loadLiquidations() {
-        if (!currentOwner) return;
-        const { data, error } = await supabaseClient
-          .from('commission_liquidations')
-          .select('*')
-          .eq('owner_id', currentOwner.id)
-          .order('period_start', { ascending: false });
-
-        const body = document.getElementById('liquidationsBody');
-        const empty = document.getElementById('liqEmpty');
-        const table = document.getElementById('liquidationsTable');
-
-        if (error || !data?.length) {
-          if (body) body.innerHTML = '';
-          if (empty) empty.style.display = 'block';
-          if (table) table.style.display = 'none';
-          return;
-        }
-
-        if (body) {
-          body.innerHTML = data.map(l => `
-            <tr>
-              <td>${new Date(l.period_start).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}</td>
-              <td>USD ${(l.gross_commission_usd || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
-              <td>${formatNumber(l.iibb_retention_ars || 0)}</td>
-              <td>${formatNumber(l.ganancias_retention_ars || 0)}</td>
-              <td class="price-cell">${formatNumber(l.net_amount_ars || 0)}</td>
-              <td><span class="status-badge ${l.status === 'pagada' ? 'status-vigente' : l.status === 'confirmada' ? 'status-por-vencer' : ''}">${esc(l.status)}</span></td>
-            </tr>
-          `).join('');
-        }
-        if (empty) empty.style.display = 'none';
-        if (table) table.style.display = 'table';
-      }
-
-      async function loadDocuments() {
-        if (!currentOwner) return;
-        const { data } = await supabaseClient.from('owners').select('documents').eq('id', currentOwner.id).single();
-        const docs = data?.documents || [];
-        const list = document.getElementById('docsList');
-        const empty = document.getElementById('docsEmpty');
-
-        if (!docs.length) {
-          if (list) list.innerHTML = '';
-          if (empty) empty.style.display = 'block';
-          return;
-        }
-
-        if (list) {
-          list.innerHTML = docs.map(d => `
-            <div class="doc-item">
-              <div class="doc-main">
-                <div class="doc-icon ${d.type?.includes('pdf') ? 'pdf' : d.type?.includes('image') ? 'image' : d.type?.includes('word') ? 'doc' : 'other'}">
-                  <i class="fas fa-${d.type?.includes('pdf') ? 'file-pdf' : d.type?.includes('image') ? 'file-image' : d.type?.includes('word') ? 'file-word' : 'file-alt'}"></i>
-                </div>
-                <div class="doc-info">
-                  <div class="doc-name">${esc(d.name || 'Documento')}</div>
-                  <div class="doc-meta">${d.type?.toUpperCase() || 'FILE'} · ${d.size ? (d.size / 1024).toFixed(1) + ' KB' : ''} · ${d.uploaded_at ? new Date(d.uploaded_at).toLocaleDateString('es-AR') : ''}${d.expiry ? ' · Vence: ' + new Date(d.expiry).toLocaleDateString('es-AR') : ''}</div>
-                </div>
-              </div>
-              <div class="doc-status">
-                ${d.url ? `<a href="${esc(d.url)}" target="_blank" class="btn-portal btn-portal-outline" style="font-size:11px; padding:6px 12px;"><i class="fas fa-eye"></i> Ver</a>` : ''}
-              </div>
-            </div>
-          `).join('');
-        }
-        if (empty) empty.style.display = 'none';
-      }
-
-      async function loadChecklist() {
-        const container = document.getElementById('checklistContainer');
-        if (!container) return;
-
-        const { data: requirements } = await supabaseClient
-          .from('document_requirements')
-          .select('*')
-          .order('operation_type, sort_order');
-
-        if (!requirements?.length) {
-          container.innerHTML = '<p style="color:var(--text-dim);">No hay requisitos configurados</p>';
-          return;
-        }
-
-        // Get owner's documents
-        const { data: od } = await supabaseClient.from('owners').select('documents').eq('id', currentOwner.id).single();
-        const ownerDocs = od?.documents || [];
-
-        // Group by operation_type
-        const byType = {};
-        requirements.forEach(r => {
-          if (!byType[r.operation_type]) byType[r.operation_type] = [];
-          byType[r.operation_type].push(r);
+      function bindGalleryLightbox(list) {
+        document.querySelectorAll('.prop-gallery img, .prop-gallery-more').forEach(function(el) {
+          el.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            var card = el.closest('.prop-card');
+            var dataEl = card && card.querySelector('.prop-lightbox-data');
+            if (!dataEl) return;
+            var spans = dataEl.querySelectorAll('span');
+            var imgs = Array.prototype.map.call(spans, function(s){ return s.getAttribute('data-src'); }).filter(Boolean);
+            if (!imgs.length) return;
+            var all = card.querySelectorAll('.prop-gallery img, .prop-gallery-more');
+            var clickedIdx = Array.prototype.indexOf.call(all, el);
+            var idx = (el.classList && el.classList.contains('prop-gallery-more')) ? 0 : clickedIdx;
+            openLightbox(imgs, Math.max(0, idx));
+          });
         });
-
-        container.innerHTML = Object.entries(byType).map(([type, reqs]) => `
-          <div style="margin-bottom: 24px;">
-            <h4 style="color: var(--accent); margin: 0 0 12px; font-size: 14px; text-transform: capitalize;">${esc(type)}</h4>
-            <div class="doc-list">
-              ${reqs.map(req => {
-                const hasDoc = ownerDocs.some(d => d.name?.toLowerCase().includes(req.document_key.toLowerCase()) || d.document_key === req.document_key);
-                const doc = ownerDocs.find(d => d.name?.toLowerCase().includes(req.document_key.toLowerCase()) || d.document_key === req.document_key);
-                const isMissing = req.is_mandatory && !hasDoc;
-                let cls = 'check-done', label = 'Completo';
-                if (isMissing) { cls = 'check-missing'; label = 'Falta (Obligatorio)'; }
-                else if (!hasDoc) { cls = 'check-pending'; label = 'Pendiente'; }
-                return `
-                  <div class="doc-item">
-                    <div class="doc-main">
-                      <div class="doc-icon other"><i class="fas ${getReqIcon(req.document_key)}"></i></div>
-                      <div class="doc-info">
-                        <div class="doc-name">${esc(req.label)}${req.is_mandatory ? ' <span style="color:#ef4444; font-size:10px;">*</span>' : ''}</div>
-                        <div class="doc-meta">${esc(req.description || '')}</div>
-                      </div>
-                    </div>
-                    <div class="doc-status">
-                      <span class="check-icon ${cls}"><i class="fas ${cls === 'check-done' ? 'fa-check' : cls === 'check-missing' ? 'fa-times' : 'fa-clock'}"></i></span>
-                      <span style="font-size:11px; color:var(--text-dim);">${label}</span>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-          </div>
-        `).join('');
       }
 
-      function getReqIcon(key) {
-        const icons = {
-          escritura: 'fa-file-signature',
-          dni: 'fa-id-card',
-          servicios: 'fa-file-invoice',
-          planos: 'fa-drafting-compass',
-          certificado_dominio: 'fa-certificate',
-          inhibiciones: 'fa-gavel',
-          plano_mensura: 'fa-ruler-combined',
-          reglamento_copropiedad: 'fa-book',
-          expensas: 'fa-receipt',
-          libre_deuda: 'fa-check-circle'
-        };
-        return icons[key] || 'fa-file-alt';
-      }
-
-      async function loadExclusivity() {
-        if (!currentOwner) return;
-        const o = currentOwner;
-        const info = document.getElementById('exclInfo');
-        const alert = document.getElementById('exclAlert');
-
-        if (info) {
-          const days = o.exclusive_end ? Math.ceil((new Date(o.exclusive_end) - new Date()) / (1000 * 60 * 60 * 24)) : null;
-          let statusHtml = o.exclusive ? '<span class="status-badge status-vigente">Vigente</span>' : '<span class="status-badge status-vencida">Sin Exclusividad</span>';
-          if (o.exclusive && days !== null) {
-            if (days < 0) statusHtml = '<span class="status-badge status-vencida">Vencida</span>';
-            else if (days <= 30) statusHtml = '<span class="status-badge status-por-vencer">Por Vencer (' + days + ' días)</span>';
-          }
-
-          info.innerHTML = `
-            <div class="info-item"><span class="info-label">Estado</span><span class="info-value">${statusHtml}</span></div>
-            <div class="info-item"><span class="info-label">Fecha Inicio</span><span class="info-value">${o.exclusive_start ? new Date(o.exclusive_start).toLocaleDateString('es-AR') : '—'}</span></div>
-            <div class="info-item"><span class="info-label">Fecha Fin</span><span class="info-value">${o.exclusive_end ? new Date(o.exclusive_end).toLocaleDateString('es-AR') : '—'}</span></div>
-            <div class="info-item"><span class="info-label">Días Restantes</span><span class="info-value">${days !== null ? days + ' días' : '—'}</span></div>
-          `;
+      function openLightbox(imgs, idx) {
+        var existing = document.getElementById('propLightbox');
+        if (existing) existing.remove();
+        var box = document.createElement('div');
+        box.id = 'propLightbox';
+        box.className = 'lightbox-overlay';
+        var cur = Math.max(0, Math.min(idx || 0, imgs.length - 1));
+        box.innerHTML =
+          '<div class="lightbox-content">' +
+            '<button class="lightbox-close" aria-label="Cerrar"><i class="fas fa-times"></i></button>' +
+            (imgs.length > 1 ? '<button class="lightbox-nav prev"><i class="fas fa-chevron-left"></i></button><button class="lightbox-nav next"><i class="fas fa-chevron-right"></i></button>' : '') +
+            '<img class="lightbox-img" src="' + esc(safeImageUrl(imgs[cur])) + '" alt="Foto">' +
+            '<div class="lightbox-count">' + (cur + 1) + ' / ' + imgs.length + '</div>' +
+          '</div>';
+        document.body.appendChild(box);
+        box.style.display = 'flex';
+        function show(i) {
+          cur = (i + imgs.length) % imgs.length;
+          box.querySelector('.lightbox-img').src = safeImageUrl(imgs[cur]);
+          box.querySelector('.lightbox-count').textContent = (cur + 1) + ' / ' + imgs.length;
         }
-
-        if (alert && o.exclusive && days !== null && days <= 30) {
-          alert.style.display = 'flex';
-          alert.style.background = days < 0 ? 'rgba(239,68,68,0.1)' : 'rgba(255,184,0,0.1)';
-          alert.style.borderColor = days < 0 ? 'rgba(239,68,68,0.3)' : 'rgba(255,184,0,0.3)';
-          alert.innerHTML = days < 0
-            ? `<i class="fas fa-exclamation-triangle"></i><div><h4>🚨 Exclusividad Vencida</h4><p>Venció el ${new Date(o.exclusive_end).toLocaleDateString('es-AR')}. Contacte a su broker.</p></div>`
-            : `<i class="fas fa-exclamation-triangle"></i><div><h4>⚠️ Por Vencer</h4><p>Vence en ${days} día${days !== 1 ? 's' : ''} (${new Date(o.exclusive_end).toLocaleDateString('es-AR')}).</p></div>`;
-        } else if (alert) {
-          alert.style.display = 'none';
+        box.querySelector('.lightbox-close').addEventListener('click', function(){ box.remove(); });
+        box.addEventListener('click', function(e){ if (e.target === box) box.remove(); });
+        if (imgs.length > 1) {
+          box.querySelector('.prev').addEventListener('click', function(){ show(cur - 1); });
+          box.querySelector('.next').addEventListener('click', function(){ show(cur + 1); });
         }
-
-        const details = document.getElementById('contractDetails');
-        if (details) {
-          details.innerHTML = `
-            <div class="info-item"><span class="info-label">Comisión Venta</span><span class="info-value">${o.commission_sale || '—'}%</span></div>
-            <div class="info-item"><span class="info-label">Comisión Alquiler</span><span class="info-value">${o.commission_rent || '—'}%</span></div>
-            <div class="info-item"><span class="info-label">Split Comisión</span><span class="info-value">${o.commission_split ? 'Configurado' : 'No configurado'}</span></div>
-            <div class="info-item" style="grid-column: 1 / -1;"><span class="info-label">Notas del Contrato</span><span class="info-value">${esc(o.contract_notes || 'Sin notas')}</span></div>
-          `;
-        }
+        document.addEventListener('keydown', function escK(e){
+          if (e.key === 'Escape') { box.remove(); document.removeEventListener('keydown', escK); }
+          else if (e.key === 'ArrowRight' && imgs.length > 1) show(cur + 1);
+          else if (e.key === 'ArrowLeft' && imgs.length > 1) show(cur - 1);
+        });
       }
 
-      // Esc helper
-      function esc(str) {
-        if (!str) return '—';
-        return String(str).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"').replace(/'/g, '&#039;');
+      renderListFromFilter();
+    }
+
+    /* ── EXCLUSIVIDAD ── */
+    function exclState(start, end) {
+      var now = new Date();
+      if (!start && !end) return { key:'sin' };
+      if (end && now > end) return { key:'vencida', start:start, end:end };
+      if (end && (end - now) <= 30*24*60*60*1000) return { key:'por_vencer', start:start, end:end };
+      return { key:'activa', start:start, end:end };
+    }
+    function exclStateLabel(state) {
+      switch (state.key) {
+        case 'activa':      return { text:'Activa', cls:'activa' };
+        case 'por_vencer':  return { text:'Por vencer', cls:'por-vencer' };
+        case 'vencida':     return { text:'Vencida', cls:'vencida' };
+        default:            return { text:'Sin exclusividad', cls:'sin' };
+      }
+    }
+    function exclCountdownParts(ms, full) {
+      var seconds = Math.max(0, Math.floor(ms / 1000));
+      var days = Math.floor(seconds / 86400);
+      var hours = Math.floor((seconds % 86400) / 3600);
+      var months = Math.floor(days / 30);
+      var remDays = days % 30;
+      if (full) {
+        var yrs = Math.floor(months / 12);
+        months = months % 12;
+        return { yrs:yrs, months:months, days:days, hours:hours };
+      }
+      return { yrs:0, months:months, days:remDays, hours:hours };
+    }
+    function exclContractMonths(start, end) {
+      var m = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + (end.getDate() >= start.getDate() ? 1 : 0);
+      return Math.max(1, m);
+    }
+    function exclVariance(cur, prev) {
+      if (prev <= 0) return cur > 0 ? 100 : 0;
+      return Math.round(((cur - prev) / prev) * 100);
+    }
+    function exclDeltaCard(title, icon, cur, prev) {
+      var v = exclVariance(cur, prev);
+      var dir = v > 0 ? 'up' : (v < 0 ? 'down' : 'flat');
+      var arrow = v > 0 ? 'fa-arrow-up' : (v < 0 ? 'fa-arrow-down' : 'fa-minus');
+      var label = prev > 0 ? (v > 0 ? '+' + v + '% vs. período anterior' : v + '% vs. período anterior') : (cur > 0 ? 'nuevo' : 'sin datos previos');
+      return '<div class="excl-delta">' +
+        '<div class="excl-delta-top"><i class="' + esc(icon) + '"></i><span class="excl-delta-title">' + esc(title) + '</span></div>' +
+        '<div class="excl-delta-num">' + fmtNum(cur) + '</div>' +
+        '<div class="excl-delta-foot ' + dir + '"><i class="fas ' + arrow + '"></i> ' + esc(label) + '</div>' +
+        '<div class="excl-delta-prev">período anterior: ' + fmtNum(prev) + '</div>' +
+      '</div>';
+    }
+    function exclTimeline(activity, start, end) {
+      if (!activity || !activity.length) return '';
+      var s = start ? start.getTime() : -Infinity;
+      var e = end ? end.getTime() : Infinity;
+      var items = activity.filter(function(a){ var t = a && a.at ? new Date(a.at).getTime() : NaN; return !isNaN(t) && t >= s && t <= e; });
+      if (!items.length) return '';
+      var html = items.map(function(a){
+        var icon = 'fa-circle';
+        if (a.type === 'consulta') icon = 'fa-envelope';
+        else if (a.type === 'visita_agendada') icon = 'fa-calendar-plus';
+        else if (a.type === 'visita_completada') icon = 'fa-check-circle';
+        else if (a.type === 'publicacion' || a.type === 'ml_publicacion') icon = 'fa-bullhorn';
+        else if (a.type === 'ml_sync') icon = 'fa-sync';
+        return '<div class="excl-timeline-item">' +
+          '<i class="fas ' + icon + '"></i>' +
+          '<div class="excl-timeline-body"><div class="excl-timeline-text">' + esc(a.text || '') + '</div><div class="excl-timeline-date">' + fmtDate(a.at) + '</div></div>' +
+        '</div>';
+      }).join('');
+      return '<div class="section-title" style="margin-top:24px;"><i class="fas fa-history"></i> Eventos del período</div>' +
+        '<div class="excl-timeline">' + html + '</div>';
+    }
+
+    function renderExclusividad(d, owner) {
+      var es = d.excl_stats || {};
+      var activity = d.activity || [];
+
+      /* ── Sin exclusividad: empty state enriquecido ── */
+      if (!owner.exclusive) {
+        var sinBenefits = [
+          { icon:'fas fa-bullhorn', title:'Publicación prioritaria', desc:'Tu propiedad destaca en todos los canales.' },
+          { icon:'fas fa-chart-line', title:'Reportes periódicos', desc:'Seguimiento de consultas y visitas.' },
+          { icon:'fas fa-handshake', title:'Asesor dedicado', desc:'Un broker gestiona tu propiedad de forma exclusiva.' },
+          { icon:'fas fa-percent', title:'Comisión preferencial', desc:'Condiciones especiales para propietarios en exclusividad.' }
+        ];
+        var sinHtml = sinBenefits.map(function(b){
+          return '<div class="excl-benefit">' +
+            '<i class="' + esc(b.icon) + '"></i>' +
+            '<div><h4>' + esc(b.title) + '</h4><p>' + esc(b.desc) + '</p></div>' +
+          '</div>';
+        }).join('');
+        var phone = (owner.phone || '').replace(/\D/g, '');
+        var waSin = phone
+          ? '<a class="whatsapp-cta" href="https://wa.me/549' + esc(phone) + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS. Me interesa conocer la exclusividad.') + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Consultar por exclusividad</a>'
+          : '';
+        $('exclContent').innerHTML =
+          '<div class="empty-msg">' +
+            '<i class="fas fa-handshake"></i>' +
+            '<h3>Sin exclusividad activa</h3>' +
+            '<p>Actualmente no tenés un contrato de exclusividad vigente. Con una exclusividad tu propiedad recibe atención prioritaria y condiciones especiales.</p>' +
+          '</div>' +
+          '<div class="section-title" style="margin-top:24px;"><i class="fas fa-gift"></i> Qué incluye la exclusividad</div>' +
+          '<div class="excl-benefits">' + sinHtml + '</div>' +
+          waSin;
+        return;
       }
 
-      function formatNumber(n) {
-        if (!n) return '0';
-        return Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2 });
+      var start = owner.exclusive_start ? new Date(owner.exclusive_start) : null;
+      var end = owner.exclusive_end ? new Date(owner.exclusive_end) : null;
+      var now = new Date();
+      var st = exclState(start, end);
+      var stLabel = exclStateLabel(st);
+
+      /* Banner title según estado */
+      var bannerTxt;
+      if (st.key === 'vencida') bannerTxt = 'Tu exclusividad ha vencido';
+      else if (st.key === 'por_vencer') bannerTxt = 'Exclusividad por vencer';
+      else bannerTxt = 'Exclusividad activa';
+
+      /* Countdown (preciso por partes) */
+      var countdownHtml = '';
+      if (st.key === 'activa' && end) {
+        var parts = exclCountdownParts(end - now, true);
+        var units = '';
+        if (parts.yrs > 0) units += '<div class="excl-countdown-item"><div class="num">' + parts.yrs + '</div><div class="unit">años</div></div>';
+        units += '<div class="excl-countdown-item"><div class="num">' + parts.months + '</div><div class="unit">meses</div></div>';
+        units += '<div class="excl-countdown-item"><div class="num">' + parts.days + '</div><div class="unit">días</div></div>';
+        countdownHtml = '<div class="excl-countdown">' + units + '</div>';
+      } else if (st.key === 'por_vencer' && end) {
+        var pdays = Math.max(0, Math.ceil((end - now) / (1000*60*60*24)));
+        countdownHtml = '<div class="excl-countdown excl-warn">' +
+          '<div class="excl-countdown-item"><div class="num">' + pdays + '</div><div class="unit">días restantes</div></div>' +
+        '</div>';
       }
 
-      // Main init
-      const valid = await validateToken();
-      if (!valid) return;
+      /* Progress: día X de Y + color por fase */
+      var progressHtml = '';
+      var pct = 0;
+      var dayX = 0, dayY = 0;
+      if (start && end) {
+        dayY = Math.max(1, Math.round((end - start) / (1000*60*60*24)));
+        var elapsedMs = now - start;
+        dayX = Math.min(dayY, Math.max(0, Math.floor(elapsedMs / (1000*60*60*24)) + 1));
+        pct = Math.min(100, Math.max(0, (elapsedMs / (end - start)) * 100));
+        var phase = pct >= 80 ? 'danger' : (pct >= 50 ? 'warn' : 'good');
+        progressHtml =
+          '<div class="excl-progress-wrap">' +
+            '<div class="excl-progress-label">' +
+              '<span>' + fmtDate(start) + '</span>' +
+              '<span>Día ' + dayX + ' de ' + dayY + '</span>' +
+              '<span>' + fmtDate(end) + '</span>' +
+            '</div>' +
+            '<div class="excl-progress-track"><div class="excl-progress-fill phase-' + phase + '" style="width:' + pct + '%"></div></div>' +
+            '<div class="excl-progress-days">' + Math.round(pct) + '% del período transcurrido</div>' +
+          '</div>';
+      }
 
-      initTabs();
-      renderOwnerInfo();
-      await loadDashboard();
-      await loadProperties();
-      await loadCommissions();
-      await loadLiquidations();
-      await loadDocuments();
-      await loadChecklist();
-      await loadExclusivity();
+      /* Contrato: duración + comisión + notas */
+      var contractBits = [];
+      if (start && end) contractBits.push('Contrato de ' + exclContractMonths(start, end) + ' meses');
+      else if (start && !end) contractBits.push('Inicio: ' + fmtDate(start));
+      var comms = [];
+      if (owner.commission_sale != null) comms.push('Venta ' + owner.commission_sale + '%');
+      if (owner.commission_rent != null) comms.push('Alquiler ' + owner.commission_rent + '%');
+      if (comms.length) contractBits.push('Comisión: ' + comms.join(' · '));
+      var contractHtml = '';
+      if (contractBits.length || owner.contract_notes) {
+        contractHtml = '<div class="excl-contract">' +
+          (contractBits.length ? '<div class="excl-contract-bits">' + contractBits.map(function(b){ return '<span class="excl-contract-pill">' + esc(b) + '</span>'; }).join('') + '</div>' : '') +
+          (owner.contract_notes ? '<div class="excl-contract-notes">' + esc(owner.contract_notes) + '</div>' : '') +
+        '</div>';
+      }
 
-    })();
+      /* Benefits (estáticos) */
+      var benefits = [
+        { icon:'fas fa-bullhorn', title:'Publicación prioritaria', desc:'Tu propiedad aparece destacada en todos los canales.' },
+        { icon:'fas fa-chart-line', title:'Reportes periódicos', desc:'Seguimiento detallado de consultas y visitas.' },
+        { icon:'fas fa-handshake', title:'Asesor dedicado', desc:'Un broker de confianza gestiona tu propiedad de forma exclusiva.' },
+        { icon:'fas fa-robot', title:'Sincronización ML', desc:'Publicación automática en Mercado Libre y portales.' }
+      ];
+      var benefitsHtml = benefits.map(function(b) {
+        return '<div class="excl-benefit">' +
+          '<i class="' + esc(b.icon) + '"></i>' +
+          '<div><h4>' + esc(b.title) + '</h4><p>' + esc(b.desc) + '</p></div>' +
+        '</div>';
+      }).join('');
+
+      /* Resultados: 3 cards + comparativa vs período anterior */
+      var statsHtml =
+        '<div class="excl-stats-grid">' +
+          '<div class="stat-card"><div class="label"><i class="fas fa-users"></i> Consultas</div><div class="value gold">' + fmtNum(es.leads || 0) + '</div></div>' +
+          '<div class="stat-card"><div class="label"><i class="fas fa-calendar"></i> Visitas</div><div class="value gold">' + fmtNum(es.visits || 0) + '</div></div>' +
+          '<div class="stat-card"><div class="label"><i class="fas fa-check"></i> Realizadas</div><div class="value green">' + fmtNum(es.visits_done || 0) + '</div></div>' +
+        '</div>';
+
+      var deltaHtml = '';
+      var hasPrev = es.prev_leads != null || es.prev_visits != null;
+      if (hasPrev && st.key !== 'sin') {
+        deltaHtml =
+          '<div class="excl-deltas">' +
+            exclDeltaCard('Consultas', 'fas fa-users', es.leads || 0, es.prev_leads || 0) +
+            exclDeltaCard('Visitas', 'fas fa-calendar', es.visits || 0, es.prev_visits || 0) +
+            exclDeltaCard('Realizadas', 'fas fa-check', es.visits_done || 0, es.prev_visits_done || 0) +
+          '</div>';
+      }
+
+      /* Comparativa vs resto del portfolio */
+      var shareHtml = '';
+      var totalLeads = d.lead_total || 0;
+      var totalVisits = (d.visits && d.visits.total) || 0;
+      var exLead = es.leads || 0;
+      var exVisit = es.visits || 0;
+      if (st.key !== 'sin' && (totalLeads > 0 || totalVisits > 0)) {
+        var ls = totalLeads > 0 ? Math.round((exLead / totalLeads) * 100) : 0;
+        var vs = totalVisits > 0 ? Math.round((exVisit / totalVisits) * 100) : 0;
+        shareHtml = '<div class="excl-share">' +
+          '<div class="excl-share-card"><span class="excl-share-num">' + ls + '%</span><span class="excl-share-label">de tus consultas llegaron en exclusividad</span></div>' +
+          '<div class="excl-share-card"><span class="excl-share-num">' + vs + '%</span><span class="excl-share-label">de tus visitas se dieron en exclusividad</span></div>' +
+        '</div>';
+      }
+
+      /* Renovación CTA si por vencer */
+      var renewHtml = '';
+      if (st.key === 'por_vencer') {
+        var rp = (owner.phone || '').replace(/\D/g, '');
+        renewHtml = rp
+          ? '<a class="whatsapp-cta excl-renew-cta" href="https://wa.me/549' + esc(rp) + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS. Mi exclusividad está por vencer y quiero conversar sobre renovarla.') + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Quiero renovar mi exclusividad</a>'
+          : '<div class="excl-renew-note">Tu exclusividad está por vencer. Contactá a tu asesor para renovarla.</div>';
+      }
+
+      /* WhatsApp CTA estándar */
+      var phone = (owner.phone || '').replace(/\D/g, '');
+      var waHtml = phone
+        ? '<a class="whatsapp-cta" href="https://wa.me/549' + esc(phone) + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS.') + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Consultar por WhatsApp</a>'
+        : '';
+
+      /* Timeline filtrado al período */
+      var timelineHtml = exclTimeline(activity, start, end);
+
+      $('exclContent').innerHTML =
+        '<div class="excl-banner excl-state-' + stLabel.cls + '">' +
+          '<h3><i class="fas fa-handshake"></i> ' + bannerTxt +
+            '<span class="excl-state-badge ' + stLabel.cls + '"><i class="fas ' + (st.key === 'vencida' ? 'fa-times' : (st.key === 'por_vencer' ? 'fa-clock' : 'fa-check-circle')) + '"></i> ' + stLabel.text + '</span>' +
+          '</h3>' +
+          '<p>Tu propiedad está bajo gestión exclusiva de BIENENHAUS.' + (start && end ? ' Período: ' + fmtDate(start) + ' — ' + fmtDate(end) : '') + '</p>' +
+          countdownHtml +
+          progressHtml +
+          contractHtml +
+        '</div>' +
+        '<div class="section-title"><i class="fas fa-gift"></i> Beneficios incluidos</div>' +
+        '<div class="excl-benefits">' + benefitsHtml + '</div>' +
+        (shareHtml ? '<div class="section-title" style="margin-top:24px;"><i class="fas fa-chart-pie"></i> Tu exclusividad en el portfolio</div>' + shareHtml : '') +
+        '<div class="section-title" style="margin-top:24px;"><i class="fas fa-chart-bar"></i> Resultados en exclusividad</div>' +
+        statsHtml +
+        (deltaHtml || '') +
+        (renewHtml || '') +
+        waHtml +
+        timelineHtml;
+    }
+
+  })();
   </script>
 </body>
 </html>
