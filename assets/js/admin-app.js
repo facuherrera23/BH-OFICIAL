@@ -3830,11 +3830,13 @@ form.elements.commission_rate.value = data.commission_rate ?? 3;
       /* Update sidebar badge for expiring exclusivities + DNI/CUIT */
       const exclBadge = $('#sideBadgeOwners');
       const totalDocAlerts = dniExpiring + dniExpired + cuitExpiring + cuitExpired;
-      const totalAlerts = expiringSoon + expiredExcl + totalDocAlerts;
+      const tasksOverdue = (openTasks || []).filter(t => new Date(t.due_date).getTime() < Date.now()).length;
+
+      const totalAlerts = expiringSoon + expiredExcl + totalDocAlerts + tasksOverdue;
       if (exclBadge) {
         if (totalAlerts > 0) {
-          exclBadge.textContent = (owners || []).length + ' Activos · ' + totalAlerts + ' alertas';
-          exclBadge.style.color = 'var(--warning)';
+          exclBadge.textContent = (owners || []).length + ' Activos' + (totalAlerts > 0 ? ' · ' + totalAlerts + ' alertas' : '') + (tasksOverdue > 0 ? ' · ' + tasksOverdue + ' tareas vencidas' : '');
+          exclBadge.style.color = tasksOverdue > 0 ? 'var(--danger)' : 'var(--warning)';
         } else {
           exclBadge.textContent = (owners || []).length + ' Activos';
           exclBadge.style.color = '';
@@ -6791,6 +6793,19 @@ on(chip, 'click', () => {
       platformBadgeEl.innerHTML = getPlatformIcon(data.account?.platform) + ' ' + (data.account?.platform || '—');
       accountBadgeEl.textContent = data.account?.username ? '@' + data.account.username : '—';
 
+      const windowClosed = data.last_message_at && (Date.now() - new Date(data.last_message_at).getTime() > 24 * 60 * 60 * 1000);
+      const platform = data.account?.platform || 'desconocido';
+      if (windowClosed && (platform === 'whatsapp' || platform === 'instagram')) {
+        composerHint.innerHTML = '<i class="fas fa-clock\</i> ' + platform + ' · fuera de ventana 24h';
+        composerHint.style.color = 'var(--warning)';
+      } else if (data.account?.username) {
+        composerHint.innerHTML = '<i class="fas fa-check-circle" style="color:var(--accent);\</i> ' + platform + ' · ventana abierta';
+        composerHint.style.color = 'var(--text-dim)';
+      } else {
+        composerHint.textContent = platform;
+        composerHint.style.color = 'var(--text-dim)';
+      }
+
       // Marcar leído
       if (data.unread_count > 0) {
         await markRead(convId);
@@ -6939,7 +6954,7 @@ on(chip, 'click', () => {
               </div>
               <div style="display:flex; align-items:center; gap:6px; margin-top:4px; font-size:10px; color:var(--text-dim); ${isOut ? 'justify-content:flex-end;' : ''}">
                 <span>${new Date(m.occurred_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
-                ${isOut ? `<span class="tick-icon">${ticks}</span>` : ''}
+                ${isOut ? `<span class="tick-icon ${m.status || ''}">${ticks}</span>` : ''}
               </div>
             </div>
           `;
@@ -6978,10 +6993,10 @@ on(chip, 'click', () => {
           body: JSON.stringify({ action: 'send_message', conversationId: _chatCurrentConv.id, text })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Error enviando');
+        if (!res.ok || data.ok === false) { let parsedErr = null; try { parsedErr = typeof data.error === 'string' ? JSON.parse(data.error) : data.error; } catch {} if (data.window_closed && !parsedErr) { const platform = data.platform || 'whatsapp'; const msg = platform === 'instagram' ? 'Instagram rechaza mensajes fuera de la ventana de 24h. Esperá a que el contacto te escriba.' : 'Ventana de 24h cerrada'; showToast(msg, 'warning'); throw new Error(msg); } const userMsg = parsedErr?.user_message || parsedErr?.message || data.error || 'Error enviando'; throw new Error(userMsg); }
 
         if (data.window_closed) {
-          showToast('Ventana de 24h de WhatsApp cerrada: puede requerir plantilla aprobada', 'warning');
+          const platform = data.platform || 'whatsapp'; const msg = platform === 'instagram' ? 'Instagram: ventana de 24h cerrada (esperá a que el contacto te escriba)' : 'Ventana de 24h de WhatsApp cerrada: puede requerir plantilla aprobada'; showToast(msg, 'warning');
         }
         // El mensaje real (con su id definitivo y ticks) llega vía Realtime,
         // que reemplaza esta burbuja optimista — ver setupRealtime().
@@ -6998,9 +7013,27 @@ on(chip, 'click', () => {
             const footerRow = tempEl.querySelector('div:last-child');
             footerRow?.appendChild(ticksEl);
           }
+          tempEl.dataset.pendingText = text;
+          tempEl.title = err.message + ' (click para reintentar)';
+          tempEl.style.cursor = 'pointer';
+          ticksEl.textContent = '✕';
           ticksEl.style.color = 'var(--danger)';
-          ticksEl.textContent = '?';
-          tempEl.title = err.message;
+          ticksEl.style.cursor = 'pointer';
+          const retryHandler = (e) => {
+            e.stopPropagation();
+            tempEl.removeEventListener('click', retryHandler);
+            tempEl.style.cursor = '';
+            tempEl.style.background = '';
+            tempEl.title = '';
+            ticksEl.style.cursor = '';
+            const retryText = tempEl.dataset.pendingText || '';
+            tempEl.remove();
+            const composer = document.getElementById('chatComposer');
+            composer.value = retryText;
+            composer.dispatchEvent(new Event('input', { bubbles: true }));
+            sendMessage();
+          };
+          tempEl.addEventListener('click', retryHandler);
         }
       }
     }
@@ -7188,10 +7221,13 @@ function setupCoreRealtime() {
       _chatRealtimeChannel = window.supabaseClient.channel('zernio-chat')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'zernio_messages' }, payload => {
           const m = payload.new;
+          const isIncoming = m.direction === 'in';
           if (!_chatCurrentConv || m.conversation_id !== _chatCurrentConv.id) {
             loadConversations(); // actualizar badge
+            if (isIncoming) showToast('Nuevo mensaje entrante', 'info');
             return;
           }
+          if (isIncoming) showToast('Nuevo mensaje de ' + (_chatCurrentConv.contact_name || 'contacto'), 'info');
           // Si es el eco del mensaje que acabamos de enviar de forma optimista,
           // sacamos la burbuja temporal y dejamos que se agregue la real (con ticks reales).
           if (m.direction === 'out' && _pendingSendTempId) {
@@ -7312,7 +7348,11 @@ async function mutate(table, fn) {
       if (propsEl) propsEl.textContent = counts.properties || 0;
       if (leadsEl) leadsEl.textContent = (counts.leads || 0) + ' Activos';
       if (visitsEl) visitsEl.textContent = (counts.visits || 0) + ' Citas';
-      if (ownersEl) ownersEl.textContent = (counts.owners || 0) + ' Activos';
+      if (ownersEl) {
+        const overdueTasks = counts.owner_tasks_overdue || 0;
+        ownersEl.textContent = (counts.owners || 0) + ' Activos' + (overdueTasks > 0 ? ' · ' + overdueTasks + ' tareas vencidas' : '');
+        if (overdueTasks > 0) ownersEl.style.color = 'var(--danger)';
+      }
       if (tasEl) tasEl.textContent = counts.tasaciones || 0;
     } catch (err) {
       logError('Badge update error:', err);
