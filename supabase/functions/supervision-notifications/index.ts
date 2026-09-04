@@ -1,6 +1,6 @@
 // ============================================================
 // BIENENHAUS - Supervision Notifications
-// Notificaciones push/email para alertas crÃ­ticas
+// Notificaciones push/email para alertas críticas
 // ============================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -12,7 +12,7 @@ const supabase = createClient(
     { auth: { persistSession: false } }
 );
 
-// ConfiguraciÃ³n de notificaciones
+// Configuración de notificaciones
 const NOTIFICATION_CONFIG = {
     // Email (Brevo/SendGrid)
     brevoApiKey: Deno.env.get('BREVO_API_KEY'),
@@ -77,7 +77,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                sender: { email: NOTIFICATION_CONFIG.brevoSenderEmail, name: 'Bienenhaus SupervisiÃ³n' },
+                sender: { email: NOTIFICATION_CONFIG.brevoSenderEmail, name: 'Bienenhaus Supervisión' },
                 to: [{ email: to }],
                 subject,
                 htmlContent: html,
@@ -92,7 +92,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
 
 async function sendPushNotification(subscription: PushSubscription, payload: Record<string, unknown>): Promise<boolean> {
     // Implementar Web Push con VAPID
-    // Por simplicidad, retorna true si hay configuraciÃ³n
+    // Por simplicidad, retorna true si hay configuración
     return !!NOTIFICATION_CONFIG.vapidPrivateKey;
 }
 
@@ -124,16 +124,16 @@ async function sendNotification(payload: NotificationPayload): Promise<void> {
                      : type === 'medium' ? NOTIFICATION_CONFIG.mediumChannels
                      : [];
     
-    const message = `ðŸš¨ *${type.toUpperCase()}: ${title}*\n${description}\nMÃ³dulo: ${module}\nEvidencia: ${JSON.stringify(evidence, null, 2)}`;
+    const message = `ðŸš¨ *${type.toUpperCase()}: ${title}*\n${description}\nMódulo: ${module}\nEvidencia: ${JSON.stringify(evidence, null, 2)}`;
     
     const results = await Promise.allSettled([
-        prefs.email ? sendEmail('superadmin@bienenhaus.com.ar', `[SUPERVISIÃ“N] ${type.toUpperCase()}: ${title}`, `
+        prefs.email ? sendEmail('superadmin@bienenhaus.com.ar', `[SUPERVISIÓN] ${type.toUpperCase()}: ${title}`, `
             <h2>${title}</h2>
             <p><strong>Severidad:</strong> ${type.toUpperCase()}</p>
-            <p><strong>MÃ³dulo:</strong> ${module}</p>
-            <p><strong>DescripciÃ³n:</strong> ${description}</p>
+            <p><strong>Módulo:</strong> ${module}</p>
+            <p><strong>Descripción:</strong> ${description}</p>
             <p><strong>Evidencia:</strong> <pre>${JSON.stringify(evidence, null, 2)}</pre></p>
-            <p><a href="https://bienenhaus.com.ar/admin.html#tab-supervision">Ver en Centro de SupervisiÃ³n</a></p>
+            <p><a href="https://bienenhaus.com.ar/admin.html#tab-supervision">Ver en Centro de Supervisión</a></p>
         `) : Promise.resolve(false),
         
         prefs.slack ? sendSlackNotification(NOTIFICATION_CONFIG.slackWebhookUrl, message) : Promise.resolve(false),
@@ -160,7 +160,7 @@ async function handleTestNotification(req: Request): Promise<Response> {
     return jsonResponse(200, { ok: true, message: 'Test notification sent' }, req);
 }
 
-// Endpoint para preferencias de notificaciÃ³n
+// Endpoint para preferencias de notificación
 async function handlePreferences(req: Request, method: string): Promise<Response> {
     const url = new URL(req.url);
     const userId = url.searchParams.get('user_id');
@@ -202,13 +202,13 @@ Deno.serve(async (req: Request) => {
     const path = url.pathname.split('/').pop();
     
     try {
-        // Verificar autenticaciÃ³n super_admin
+        // Verificar autenticación super_admin
         const auth = req.headers.get('authorization') ?? '';
         if (!auth.startsWith('Bearer ')) return jsonResponse(401, { error: 'No autorizado' }, req);
         
         const token = auth.slice(7);
         const { data: { user }, error } = await supabase.auth.getUser(token);
-        if (error || !user) return jsonResponse(401, { error: 'Token invÃ¡lido' }, req);
+        if (error || !user) return jsonResponse(401, { error: 'Token inválido' }, req);
         
         const { data: profile } = await supabase
             .from('profiles')

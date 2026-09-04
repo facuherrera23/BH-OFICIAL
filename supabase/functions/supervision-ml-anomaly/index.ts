@@ -1,6 +1,6 @@
 // ============================================================
 // BIENENHAUS - ML-based Anomaly Detection (Fase 2)
-// DetecciÃ³n de anomalÃ­as usando mÃ©todos estadÃ­sticos avanzados
+// Detección de anomalías usando métodos estadísticos avanzados
 // ============================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -12,7 +12,7 @@ const supabase = createClient(
     { auth: { persistSession: false } }
 );
 
-// ConfiguraciÃ³n
+// Configuración
 const ML_CONFIG = {
     // Ventanas temporales
     shortWindow: '1 hour',
@@ -20,11 +20,11 @@ const ML_CONFIG = {
     longWindow: '7 days',
     
     // Umbrales
-    zScoreThreshold: 3.0,        // Para detecciÃ³n Z-score
-    iqrMultiplier: 1.5,          // Para detecciÃ³n IQR
+    zScoreThreshold: 3.0,        // Para detección Z-score
+    iqrMultiplier: 1.5,          // Para detección IQR
     isolationForestContamination: 0.1,
     
-    // MÃ­nimos para entrenamiento
+    // Mínimos para entrenamiento
     minSamplesForTraining: 50,
     minSamplesForInference: 10,
     
@@ -60,7 +60,7 @@ interface AnomalyResult {
     details: Record<string, unknown>;
 }
 
-// Utilidades estadÃ­sticas
+// Utilidades estadísticas
 function mean(arr: number[]): number {
     return arr.reduce((a, b) => a + b, 0) / arr.length;
 }
@@ -82,7 +82,7 @@ function zScore(value: number, arr: number[]): number {
     return s === 0 ? 0 : (value - m) / s;
 }
 
-// DetecciÃ³n Z-Score
+// Detección Z-Score
 function detectZScoreAnomalies(features: Record<string, number[]>, threshold: number): Map<string, string[]> {
     const anomalies = new Map<string, string[]>();
     
@@ -105,7 +105,7 @@ function detectZScoreAnomalies(features: Record<string, number[]>, threshold: nu
     return anomalies;
 }
 
-// DetecciÃ³n IQR (Interquartile Range)
+// Detección IQR (Interquartile Range)
 function detectIQRAnomalies(features: Record<string, number[]>, multiplier: number): Map<string, string[]> {
     const anomalies = new Map<string, string[]>();
     
@@ -130,7 +130,7 @@ function detectIQRAnomalies(features: Record<string, number[]>, multiplier: numb
     return anomalies;
 }
 
-// Isolation Forest simplificado (basado en profundidad promedio de Ã¡rboles aleatorios)
+// Isolation Forest simplificado (basado en profundidad promedio de árboles aleatorios)
 class SimpleIsolationForest {
     private trees: IsolationTree[] = [];
     private nTrees: number;
@@ -248,7 +248,7 @@ async function extractUserFeatures(
         unique_entities_accessed: new Set(events?.map(e => e.entity_id).filter(Boolean) ?? []).size,
     };
     
-    // DuraciÃ³n promedio de sesiÃ³n (aproximado)
+    // Duración promedio de sesión (aproximado)
     const sessions = new Set(events?.map(e => e.session_id).filter(Boolean) ?? []);
     let sessionDurations: number[] = [];
     for (const sid of sessions) {
@@ -263,7 +263,7 @@ async function extractUserFeatures(
     return features;
 }
 
-// FunciÃ³n principal de detecciÃ³n
+// Función principal de detección
 async function detectAnomalies(
     supabase: any,
     userIds: string[],
@@ -291,7 +291,7 @@ async function detectAnomalies(
         }
     }
     
-    // MÃ©todo 1: Z-Score
+    // Método 1: Z-Score
     const featureValues: Record<string, number[]> = {};
     for (const fname of featureNames) {
         featureValues[fname] = trainingData.map(row => row[featureNames.indexOf(fname)]);
@@ -299,10 +299,10 @@ async function detectAnomalies(
     
     const zScoreAnomalies = detectZScoreAnomalies(featureValues, ML_CONFIG.zScoreThreshold);
     
-    // MÃ©todo 2: IQR
+    // Método 2: IQR
     const iqrAnomalies = detectIQRAnomalies(featureValues, ML_CONFIG.iqrMultiplier);
     
-    // MÃ©todo 3: Isolation Forest (si hay suficientes datos)
+    // Método 3: Isolation Forest (si hay suficientes datos)
     let iforestScores: Map<string, number> = new Map();
     if (trainingData.length >= ML_CONFIG.minSamplesForTraining) {
         const forest = new SimpleIsolationForest(50, 8);
@@ -314,7 +314,7 @@ async function detectAnomalies(
         }
     }
     
-    // Ensemble: combinar mÃ©todos
+    // Ensemble: combinar métodos
     for (const userId of userIds) {
         let anomalyScore = 0;
         const methods: string[] = [];
@@ -374,7 +374,7 @@ async function saveAnomalyResults(supabase: any, results: AnomalyResult[]): Prom
                     module: 'ml_anomaly',
                     severity: r.anomalyScore > 0.8 ? 'critical' : r.anomalyScore > 0.6 ? 'high' : 'medium',
                     alert_type: 'ml_anomaly_detection',
-                    title: `AnomalÃ­a detectada: ${r.method}`,
+                    title: `Anomalía detectada: ${r.method}`,
                     description: `Score: ${(r.anomalyScore * 100).toFixed(1)}%. Factores: ${r.contributingFeatures.join(', ')}`,
                     evidence: r.details,
                     status: 'open',
@@ -417,7 +417,7 @@ async function handleDetect(req: Request): Promise<Response> {
 }
 
 async function handleTrain(req: Request): Promise<Response> {
-    // Reentrenar modelo con datos histÃ³ricos
+    // Reentrenar modelo con datos históricos
     const body = await req.json();
     const { days = 30 } = body;
     
@@ -452,7 +452,7 @@ Deno.serve(async (req: Request) => {
         
         const token = auth.slice(7);
         const { data: { user }, error } = await supabase.auth.getUser(token);
-        if (error || !user) return jsonResponse(401, { error: 'Token invÃ¡lido' }, req);
+        if (error || !user) return jsonResponse(401, { error: 'Token inválido' }, req);
         
         const { data: profile } = await supabase
             .from('profiles')

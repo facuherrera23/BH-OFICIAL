@@ -1,0 +1,133 @@
+# Supabase project config — versionado desde auditoría 2026-09-04
+# project_id tomado de supabase/.temp/linked-project.json
+# Los bloques [functions.*] reflejan el estado REAL de producción (verify_jwt)
+# consultado vía Management API el 2026-09-04.
+#
+# OJO: verify_jwt=false NO significa "sin auth" — esas funciones validan auth
+# manualmente en el código (firma de webhook, secret, x-sync-secret, etc.).
+
+project_id = "rnldqiwwzhjnurkguihu"
+
+# ---------------- Mercado Libre ----------------
+[functions.ml-webhook]
+verify_jwt = false
+
+[functions.ml-oauth]
+verify_jwt = false
+
+[functions.ml-sync]
+verify_jwt = false
+
+[functions.ml-callback]
+verify_jwt = false
+
+[functions.ml-publish]
+verify_jwt = false
+
+[functions.ml-portal-status]
+verify_jwt = false
+
+[functions.ml-disconnect]
+verify_jwt = false
+
+[functions.ml-auth]
+verify_jwt = true
+
+[functions.ml-api]
+verify_jwt = true
+
+[functions.ml-config]
+verify_jwt = true
+
+[functions.ml-categories]
+verify_jwt = true
+
+[functions.ml-listing-types]
+verify_jwt = true
+
+[functions.ml-metrics]
+verify_jwt = true
+
+[functions.ml-answer-question]
+verify_jwt = true
+
+[functions.ml-bulk-enqueue]
+verify_jwt = true
+
+[functions.ml-revoke-tokens]
+verify_jwt = true
+
+[functions.ml-import-listings]
+verify_jwt = true
+
+[functions.ml-sync-import]
+verify_jwt = true
+
+# ---------------- RELA (portales) ----------------
+[functions.rela-proxy]
+verify_jwt = true
+
+[functions.rela-callbacks]
+verify_jwt = false
+
+[functions.rela-sync]
+verify_jwt = false
+
+# ---------------- Zernio (chat) ----------------
+[functions.zernio-proxy]
+verify_jwt = false
+
+[functions.zernio-webhook]
+verify_jwt = false
+
+[functions.zernio-webhook-test]
+verify_jwt = false
+
+# ---------------- Panel / utilidades ----------------
+[functions.cloudinary-sign]
+verify_jwt = false
+
+[functions.manage-users]
+verify_jwt = false
+
+[functions.check-password-hash]
+verify_jwt = false
+
+[functions.ficha]
+verify_jwt = false
+
+# ---------------- Supervisión ----------------
+[functions.supervision-api]
+verify_jwt = false
+
+[functions.supervision-notifications]
+verify_jwt = false
+
+[functions.supervision-ml-anomaly]
+verify_jwt = false
+
+[functions.supervision-notify]
+verify_jwt = false
+
+[functions.supervision-digest]
+verify_jwt = false
+
+# ---------------- CRM / crons ----------------
+[functions.trigger_commission_on_close]
+verify_jwt = false
+
+[functions.monthly_commission_liquidation]
+verify_jwt = false
+
+[functions.cron_exclusivity_renewals]
+verify_jwt = false
+
+[functions.owner-tasks-reminder]
+verify_jwt = false
+
+# ---------------- Locales NO desplegadas en producción (2026-09-04) ----------------
+# Estas existen en el repo pero no están desplegadas. Se declaran para que un
+# futuro deploy las respete con verify_jwt seguro por defecto.
+#   contact-submit, convert-image, process-retention-policies, visits-process-reminders
+# ---------------- Remotas sin código local (huérfanas en producción) ----------------
+#   cta-test, tmp-gen-jwt, ficha-publish  (verify_jwt: false, false, true)

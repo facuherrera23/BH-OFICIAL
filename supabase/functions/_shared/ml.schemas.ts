@@ -1,5 +1,5 @@
 /**
- * Zod Schemas para validaciÃ³n runtime de Mercado Libre API responses.
+ * Zod Schemas para validación runtime de Mercado Libre API responses.
  * Elimina todos los `as unknown as` / `any` en ml.ts, ml-sync, ml-webhook, ml-metrics.
  */
 
@@ -263,7 +263,7 @@ export const MlSyncHistoryRowSchema = z.object({
 
 /**
  * Valida y parsea respuesta de ML API con Zod.
- * Lanza error tipado si falla validaciÃ³n.
+ * Lanza error tipado si falla validación.
  */
 export function parseMlResponse<T>(
     schema: z.ZodSchema<T>,
@@ -272,14 +272,14 @@ export function parseMlResponse<T>(
 ): T {
     const result = schema.safeParse(data);
     if (!result.success) {
-        const errorMsg = `${operationName}: Respuesta ML invÃ¡lida - ${result.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')}`;
+        const errorMsg = `${operationName}: Respuesta ML inválida - ${result.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')}`;
         throw new Error(errorMsg);
     }
     return result.data;
 }
 
 /**
- * Extrae error message de response ML para categorizaciÃ³n.
+ * Extrae error message de response ML para categorización.
  */
 export function extractMlErrorMessage(data: unknown): string {
     if (typeof data === 'object' && data !== null) {

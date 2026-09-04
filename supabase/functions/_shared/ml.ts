@@ -40,7 +40,7 @@ export interface MlTokenResponse {
 /**
  * Obtiene client_id, client_secret y webhook_secret desde site_settings (BD).
  * Fallback a env vars (legacy) si no encuentran en BD.
- * Esta es la funciÃ³n canÃ³nica que deben usar todas las edge functions de ML.
+ * Esta es la función canónica que deben usar todas las edge functions de ML.
  */
 let cachedCredentials: {
     data: { clientId: string; clientSecret: string; webhookSecret: string };
@@ -91,7 +91,7 @@ export async function getMlCredentials(
 /**
  * Obtiene client_id y client_secret desencriptados desde la BD.
  * Requiere que el caller sea staff (validado en RPC get_ml_credentials).
- * @deprecated Usar getMlCredentials(supabase) en nuevo cÃ³digo.
+ * @deprecated Usar getMlCredentials(supabase) en nuevo código.
  */
 export async function getMlAppCredentialsLegacy(
     supabase: SupabaseClient,
@@ -128,7 +128,7 @@ export async function exchangeCode(
     });
     const text = await res.text();
     if (!res.ok) {
-        throw new Error(`ML token exchange fallÃ³ (${res.status}): ${text.slice(0, 300)}`);
+        throw new Error(`ML token exchange falló (${res.status}): ${text.slice(0, 300)}`);
     }
     return JSON.parse(text) as MlTokenResponse;
 }
@@ -153,13 +153,13 @@ export async function refreshToken(
     });
     const text = await res.text();
     if (!res.ok) {
-        throw new Error(`ML token refresh fallÃ³ (${res.status}): ${text.slice(0, 300)}`);
+        throw new Error(`ML token refresh falló (${res.status}): ${text.slice(0, 300)}`);
     }
     return JSON.parse(text) as MlTokenResponse;
 }
 
 // ============================================================
-// Access token de la conexiÃ³n (descifrado + refresh automÃ¡tico)
+// Access token de la conexión (descifrado + refresh automático)
 // ============================================================
 
 export interface MlConnectionRow {
@@ -171,7 +171,7 @@ export interface MlConnectionRow {
     token_expires_at: string;
 }
 
-const REFRESH_THRESHOLD_MS = 5 * 60 * 1000; // token vÃ¡lido si expira en > 5 min
+const REFRESH_THRESHOLD_MS = 5 * 60 * 1000; // token válido si expira en > 5 min
 const SENTINEL_MS = 60 * 1000; // lock de refresh (autocaduca en 60 s)
 const POLL_INTERVAL_MS = 500; // poll de los perdedores
 const POLL_TIMEOUT_MS = 20 * 1000; // los perdedores esperan hasta 20 s
@@ -181,11 +181,11 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Devuelve el access token de la conexiÃ³n, refrescÃ¡ndolo si estÃ¡ por expirar.
+ * Devuelve el access token de la conexión, refrescándolo si está por expirar.
  *
- * F0.1 â€” CAS + sentinel: ante refresh concurrente (mÃºltiples edge functions),
- * solo un proceso refresca el token; los demÃ¡s hacen poll hasta ver el nuevo.
- * - El ganador escribe `token_expires_at = sentinel` (CAS sobre el valor leÃ­do).
+ * F0.1 — CAS + sentinel: ante refresh concurrente (múltiples edge functions),
+ * solo un proceso refresca el token; los demás hacen poll hasta ver el nuevo.
+ * - El ganador escribe `token_expires_at = sentinel` (CAS sobre el valor leído).
  * - Si el ganador muere, el sentinel expira en 60 s y otro proceso puede ganar.
  * - Si el refresh del ganador falla, restaura el valor stale para reintentar.
  */
@@ -259,7 +259,7 @@ export async function getAccessToken(
 
             return tokens.access_token;
         } catch (err) {
-            // FallÃ³ el refresh: restaurar el valor stale para que otro proceso
+            // Falló el refresh: restaurar el valor stale para que otro proceso
             // pueda reintentar (si esto falla, el sentinel expira solo en 60 s).
             await supabase
                 .from('ml_connection')
@@ -293,14 +293,14 @@ export async function getAccessToken(
 }
 
 // ============================================================
-// Cooldown (circuit breaker) â€” F0.3
+// Cooldown (circuit breaker) — F0.3
 // ============================================================
 
 export const ML_COOLDOWN_DEFAULT_MS = 60 * 1000;
 
 /**
- * Devuelve hasta cuÃ¡ndo la conexiÃ³n estÃ¡ en cooldown, o null si no lo estÃ¡
- * (o el cooldown ya expirÃ³).
+ * Devuelve hasta cuándo la conexión está en cooldown, o null si no lo está
+ * (o el cooldown ya expiró).
  */
 export async function getMlCooldown(
     supabase: SupabaseClient,
@@ -324,8 +324,8 @@ export async function getMlCooldown(
 }
 
 /**
- * Activa el cooldown de una conexiÃ³n por `durationMs` (default 60 s).
- * La escribe el service_role (edge functions) â€” RLS lo permite.
+ * Activa el cooldown de una conexión por `durationMs` (default 60 s).
+ * La escribe el service_role (edge functions) — RLS lo permite.
  */
 export async function setMlCooldown(
     supabase: SupabaseClient,
@@ -361,7 +361,7 @@ export async function getMe(accessToken: string): Promise<MlUser> {
     const res = await fetchWithTimeout(`${ML_API}/users/me`, {
         headers: { authorization: `Bearer ${accessToken}` },
     });
-    if (!res.ok) throw new Error(`ML getMe fallÃ³ (${res.status})`);
+    if (!res.ok) throw new Error(`ML getMe falló (${res.status})`);
     return await res.json();
 }
 
@@ -416,7 +416,7 @@ async function api(
     });
     const text = await res.text();
     if (!res.ok) {
-        throw new Error(`ML API ${path} fallÃ³ (${res.status}): ${text.slice(0, 300)}`);
+        throw new Error(`ML API ${path} falló (${res.status}): ${text.slice(0, 300)}`);
     }
     return text ? (JSON.parse(text) as unknown) : null;
 }
@@ -528,7 +528,7 @@ export async function mlUploadPicture(
 
     const text = await res.text();
     if (!res.ok) {
-        throw new Error(`ML picture upload fallÃ³ (${res.status}): ${text.slice(0, 500)}`);
+        throw new Error(`ML picture upload falló (${res.status}): ${text.slice(0, 500)}`);
     }
     return JSON.parse(text) as MlPictureUploadResponse;
 }
@@ -548,7 +548,7 @@ export async function mlUploadPictures(
                 file.type,
                 idempotencyKey,
             );
-            // Usar la primera variaciÃ³n (original) como URL principal
+            // Usar la primera variación (original) como URL principal
             const mainVariation =
                 result.variations.find((v) => v.id === 'original') || result.variations[0];
             if (mainVariation?.url) {
@@ -556,7 +556,7 @@ export async function mlUploadPictures(
             }
         } catch (err) {
             console.error(`Error subiendo imagen ${file.name}:`, err);
-            // Continuar con las demÃ¡s imÃ¡genes
+            // Continuar con las demás imágenes
         }
     }
     return urls;
@@ -684,8 +684,8 @@ export async function runMlApiCall<T>(
 }
 
 /**
- * Ejecuta una llamada a la API de ML con reintento automÃ¡tico en caso de rate limit.
- * VersiÃ³n de conveniencia que hace el wait + retry internamente.
+ * Ejecuta una llamada a la API de ML con reintento automático en caso de rate limit.
+ * Versión de conveniencia que hace el wait + retry internamente.
  * Si se provee `onRateLimit`, se invoca antes del wait (permite activar un
  * cooldown global / circuit breaker).
  */
@@ -713,7 +713,7 @@ export async function fetchMlListingTypes(accessToken: string): Promise<MlListin
     const res = await fetchWithTimeout(`${ML_API}/sites/MLA/listing_types`, {
         headers: { authorization: `Bearer ${accessToken}` },
     });
-    if (!res.ok) throw new Error(`ML listing_types fallÃ³ (${res.status})`);
+    if (!res.ok) throw new Error(`ML listing_types falló (${res.status})`);
     const data = await res.json();
     return data?.map((lt: { id: string; name: string }) => ({ id: lt.id, name: lt.name })) ?? [];
 }
@@ -739,7 +739,7 @@ export interface RegisterWebhookResult {
 }
 
 /**
- * Registra un tÃ³pico de webhook para un usuario especÃ­fico.
+ * Registra un tópico de webhook para un usuario específico.
  * API: POST /users/{user_id}/topics/{topic}
  * Body: { callback_url, auth_token }
  */
@@ -765,7 +765,7 @@ export async function registerMlWebhookTopic(
         });
         const text = await res.text();
         if (!res.ok) {
-            return { ok: false, topic, error: `ML ${topic} webhook fallÃ³ (${res.status}): ${text.slice(0, 300)}` };
+            return { ok: false, topic, error: `ML ${topic} webhook falló (${res.status}): ${text.slice(0, 300)}` };
         }
         return { ok: true, topic };
     } catch (err) {
@@ -774,8 +774,8 @@ export async function registerMlWebhookTopic(
 }
 
 /**
- * Registra todos los tÃ³picos necesarios para la integraciÃ³n.
- * Devuelve array de resultados por tÃ³pico.
+ * Registra todos los tópicos necesarios para la integración.
+ * Devuelve array de resultados por tópico.
  */
 export async function registerMlWebhooks(
     accessToken: string,
@@ -792,7 +792,7 @@ export async function registerMlWebhooks(
 }
 
 /**
- * Verifica quÃ© tÃ³picos estÃ¡n registrados para un usuario.
+ * Verifica qué tópicos están registrados para un usuario.
  * GET /users/{user_id}/topics/{topic}
  */
 export async function getRegisteredMlWebhookTopics(
@@ -835,7 +835,7 @@ export async function fetchMlCategories(
     const res = await fetchWithTimeout(`${ML_API}/sites/MLA/categories/${parentId}`, {
         headers: { authorization: `Bearer ${accessToken}` },
     });
-    if (!res.ok) throw new Error(`ML categories fallÃ³ (${res.status})`);
+    if (!res.ok) throw new Error(`ML categories falló (${res.status})`);
     const data = await res.json();
     return data?.children_categories ?? [];
 }

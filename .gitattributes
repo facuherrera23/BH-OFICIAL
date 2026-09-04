@@ -1,0 +1,12 @@
+# Normalizacion de encoding y fin de linea (anti-mojibake)
+* text=auto encoding=UTF-8
+
+# Scripts de shell/PS siempre LF-safe
+*.sh text eol=lf
+*.ps1 text eol=crlf
+
+# Binarios: nunca tocar
+*.png binary
+*.ico binary
+*.webp binary
+*.zip binary

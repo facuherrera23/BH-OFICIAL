@@ -504,9 +504,9 @@ async function runJob(
 
     const defaults = await fetchDefaults();
     if (operation === 'publish' && !defaults.category_id)
-        return { ok: false, error: 'Falta configurar la categorÃ­a de Mercado Libre.' };
+        return { ok: false, error: 'Falta configurar la categoría de Mercado Libre.' };
     if (operation === 'publish' && !defaults.listing_type_id)
-        return { ok: false, error: 'Falta configurar el tipo de publicaciÃ³n de Mercado Libre.' };
+        return { ok: false, error: 'Falta configurar el tipo de publicación de Mercado Libre.' };
     const mlImageUrls = await prepareImagesForML(accessToken, property.images);
 
     try {
@@ -549,15 +549,15 @@ async function runJob(
                 attributes.push({ id: 'TOTAL_AREA', value_name: String(property.area_total) });
             if (property.pets_allowed !== null)
                 attributes.push(
-                    { id: 'PETS', value_name: property.pets_allowed ? 'SÃ­' : 'No' },
-                    { id: 'IS_SUITABLE_FOR_PETS', value_name: property.pets_allowed ? 'SÃ­' : 'No' },
+                    { id: 'PETS', value_name: property.pets_allowed ? 'Sí' : 'No' },
+                    { id: 'IS_SUITABLE_FOR_PETS', value_name: property.pets_allowed ? 'Sí' : 'No' },
                 );
             if (property.garages !== null && property.garages > 0)
                 attributes.push({ id: 'PARKING_LOTS', value_name: String(property.garages) });
             if (property.has_storage !== null)
-                attributes.push({ id: 'STORAGE', value_name: property.has_storage ? 'SÃ­' : 'No' });
+                attributes.push({ id: 'STORAGE', value_name: property.has_storage ? 'Sí' : 'No' });
             if (property.furnished !== null)
-                attributes.push({ id: 'FURNISHED', value_name: property.furnished ? 'SÃ­' : 'No' });
+                attributes.push({ id: 'FURNISHED', value_name: property.furnished ? 'Sí' : 'No' });
             if (property.maintenance_fee !== null)
                 attributes.push(
                     { id: 'MAINTENANCE_FEE', value_name: String(property.maintenance_fee) },
@@ -587,7 +587,7 @@ async function runJob(
             if (mlImageUrls.length === 0) {
                 return {
                     ok: false,
-                    error: 'Mercado Libre requiere al menos una imagen vÃ¡lida para esta publicaciÃ³n. Verifica que la propiedad tenga imÃ¡genes accesibles.',
+                    error: 'Mercado Libre requiere al menos una imagen válida para esta publicación. Verifica que la propiedad tenga imágenes accesibles.',
                 };
             }
             payload.pictures = mlImageUrls.map((url) => ({ source: url }));
@@ -798,7 +798,7 @@ async function runJob(
             return { ok: true, itemId, mlStatus: 'closed' };
         }
 
-        return { ok: false, error: `OperaciÃ³n desconocida: ${operation}` };
+        return { ok: false, error: `Operación desconocida: ${operation}` };
     } catch (err) {
         return { ok: false, error: (err as Error).message };
     }
@@ -839,7 +839,7 @@ Deno.serve(async (req) => {
     const conn = conns?.[0] ?? null;
     if (!conn) return respond(400, { error: 'No hay una cuenta de Mercado Libre conectada' });
 
-    // F0.6: Requeue stuck jobs â€” locked hace >15 min, o 'processing' sin lock desde hace >15 min
+    // F0.6: Requeue stuck jobs — locked hace >15 min, o 'processing' sin lock desde hace >15 min
     const staleCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
     const { data: requeued, error: requeueError } = await supabase
         .from('ml_sync_queue')
@@ -861,7 +861,7 @@ Deno.serve(async (req) => {
         });
     }
 
-    // F0.3: Circuit breaker â€” si la API ML estÃ¡ en cooldown, abortar temprano
+    // F0.3: Circuit breaker — si la API ML está en cooldown, abortar temprano
     const cooldown = await getMlCooldown(supabase, conn.id);
     if (cooldown) {
         const retryAfter = Math.max(1, Math.ceil((cooldown.getTime() - Date.now()) / 1000));
@@ -873,7 +873,7 @@ Deno.serve(async (req) => {
         return respond(429, { error: 'ML en cooldown por rate limit', retry_after: retryAfter });
     }
 
-    // F0.2: Claim atÃ³mico vÃ­a RPC (FOR UPDATE SKIP LOCKED, incrementa attempts)
+    // F0.2: Claim atómico vía RPC (FOR UPDATE SKIP LOCKED, incrementa attempts)
     const { data: claimData, error: claimError } = await supabase.rpc('ml_claim_jobs', {
         p_batch_size: BATCH_SIZE,
     });
@@ -903,7 +903,7 @@ Deno.serve(async (req) => {
         const batch = jobs.slice(i, i + MAX_CONCURRENT_JOBS);
         const batchResults = await Promise.allSettled(
             batch.map(async (job: QueueJob) => {
-                // El claim atÃ³mico (ml_claim_jobs) ya incrementÃ³ attempts y fijÃ³ el lock.
+                // El claim atómico (ml_claim_jobs) ya incrementó attempts y fijó el lock.
                 const attempts = job.attempts;
                 const maxAttempts = job.max_attempts;
 
@@ -1038,7 +1038,7 @@ Deno.serve(async (req) => {
             ...batchResults.map((r) => (r.status === 'fulfilled' ? r.value : { error: r.reason })),
         );
 
-        // F0.3: si algÃºn job del batch fue rate limited, liberar el resto del batch y abortar
+        // F0.3: si algún job del batch fue rate limited, liberar el resto del batch y abortar
         const wasRateLimited = batchResults.some(
             (r) => r.status === 'fulfilled' && r.value?.status === 'rate_limited',
         );

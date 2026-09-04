@@ -1,7 +1,7 @@
 /**
  * Rate Limiting para Edge Functiones Edge de Mercado Libre.
  * Sliding window log almacenado en Supabase (tabla rate_limit_logs).
- * Configurable por funciÃ³n via env vars.
+ * Configurable por función via env vars.
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -12,7 +12,7 @@ const supabase = createClient(
     { auth: { persistSession: false } },
 );
 
-// ConfiguraciÃ³n por funciÃ³n (requests por windowMs)
+// Configuración por función (requests por windowMs)
 export const RATE_LIMIT_CONFIG = {
     'ml-sync': { requests: 30, windowMs: 60_000 }, // 30/min
     'ml-webhook': { requests: 100, windowMs: 60_000 }, // 100/min
@@ -30,7 +30,7 @@ export const RATE_LIMIT_CONFIG = {
     'visits-process-reminders': { requests: 10, windowMs: 60_000 }, // 10/min - cron job
     'chat-ai': { requests: 10, windowMs: 60_000 }, // 10/min - AI chat assistant
     'chat-upload': { requests: 10, windowMs: 60_000 }, // 10/min - adjuntos de chat
-    'convert-image': { requests: 30, windowMs: 60_000 }, // 30/min - conversiÃ³n de imÃ¡genes
+    'convert-image': { requests: 30, windowMs: 60_000 }, // 30/min - conversión de imágenes
     'rela-proxy': { requests: 60, windowMs: 60_000 }, // 60/min - acciones panel RELA
     'rela-callbacks': { requests: 120, windowMs: 60_000 }, // 120/min - webhooks RELA
     'manage-users': { requests: 10, windowMs: 60_000 }, // 10/min - user management
@@ -47,7 +47,7 @@ export interface RateLimitResult {
 }
 
 /**
- * Verifica y consume un slot de rate limit para la funciÃ³n dada.
+ * Verifica y consume un slot de rate limit para la función dada.
  * Usa sliding window log en tabla rate_limit_logs.
  */
 export async function checkRateLimit(
@@ -78,7 +78,7 @@ export async function checkRateLimit(
     const count = logs?.length ?? 0;
 
     if (count >= config.requests) {
-        // Rate limited - calcular retry-after basado en el log mÃ¡s antiguo
+        // Rate limited - calcular retry-after basado en el log más antiguo
         const oldestLog = logs?.[0];
         if (oldestLog) {
             const oldestTime = new Date(oldestLog.created_at).getTime();
@@ -155,7 +155,7 @@ export async function rateLimitMiddleware(
 }
 
 /**
- * Decorator para aplicar rate limiting automÃ¡ticamente a un handler.
+ * Decorator para aplicar rate limiting automáticamente a un handler.
  * Uso: export default withRateLimit('ml-sync', handler);
  */
 export function withRateLimit<Fn extends (req: Request) => Promise<Response>>(
