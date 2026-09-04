@@ -162,6 +162,17 @@ function parseZernioError(rawBody: string, status: number): {
         };
     }
 
+    const platformErrType = platformErr ? String(platformErr.type ?? '') : '';
+    if (platformErrType === 'IGApiException' || /outside of allowed window/i.test(rawBody)) {
+        return {
+            code: 'OUTSIDE_WINDOW',
+            status,
+            user_message: 'Instagram rechaza mensajes fuera de la ventana de 24h. Esperá a que el contacto te escriba o usá una plantilla aprobada.',
+            remediation: 'Pedí al contacto que te envíe un mensaje primero (abrirá la ventana de 24h) o configurá una plantilla aprobada en Meta Business Suite.',
+            zernio_error: rawBody.slice(0, 300),
+        };
+    }
+
     return {
         code: 'ZERNIO_API_ERROR',
         status,
@@ -254,13 +265,29 @@ async function actSendMessage(body: Record<string, unknown>, userId: string): Pr
     if (!conv) throw new Error('Conversación no encontrada');
     if (!conv.account_id) throw new Error('Conversación sin account_id');
 
-    // Verificar ventana 24h para WhatsApp (solo aviso, no bloqueo)
     let windowClosed = false;
-    if (conv.platform === 'whatsapp' && conv.last_message_at) {
+    if ((conv.platform === 'whatsapp' || conv.platform === 'instagram') && conv.last_message_at) {
         const lastIn = new Date(conv.last_message_at).getTime();
         if (Date.now() - lastIn > 24 * 60 * 60 * 1000) {
             windowClosed = true;
         }
+    }
+
+    if (windowClosed && conv.platform === 'instagram') {
+        log('warn', { action: 'send_message', conv_id: conversationId, error: 'instagram_outside_window', platform_message_id: null });
+        await auditSensitiveAction(
+            supabase,
+            new Request('http://internal', { method: 'POST' }),
+            'send_message',
+            'chat',
+            'conversation',
+            null,
+            `Conv ${conversationId}: IG window closed`,
+            { platform: conv.platform, account_id: conv.account_id },
+            { window_closed: true, blocked: true },
+            { source: 'zernio-proxy', action: 'send_message' }
+        );
+        return { ok: false, window_closed: true, platform: conv.platform, code: 'OUTSIDE_WINDOW', user_message: 'Instagram rechaza mensajes fuera de la ventana de 24h. Esperá a que el contacto te escriba o usá una plantilla aprobada.' };
     }
 
     const res = await zernioRequest(`/inbox/conversations/${conversationId}/messages`, {
@@ -275,6 +302,9 @@ async function actSendMessage(body: Record<string, unknown>, userId: string): Pr
         const errText = await res.text();
         log('warn', { action: 'send_message', conv_id: conversationId, status: res.status, error: errText.slice(0, 300) });
         const structured = parseZernioError(errText, res.status);
+        if (structured.code === 'OUTSIDE_WINDOW') {
+            return { ok: false, window_closed: true, platform: 'instagram', ...structured };
+        }
         throw new Error(JSON.stringify(structured));
     }
 
