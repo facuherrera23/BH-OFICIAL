@@ -36,6 +36,10 @@ export const RATE_LIMIT_CONFIG = {
     'manage-users': { requests: 10, windowMs: 60_000 }, // 10/min - user management
     'cloudinary-sign': { requests: 30, windowMs: 60_000 }, // 30/min - image upload signing
     'check-password-hash': { requests: 10, windowMs: 60_000 }, // 10/min - HIBP password check
+    'ml-publish': { requests: 10, windowMs: 60_000 }, // 10/min - publicar/actualizar/quitar items ML
+    'ml-portal-status': { requests: 60, windowMs: 60_000 }, // 60/min - polling de estado desde el panel
+    'ml-disconnect': { requests: 5, windowMs: 60_000 }, // 5/min - desconexion OAuth
+    'ml-sync-import': { requests: 2, windowMs: 60_000 }, // 2/min - importacion full ML -> BH (cron/admin)
 } as const;
 
 export type RateLimitFnName = keyof typeof RATE_LIMIT_CONFIG;

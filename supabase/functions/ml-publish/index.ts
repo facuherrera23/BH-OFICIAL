@@ -1,577 +1,577 @@
-import { createClient } from 'npm:@supabase/supabase-js@2';\r
-import {\r
-    ML_API,\r
-    fetchWithTimeout,\r
-    getAccessToken,\r
-    setMlCooldown,\r
-    type MlConnectionRow,\r
-    type MlItem,\r
-} from '../_shared/ml.ts';\r
-import { jsonResponse, optionsResponse } from '../_shared/http.ts';\r
-import { requireAdmin } from '../_shared/auth.ts';\r
-import { rateLimitMiddleware } from '../_shared/rate-limit.ts';\r
-import {\r
-    MlItemSchema,\r
-    type MlItemPayload,\r
-    parseMlResponse,\r
-} from '../_shared/ml.schemas.ts';\r
-\r
-const supabase = createClient(\r
-    Deno.env.get('SUPABASE_URL') ?? '',\r
-    Deno.env.get('SERVICE_ROLE_KEY') ?? '',\r
-    { auth: { persistSession: false } },\r
-);\r
-\r
-interface PropertyRow {\r
-    id: string;\r
-    title: string;\r
-    description: string | null;\r
-    listing_type: string;\r
-    price: number | null;\r
-    currency: string;\r
-    address: string | null;\r
-    area_total: number | null;\r
-    area_covered: number | null;\r
-    bedrooms: number | null;\r
-    bathrooms: number | null;\r
-    garages: number | null;\r
-    property_type: string | null;\r
-    rooms: number | null;\r
-    full_bathrooms: number | null;\r
-    pets_allowed: boolean | null;\r
-    has_storage: boolean | null;\r
-    furnished: boolean | null;\r
-    maintenance_fee: number | null;\r
-    inscription_number: string | null;\r
-    images: { url: string; storage_path?: string }[];\r
-}\r
-\r
-interface MlDefaults {\r
-    category_id: string;\r
-    listing_type_id: string;\r
-    condition: string;\r
-}\r
-\r
-async function fetchProperty(id: string): Promise<PropertyRow | null> {\r
-    const { data: property } = await supabase\r
-        .from('properties')\r
-        .select(\r
-            'id, title, description, listing_type, price, price_usd, price_currency, currency, address, area_total, area_covered, surface_total, surface_covered, bedrooms, bathrooms, garages, property_type, rooms, full_bathrooms, pets_allowed, has_storage, furnished, maintenance_fee, inscription_number, image_urls',\r
-        )\r
-        .eq('id', id)\r
-        .maybeSingle();\r
-\r
-    if (!property) return null;\r
-\r
-    const { data: relImages } = await supabase\r
-        .from('property_images')\r
-        .select('url, storage_path, position')\r
-        .eq('property_id', id)\r
-        .order('position', { ascending: true });\r
-\r
-    const images: { url: string; storage_path?: string }[] =\r
-        relImages && relImages.length > 0\r
-            ? relImages.map((img) => ({ url: img.url, storage_path: img.storage_path ?? undefined }))\r
-            : ((property.image_urls ?? []) as string[]).map((url) => ({ url }));\r
-\r
-    return {\r
-        id: property.id,\r
-        title: property.title,\r
-        description: property.description,\r
-        listing_type: property.listing_type ?? 'venta',\r
-        price: property.price ?? property.price_usd ?? null,\r
-        currency: property.currency ?? property.price_currency ?? 'USD',\r
-        address: property.address,\r
-        area_total: property.area_total ?? property.surface_total ?? null,\r
-        area_covered: property.area_covered ?? property.surface_covered ?? null,\r
-        bedrooms: property.bedrooms,\r
-        bathrooms: property.bathrooms,\r
-        garages: property.garages,\r
-        property_type: property.property_type,\r
-        rooms: property.rooms,\r
-        full_bathrooms: property.full_bathrooms,\r
-        pets_allowed: property.pets_allowed,\r
-        has_storage: property.has_storage,\r
-        furnished: property.furnished,\r
-        maintenance_fee: property.maintenance_fee,\r
-        inscription_number: property.inscription_number,\r
-        images,\r
-    };\r
-}\r
-\r
-async function fetchDefaults(): Promise<MlDefaults> {\r
-    const { data } = await supabase\r
-        .from('site_settings')\r
-        .select('value')\r
-        .eq('key', 'ml_defaults')\r
-        .maybeSingle();\r
-    const value = data?.value ?? {};\r
-    return {\r
-        category_id: String(value.category_id ?? ''),\r
-        listing_type_id: String(value.listing_type_id ?? 'silver'),\r
-        condition: String(value.condition ?? 'not_specified'),\r
-    };\r
-}\r
-\r
-async function prepareImagesForML(\r
-    accessToken: string,\r
-    images: { url: string; storage_path?: string }[],\r
-): Promise<string[]> {\r
-    const withStorage = images\r
-        .slice(0, 12)\r
-        .filter((i): i is { url: string; storage_path: string } => !!i.storage_path);\r
-    const directUrls = images\r
-        .slice(0, 12)\r
-        .filter((i) => !i.storage_path)\r
-        .map((i) => i.url);\r
-\r
-    if (withStorage.length === 0 && directUrls.length === 0) return [];\r
-\r
-    const downloadUpload = async (img: { storage_path: string }) => {\r
-        try {\r
-            const { data: fileData, error } = await supabase.storage\r
-                .from('property-images')\r
-                .download(img.storage_path);\r
-            if (error || !fileData) return null;\r
-\r
-            const uint8Array = new Uint8Array(await fileData.arrayBuffer());\r
-            const ext = img.storage_path.split('.').pop()?.toLowerCase();\r
-            const contentType =\r
-                ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';\r
-\r
-            const formData = new FormData();\r
-            const blob = new Blob([uint8Array], { type: contentType });\r
-            const safeName = `image_${crypto.randomUUID()}.${ext || 'jpg'}`;\r
-            formData.append('file', blob, safeName);\r
-\r
-            const uploadRes = await fetchWithTimeout(`${ML_API}/pictures`, {\r
-                method: 'POST',\r
-                headers: { Authorization: `Bearer ${accessToken}` },\r
-                body: formData,\r
-            });\r
-\r
-            if (!uploadRes.ok) return null;\r
-            const uploadData = await uploadRes.json();\r
-            const variations = (uploadData as { variations?: Array<{ id?: string; url?: string }> })\r
-                .variations ?? [];\r
-            const mainVariation = variations.find((v) => v.id === 'original') ?? variations[0];\r
-            return mainVariation?.url ?? null;\r
-        } catch {\r
-            return null;\r
-        }\r
-    };\r
-\r
-    const results = await Promise.allSettled(withStorage.map(downloadUpload));\r
-    const urls: string[] = [];\r
-    results.forEach((r) => {\r
-        if (r.status === 'fulfilled' && r.value) urls.push(r.value);\r
-    });\r
-    urls.push(...directUrls);\r
-    return urls.slice(0, 12);\r
-}\r
-\r
-function buildItemPayload(property: PropertyRow, defaults: MlDefaults): MlItemPayload {\r
-    const operationLabel = property.listing_type === 'venta' ? 'Venta' : 'Alquiler';\r
-    const propertyType = property.property_type ?? 'Departamento';\r
-    const roomsLabel = property.rooms ?? property.bedrooms ?? 1;\r
-    const location = property.address?.split(',')[0]?.trim() ?? '';\r
-    const mlTitle =\r
-        `${operationLabel} ${propertyType} ${roomsLabel} amb. ${location || 'Salta'}`.slice(0, 60);\r
-\r
-    const attributes: Array<{ id: string; value_name: string }> = [\r
-        { id: 'OPERATION', value_name: operationLabel },\r
-        { id: 'PROPERTY_TYPE', value_name: propertyType },\r
-        { id: 'ROOMS', value_name: String(property.rooms ?? property.bedrooms ?? 1) },\r
-    ];\r
-\r
-    if (property.bedrooms !== null)\r
-        attributes.push({ id: 'BEDROOMS', value_name: String(property.bedrooms) });\r
-    if (property.full_bathrooms !== null)\r
-        attributes.push({ id: 'FULL_BATHROOMS', value_name: String(property.full_bathrooms) });\r
-    if (property.bathrooms !== null)\r
-        attributes.push({ id: 'BATHROOMS', value_name: String(property.bathrooms) });\r
-    if (property.area_covered !== null)\r
-        attributes.push({ id: 'COVERED_AREA', value_name: String(property.area_covered) });\r
-    if (property.area_total !== null)\r
-        attributes.push({ id: 'TOTAL_AREA', value_name: String(property.area_total) });\r
-    if (property.pets_allowed !== null) {\r
-        attributes.push({ id: 'PETS', value_name: property.pets_allowed ? 'Sí' : 'No' });\r
-        attributes.push({\r
-            id: 'IS_SUITABLE_FOR_PETS',\r
-            value_name: property.pets_allowed ? 'Sí' : 'No',\r
-        });\r
-    }\r
-    if (property.garages !== null && property.garages > 0)\r
-        attributes.push({ id: 'PARKING_LOTS', value_name: String(property.garages) });\r
-    if (property.has_storage !== null)\r
-        attributes.push({ id: 'STORAGE', value_name: property.has_storage ? 'Sí' : 'No' });\r
-    if (property.furnished !== null)\r
-        attributes.push({ id: 'FURNISHED', value_name: property.furnished ? 'Sí' : 'No' });\r
-    if (property.maintenance_fee !== null) {\r
-        attributes.push({ id: 'MAINTENANCE_FEE', value_name: String(property.maintenance_fee) });\r
-        attributes.push({ id: 'COMMON_EXPENSES', value_name: String(property.maintenance_fee) });\r
-    }\r
-    if (property.inscription_number)\r
-        attributes.push({ id: 'INSCRIPTION_NUMBER', value_name: property.inscription_number });\r
-\r
-    const payload: MlItemPayload = {\r
-        title: mlTitle,\r
-        price: Number(property.price),\r
-        currency_id: property.currency,\r
-        available_quantity: 1,\r
-        buying_mode: 'classified',\r
-        condition: ['new', 'used'].includes(defaults.condition)\r
-            ? (defaults.condition as 'new' | 'used')\r
-            : 'not_specified',\r
-        channels: ['marketplace'],\r
-        attributes,\r
-        location: property.address ? { address_line: property.address } : undefined,\r
-    };\r
-    if (defaults.category_id) payload.category_id = defaults.category_id;\r
-    if (defaults.listing_type_id) payload.listing_type_id = defaults.listing_type_id;\r
-    return payload;\r
-}\r
-\r
-async function createMlItem(\r
-    accessToken: string,\r
-    payload: MlItemPayload,\r
-): Promise<MlItem> {\r
-    const res = await fetchWithTimeout(`${ML_API}/items`, {\r
-        method: 'POST',\r
-        headers: {\r
-            Authorization: `Bearer ${accessToken}`,\r
-            'Content-Type': 'application/json',\r
-            Accept: 'application/json',\r
-        },\r
-        body: JSON.stringify(payload),\r
-    });\r
-    const text = await res.text();\r
-    if (!res.ok) throw new Error(`ML createItem failed (${res.status}): ${text.slice(0, 300)}`);\r
-    return parseMlResponse(MlItemSchema, JSON.parse(text), 'mlCreateItem');\r
-}\r
-\r
-async function updateMlItem(\r
-    accessToken: string,\r
-    itemId: string,\r
-    payload: Record<string, unknown>,\r
-): Promise<MlItem> {\r
-    const res = await fetchWithTimeout(`${ML_API}/items/${itemId}`, {\r
-        method: 'PUT',\r
-        headers: {\r
-            Authorization: `Bearer ${accessToken}`,\r
-            'Content-Type': 'application/json',\r
-            Accept: 'application/json',\r
-        },\r
-        body: JSON.stringify(payload),\r
-    });\r
-    const text = await res.text();\r
-    if (!res.ok) throw new Error(`ML updateItem failed (${res.status}): ${text.slice(0, 300)}`);\r
-    return parseMlResponse(MlItemSchema, JSON.parse(text), 'mlUpdateItem');\r
-}\r
-\r
-async function setDescription(\r
-    accessToken: string,\r
-    itemId: string,\r
-    plainText: string,\r
-): Promise<void> {\r
-    const res = await fetchWithTimeout(`${ML_API}/items/${itemId}/description`, {\r
-        method: 'PUT',\r
-        headers: {\r
-            Authorization: `Bearer ${accessToken}`,\r
-            'Content-Type': 'application/json',\r
-            Accept: 'application/json',\r
-        },\r
-        body: JSON.stringify({ plain_text: plainText.slice(0, 20000) }),\r
-    });\r
-    if (!res.ok) {\r
-        const text = await res.text();\r
-        throw new Error(`ML setDescription failed (${res.status}): ${text.slice(0, 300)}`);\r
-    }\r
-}\r
-\r
-async function closeMlItem(accessToken: string, itemId: string): Promise<MlItem> {\r
-    return await updateMlItem(accessToken, itemId, { status: 'closed' });\r
-}\r
-\r
-async function getActiveConnection(): Promise<MlConnectionRow | null> {\r
-    const { data } = await supabase\r
-        .from('ml_connection')\r
-        .select(\r
-            'id, access_token_encrypted, access_token_iv, refresh_token_encrypted, refresh_token_iv, token_expires_at',\r
-        )\r
-        .eq('is_active', true)\r
-        .order('updated_at', { ascending: false })\r
-        .limit(1);\r
-    return (data?.[0] ?? null) as MlConnectionRow | null;\r
-}\r
-\r
-async function upsertListing(args: {\r
-    propertyId: string;\r
-    mlItemId: string;\r
-    mlStatus: string;\r
-    permalink: string | null;\r
-    price: number | null;\r
-    title: string;\r
-    listingType: string;\r
-}): Promise<void> {\r
-    const { data: existing } = await supabase\r
-        .from('ml_listings')\r
-        .select('id')\r
-        .eq('property_id', args.propertyId)\r
-        .maybeSingle();\r
-\r
-    if (existing?.id) {\r
-        await supabase\r
-            .from('ml_listings')\r
-            .update({\r
-                ml_item_id: args.mlItemId,\r
-                status: args.mlStatus,\r
-                permalink: args.permalink,\r
-                price: args.price,\r
-                last_synced_at: new Date().toISOString(),\r
-                updated_at: new Date().toISOString(),\r
-            })\r
-            .eq('id', existing.id);\r
-    } else {\r
-        await supabase.from('ml_listings').insert({\r
-            property_id: args.propertyId,\r
-            ml_item_id: args.mlItemId,\r
-            status: args.mlStatus,\r
-            permalink: args.permalink,\r
-            price: args.price,\r
-            title: args.title,\r
-            listing_type: args.listingType,\r
-            last_synced_at: new Date().toISOString(),\r
-        });\r
-    }\r
-\r
-    await supabase.from('property_ml_meta').upsert(\r
-        {\r
-            property_id: args.propertyId,\r
-            ml_item_id: args.mlItemId,\r
-            updated_at: new Date().toISOString(),\r
-        },\r
-        { onConflict: 'property_id' },\r
-    );\r
-}\r
-\r
-async function auditLog(entry: {\r
-    userId: string;\r
-    action: string;\r
-    propertyId?: string;\r
-    mlItemId?: string;\r
-    metadata?: Record<string, unknown>;\r
-}): Promise<void> {\r
-    await supabase.from('audit_log').insert({\r
-        action: entry.action,\r
-        module: 'portales',\r
-        entity_type: 'ml_listing',\r
-        entity_id: entry.propertyId ?? null,\r
-        entity_label: entry.mlItemId ?? null,\r
-        actor_id: entry.userId,\r
-        metadata: entry.metadata ?? {},\r
-    });\r
-}\r
-\r
-Deno.serve(async (req) => {\r
-    if (req.method === 'OPTIONS') return optionsResponse(req);\r
-\r
-    const respond = (status: number, body: Record<string, unknown>): Response =>\r
-        jsonResponse(status, body, req);\r
-\r
-    const rl = await rateLimitMiddleware('ml-publish', req);\r
-    if (rl) return rl;\r
-\r
-    const token = await requireAdmin(req, supabase);\r
-    if (!token) return respond(401, { error: 'No autorizado' });\r
-\r
-    const { data: userData } = await supabase.auth.getUser(token);\r
-    const adminId = userData?.user?.id;\r
-    if (!adminId) return respond(401, { error: 'No autorizado' });\r
-\r
-    let body: { action?: unknown; property_id?: unknown; listing_id?: unknown };\r
-    try {\r
-        body = await req.json();\r
-    } catch {\r
-        return respond(400, { error: 'JSON inválido' });\r
-    }\r
-\r
-    const action = typeof body.action === 'string' ? body.action : '';\r
-    const propertyId = typeof body.property_id === 'string' ? body.property_id : '';\r
-    const listingIdHint = typeof body.listing_id === 'string' ? body.listing_id : '';\r
-\r
-    if (!['create', 'update', 'remove'].includes(action)) {\r
-        return respond(400, { error: 'action debe ser create, update o remove' });\r
-    }\r
-    if (!propertyId) {\r
-        return respond(400, { error: 'property_id requerido' });\r
-    }\r
-\r
-    const conn = await getActiveConnection();\r
-    if (!conn) return respond(400, { error: 'No hay cuenta de Mercado Libre conectada' });\r
-\r
-    let accessToken: string;\r
-    try {\r
-        accessToken = await getAccessToken(supabase, conn);\r
-    } catch (err) {\r
-        return respond(429, {\r
-            error: 'No se pudo refrescar el token de Mercado Libre',\r
-            detail: (err as Error).message,\r
-        });\r
-    }\r
-\r
-    const property = await fetchProperty(propertyId);\r
-    if (!property) return respond(404, { error: 'Propiedad no encontrada' });\r
-\r
-    try {\r
-        if (action === 'create') {\r
-            if (property.price === null || property.price <= 0) {\r
-                return respond(400, { error: 'La propiedad debe tener un precio válido' });\r
-            }\r
-            const defaults = await fetchDefaults();\r
-            if (!defaults.category_id || !defaults.listing_type_id) {\r
-                return respond(400, {\r
-                    error: 'Falta configurar ml_defaults (category_id, listing_type_id)',\r
-                });\r
-            }\r
-\r
-            const mlImageUrls = await prepareImagesForML(accessToken, property.images);\r
-            if (mlImageUrls.length === 0) {\r
-                return respond(400, {\r
-                    error: 'Mercado Libre requiere al menos una imagen válida. Subí fotos a la propiedad.',\r
-                });\r
-            }\r
-\r
-            const payload = buildItemPayload(property, defaults);\r
-            payload.pictures = mlImageUrls.map((url) => ({ source: url }));\r
-\r
-            const item = await createMlItem(accessToken, payload);\r
-            await setDescription(accessToken, item.id, property.description ?? property.title);\r
-\r
-            await upsertListing({\r
-                propertyId,\r
-                mlItemId: item.id,\r
-                mlStatus: item.status,\r
-                permalink: item.permalink ?? null,\r
-                price: item.price ?? null,\r
-                title: item.title ?? property.title,\r
-                listingType: property.listing_type,\r
-            });\r
-\r
-            await auditLog({\r
-                userId: adminId,\r
-                action: 'ml_publish',\r
-                propertyId,\r
-                mlItemId: item.id,\r
-                metadata: { event: 'publish_create', permalink: item.permalink },\r
-            });\r
-\r
-            return respond(200, {\r
-                ok: true,\r
-                action: 'create',\r
-                listing_id: item.id,\r
-                permalink: item.permalink,\r
-                status: item.status,\r
-            });\r
-        }\r
-\r
-        if (action === 'update' || action === 'remove') {\r
-            let mlItemId = listingIdHint;\r
-            if (!mlItemId) {\r
-                const { data: row } = await supabase\r
-                    .from('ml_listings')\r
-                    .select('ml_item_id')\r
-                    .eq('property_id', propertyId)\r
-                    .maybeSingle();\r
-                mlItemId = row?.ml_item_id ?? '';\r
-            }\r
-            if (!mlItemId) {\r
-                return respond(400, {\r
-                    error: 'La propiedad no tiene publicación en Mercado Libre',\r
-                });\r
-            }\r
-\r
-            if (action === 'remove') {\r
-                const item = await closeMlItem(accessToken, mlItemId);\r
-                await supabase\r
-                    .from('ml_listings')\r
-                    .update({\r
-                        status: item.status,\r
-                        last_synced_at: new Date().toISOString(),\r
-                        updated_at: new Date().toISOString(),\r
-                    })\r
-                    .eq('ml_item_id', mlItemId);\r
-\r
-                await auditLog({\r
-                    userId: adminId,\r
-                    action: 'ml_publish',\r
-                    propertyId,\r
-                    mlItemId,\r
-                    metadata: { event: 'publish_close' },\r
-                });\r
-\r
-                return respond(200, {\r
-                    ok: true,\r
-                    action: 'remove',\r
-                    listing_id: mlItemId,\r
-                    status: item.status,\r
-                });\r
-            }\r
-\r
-            // update\r
-            const defaults = await fetchDefaults();\r
-            const payload = buildItemPayload(property, defaults);\r
-            const mlImageUrls = await prepareImagesForML(accessToken, property.images);\r
-            if (mlImageUrls.length > 0) {\r
-                payload.pictures = mlImageUrls.map((url) => ({ source: url }));\r
-            }\r
-\r
-            const item = await updateMlItem(accessToken, mlItemId, payload as Record<string, unknown>);\r
-            if (property.description) {\r
-                await setDescription(accessToken, item.id, property.description);\r
-            }\r
-\r
-            await upsertListing({\r
-                propertyId,\r
-                mlItemId: item.id,\r
-                mlStatus: item.status,\r
-                permalink: item.permalink ?? null,\r
-                price: item.price ?? null,\r
-                title: item.title ?? property.title,\r
-                listingType: property.listing_type,\r
-            });\r
-\r
-            await auditLog({\r
-                userId: adminId,\r
-                action: 'ml_publish',\r
-                propertyId,\r
-                mlItemId,\r
-                metadata: { event: 'publish_update' },\r
-            });\r
-\r
-            return respond(200, {\r
-                ok: true,\r
-                action: 'update',\r
-                listing_id: mlItemId,\r
-                permalink: item.permalink,\r
-                status: item.status,\r
-            });\r
-        }\r
-\r
-        return respond(400, { error: 'Acción inválida' });\r
-    } catch (err) {\r
-        const message = (err as Error).message;\r
-        const is429 = message.includes('429') || message.toLowerCase().includes('rate limit');\r
-        if (is429) {\r
-            await setMlCooldown(supabase, conn.id, 'publish_429', 60_000);\r
-        }\r
-        await auditLog({\r
-            userId: adminId,\r
-            action: 'ml_publish_failed',\r
-            propertyId,\r
-            mlItemId: '',\r
-            metadata: { event: action, error: message },\r
-        });\r
-        return respond(is429 ? 429 : 500, { error: message });\r
-    }\r
-});\r
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import {
+    ML_API,
+    fetchWithTimeout,
+    getAccessToken,
+    setMlCooldown,
+    type MlConnectionRow,
+    type MlItem,
+} from '../_shared/ml.ts';
+import { jsonResponse, optionsResponse } from '../_shared/http.ts';
+import { requireAdmin } from '../_shared/auth.ts';
+import { rateLimitMiddleware } from '../_shared/rate-limit.ts';
+import {
+    MlItemSchema,
+    type MlItemPayload,
+    parseMlResponse,
+} from '../_shared/ml.schemas.ts';
+
+const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SERVICE_ROLE_KEY') ?? '',
+    { auth: { persistSession: false } },
+);
+
+interface PropertyRow {
+    id: string;
+    title: string;
+    description: string | null;
+    listing_type: string;
+    price: number | null;
+    currency: string;
+    address: string | null;
+    area_total: number | null;
+    area_covered: number | null;
+    bedrooms: number | null;
+    bathrooms: number | null;
+    garages: number | null;
+    property_type: string | null;
+    rooms: number | null;
+    full_bathrooms: number | null;
+    pets_allowed: boolean | null;
+    has_storage: boolean | null;
+    furnished: boolean | null;
+    maintenance_fee: number | null;
+    inscription_number: string | null;
+    images: { url: string; storage_path?: string }[];
+}
+
+interface MlDefaults {
+    category_id: string;
+    listing_type_id: string;
+    condition: string;
+}
+
+async function fetchProperty(id: string): Promise<PropertyRow | null> {
+    const { data: property } = await supabase
+        .from('properties')
+        .select(
+            'id, title, description, listing_type, price, price_usd, price_currency, currency, address, area_total, area_covered, surface_total, surface_covered, bedrooms, bathrooms, garages, property_type, rooms, full_bathrooms, pets_allowed, has_storage, furnished, maintenance_fee, inscription_number, image_urls',
+        )
+        .eq('id', id)
+        .maybeSingle();
+
+    if (!property) return null;
+
+    const { data: relImages } = await supabase
+        .from('property_images')
+        .select('url, storage_path, position')
+        .eq('property_id', id)
+        .order('position', { ascending: true });
+
+    const images: { url: string; storage_path?: string }[] =
+        relImages && relImages.length > 0
+            ? relImages.map((img) => ({ url: img.url, storage_path: img.storage_path ?? undefined }))
+            : ((property.image_urls ?? []) as string[]).map((url) => ({ url }));
+
+    return {
+        id: property.id,
+        title: property.title,
+        description: property.description,
+        listing_type: property.listing_type ?? 'venta',
+        price: property.price ?? property.price_usd ?? null,
+        currency: property.currency ?? property.price_currency ?? 'USD',
+        address: property.address,
+        area_total: property.area_total ?? property.surface_total ?? null,
+        area_covered: property.area_covered ?? property.surface_covered ?? null,
+        bedrooms: property.bedrooms,
+        bathrooms: property.bathrooms,
+        garages: property.garages,
+        property_type: property.property_type,
+        rooms: property.rooms,
+        full_bathrooms: property.full_bathrooms,
+        pets_allowed: property.pets_allowed,
+        has_storage: property.has_storage,
+        furnished: property.furnished,
+        maintenance_fee: property.maintenance_fee,
+        inscription_number: property.inscription_number,
+        images,
+    };
+}
+
+async function fetchDefaults(): Promise<MlDefaults> {
+    const { data } = await supabase
+        .from('site_settings')
+        .select('value')
+        .eq('key', 'ml_defaults')
+        .maybeSingle();
+    const value = data?.value ?? {};
+    return {
+        category_id: String(value.category_id ?? ''),
+        listing_type_id: String(value.listing_type_id ?? 'silver'),
+        condition: String(value.condition ?? 'not_specified'),
+    };
+}
+
+async function prepareImagesForML(
+    accessToken: string,
+    images: { url: string; storage_path?: string }[],
+): Promise<string[]> {
+    const withStorage = images
+        .slice(0, 12)
+        .filter((i): i is { url: string; storage_path: string } => !!i.storage_path);
+    const directUrls = images
+        .slice(0, 12)
+        .filter((i) => !i.storage_path)
+        .map((i) => i.url);
+
+    if (withStorage.length === 0 && directUrls.length === 0) return [];
+
+    const downloadUpload = async (img: { storage_path: string }) => {
+        try {
+            const { data: fileData, error } = await supabase.storage
+                .from('property-images')
+                .download(img.storage_path);
+            if (error || !fileData) return null;
+
+            const uint8Array = new Uint8Array(await fileData.arrayBuffer());
+            const ext = img.storage_path.split('.').pop()?.toLowerCase();
+            const contentType =
+                ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+
+            const formData = new FormData();
+            const blob = new Blob([uint8Array], { type: contentType });
+            const safeName = `image_${crypto.randomUUID()}.${ext || 'jpg'}`;
+            formData.append('file', blob, safeName);
+
+            const uploadRes = await fetchWithTimeout(`${ML_API}/pictures`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${accessToken}` },
+                body: formData,
+            });
+
+            if (!uploadRes.ok) return null;
+            const uploadData = await uploadRes.json();
+            const variations = (uploadData as { variations?: Array<{ id?: string; url?: string }> })
+                .variations ?? [];
+            const mainVariation = variations.find((v) => v.id === 'original') ?? variations[0];
+            return mainVariation?.url ?? null;
+        } catch {
+            return null;
+        }
+    };
+
+    const results = await Promise.allSettled(withStorage.map(downloadUpload));
+    const urls: string[] = [];
+    results.forEach((r) => {
+        if (r.status === 'fulfilled' && r.value) urls.push(r.value);
+    });
+    urls.push(...directUrls);
+    return urls.slice(0, 12);
+}
+
+function buildItemPayload(property: PropertyRow, defaults: MlDefaults): MlItemPayload {
+    const operationLabel = property.listing_type === 'venta' ? 'Venta' : 'Alquiler';
+    const propertyType = property.property_type ?? 'Departamento';
+    const roomsLabel = property.rooms ?? property.bedrooms ?? 1;
+    const location = property.address?.split(',')[0]?.trim() ?? '';
+    const mlTitle =
+        `${operationLabel} ${propertyType} ${roomsLabel} amb. ${location || 'Salta'}`.slice(0, 60);
+
+    const attributes: Array<{ id: string; value_name: string }> = [
+        { id: 'OPERATION', value_name: operationLabel },
+        { id: 'PROPERTY_TYPE', value_name: propertyType },
+        { id: 'ROOMS', value_name: String(property.rooms ?? property.bedrooms ?? 1) },
+    ];
+
+    if (property.bedrooms !== null)
+        attributes.push({ id: 'BEDROOMS', value_name: String(property.bedrooms) });
+    if (property.full_bathrooms !== null)
+        attributes.push({ id: 'FULL_BATHROOMS', value_name: String(property.full_bathrooms) });
+    if (property.bathrooms !== null)
+        attributes.push({ id: 'BATHROOMS', value_name: String(property.bathrooms) });
+    if (property.area_covered !== null)
+        attributes.push({ id: 'COVERED_AREA', value_name: String(property.area_covered) });
+    if (property.area_total !== null)
+        attributes.push({ id: 'TOTAL_AREA', value_name: String(property.area_total) });
+    if (property.pets_allowed !== null) {
+        attributes.push({ id: 'PETS', value_name: property.pets_allowed ? 'SÃ­' : 'No' });
+        attributes.push({
+            id: 'IS_SUITABLE_FOR_PETS',
+            value_name: property.pets_allowed ? 'SÃ­' : 'No',
+        });
+    }
+    if (property.garages !== null && property.garages > 0)
+        attributes.push({ id: 'PARKING_LOTS', value_name: String(property.garages) });
+    if (property.has_storage !== null)
+        attributes.push({ id: 'STORAGE', value_name: property.has_storage ? 'SÃ­' : 'No' });
+    if (property.furnished !== null)
+        attributes.push({ id: 'FURNISHED', value_name: property.furnished ? 'SÃ­' : 'No' });
+    if (property.maintenance_fee !== null) {
+        attributes.push({ id: 'MAINTENANCE_FEE', value_name: String(property.maintenance_fee) });
+        attributes.push({ id: 'COMMON_EXPENSES', value_name: String(property.maintenance_fee) });
+    }
+    if (property.inscription_number)
+        attributes.push({ id: 'INSCRIPTION_NUMBER', value_name: property.inscription_number });
+
+    const payload: MlItemPayload = {
+        title: mlTitle,
+        price: Number(property.price),
+        currency_id: property.currency,
+        available_quantity: 1,
+        buying_mode: 'classified',
+        condition: ['new', 'used'].includes(defaults.condition)
+            ? (defaults.condition as 'new' | 'used')
+            : 'not_specified',
+        channels: ['marketplace'],
+        attributes,
+        location: property.address ? { address_line: property.address } : undefined,
+    };
+    if (defaults.category_id) payload.category_id = defaults.category_id;
+    if (defaults.listing_type_id) payload.listing_type_id = defaults.listing_type_id;
+    return payload;
+}
+
+async function createMlItem(
+    accessToken: string,
+    payload: MlItemPayload,
+): Promise<MlItem> {
+    const res = await fetchWithTimeout(`${ML_API}/items`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        },
+        body: JSON.stringify(payload),
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`ML createItem failed (${res.status}): ${text.slice(0, 300)}`);
+    return parseMlResponse(MlItemSchema, JSON.parse(text), 'mlCreateItem');
+}
+
+async function updateMlItem(
+    accessToken: string,
+    itemId: string,
+    payload: Record<string, unknown>,
+): Promise<MlItem> {
+    const res = await fetchWithTimeout(`${ML_API}/items/${itemId}`, {
+        method: 'PUT',
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        },
+        body: JSON.stringify(payload),
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`ML updateItem failed (${res.status}): ${text.slice(0, 300)}`);
+    return parseMlResponse(MlItemSchema, JSON.parse(text), 'mlUpdateItem');
+}
+
+async function setDescription(
+    accessToken: string,
+    itemId: string,
+    plainText: string,
+): Promise<void> {
+    const res = await fetchWithTimeout(`${ML_API}/items/${itemId}/description`, {
+        method: 'PUT',
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        },
+        body: JSON.stringify({ plain_text: plainText.slice(0, 20000) }),
+    });
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`ML setDescription failed (${res.status}): ${text.slice(0, 300)}`);
+    }
+}
+
+async function closeMlItem(accessToken: string, itemId: string): Promise<MlItem> {
+    return await updateMlItem(accessToken, itemId, { status: 'closed' });
+}
+
+async function getActiveConnection(): Promise<MlConnectionRow | null> {
+    const { data } = await supabase
+        .from('ml_connection')
+        .select(
+            'id, access_token_encrypted, access_token_iv, refresh_token_encrypted, refresh_token_iv, token_expires_at',
+        )
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+    return (data?.[0] ?? null) as MlConnectionRow | null;
+}
+
+async function upsertListing(args: {
+    propertyId: string;
+    mlItemId: string;
+    mlStatus: string;
+    permalink: string | null;
+    price: number | null;
+    title: string;
+    listingType: string;
+}): Promise<void> {
+    const { data: existing } = await supabase
+        .from('ml_listings')
+        .select('id')
+        .eq('property_id', args.propertyId)
+        .maybeSingle();
+
+    if (existing?.id) {
+        await supabase
+            .from('ml_listings')
+            .update({
+                ml_item_id: args.mlItemId,
+                status: args.mlStatus,
+                permalink: args.permalink,
+                price: args.price,
+                last_synced_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', existing.id);
+    } else {
+        await supabase.from('ml_listings').insert({
+            property_id: args.propertyId,
+            ml_item_id: args.mlItemId,
+            status: args.mlStatus,
+            permalink: args.permalink,
+            price: args.price,
+            title: args.title,
+            listing_type: args.listingType,
+            last_synced_at: new Date().toISOString(),
+        });
+    }
+
+    await supabase.from('property_ml_meta').upsert(
+        {
+            property_id: args.propertyId,
+            ml_item_id: args.mlItemId,
+            updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'property_id' },
+    );
+}
+
+async function auditLog(entry: {
+    userId: string;
+    action: string;
+    propertyId?: string;
+    mlItemId?: string;
+    metadata?: Record<string, unknown>;
+}): Promise<void> {
+    await supabase.from('audit_log').insert({
+        action: entry.action,
+        module: 'portales',
+        entity_type: 'ml_listing',
+        entity_id: entry.propertyId ?? null,
+        entity_label: entry.mlItemId ?? null,
+        actor_id: entry.userId,
+        metadata: entry.metadata ?? {},
+    });
+}
+
+Deno.serve(async (req) => {
+    if (req.method === 'OPTIONS') return optionsResponse(req);
+
+    const respond = (status: number, body: Record<string, unknown>): Response =>
+        jsonResponse(status, body, req);
+
+    const rl = await rateLimitMiddleware('ml-publish', req);
+    if (rl) return rl;
+
+    const token = await requireAdmin(req, supabase);
+    if (!token) return respond(401, { error: 'No autorizado' });
+
+    const { data: userData } = await supabase.auth.getUser(token);
+    const adminId = userData?.user?.id;
+    if (!adminId) return respond(401, { error: 'No autorizado' });
+
+    let body: { action?: unknown; property_id?: unknown; listing_id?: unknown };
+    try {
+        body = await req.json();
+    } catch {
+        return respond(400, { error: 'JSON invÃ¡lido' });
+    }
+
+    const action = typeof body.action === 'string' ? body.action : '';
+    const propertyId = typeof body.property_id === 'string' ? body.property_id : '';
+    const listingIdHint = typeof body.listing_id === 'string' ? body.listing_id : '';
+
+    if (!['create', 'update', 'remove'].includes(action)) {
+        return respond(400, { error: 'action debe ser create, update o remove' });
+    }
+    if (!propertyId) {
+        return respond(400, { error: 'property_id requerido' });
+    }
+
+    const conn = await getActiveConnection();
+    if (!conn) return respond(400, { error: 'No hay cuenta de Mercado Libre conectada' });
+
+    let accessToken: string;
+    try {
+        accessToken = await getAccessToken(supabase, conn);
+    } catch (err) {
+        return respond(429, {
+            error: 'No se pudo refrescar el token de Mercado Libre',
+            detail: (err as Error).message,
+        });
+    }
+
+    const property = await fetchProperty(propertyId);
+    if (!property) return respond(404, { error: 'Propiedad no encontrada' });
+
+    try {
+        if (action === 'create') {
+            if (property.price === null || property.price <= 0) {
+                return respond(400, { error: 'La propiedad debe tener un precio vÃ¡lido' });
+            }
+            const defaults = await fetchDefaults();
+            if (!defaults.category_id || !defaults.listing_type_id) {
+                return respond(400, {
+                    error: 'Falta configurar ml_defaults (category_id, listing_type_id)',
+                });
+            }
+
+            const mlImageUrls = await prepareImagesForML(accessToken, property.images);
+            if (mlImageUrls.length === 0) {
+                return respond(400, {
+                    error: 'Mercado Libre requiere al menos una imagen vÃ¡lida. SubÃ­ fotos a la propiedad.',
+                });
+            }
+
+            const payload = buildItemPayload(property, defaults);
+            payload.pictures = mlImageUrls.map((url) => ({ source: url }));
+
+            const item = await createMlItem(accessToken, payload);
+            await setDescription(accessToken, item.id, property.description ?? property.title);
+
+            await upsertListing({
+                propertyId,
+                mlItemId: item.id,
+                mlStatus: item.status,
+                permalink: item.permalink ?? null,
+                price: item.price ?? null,
+                title: item.title ?? property.title,
+                listingType: property.listing_type,
+            });
+
+            await auditLog({
+                userId: adminId,
+                action: 'ml_publish',
+                propertyId,
+                mlItemId: item.id,
+                metadata: { event: 'publish_create', permalink: item.permalink },
+            });
+
+            return respond(200, {
+                ok: true,
+                action: 'create',
+                listing_id: item.id,
+                permalink: item.permalink,
+                status: item.status,
+            });
+        }
+
+        if (action === 'update' || action === 'remove') {
+            let mlItemId = listingIdHint;
+            if (!mlItemId) {
+                const { data: row } = await supabase
+                    .from('ml_listings')
+                    .select('ml_item_id')
+                    .eq('property_id', propertyId)
+                    .maybeSingle();
+                mlItemId = row?.ml_item_id ?? '';
+            }
+            if (!mlItemId) {
+                return respond(400, {
+                    error: 'La propiedad no tiene publicaciÃ³n en Mercado Libre',
+                });
+            }
+
+            if (action === 'remove') {
+                const item = await closeMlItem(accessToken, mlItemId);
+                await supabase
+                    .from('ml_listings')
+                    .update({
+                        status: item.status,
+                        last_synced_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq('ml_item_id', mlItemId);
+
+                await auditLog({
+                    userId: adminId,
+                    action: 'ml_publish',
+                    propertyId,
+                    mlItemId,
+                    metadata: { event: 'publish_close' },
+                });
+
+                return respond(200, {
+                    ok: true,
+                    action: 'remove',
+                    listing_id: mlItemId,
+                    status: item.status,
+                });
+            }
+
+            // update
+            const defaults = await fetchDefaults();
+            const payload = buildItemPayload(property, defaults);
+            const mlImageUrls = await prepareImagesForML(accessToken, property.images);
+            if (mlImageUrls.length > 0) {
+                payload.pictures = mlImageUrls.map((url) => ({ source: url }));
+            }
+
+            const item = await updateMlItem(accessToken, mlItemId, payload as Record<string, unknown>);
+            if (property.description) {
+                await setDescription(accessToken, item.id, property.description);
+            }
+
+            await upsertListing({
+                propertyId,
+                mlItemId: item.id,
+                mlStatus: item.status,
+                permalink: item.permalink ?? null,
+                price: item.price ?? null,
+                title: item.title ?? property.title,
+                listingType: property.listing_type,
+            });
+
+            await auditLog({
+                userId: adminId,
+                action: 'ml_publish',
+                propertyId,
+                mlItemId,
+                metadata: { event: 'publish_update' },
+            });
+
+            return respond(200, {
+                ok: true,
+                action: 'update',
+                listing_id: mlItemId,
+                permalink: item.permalink,
+                status: item.status,
+            });
+        }
+
+        return respond(400, { error: 'AcciÃ³n invÃ¡lida' });
+    } catch (err) {
+        const message = (err as Error).message;
+        const is429 = message.includes('429') || message.toLowerCase().includes('rate limit');
+        if (is429) {
+            await setMlCooldown(supabase, conn.id, 'publish_429', 60_000);
+        }
+        await auditLog({
+            userId: adminId,
+            action: 'ml_publish_failed',
+            propertyId,
+            mlItemId: '',
+            metadata: { event: action, error: message },
+        });
+        return respond(is429 ? 429 : 500, { error: message });
+    }
+});

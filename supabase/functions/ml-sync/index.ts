@@ -837,7 +837,9 @@ Deno.serve(async (req) => {
         .limit(1);
 
     const conn = conns?.[0] ?? null;
-    if (!conn) return respond(400, { error: 'No hay una cuenta de Mercado Libre conectada' });
+    // Sin conexión no es un error: el cron corre cada 5 min aunque ML esté desconectado.
+    // 200 + skipped evita el estado de "error permanente" en logs/monitorización.
+    if (!conn) return respond(200, { ok: false, skipped: 'no_ml_connection', error: 'No hay una cuenta de Mercado Libre conectada' });
 
     // F0.6: Requeue stuck jobs — locked hace >15 min, o 'processing' sin lock desde hace >15 min
     const staleCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();

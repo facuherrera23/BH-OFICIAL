@@ -1,3 +1,22 @@
+// ============================================================
+// DEPRECADO (2026-09-04, Fase 5B) — NO USAR, NO REDESPLEGAR.
+//
+// Este multiplexor legacy quedó reemplazado por funciones dedicadas:
+//   publish/update/remove -> ml-publish
+//   portal-status         -> ml-portal-status
+//   disconnect            -> ml-disconnect
+//   sync-import           -> ml-sync-import
+// El panel (assets/js/admin-app.js, ML_FUNCTION_PATHS) ya no lo llama.
+//
+// Problemas por los que se depreca:
+// - Guardaba tokens ML en texto plano en portal_settings.api_key/api_secret
+//   (hoy vacíos; el stack vigente usa ml_connection con AES-256-GCM).
+// - CORS con Access-Control-Allow-Origin: "*".
+// - Sin validación de tipos (any) ni rate limiting compartido.
+//
+// Se deja desplegada pero sin consumidores. Borrado físico: pendiente,
+// solo después de confirmar cero tráfico sostenido en logs.
+// ============================================================
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 

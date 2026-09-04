@@ -9,7 +9,7 @@ import {
 } from '../_shared/ml.ts';
 import { jsonResponse, optionsResponse } from '../_shared/http.ts';
 import { requireAdmin } from '../_shared/auth.ts';
-import { checkRateLimit } from '../_shared/rate-limit.ts';
+import { rateLimitMiddleware } from '../_shared/rate-limit.ts';
 import { MlItemSchema, parseMlResponse } from '../_shared/ml.schemas.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -474,17 +474,15 @@ async function runFullSync(): Promise<SyncResult> {
 // Main Handler
 // ============================================================
 Deno.serve(async (req: Request) => {
-    if (req.method === 'OPTIONS') return optionsResponse();
+    if (req.method === 'OPTIONS') return optionsResponse(req);
 
     if (!await isAuthorized(req)) {
-        return jsonResponse({ error: 'No autorizado' }, 401);
+        return jsonResponse(401, { error: 'No autorizado' }, req);
     }
 
-    // Rate limit (more generous for cron)
-    const rateLimit = await checkRateLimit(req, 'ml-sync-import', 2, 60000);
-    if (!rateLimit.allowed) {
-        return jsonResponse({ error: 'Rate limit excedido', retry_after: rateLimit.retryAfter }, 429);
-    }
+    // Rate limit (2/min: operación masiva, cron o admin)
+    const rl = await rateLimitMiddleware('ml-sync-import', req);
+    if (rl) return rl;
 
     try {
         console.log('[ml-sync-import] Iniciando sincronización completa ML → Bienenhaus');
@@ -499,13 +497,13 @@ Deno.serve(async (req: Request) => {
             total_processed: result.total_processed,
         });
 
-        return jsonResponse({
+        return jsonResponse(200, {
             success: true,
             message: `Sincronización completada: ${result.imported} nuevas, ${result.updated} actualizadas`,
             ...result,
-        });
+        }, req);
     } catch (err) {
         console.error('[ml-sync-import] Error:', err);
-        return jsonResponse({ error: err instanceof Error ? err.message : 'Error interno' }, 500);
+        return jsonResponse(500, { error: err instanceof Error ? err.message : 'Error interno' }, req);
     }
 });

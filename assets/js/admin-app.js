@@ -5384,21 +5384,34 @@ try {
   })();
 
   const ML_API_TIMEOUT_MS = 15000;
-
-  // Mapeo action -> endpoint. Las nuevas funciones separadas (ml-publish, ml-portal-status,
-  // ml-disconnect) reciben paths limpios; el resto cae al multiplexor legacy ml-api.
+  // Mapeo action -> endpoint. Todas las acciones van a funciones dedicadas ya.
+  // (Antes 'update'/'remove'/'sync-import' caían al multiplexor legacy ml-api, que leía
+  // tokens en texto plano de portal_settings — camino roto desde la migración a ml_connection.)
   const ML_FUNCTION_PATHS = {
     'publish': 'ml-publish',
     'portal-status': 'ml-portal-status',
-    'disconnect': 'ml-disconnect',
-  };
-
+    'disconnect': 'ml-disconnect',
+
+    'update': 'ml-publish',
+
+    'remove': 'ml-publish',
+
+    'sync-import': 'ml-sync-import',
+
+  };
   async function mlApiCall(action, body = {}) {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (!session) throw new Error('No hay sesión activa');
     if (!window.BH_CONFIG?.SUPABASE_URL) throw new Error('Configuración de Supabase no disponible (BH_CONFIG)');
 
-    const fnPath = ML_FUNCTION_PATHS[action] || `ml-api?action=${encodeURIComponent(action)}`;
+    const fnPath = ML_FUNCTION_PATHS[action];
+
+    if (!fnPath) throw new Error(`Acción ML no soportada: ${action}`);
+
+    /* ml-publish exige body.action ('create' | 'update' | 'remove') */
+    const outBody = fnPath === 'ml-publish'
+      ? { ...body, action: action === 'publish' ? 'create' : action }
+      : body;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ML_API_TIMEOUT_MS);
@@ -5409,7 +5422,7 @@ try {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(outBody),
         signal: controller.signal,
       });
 
