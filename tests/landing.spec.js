@@ -36,9 +36,12 @@ test.describe('Landing — funcionalidad read-only', () => {
     console.assertClean();
   });
 
-  test('CSP: index.html lleva nonce estricto', async ({ page }) => {
+  test('CSP: index.html con script-src estricto, sin nonce', async ({ page }) => {
     const html = await (await page.request.get('/index.html')).text();
-    expect(html).toContain('nonce-bienenhaus2024');
-    expect(html).toContain("script-src 'self'");
+    const cspMeta = html.match(/<meta[^>]*Content-Security-Policy[^>]*>/)?.[0] || '';
+    const scriptSrc = cspMeta.match(/script-src[^;]*/)?.[0] || '';
+    expect(scriptSrc).toContain("'self'");
+    expect(scriptSrc).not.toContain('unsafe-inline');
+    expect(scriptSrc).not.toMatch(/nonce-/);
   });
 });

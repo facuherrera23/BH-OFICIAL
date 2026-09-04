@@ -20,13 +20,16 @@ test.describe('Seguridad — CSP y delegación (regresión guards)', () => {
   });
 
   for (const pageFile of PAGES_NONCE) {
-    test(`${pageFile}: CSP estricta con nonce (sin unsafe-inline)`, async ({ request }) => {
+    test(`${pageFile}: CSP estricta (script-src sin nonce ni unsafe-inline)`, async ({ request }) => {
       const html = await (await request.get(`/${pageFile}`)).text();
-      // El valor del nonce puede variar por página (p.ej. portal-propietario usa
-      // nonce-bh2024); lo que se exige es que EXISTA un nonce y NO haya unsafe-inline.
-      expect(html).toMatch(/nonce-[a-z0-9]+/);
-      expect(html).toContain("script-src 'self'");
-      expect(html).not.toContain("script-src 'self' 'unsafe-inline'");
+      // Fase 6: sin nonce estatico (era CSP bypass trivial) y sin unsafe-inline.
+      // Solo script-src 'self' + CDNs explicitamente permitidos.
+      expect(html).not.toMatch(/nonce-/);
+      const cspMeta = html.match(/<meta[^>]*Content-Security-Policy[^>]*>/)?.[0] || '';
+      const scriptSrc = cspMeta.match(/script-src[^;]*/)?.[0] || '';
+      expect(scriptSrc).toContain("'self'");
+      expect(scriptSrc).not.toContain('unsafe-inline');
+      expect(scriptSrc).not.toMatch(/nonce-/);
     });
   }
 
