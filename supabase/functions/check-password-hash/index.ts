@@ -7,6 +7,7 @@
 // ============================================================
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { checkRateLimit } from '../_shared/rate-limit.ts';
 
 const HIBP_API = 'https://api.pwnedpasswords.com/range/';
 const ALLOWED_ORIGINS = [
@@ -16,9 +17,9 @@ const ALLOWED_ORIGINS = [
   'http://127.0.0.1:8788',
 ];
 
-// Rate limiting simple en memoria (por IP, 1 req/seg)
-const rateLimitMap = new Map<string, number>();
-const RATE_LIMIT_WINDOW_MS = 1000;
+// Rate limiting compartido (tabla rate_limit_logs, fail-closed).
+// El limiter anterior era en memoria: en Deno Deploy (multi-instancia)
+// cada instancia tenía su propio contador y el límite no era real.
 
 function corsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get('origin');
@@ -38,22 +39,6 @@ function jsonResponse(status: number, body: unknown, req: Request): Response {
     status,
     headers: { ...corsHeaders(req), 'content-type': 'application/json' },
   });
-}
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const lastRequest = rateLimitMap.get(ip) || 0;
-  if (now - lastRequest < RATE_LIMIT_WINDOW_MS) {
-    return false;
-  }
-  rateLimitMap.set(ip, now);
-  // Limpieza periódica (cada 1000 requests)
-  if (rateLimitMap.size > 1000) {
-    for (const [key, time] of rateLimitMap.entries()) {
-      if (now - time > 60_000) rateLimitMap.delete(key);
-    }
-  }
-  return true;
 }
 
 async function sha1Hex(password: string): Promise<string> {
@@ -82,12 +67,13 @@ serve(async (req: Request) => {
     return jsonResponse(405, { error: 'Method not allowed' }, req);
   }
 
-  // Rate limiting por IP
+  // Rate limiting por IP (compartido, DB-backed)
   const clientIp = getClientIp(req);
-  if (!checkRateLimit(clientIp)) {
+  const rl = await checkRateLimit('check-password-hash', clientIp);
+  if (!rl.allowed) {
     return jsonResponse(429, {
       error: 'Too many requests',
-      message: 'Demasiadas verificaciones. Espera un momento.',
+      message: `Demasiadas verificaciones. Espera ${rl.retryAfter ?? 60} segundos.`,
     }, req);
   }
 

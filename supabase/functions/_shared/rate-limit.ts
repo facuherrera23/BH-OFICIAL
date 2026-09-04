@@ -35,6 +35,7 @@ export const RATE_LIMIT_CONFIG = {
     'rela-callbacks': { requests: 120, windowMs: 60_000 }, // 120/min - webhooks RELA
     'manage-users': { requests: 10, windowMs: 60_000 }, // 10/min - user management
     'cloudinary-sign': { requests: 30, windowMs: 60_000 }, // 30/min - image upload signing
+    'check-password-hash': { requests: 10, windowMs: 60_000 }, // 10/min - HIBP password check
 } as const;
 
 export type RateLimitFnName = keyof typeof RATE_LIMIT_CONFIG;

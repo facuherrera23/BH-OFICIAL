@@ -11,6 +11,7 @@
 // ============================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { checkRateLimit } from '../_shared/rate-limit.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY') ?? '';
@@ -30,28 +31,18 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-async function rateLimited(supabase: ReturnType<typeof createClient>, ip: string): Promise<boolean> {
-  const key = `ratelimit:rela-callbacks:${ip}`;
-  const windowStart = new Date(Date.now() - 60_000).toISOString();
-  const { data: logs, error } = await supabase
-    .from('rate_limit_logs')
-    .select('created_at')
-    .eq('key', key)
-    .gte('created_at', windowStart);
-  if (error) return false;
-  if ((logs?.length ?? 0) >= 120) return true;
-  await supabase.from('rate_limit_logs').insert({ key, created_at: new Date().toISOString() });
-  return false;
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204 });
   if (req.method !== 'POST') return json({ error: 'Método no permitido' }, 405);
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
+  // Rate limit compartido (_shared/rate-limit.ts): misma key y mismo límite (120/min)
+  // que el limiter local que reemplaza. Cambio intencional: ante error de DB ahora
+  // es fail-closed (429); es seguro porque RELA reintenta callbacks por 72hs.
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
-  if (await rateLimited(supabase, ip)) return json({ error: 'rate_limited' }, 429);
+  const rl = await checkRateLimit('rela-callbacks', ip);
+  if (!rl.allowed) return json({ error: 'rate_limited', retry_after: rl.retryAfter ?? 60 }, 429);
 
   // Autenticación: RELA envía el valor configurado en Authorization (doc 5).
   if (!CALLBACK_SECRET) {
