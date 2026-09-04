@@ -75,12 +75,36 @@
       .replace(/\)/g, '%29');
   }
 
+  /* ----------------------------------------------------------
+     sanitizeRichText(): contenido CMS -> innerHTML seguro.
+     Escapa TODO y re-habilita solo 3 formas exactas, probadas
+     contra los datos reales de site_content (2026-09-04):
+       <span class="highlight">, </span>, <br>/<br/>
+     Al escapar '&' primero, ni entidades trampa ni atributos
+     inyectados pueden formar tags reales.
+     ---------------------------------------------------------- */
+  var RICH_TEXT_ALLOW = [
+    [/&lt;span class=&quot;highlight&quot;&gt;/gi, '<span class="highlight">'],
+    [/&lt;\/span&gt;/gi, '</span>'],
+    [/&lt;br\s*\/?&gt;/gi, '<br>']
+  ];
+
+  function sanitizeRichText(input) {
+    if (input === null || input === undefined) return '';
+    var out = esc(String(input));
+    for (var i = 0; i < RICH_TEXT_ALLOW.length; i++) {
+      out = out.replace(RICH_TEXT_ALLOW[i][0], RICH_TEXT_ALLOW[i][1]);
+    }
+    return out;
+  }
+
   global.BHUtils = {
     esc: esc,
     escAttr: escAttr,
     safeUrl: safeUrl,
     safeImageUrl: safeImageUrl,
-    safeCssUrl: safeCssUrl
+    safeCssUrl: safeCssUrl,
+    sanitizeRichText: sanitizeRichText
   };
 
   if (typeof module !== 'undefined' && module.exports) {

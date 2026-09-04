@@ -22,7 +22,7 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
     logError('[BH Landing] BHUtils no disponible — abortando init (fail-closed)');
     return;
   }
-  const { esc, escAttr, safeUrl, safeImageUrl, safeCssUrl } = window.BHUtils;
+  const { esc, escAttr, safeUrl, safeImageUrl, safeCssUrl, sanitizeRichText } = window.BHUtils;
 
   /* ------------------------------------------------
      0. PRELOADER & INITIALIZATION
@@ -2039,13 +2039,7 @@ function renderSocialLinks(social) {
     if (!value) return;
     const el = document.querySelector(selector);
     if (el) {
-      const safe = String(value)
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/&lt;span class="highlight"&gt;/gi, '<span class="highlight">')
-        .replace(/&lt;\/span&gt;/gi, '</span>')
-        .replace(/&lt;br\s*\/?&gt;/gi, '<br>');
-      el.innerHTML = safe;
+      el.innerHTML = sanitizeRichText(value);
     }
   }
 
@@ -2090,10 +2084,7 @@ function renderSocialLinks(social) {
         if (c.title) {
           const titleEl = document.querySelector('.hero-title');
           if (titleEl) {
-            const safe = String(c.title).replace(/</g, '&lt;').replace(/>/g, '&gt;')
-              .replace(/&lt;span class="highlight"&gt;/gi, '<span class="highlight">')
-              .replace(/&lt;\/span&gt;/gi, '</span>');
-            titleEl.innerHTML = safe;
+            titleEl.innerHTML = sanitizeRichText(c.title);
           }
         }
         setText('.hero-desc', c.subtitle);

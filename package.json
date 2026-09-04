@@ -11,7 +11,7 @@
   },
   "scripts": {
     "test": "npx playwright test",
-    "test:unit": "node --test tests/unit/",
+    "test:unit": "node --test \"tests/unit/*.test.*\"",
     "test:headed": "npx playwright test --headed",
     "test:ui": "npx playwright test --ui",
     "lint": "node --check assets/js/admin-app.js && node --check assets/js/landing-app.js"
