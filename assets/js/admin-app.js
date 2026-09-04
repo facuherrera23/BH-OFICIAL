@@ -9867,7 +9867,14 @@ let _execToDate = '';
     const bannerEl = document.getElementById('cdnWarningBanner');
     if (bannerEl) bannerEl.style.display = 'none';
   };
-  const dataActionWhitelist = ['exportPropertiesCSV', 'exportLeadsCSV', 'exportTasacionesCSV', 'exportSupOverviewCSV', 'exportSupAlertsCSV', 'exportSupUsersCSV', 'exportSupModulesCSV', 'loadMoreSupAudit', 'loadMoreSupAlerts', 'closeSupUserDetail', 'loadMoreAnomalies', 'closeSupAuditDetail', 'simulateSupRule', 'closeCdnWarning'];
+
+  window.createOwnerTask = function () {
+
+    window.adminApp.createOwnerTask();
+
+  };
+
+  const dataActionWhitelist = ['exportPropertiesCSV', 'exportLeadsCSV', 'exportTasacionesCSV', 'exportSupOverviewCSV', 'exportSupAlertsCSV', 'exportSupUsersCSV', 'exportSupModulesCSV', 'loadMoreSupAudit', 'loadMoreSupAlerts', 'closeSupUserDetail', 'loadMoreAnomalies', 'closeSupAuditDetail', 'simulateSupRule', 'closeCdnWarning', 'createOwnerTask'];
   document.addEventListener('click', function (ev) {
     const target = ev.target && ev.target.closest ? ev.target.closest('[data-action]') : null;
     if (!target) return;

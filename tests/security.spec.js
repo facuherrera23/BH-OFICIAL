@@ -22,7 +22,9 @@ test.describe('Seguridad — CSP y delegación (regresión guards)', () => {
   for (const pageFile of PAGES_NONCE) {
     test(`${pageFile}: CSP estricta con nonce (sin unsafe-inline)`, async ({ request }) => {
       const html = await (await request.get(`/${pageFile}`)).text();
-      expect(html).toContain('nonce-bienenhaus2024');
+      // El valor del nonce puede variar por página (p.ej. portal-propietario usa
+      // nonce-bh2024); lo que se exige es que EXISTA un nonce y NO haya unsafe-inline.
+      expect(html).toMatch(/nonce-[a-z0-9]+/);
       expect(html).toContain("script-src 'self'");
       expect(html).not.toContain("script-src 'self' 'unsafe-inline'");
     });

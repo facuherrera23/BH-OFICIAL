@@ -43,8 +43,8 @@ test.describe('Smoke: páginas del sistema', () => {
   test('portal-propietario.html — token inválido muestra error', async ({ page }) => {
     await page.goto('/portal-propietario.html?token=TEST');
     const console = trackConsoleErrors(page, ALLOWED_406);
-    // showError reemplaza el body con "Acceso Denegado".
-    await expect(page.locator('h2', { hasText: 'Acceso Denegado' })).toBeVisible();
+    // showError muestra el h2 "Link inválido o expirado".
+    await expect(page.locator('h2', { hasText: 'Link inválido o expirado' })).toBeVisible();
     expect(console.pageErrors).toEqual([]);
     console.assertClean();
   });
