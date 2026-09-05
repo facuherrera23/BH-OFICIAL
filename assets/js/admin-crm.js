@@ -123,15 +123,13 @@ async function loadLeads() {
   try {
     var from = (_page - 1) * PAGE_SIZE;
     var to = from + PAGE_SIZE - 1;
-    var base = function () { return applyBaseFilters(db().from('leads')); };
-
-    var countRes = await base()
-      .select('id', { count: 'exact', head: true });
+    var countRes = await applyBaseFilters(
+      db().from('leads').select('id', { count: 'exact', head: true }));
     _totalRows = (countRes && countRes.count) || 0;
     _totalPages = Math.max(1, Math.ceil(_totalRows / PAGE_SIZE));
 
-    var q = base().select('id, full_name, email, phone, whatsapp, stage, source, tipo_cliente, operation_type, lead_score, assigned_to, property_id, next_followup_at, last_contacted_at, created_at')
-      .order('created_at', { ascending: false }).range(from, to);
+    var q = applyBaseFilters(db().from('leads').select('id, full_name, email, phone, whatsapp, stage, source, tipo_cliente, operation_type, lead_score, assigned_to, property_id, next_followup_at, last_contacted_at, created_at')
+      .order('created_at', { ascending: false }).range(from, to));
     var r = await q;
     if (r.error) { throw new Error(r.error.message); }
     _leads = r.data || [];
