@@ -289,7 +289,12 @@ function getLeadProps(id) {
     }).catch(function () { return []; });
 }
 
-function openDetailPanel(id) {
+function openDetailPanel(id) {
+  /* fix de stacking/clipping: el panel vive dentro de #tab-leads, que está dentro de un contenedor con overflow.
+     position:fixed quedaría restringido a ese padre (se ve cortado y los clics no escucha). Lo movemos a <body>. */
+  var _panelNode = $id('crmSidePanel');
+  if (_panelNode && _panelNode.parentNode !== document.body) { document.body.appendChild(_panelNode); }
+
   _selectedLeadId = id;
   var panel = $id('crmSidePanel');
   if (!panel) return;
