@@ -175,7 +175,7 @@ function esc(s) {
     phone: z.string().max(30).optional().nullable(),
     whatsapp: z.string().max(30).optional().nullable(),
     source: z.enum(['landing', 'ml', 'chat', 'referido', 'tasacion', 'walkin', 'manual']).default('manual'),
-    stage: z.enum(['nuevo', 'contactado', 'visita', 'oferta', 'cerrado', 'perdido']).default('nuevo'),
+    stage: z.enum(['nuevo', 'contactado', 'calificado', 'visita_agendada', 'visita_realizada', 'negociacion', 'cerrado_ganado', 'cerrado_perdido']).default('nuevo'),
     property_id: z.string().uuid('ID de propiedad inválido').optional().nullable(),
     assigned_to: z.string().uuid('ID de broker inválido').optional().nullable(),
     budget_usd: z.number().min(0).max(10000000).default(0),
@@ -1398,197 +1398,14 @@ function esc(s) {
   /* ------------------------------------------------
      7. CRM — LEADS PIPELINE
      ------------------------------------------------ */
-  async function loadCRM() {
-    invalidateSearchCache();
-    const client = await getAuthedClient();
-    if (!client) return;
-    try {
-      /* Get total count for pagination */
-      const { count: totalCount, error: countError } = await client
-        .from('leads')
-        .select('*', { count: 'exact', head: true });
-      if (countError) throw countError;
-      _crmTotalCount = totalCount || 0;
+  /* CRM anterior (Kanban) removido: el módulo nuevo vive en assets/js/admin-crm.js y gestiona la sección #tab-leads. loadCRM queda como shim para compatibilidad con el sistema de navegación del panel. */
+  async function loadCRM() {
+    if (window.BH_CRM && typeof window.BH_CRM.init === 'function') { window.BH_CRM.init(); }
+    else if (typeof window.initCrm === 'function') { window.initCrm(); }
+    else { console.warn('[crm] módulo CRM no cargado'); }
+  }
 
-      const from = (_crmPage - 1) * _crmPageSize;
-      const to = from + _crmPageSize - 1;
-
-      /* Traer leads y sus visitas (próximas y última) en una sola query */
-      const [{ data: leads, error: leadsErr }, { data: visits, error: visitsErr }] = await Promise.all([
-        client.from('leads').select('*').order('created_at', { ascending: false }).range(from, to),
-        client.from('visits')
-          .select('id, lead_id, visit_date, status, client_name')
-          .neq('status', 'cancelada')
-          .order('visit_date', { ascending: true }),
-      ]);
-      if (leadsErr) throw leadsErr;
-      if (visitsErr) throw visitsErr;
-
-      /* Agrupar visitas por lead_id para acceso rápido */
-      const visitsByLead = {};
-      (visits || []).forEach(v => {
-        if (v.lead_id) {
-          if (!visitsByLead[v.lead_id]) visitsByLead[v.lead_id] = [];
-          visitsByLead[v.lead_id].push(v);
-        }
-      });
-
-      /* Group by stage */
-      const groups = { nuevo: [], contactado: [], visita: [], oferta: [], cerrado: [], perdido: [] };
-      (leads || []).forEach(lead => {
-        lead.score = computeLeadScore(lead);
-        const stage = lead.stage || 'nuevo';
-        if (groups[stage]) groups[stage].push(lead);
-      });
-      Object.values(groups).forEach(arr => arr.sort((a, b) => (b.score || 0) - (a.score || 0)));
-
-      /* Map stages to columns */
-      const columnMap = {
-        'cards-nuevos': { stages: ['nuevo'], badge: 'badge-nuevos' },
-        'cards-contactados': { stages: ['contactado'], badge: 'badge-contactados' },
-        'cards-visita': { stages: ['visita'], badge: 'badge-visita' },
-        'cards-oferta': { stages: ['oferta', 'cerrado', 'perdido'], badge: 'badge-oferta' },
-      };
-
-      Object.entries(columnMap).forEach(([containerId, { stages, badge }]) => {
-        const container = document.querySelector('#' + containerId);
-        const badgeEl = document.querySelector('#' + badge);
-        const leadsArr = stages.flatMap(s => groups[s] || []);
-
-        if (badgeEl) badgeEl.textContent = leadsArr.length;
-
-        if (!container) return;
-        if (!leadsArr.length) {
-          container.innerHTML = '<p style="text-align:center; color:var(--text-dim); font-size:12px; padding:24px 8px;">Sin prospectos</p>';
-          return;
-        }
-
-        const htmlParts = [];
-        leadsArr.forEach(function(l) {
-          const leadVisits = visitsByLead[l.id] || [];
-          const upcomingVisit = leadVisits.find(function(v) { return v.status === 'pendiente' || v.status === 'confirmada'; });
-          const hasFutureVisit = !!upcomingVisit;
-          const showScheduleBtn = (l.stage === 'contactado' || l.stage === 'visita') && !hasFutureVisit;
-
-          let visitInfo = '';
-          if (upcomingVisit) {
-            const badgeColor = upcomingVisit.status === 'confirmada' ? 'rgba(0,200,120,0.2)' : 'rgba(255,184,0,0.2)';
-            const badgeTextColor = upcomingVisit.status === 'confirmada' ? 'var(--success)' : 'var(--warning)';
-            const visitDate = new Date(upcomingVisit.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-            visitInfo = '<div style="margin-top:6px; padding:6px 8px; background:rgba(31,200,195,0.08); border-radius:4px; font-size:11px; color:var(--accent); display:flex; align-items:center; gap:6px;">' +
-              '<i class="fas fa-calendar-day"></i>' +
-              '<span>' + esc(visitDate) + '</span>' +
-              '<span class="nav-badge" style="font-size:9px; background:' + badgeColor + '; color:var(--success);">' + esc(upcomingVisit.status) + '</span>' +
-              '</div>';
-          }
-
-          let scheduleBtn = '';
-          if (showScheduleBtn) {
-            scheduleBtn = '<button class="btn-action" data-open-visit data-lead-id="' + esc(l.id) + '" data-client-name="' + esc(l.full_name) + '" data-client-phone="' + esc(l.phone || l.whatsapp || '') + '" data-property-id="' + esc(l.property_id || '') + '" style="padding:4px 8px; font-size:10px; margin-top:8px; width:100%; background:rgba(31,200,195,0.15); color:var(--accent); border:1px solid var(--accent);">' +
-              '<i class="fas fa-calendar-plus"></i> Agendar visita' +
-              '</button>';
-          }
-
-          const budgetHtml = l.budget_usd ? '<div style="color:var(--accent); font-size:12px; font-weight:500;">USD ' + l.budget_usd.toLocaleString('es-AR') + '</div>' : '';
-          const prefType = l.preferred_type ? l.preferred_type.charAt(0).toUpperCase() + l.preferred_type.slice(1) : '';
-          const prefZone = l.preferred_zone ? '· ' + esc(l.preferred_zone) : '';
-          const createdDate = new Date(l.created_at).toLocaleDateString('es-AR');
-
-          const scoreVal = l.score || 0;
-          const scoreColor = scoreVal >= 80 ? 'rgba(239,68,68,0.2)' : scoreVal >= 50 ? 'rgba(255,184,0,0.2)' : 'rgba(255,255,255,0.06)';
-          const scoreTextColor = scoreVal >= 80 ? '#ef4444' : scoreVal >= 50 ? 'var(--warning)' : 'var(--text-dim)';
-
-          const cardHtml =
-            '<div class="lead-card" style="background:var(--surface-2); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:14px; margin-bottom:10px; cursor:pointer;" onclick="window.adminApp.editLead(\'' + esc(l.id) + '\')">' +
-            '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">' +
-              '<div style="font-weight:600; color:#fff; font-size:13px;">' + esc(l.full_name || 'Sin nombre') + '</div>' +
-              '<span class="nav-badge" style="font-size:10px; background:' + scoreColor + '; color:' + scoreTextColor + '; font-weight:600; padding:2px 6px; border-radius:10px;">' + scoreVal + '</span>' +
-            '</div>' +
-            '<div style="color:var(--text-dim); font-size:11px; margin-bottom:6px;">' + esc(prefType) + (prefZone ? ' · ' + esc(l.preferred_zone) : '') + '</div>' +
-            (l.budget_usd ? '<div style="color:var(--accent); font-size:12px; font-weight:500;">USD ' + l.budget_usd.toLocaleString('es-AR') + '</div>' : '') +
-            visitInfo +
-            scheduleBtn +
-            '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:8px; border-top:1px solid var(--border-subtle);">' +
-              '<span style="color:var(--text-dim); font-size:10px;">' + new Date(l.created_at).toLocaleDateString('es-AR') + '</span>' +
-              '<div style="display:flex; gap:4px;">' +
-                '<button class="btn-action" style="padding:4px 6px; font-size:10px;" title="Editar" onclick="event.stopPropagation(); window.adminApp.editLead(\'' + esc(l.id) + '\')"><i class="fas fa-pen"></i></button>' +
-                '<button class="btn-action danger" style="padding:4px 6px; font-size:10px;" title="Eliminar" onclick="event.stopPropagation(); window.adminApp.deleteLead(\'' + esc(l.id) + '\')"><i class="fas fa-trash"></i></button>' +
-              '</div>' +
-            '</div>' +
-            '</div>';
-          htmlParts.push(cardHtml);
-        });
-        container.innerHTML = htmlParts.join('');
-      });
-    } catch (err) {
-      logError('CRM error:', err);
-    }
-  }
-
-  /* Create lead */
-  on($('#btnNewLead'), 'click', () => {
-    editingLeadId = null;
-    $('#leadForm')?.reset();
-    loadAgentSelect($('#leadBrokerSelect'));
-    openModal('leadModal');
-  });
-
-  /* Save lead */
-  let _submittingLead = false;
-  on($('#leadForm'), 'submit', async (e) => {
-    e.preventDefault();
-    if (_submittingLead) return;
-    _submittingLead = true;
-    const btn = $('#leadSaveBtn');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
-
-    try {
-      const formData = new FormData(e.target);
-      
-      // Zod validation
-      const validated = validateForm(LeadSchema, formData);
-      const data = {
-        full_name: validated.full_name,
-        phone: validated.phone,
-        email: validated.email,
-        whatsapp: validated.whatsapp,
-        budget_usd: validated.budget_usd,
-        stage: validated.stage,
-        preferred_type: validated.preferred_type,
-        preferred_zone: validated.preferred_zone,
-        notes: validated.notes,
-        source: validated.source,
-        property_id: validated.property_id,
-        assigned_to: validated.assigned_to,
-        preferred_rooms: validated.preferred_rooms,
-      };
-
-      if (editingLeadId) {
-        await mutate('leads', async () => {
-          const { error } = await window.supabaseClient.from('leads').update(data).eq('id', editingLeadId);
-          if (error) throw error;
-        });
-        showToast('Lead actualizado', 'success');
-      } else {
-        await mutate('leads', async () => {
-          const { error } = await window.supabaseClient.from('leads').insert([data]);
-          if (error) throw error;
-        });
-        showToast('Lead registrado', 'success');
-      }
-
-      closeModal('leadModal');
-      loadCRM();
-      updateSidebarBadges();
-    } catch (err) {
-      showToast('Error: ' + err.message, 'error');
-    } finally {
-      _submittingLead = false;
-      if (btn) { btn.disabled = false; btn.innerHTML = 'Registrar Lead'; }
-    }
-  });
-
-/* Edit lead */
+/* Edit lead */
   window.adminApp.editLead = async function (id) {
     try {
       const [{ data: lead, error: leadErr }, { data: visits, error: visitsErr }] = await Promise.all([

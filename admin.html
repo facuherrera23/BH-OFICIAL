@@ -468,52 +468,37 @@
 <section class="tab-module" id="tab-leads">
 <div class="panel-header" style="margin-bottom:18px;">
 <div>
-<h2 class="panel-title">Pipeline de Prospectos &amp; Compradores</h2>
-<p style="color:var(--text-muted); font-size:12.5px;">Gestión de etapas comerciales con guardado automático.</p>
+<h2 class="panel-title">Leads &amp; CRM</h2>
+<p class="crm-subtitle" id="crmSubtitle" style="color:var(--text-muted); font-size:12.5px;">Pipeline comercial y gestión de prospectos.</p>
 </div>
 <div style="display:flex; gap:10px;">
 <button class="btn-luxury-action" data-action="exportLeadsCSV" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV">
-<i class="fas fa-download">
-</i> CSV</button>
+<i class="fas fa-download"></i> CSV</button>
 <button class="btn-luxury-action" id="btnNewLead">+ Agregar Lead</button>
 </div>
 </div>
-<div class="leads-pipeline">
-<div class="pipeline-col" id="col-nuevos">
-<div class="pipeline-header">
-<span>1. Nuevos</span>
-<span class="nav-badge" id="badge-nuevos">0</span>
+
+<div class="crm-kpis">
+  <div class="crm-kpi"><span class="crm-kpi-label">Total</span><span class="crm-kpi-value" id="crmKpiTotal">0</span></div>
+  <div class="crm-kpi"><span class="crm-kpi-label">Nuevos</span><span class="crm-kpi-value crm-kpi--nuevo" id="crmKpiNuevo">0</span></div>
+  <div class="crm-kpi"><span class="crm-kpi-label">Ganados</span><span class="crm-kpi-value crm-kpi--win" id="crmKpiGanados">0</span></div>
+  <div class="crm-kpi"><span class="crm-kpi-label">Perdidos</span><span class="crm-kpi-value crm-kpi--lost" id="crmKpiPerdidos">0</span></div>
 </div>
-<div class="pipeline-cards" id="cards-nuevos">
+
+<div class="crm-filters">
+  <input type="search" id="crmSearch" class="crm-field-input" placeholder="Buscar nombre, email o teléfono...">
+  <select id="crmStatusFilter" class="crm-field-input crm-field-input--select"><option value="">Todos los estados</option></select>
+  <select id="crmOriginFilter" class="crm-field-input crm-field-input--select"><option value="">Todos los orígenes</option></select>
+  <select id="crmTipoClienteFilter" class="crm-field-input crm-field-input--select"><option value="">Todos los tipos</option></select>
+  <select id="crmTipoOperacionFilter" class="crm-field-input crm-field-input--select"><option value="">Operación: todas</option></select>
+  <select id="crmAgentFilter" class="crm-field-input crm-field-input--select"><option value="">Todos los agentes</option></select>
+  <span class="crm-followup-wrap" id="crmFollowupWrap"></span>
 </div>
-</div>
-<div class="pipeline-col" id="col-contactados">
-<div class="pipeline-header">
-<span>2. Contactados</span>
-<span class="nav-badge" id="badge-contactados">0</span>
-</div>
-<div class="pipeline-cards" id="cards-contactados">
-</div>
-</div>
-<div class="pipeline-col" id="col-visita">
-<div class="pipeline-header">
-<span>3. Visita Agendada</span>
-<span class="nav-badge" id="badge-visita">0</span>
-</div>
-<div class="pipeline-cards" id="cards-visita">
-</div>
-</div>
-<div class="pipeline-col" id="col-oferta">
-<div class="pipeline-header">
-<span>4. Oferta / Cierre</span>
-<span class="nav-badge" id="badge-oferta" style="background:var(--success); color:#000;">0</span>
-</div>
-<div class="pipeline-cards" id="cards-oferta">
-</div>
-</div>
-</div>
+
+<div id="crmLeadList"></div>
+
+<div class="crm-side-panel" id="crmSidePanel"></div>
 </section>
-<!-- 4. AGENDA DE VISITAS -->
 <section class="tab-module" id="tab-agenda">
 <div class="glass-panel">
 <div class="panel-header">
@@ -1375,13 +1360,7 @@
 <span id="composerPlatformHint">
 </span>
 <span>Enter para enviar · Shift+Enter para salto de línea</span>
-</div>        </div>      </div>    </div>  </div>  <div id="crmPagination" style="display:flex; justify-content:center; align-items:center; gap:12px; margin-top:16px; padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-md);">    <button id="crmPagePrev" class="btn-action" title="Página anterior" disabled>
-<i class="fas fa-chevron-left">
-</i>
-</button>    <span id="crmPageInfo" style="color:var(--text-secondary); font-size:13px;">Página 1 de 1</span>    <button id="crmPageNext" class="btn-action" title="Página siguiente" disabled>
-<i class="fas fa-chevron-right">
-</i>
-</button>    <select id="crmPageSize" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:6px 12px; color:#fff; font-size:12px;">      <option value="25">25 por página</option>      <option value="50">50 por página</option>      <option value="100">100 por página</option>    </select>  </div>
+</div>        </div>      </div>    </div>  </div>  
 </section>
 <!-- 8. AGENTES -->
 <section class="tab-module" id="tab-agentes">
@@ -2160,7 +2139,7 @@
 <div class="form-grid-2">  <div class="form-field">
 <label>Presupuesto Máximo (USD)</label>
 <input type="number" name="budget_usd" placeholder="750000" />
-</div>  <div class="form-field">    <label>Etapa Inicial</label>    <select name="stage">      <option value="nuevo">1. Nuevo</option>      <option value="contactado">2. Contactado</option>      <option value="visita">3. Visita Agendada</option>      <option value="oferta">4. Oferta / Cierre</option>      <option value="cerrado">5. Cerrado</option>      <option value="perdido">6. Perdido</option>    </select>  </div>
+</div>  <div class="form-field">    <label>Etapa Inicial</label>    <select name="stage">      <option value="nuevo">1. Nuevo</option>      <option value="contactado">2. Contactado</option>      <option value="calificado">3. Calificado</option>      <option value="visita_agendada">4. Visita Agendada</option>      <option value="visita_realizada">5. Visita Realizada</option>      <option value="negociacion">6. Negociación</option>      <option value="cerrado_ganado">7. Cerrado Ganado</option>      <option value="cerrado_perdido">8. Cerrado Perdido</option>    </select>  </div>
 </div>
 <div class="form-grid-2">  <div class="form-field">    <label>Broker Asignado</label>    <select name="assigned_to" id="leadBrokerSelect">      <option value="">Sin broker asignado</option>    </select>  </div>  <div class="form-field">
 <label>Zona Preferida</label>
@@ -2836,5 +2815,7 @@
 <i class="fas fa-exclamation-triangle">
 </i>Tu bloqueador de anuncios está impidiendo que el panel cargue correctamente.<strong>Desactivá las extensiones</strong> para este sitio o abrí en ventana incógnita.<a href="#" data-action="closeCdnWarning">Cerrar</a>
 </div>
-<!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Bloqueador de anuncios detectado.</strong> Desactivá las extensiones para este sitio o abrí en ventana incógnita. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="assets/js/zod.umd.js"></script><script src="assets/js/utils.js?v=25"></script><script src="assets/js/config.js?v=29"></script><script src="assets/js/supabase-client.js?v=28"></script><script src="assets/js/cloudinary.js?v=30"></script><script src="assets/js/admin-app.js?v=258"></script></body>
+<!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Bloqueador de anuncios detectado.</strong> Desactivá las extensiones para este sitio o abrí en ventana incógnita. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="assets/js/zod.umd.js"></script><script src="assets/js/utils.js?v=25"></script><script src="assets/js/config.js?v=29"></script><script src="assets/js/supabase-client.js?v=28"></script><script src="assets/js/cloudinary.js?v=30"></script><script src="assets/js/admin-crm-tasks.js"></script>
+<script src="assets/js/admin-crm.js"></script>
+<script src="assets/js/admin-app.js?v=258"></script></body>
 </html>
