@@ -677,6 +677,7 @@ function bindQuickActions(lead, panel) {
               toast('Vinculá una propiedad primero.', 'error');
               return;
             }
+            await db().from('leads').update({ stage: 'visita_agendada' }).eq('id', lead.id);
             await db().from('visits').insert([{
               property_id: propId,
               client_name: lead.full_name || '',
@@ -798,10 +799,11 @@ var VISIT_STATUS_LABELS = { pendiente: 'Pendiente', confirmada: 'Confirmada', co
 async function updateVisitStatus(visitId, newStatus, leadId, panel) {
   try {
     var patch = { status: newStatus };
-    if (newStatus === 'completada') patch.check_out = new Date().toISOString();
+    if (newStatus === 'completada') { patch.check_out = new Date().toISOString(); patch.confirmed_at = new Date().toISOString(); }
     if (newStatus === 'confirmada') patch.confirmed_at = new Date().toISOString();
     var r = await db().from('visits').update(patch).eq('id', visitId);
     if (r.error) throw new Error(r.error.message);
+    if (newStatus === 'completada') { try { await db().from('leads').update({ stage: 'visita_realizada' }).eq('id', leadId); } catch (e) { console.warn('[crm] stage after visita:', e.message); } }
     toast('Visita ' + (VISIT_STATUS_LABELS[newStatus] || newStatus).toLowerCase() + '.', 'success');
     closeDetailPanel();
     openDetailPanel(leadId);
