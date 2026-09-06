@@ -1461,6 +1461,77 @@ function esc(s) {
         operation_type: validated.operation_type,
       };
 
+
+      // ── ANTI-DUPLICADO: buscar lead con mismo teléfono / whatsapp
+      var phone = (validated.phone || '').trim();
+      var whatsappNum = (validated.whatsapp || '').trim();
+      var phoneDigits = phone.replace(/\D/g, '');
+      var wnumDigits = whatsappNum.replace(/\D/g, '');
+
+      if (phoneDigits.length >= 6 || wnumDigits.length >= 6) {
+        var existing = null;
+        var last8Reverse = p => p.slice(-8); // últimos 8 dígitos como clave
+        try {
+          var ds = [];
+          if (phoneDigits.length >= 6) ds.push('phone.ilike.%' + last8Reverse(phoneDigits) + '%');
+          if (wnumDigits.length >= 6 && wnumDigits !== phoneDigits) ds.push('whatsapp.ilike.%' + last8Reverse(wnumDigits) + '%');
+          if (ds.length) {
+            var r = await window.supabaseClient
+              .from('leads')
+              .select('id, full_name, phone, whatsapp, stage, deleted_at')
+              .or(ds.join(','))
+              .is('deleted_at', null)
+              .limit(1);
+            if (r && r.error) throw r.error;
+            if (r && r.data && r.data.length) existing = r.data[0];
+          }
+        } catch (qerr) {
+          // si falla el check (red/RLS) no bloquear al usuario — seguir
+          console.warn('[dup-check]', qerr.message);
+        }
+
+        if (existing) {
+          var lbl = existing.full_name || existing.phone || existing.whatsapp || existing.id;
+          var stageLbl = existing.stage || 'nuevo';
+          var okOpen = confirm('Prospecto ya existente: ' + lbl + ' (estado: ' + stageLbl + ').\n\n¿Ir al pipeline existente?');
+          if (okOpen) {
+            closeModal('leadModal');
+            if (window.BH_CRM && window.BH_CRM.open) { window.BH_CRM.open(existing.id); } else { window.location.hash = '#tab-leads'; }
+          }
+          _submittingLead = false;
+          restoreBtn(btn);
+          return;
+        }
+
+        // y opción recuperar registro blando-eliminado
+        try {
+          var r2 = await window.supabaseClient
+            .from('leads')
+            .select('id, full_name, phone, stage')
+            .or(ds.join(','))
+            .not('deleted_at', 'is', 'null')
+            .order('deleted_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (r2 && !r2.error && r2.data) {
+            var recuperar = confirm('Este contacto existe pero fue eliminado antes (' + (r2.data.full_name || r2.data.phone || '') + ').\n\n¿Recuperar al nuevo (quita el borrado) o crear uno nuevo?\n\nAceptar = Recuperar · Cancelar = Crear nuevo lead');
+            if (recuperar) {
+              await mutate('leads', async () => {
+                const { error } = await window.supabaseClient.from('leads').update({ deleted_at: null, ...data }).eq('id', r2.data.id);
+                if (error) throw error;
+              });
+              showToast('Lead recuperado y actualizado', 'success');
+              closeModal('leadModal');
+              loadCRM();
+              updateSidebarBadges();
+              _submittingLead = false;
+              restoreBtn(btn);
+              return;
+            }
+          }
+        } catch (_) {}
+      }
+
       if (editingLeadId) {
         await mutate('leads', async () => {
           const { error } = await window.supabaseClient.from('leads').update(data).eq('id', editingLeadId);

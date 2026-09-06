@@ -1054,7 +1054,7 @@ function openOwnerPanel(ownerId) {
 
 /* ctypes */
 
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, refreshOwners: loadOwners };
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners };
 window.initCrm = init;
 })();
 
