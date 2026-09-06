@@ -32,6 +32,7 @@ var __initialized = false;
 var _viewMode = 'leads';
 var _owners = [];
 var _ownerTasks = {};
+var _ownerProps = {};
 var _nextActions = {};
 
 function $id(id) { return document.getElementById(id); }
@@ -134,6 +135,11 @@ async function loadOwners() {
     _ownerTasks = {};
     if (ids.length) {
       var tRes = await db().from('owner_tasks').select('owner_id, id, title, description, status, priority, due_date').in('owner_id', ids);
+    var pRes = await db().from('properties').select('id, title, property_code, price_usd, status, owner_id').in('owner_id', ids);
+    (pRes.data || []).forEach(function (p) {
+      if (!_ownerProps[p.owner_id]) _ownerProps[p.owner_id] = [];
+      _ownerProps[p.owner_id].push(p);
+    });
       (tRes.data || []).forEach(function (tk) {
         if (!_ownerTasks[tk.owner_id]) _ownerTasks[tk.owner_id] = [];
         _ownerTasks[tk.owner_id].push(tk);
@@ -143,6 +149,20 @@ async function loadOwners() {
   } catch (e) {
     c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--danger);">Error: ' + esc(e.message) + '</div>';
   }
+}
+
+
+function renderOwnerPropsCell(ownerId) {
+  var ps = _ownerProps[ownerId] || [];
+  if (!ps.length) return '<span class="crm-muted">—</span>';
+  return ps.slice(0, 3).map(function (p) {
+    var code = esc(p.property_code || ('PROP-' + String(p.id).slice(0, 6)).toUpperCase());
+    var title = esc(p.title || '');
+    var price = p.price_usd ? ('U$S ' + Number(p.price_usd).toLocaleString('es-AR')) : '';
+    var status = esc(p.status || '');
+    var tip = title + (price ? ' — ' + price : '') + (status ? ' (' + status + ')' : '');
+    return '<span class="crm-prop-code" title="' + esc(tip) + '">' + code + '</span>';
+  }).join('') + (ps.length > 3 ? '<span class="crm-muted"> +' + (ps.length - 3) + '</span>' : '');
 }
 
 /* -- Tabla Owners -- */
@@ -164,6 +184,7 @@ function renderOwnerList(c) {
     rows += '<tr class="crm-row" data-id="' + o.id + '" data-kind="owner">' +
       '<td><div class="crm-client-row"><span class="crm-client-avatar" style="background:' + avColor + '">' + inits + '</span><div><strong>' + esc(o.full_name) + '</strong>' + (o.exclusive ? '<span class="crm-tipo-chip crm-tipo-chip--estado">EXCLUSIVO</span>' : '') + '<div class="crm-meta">' + esc(contactMetrics.join(' · ')) + '</div></div></div></td>' +
       '<td>' + (o.dni_cuit ? '<code style="font-size:11px;color:var(--text-secondary);">' + esc(o.dni_cuit) + '</code>' : '<span class="crm-muted">—</span>') + '</td>' +
+      '<td>' + renderOwnerPropsCell(o.id) + '</td>' +
       '<td>' + (tareas.length ? '<span class="crm-priority crm-priority--media">' + tareas.length + ' pendientes</span>' : '<span class="crm-muted">—</span>') + '</td>' +
       '<td>' + (o.exclusive && o.exclusive_end ? fmtDate(o.exclusive_end) : '<span class="crm-muted">—</span>') + '</td>' +
       '<td>' + (o.created_at ? fmtDate(o.created_at) : '—') + '</td>' +
@@ -176,7 +197,7 @@ function renderOwnerList(c) {
   c.innerHTML =
     '<div class="crm-table-wrap luxury-table-wrap"><table class="luxury-table crm-table">' +
       '<thead><tr>' +
-        '<th>Propietario</th><th>DNI/CUIT</th><th>Tareas pendientes</th><th>Exclusivo hasta</th><th>Creado</th><th></th>' +
+        '<th>Propietario</th><th>DNI/CUIT</th><th>Propiedades</th><th>Tareas pendientes</th><th>Exclusivo hasta</th><th>Creado</th><th></th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>' + buildPagination();
   c.querySelectorAll('.crm-row').forEach(function (r) {
     r.addEventListener('click', function () { openOwnerPanel(this.dataset.id); });

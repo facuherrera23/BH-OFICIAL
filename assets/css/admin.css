@@ -4518,3 +4518,14 @@ input[type="range"]::-moz-range-thumb {
 .crm-dot--status{background:#64748b}
 .crm-dot--task{background:#8b5cf6}
 .crm-dot--task-ok{background:var(--success)}
+﻿
+/* ============================================================
+   CRM Owners: chips de propiedad con tooltip nativo
+   ============================================================ */
+.crm-prop-code{
+  display:inline-block;padding:3px 8px;border-radius:6px;
+  background:rgba(31,200,195,0.10);border:1px solid rgba(31,200,195,0.3);
+  color:var(--accent);font-size:11px;font-weight:700;
+  font-family:"JetBrains Mono",monospace;margin-right:4px;cursor:help;
+}
+.crm-prop-code:hover{background:rgba(31,200,195,0.22);box-shadow:0 0 0 3px rgba(31,200,195,0.12)}
