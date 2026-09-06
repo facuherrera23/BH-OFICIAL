@@ -162,7 +162,7 @@ function renderOwnerPropsCell(ownerId) {
     var status = esc(p.status || '');
     var tip = title + (price ? ' — ' + price : '') + (status ? ' (' + status + ')' : '');
     return '<span class="crm-prop-code" title="' + esc(tip) + '">' + code + '</span>';
-  }).join('') + (ps.length > 3 ? '<span class="crm-muted"> +' + (ps.length - 3) + '</span>' : '');
+  }).join('<span style="display:inline-block;width:4px;"></span>') + (ps.length > 3 ? '<span class="crm-prop-code crm-prop-code--muted" title="+">+' + (ps.length - 3) + '</span>' : '');
 }
 
 /* -- Tabla Owners -- */

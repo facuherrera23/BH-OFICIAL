@@ -4529,3 +4529,7 @@ input[type="range"]::-moz-range-thumb {
   font-family:"JetBrains Mono",monospace;margin-right:4px;cursor:help;
 }
 .crm-prop-code:hover{background:rgba(31,200,195,0.22);box-shadow:0 0 0 3px rgba(31,200,195,0.12)}
+
+/* Chip propiedad variante */
+.crm-prop-code--sm{padding:2px 6px;font-size:10px}
+.crm-prop-code--muted{background:rgba(255,255,255,0.05);border-color:var(--border-subtle);color:var(--text-dim);font-weight:600}
