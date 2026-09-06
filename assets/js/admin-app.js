@@ -1462,7 +1462,9 @@ function esc(s) {
       };
 
 
-      // ── ANTI-DUPLICADO: buscar lead con mismo teléfono / whatsapp
+      // ── ANTI-DUPLICADO: sólo si NO estamos editando
+      if (!editingLeadId) {
+
       var phone = (validated.phone || '').trim();
       var whatsappNum = (validated.whatsapp || '').trim();
       var phoneDigits = phone.replace(/\D/g, '');
@@ -1532,6 +1534,8 @@ function esc(s) {
         } catch (_) {}
       }
 
+
+      }
       if (editingLeadId) {
         await mutate('leads', async () => {
           const { error } = await window.supabaseClient.from('leads').update(data).eq('id', editingLeadId);
