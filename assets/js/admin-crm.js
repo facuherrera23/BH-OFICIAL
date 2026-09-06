@@ -111,7 +111,7 @@ function applyBaseFilters(q) {
   var tc = $id('crmTipoClienteFilter'); if (tc && tc.value) q = q.eq('tipo_cliente', tc.value);
   var tp = $id('crmTipoOperacionFilter'); if (tp && tp.value) q = q.eq('operation_type', tp.value);
   var ag = $id('crmAgentFilter'); if (ag && ag.value) q = q.eq('assigned_to', ag.value);
-  if (_hasFollowupFilter) q = q.not('next_followup_at', 'is', null);
+  if (_hasFollowupFilter) q = q.not('next_followup_at', 'is', 'null');
   return q.is('deleted_at', null);
 }
 
@@ -673,7 +673,7 @@ function bindQuickActions(lead, panel) {
                 visit_date: new Date(dt).toISOString(),
                 status: 'pendiente',
                 lead_id: lead.id,
-                note: txt || null
+                notes: txt || null
               }]);
             }
             await db().from('leads').update({ last_contacted_at: new Date().toISOString(), next_followup_at: dt }).eq('id', lead.id);

@@ -1403,85 +1403,140 @@ function esc(s) {
     if (window.BH_CRM && typeof window.BH_CRM.init === 'function') { window.BH_CRM.init(); }
     else if (typeof window.initCrm === 'function') { window.initCrm(); }
     else { console.warn('[crm] módulo CRM no cargado'); }
-  }
+  }
+
+  /* ---- NEW LEAD (modal + form) ---- */
+  let _submittingLead = false;
+
+  function setBtnLoading(btn, loadingText) {
+    if (!btn) return;
+    btn.dataset._origTxt = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = loadingText;
+  }
+  function restoreBtn(btn) {
+    if (!btn) return;
+    btn.disabled = false;
+    if (btn.dataset._origTxt) btn.innerHTML = btn.dataset._origTxt;
+  }
+
+  on($('#btnNewLead'), 'click', () => {
+    editingLeadId = null;
+    $('#leadForm')?.reset();
+    // Recargar brokers disponibles
+    loadAgentSelect($('#leadBrokerSelect'));
+    openModal('leadModal');
+  });
+
+  on($('#leadForm'), 'submit', async (e) => {
+    e.preventDefault();
+    if (_submittingLead) return;
+    _submittingLead = true;
+    const btn = $('#leadSaveBtn');
+    setBtnLoading(btn, '<i class="fas fa-spinner fa-spin"></i> Guardando...');
+
+    try {
+      const formData = new FormData(e.target);
+
+      // Zod validation
+      const validated = validateForm(LeadSchema, formData);
+
+      const data = {
+        full_name: validated.full_name,
+        phone: validated.phone,
+        email: validated.email,
+        whatsapp: validated.whatsapp,
+        budget_usd: validated.budget_usd,
+        stage: validated.stage,
+        preferred_type: validated.preferred_type,
+        preferred_zone: validated.preferred_zone,
+        notes: validated.notes,
+        source: validated.source,
+        property_id: validated.property_id,
+        assigned_to: validated.assigned_to,
+        preferred_rooms: validated.preferred_rooms,
+      };
+
+      if (editingLeadId) {
+        await mutate('leads', async () => {
+          const { error } = await window.supabaseClient.from('leads').update(data).eq('id', editingLeadId);
+          if (error) throw error;
+        });
+        showToast('Lead actualizado', 'success');
+      } else {
+        await mutate('leads', async () => {
+          const { error } = await window.supabaseClient.from('leads').insert([data]);
+          if (error) throw error;
+        });
+        showToast('Lead registrado', 'success');
+      }
+
+      closeModal('leadModal');
+      loadCRM(); // delega en el nuevo módulo si está cargado
+      updateSidebarBadges();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    } finally {
+      _submittingLead = false;
+      restoreBtn(btn);
+    }
+  });
+
+  window.adminApp.editLead = async function (id) {
+    try {
+      const [{ data: lead, error: leadErr }, { data: visits, error: visitsErr }] = await Promise.all([
+        window.supabaseClient.from('leads').select('*').eq('id', id).single(),
+        window.supabaseClient.from('visits').select('id, visit_date, status, client_name, property_id').eq('lead_id', id).order('visit_date', { ascending: true }),
+      ]);
+      if (leadErr) throw leadErr;
+      if (visitsErr) throw visitsErr;
+
+      editingLeadId = id;
+      const form = $('#leadForm');
+      if (!form) return;
+
+      await loadAgentSelect($('#leadBrokerSelect'), lead.assigned_to);
+      form.elements.full_name.value = lead.full_name || '';
+      form.elements.phone.value = lead.phone || '';
+      form.elements.email.value = lead.email || '';
+      form.elements.whatsapp.value = lead.whatsapp || '';
+      form.elements.budget_usd.value = lead.budget_usd || '';
+      form.elements.stage.value = lead.stage || 'nuevo';
+      form.elements.preferred_type.value = lead.preferred_type || '';
+      form.elements.preferred_zone.value = lead.preferred_zone || '';
+      form.elements.preferred_rooms.value = lead.preferred_rooms ?? '';
+      form.elements.notes.value = lead.notes || '';
+      form.elements.source.value = lead.source || 'manual';
+      form.elements.assigned_to.value = lead.assigned_to || '';
+      const propSel = form.elements.property_id;
+      if (propSel) propSel.value = lead.property_id || '';
+      openModal('leadModal');
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  };
+
+  window.adminApp.deleteLead = async function (id) {
+    if (!confirm('¿Eliminar este prospecto?')) return;
+    try {
+      await mutate('leads', async () => {
+        const { error } = await window.supabaseClient.from('leads').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+        if (error) throw error;
+      });
+      showToast('Lead eliminado', 'success');
+      loadCRM();
+      updateSidebarBadges();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  };
+
 
 /* Edit lead */
-  window.adminApp.editLead = async function (id) {
-    try {
-      const [{ data: lead, error: leadErr }, { data: visits, error: visitsErr }] = await Promise.all([
-        window.supabaseClient.from('leads').select('*').eq('id', id).single(),
-        window.supabaseClient
-          .from('visits')
-          .select('id, visit_date, status, client_name, property_id')
-          .eq('lead_id', id)
-          .order('visit_date', { ascending: true }),
-      ]);
-      if (leadErr) throw leadErr;
-      if (visitsErr) throw visitsErr;
-
-      editingLeadId = id;
-      const form = $('#leadForm');
-      if (form) {
-        await loadAgentSelect($('#leadBrokerSelect'), lead.assigned_to);
-        form.elements.full_name.value = lead.full_name || '';
-        form.elements.phone.value = lead.phone || '';
-        form.elements.email.value = lead.email || '';
-        form.elements.budget_usd.value = lead.budget_usd || '';
-        form.elements.stage.value = lead.stage || 'nuevo';
-        form.elements.preferred_type.value = lead.preferred_type || '';
-        form.elements.preferred_rooms.value = lead.preferred_rooms || '';
-        form.elements.preferred_zone.value = lead.preferred_zone || '';
-        form.elements.notes.value = lead.notes || '';
-        form.elements.assigned_to.value = lead.assigned_to || '';
-      }
-
-      /* Visitas asociadas en el modal */
-      const visitsContainer = $('#leadVisitsContainer');
-      if (visitsContainer) {
-        if (visits?.length) {
-          visitsContainer.innerHTML = `
-            <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border-subtle);">
-              <div style="font-weight:600; color:var(--accent); font-size:12px; margin-bottom:8px;">Visitas asociadas (${visits.length})</div>
-              ${visits.map(v => `
-                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px; background:var(--surface-2); border-radius:6px; margin-bottom:6px; font-size:12px;">
-                  <div>
-                    <div style="font-weight:500; color:#fff;">${new Date(v.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
-                    <div style="color:var(--text-dim); font-size:11px;">${esc(v.client_name || 'Sin cliente')} · ${esc(v.status)}</div>
-                  </div>
-                  <button class="btn-action" style="font-size:10px;" onclick="event.stopPropagation(); window.adminApp.editVisit('${v.id}')">
-                    <i class="fas fa-external-link-alt"></i> Ver en Agenda
-                  </button>
-                </div>
-              `).join('')}
-            </div>`;
-        } else {
-          visitsContainer.innerHTML = `
-            <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border-subtle); color:var(--text-dim); font-size:12px;">
-              Sin visitas asociadas. <button type="button" class="btn-action" data-open-visit data-lead-id="${esc(editingLeadId)}" data-client-name="${esc(lead.full_name)}" data-client-phone="${esc(lead.phone || lead.whatsapp || '')}" data-property-id="${esc(lead.property_id || '')}" style="padding:2px 8px; font-size:10px; margin-left:8px;"><i class="fas fa-calendar-plus"></i> Agendar primera visita</button>
-            </div>`;
-        }
-      }
-
-      openModal('leadModal');
-    } catch (err) {
-      logError('Error al cargar lead:', err);
-      showToast('Error al cargar lead', 'error');
-    }
-  };
+  
 
   /* Delete lead */
-  window.adminApp.deleteLead = async function (id) {
-    if (!confirm('¿Eliminar este lead?')) return;
-    try {
-      const { error } = await window.supabaseClient.from('leads').delete().eq('id', id);
-      if (error) throw error;
-      showToast('Lead eliminado', 'success');
-      loadCRM();
-      updateSidebarBadges();
-    } catch (err) {
-      showToast('Error: ' + err.message, 'error');
-    }
-  };
+  
 
   /* ------------------------------------------------
      8. VISITS / AGENDA
