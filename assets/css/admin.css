@@ -4410,3 +4410,19 @@ input[type="range"]::-moz-range-thumb {
   cursor:pointer;transition:all .18s ease;
 }
 .crm-new-task-btn:hover{background:rgba(31,200,195,0.12);border-color:var(--accent)}
+
+/* ============================================================
+   CRM QUICK ACTIONS — variantes función
+   ============================================================ */
+.crm-side-actions .crm-action--danger{
+  border-color:rgba(220,38,38,0.35);
+  background:rgba(220,38,38,0.06);
+  color:#f87171;
+  grid-column:1 / -1;
+}
+.crm-side-actions .crm-action--danger:hover{
+  background:rgba(220,38,38,0.15);color:var(--danger);
+  border-color:var(--danger);
+  box-shadow:0 4px 12px rgba(220,38,38,0.15);
+}
+.crm-side-actions .crm-action--danger i{color:var(--danger)}

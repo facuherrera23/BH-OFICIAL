@@ -619,7 +619,8 @@ function bindQuickActions(lead, panel) {
     { sel: '[data-action="addNoteInline"]', label: 'Agregar nota', type: 'note', hasDate: false, placeholder: 'Escribi una nota...', actTitle: 'Nota' },
     { sel: '[data-action="scheduleVisit"]', label: 'Agendar visita', type: 'visit', hasDate: true, placeholder: 'Notas para la visita...', actTitle: 'Visita agendada' },
     { sel: '[data-action="scheduleFollowup"]', label: 'Programar followup', type: 'followup', hasDate: true, placeholder: 'Notas del followup...', actTitle: 'Followup programado' }
-  ];
+    , { sel: '[data-action="markLost"]', label: 'Marcar perdido', type: 'lost', hasDate: false, placeholder: 'Motivo del rechazo (opcional)...', actTitle: 'Perdido / Rechazado' }]
+
   defs.forEach(function (d) {
     var btn = panel.querySelector(d.sel);
     if (!btn) return;
@@ -639,6 +640,17 @@ function bindQuickActions(lead, panel) {
         var dt = dtEl ? dtEl.value : null;
         if (d.hasDate && !dt) { toast('Selecciona fecha y hora.', 'error'); return; }
         try {
+          if (d.type === 'lost') {
+            await db().from('leads').update({ stage: 'cerrado_perdido', last_contacted_at: new Date().toISOString() }).eq('id', lead.id);
+            if (txt.trim()) {
+              await db().from('lead_activities').insert([{ lead_id: lead.id, activity_type: 'note', title: 'Motivo del rechazo', description: txt.trim() }]);
+            }
+            toast('Marcado como perdido.', 'success');
+            p.innerHTML = '';
+            closeDetailPanel();
+            await loadLeads();
+            return;
+          }
           var row = { lead_id: lead.id, activity_type: d.type, title: d.actTitle, description: txt || null };
           if (d.type === 'visit') row.activity_type = 'visit';
           if (d.type === 'followup') row.activity_type = 'followup';
