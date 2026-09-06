@@ -270,6 +270,11 @@ function bindListHandlers(c) {
 }
 
 
+function getLeadTasks(id) {
+  return db().from('lead_tasks').select('*').eq('lead_id', id).order('created_at', { ascending: false }).limit(50)
+    .then(function (r) { return r.data || []; }).catch(function () { return []; });
+}
+
 function getLeadVisits(id) {
   return db().from('visits').select('id, visit_date, status, client_name, client_phone, client_email, property_id, notes, agent_id').eq('lead_id', id).order('visit_date', { ascending: false }).limit(20)
     .then(function (r) { return r.data || []; }).catch(function () { return []; });
@@ -315,7 +320,7 @@ function openDetailPanel(id) {
   backdrop.classList.add('open');
   panel.classList.add('open');
 
-  Promise.all([getLeadFull(id), getLeadActivities(id), getLeadProps(id), getLeadVisits(id)])
+  Promise.all([getLeadFull(id), getLeadActivities(id), getLeadProps(id), getLeadVisits(id), getLeadTasks(id)])
     .then(function (results) {
       var leadRes = results[0];
       if (leadRes.error) throw new Error(leadRes.error.message);
@@ -324,15 +329,16 @@ function openDetailPanel(id) {
       var activities = results[1] || [];
       var props = results[2] || [];
       var visits = results[3] || [];
+      var tasks = results[4] || [];
       if (!props.length && lead.property_id) {
         /* fallback a property_id directo */
         return db().from('properties').select('id, title').eq('id', lead.property_id).single()
           .then(function (pr) {
             if (pr.data) props = [{ property_id: pr.data.id, property_title: pr.data.title }];
-            renderSide(panel, lead, activities, props, visits); return null;
+            renderSide(panel, lead, activities, props, visits, tasks); return null;
           });
       }
-      renderSide(panel, lead, activities, props, visits);
+      renderSide(panel, lead, activities, props, visits, tasks);
       return null;
     })
     .catch(function (e) { toast('Error al cargar prospecto: ' + e.message, 'error'); closeDetailPanel(); });
@@ -347,7 +353,7 @@ function closeDetailPanel() {
   document.querySelectorAll('.crm-row--selected').forEach(function (r) { r.classList.remove('crm-row--selected'); });
 }
 
-function renderSide(panel, lead, activities, props, visits) {
+function renderSide(panel, lead, activities, props, visits, tasks) {
   var stage = normalizeStage(lead.stage || 'nuevo');
   var sopts = LEAD_STATUSES.map(function (s) { return '<option value="' + s + '"' + (stage === s ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>'; }).join('');
   var aopts = _agents.map(function (a) { return '<option value="' + a.id + '"' + (lead.assigned_to === a.id ? ' selected' : '') + '>' + esc(a.full_name) + '</option>'; }).join('');
@@ -368,7 +374,7 @@ function renderSide(panel, lead, activities, props, visits) {
       '<button class="crm-side-close" aria-label="Cerrar"><i class="fas fa-times"></i></button>' +
     '</div>' +
     '<div class="crm-side-body">' +
-      sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, buildTimelineHTML(activities)) +
+      sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, buildUnifiedTimeline(activities, visits, tasks)) +
       agendaSectionHtml(visits) +
       '<div id="crmTasksPanel"><div class="loading-state">Cargando tareas...</div></div>' +
       '<button class="btn-action crm-new-task-btn" id="crmNewTaskBtn">+ Nueva tarea</button>' +
@@ -834,4 +840,57 @@ function bindAgendaActions(panel, leadId) {
       else if (act === 'reschedule') rescheduleVisit(vid, leadId, panel);
     });
   });
+}
+
+/* ============================================================
+   LÍNEA DE TIEMPO UNIFICADA -- actividades + visitas + tareas
+   "Lo que está pasando" en un solo feed cronológico.
+   ============================================================ */
+function buildUnifiedTimeline(activities, visits, tasks) {
+  var items = [];
+  (activities || []).forEach(function (a) {
+    items.push({
+      _ts: a.created_at, kind: 'activity',
+      title: a.title || a.activity_type, text: a.description || '',
+      dot: 'crm-dot--' + (a.activity_type === 'status_change' ? 'status' : (a.activity_type || 'note'))
+    });
+  });
+  (visits || []).forEach(function (v) {
+    items.push({
+      _ts: v.visit_date, kind: 'visit',
+      title: 'Visita ' + (v.status || 'pendiente'),
+      text: v.client_name ? ('para ' + v.client_name) : '',
+      dot: 'crm-dot--visit',
+      isFuture: new Date(v.visit_date).getTime() > Date.now()
+    });
+  });
+  (tasks || []).forEach(function (t) {
+    var label = t.status === 'completada' ? 'Tarea completada' : (t.status === 'cancelada' ? 'Tarea cancelada' : 'Tarea ' + (t.status || 'pendiente'));
+    items.push({
+      _ts: t.created_at, kind: 'task',
+      title: label + ': ' + (t.title || ''),
+      text: t.description || '',
+      dot: 'crm-dot--task'
+    });
+  });
+  items.sort(function (a, b) { return new Date(b._ts) - new Date(a._ts); });
+  if (!items.length) return '<div class="crm-timeline-empty">Sin actividad registrada.</div>';
+  return items.map(function (it) {
+    return '<div class="crm-interaction"><span class="crm-interaction-dot ' + it.dot + '"></span><div class="crm-interaction-body">' +
+      '<strong>' + esc(it.title) + '</strong>' +
+      (it.text ? '<div class="crm-interaction-text">' + esc(it.text) + '</div>' : '') +
+      '<div class="crm-interaction-date">' + fmtDateTime(it._ts) + '</div></div></div>';
+  }).join('');
+}
+
+/* sugerencia de next-action: si no hay nada pendiente, recomendar Followup */
+function recommendedNextAction(lead, visits, tasks) {
+  var hasPendingTask = (tasks || []).some(function (t) { return t.status === 'pendiente' || t.status === 'en_progreso'; });
+  var hasFutureVisit = (visits || []).some(function (v) { return new Date(v.visit_date).getTime() > Date.now() && v.status !== 'cancelada'; });
+  if (hasPendingTask) return null;
+  if (hasFutureVisit) return null;
+  if (!lead.last_contacted_at) return 'Sin contacto aún. Sugerencia: llamada o WhatsApp.';
+  var days = Math.floor((Date.now() - new Date(lead.last_contacted_at).getTime()) / 86400000);
+  if (days >= 7) return 'Sin contacto desde hace ' + days + ' días. Considerar followup.';
+  return null;
 }

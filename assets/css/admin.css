@@ -4506,3 +4506,15 @@ input[type="range"]::-moz-range-thumb {
   transition:all .15s ease;
 }
 .crm-visit-btn:hover{background:rgba(255,255,255,0.08);transform:translateY(-1px)}
+
+/* ============================================================
+   CRM UNIFIED TIMELINE — colores por tipo de evento
+   ============================================================ */
+.crm-dot--call{background:#3b82f6}
+.crm-dot--note{background:#f59e0b}
+.crm-dot--email{background:#a78bfa}
+.crm-dot--visit{background:var(--accent)}
+.crm-dot--fup{background:var(--warning)}
+.crm-dot--status{background:#64748b}
+.crm-dot--task{background:#8b5cf6}
+.crm-dot--task-ok{background:var(--success)}
