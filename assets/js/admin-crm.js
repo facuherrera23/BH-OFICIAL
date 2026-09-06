@@ -269,6 +269,12 @@ function bindListHandlers(c) {
   });
 }
 
+
+function getLeadVisits(id) {
+  return db().from('visits').select('id, visit_date, status, client_name, client_phone, client_email, property_id, notes, agent_id').eq('lead_id', id).order('visit_date', { ascending: false }).limit(20)
+    .then(function (r) { return r.data || []; }).catch(function () { return []; });
+}
+
 /* -- Panel lateral -- */
 function getLeadFull(id) {
   return db().from('leads').select('*').eq('id', id).single();
@@ -309,7 +315,7 @@ function openDetailPanel(id) {
   backdrop.classList.add('open');
   panel.classList.add('open');
 
-  Promise.all([getLeadFull(id), getLeadActivities(id), getLeadProps(id)])
+  Promise.all([getLeadFull(id), getLeadActivities(id), getLeadProps(id), getLeadVisits(id)])
     .then(function (results) {
       var leadRes = results[0];
       if (leadRes.error) throw new Error(leadRes.error.message);
@@ -317,15 +323,16 @@ function openDetailPanel(id) {
       if (!lead) throw new Error('Prospecto no encontrado');
       var activities = results[1] || [];
       var props = results[2] || [];
+      var visits = results[3] || [];
       if (!props.length && lead.property_id) {
         /* fallback a property_id directo */
         return db().from('properties').select('id, title').eq('id', lead.property_id).single()
           .then(function (pr) {
             if (pr.data) props = [{ property_id: pr.data.id, property_title: pr.data.title }];
-            renderSide(panel, lead, activities, props); return null;
+            renderSide(panel, lead, activities, props, visits); return null;
           });
       }
-      renderSide(panel, lead, activities, props);
+      renderSide(panel, lead, activities, props, visits);
       return null;
     })
     .catch(function (e) { toast('Error al cargar prospecto: ' + e.message, 'error'); closeDetailPanel(); });
@@ -340,7 +347,7 @@ function closeDetailPanel() {
   document.querySelectorAll('.crm-row--selected').forEach(function (r) { r.classList.remove('crm-row--selected'); });
 }
 
-function renderSide(panel, lead, activities, props) {
+function renderSide(panel, lead, activities, props, visits) {
   var stage = normalizeStage(lead.stage || 'nuevo');
   var sopts = LEAD_STATUSES.map(function (s) { return '<option value="' + s + '"' + (stage === s ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>'; }).join('');
   var aopts = _agents.map(function (a) { return '<option value="' + a.id + '"' + (lead.assigned_to === a.id ? ' selected' : '') + '>' + esc(a.full_name) + '</option>'; }).join('');
@@ -362,6 +369,7 @@ function renderSide(panel, lead, activities, props) {
     '</div>' +
     '<div class="crm-side-body">' +
       sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, buildTimelineHTML(activities)) +
+      agendaSectionHtml(visits) +
       '<div id="crmTasksPanel"><div class="loading-state">Cargando tareas...</div></div>' +
       '<button class="btn-action crm-new-task-btn" id="crmNewTaskBtn">+ Nueva tarea</button>' +
       '<div class="crm-qa-row">' +
@@ -382,6 +390,7 @@ function renderSide(panel, lead, activities, props) {
   bindSideSave(lead, panel);
   bindQuickActions(lead, panel); bindPropSearch(panel, lead.id);
   window.CrmTasks.loadLeadTasks(lead.id, panel);
+  bindAgendaActions(panel, lead.id);
   var ntBtn = panel.querySelector('#crmNewTaskBtn');
   if (ntBtn) ntBtn.addEventListener('click', function () { window.CrmTasks.showTaskForm(lead.id, null, panel); });
 }
@@ -664,20 +673,22 @@ function bindQuickActions(lead, panel) {
             /* Solo registrar si hay propiedad: la tabla visits exige property_id NOT NULL */
             var lprops = await getLeadProps(lead.id);
             var propId = lprops.length ? lprops[0].property_id : lead.property_id;
-            if (propId) {
-              await db().from('visits').insert([{
-                property_id: propId,
-                client_name: lead.full_name || '',
-                client_phone: lead.phone || null,
-                client_email: lead.email || null,
-                visit_date: new Date(dt).toISOString(),
-                status: 'pendiente',
-                lead_id: lead.id,
-                notes: txt || null
-              }]);
+            if (!propId) {
+              toast('Vinculá una propiedad primero.', 'error');
+              return;
             }
+            await db().from('visits').insert([{
+              property_id: propId,
+              client_name: lead.full_name || '',
+              client_phone: lead.phone || null,
+              client_email: lead.email || null,
+              visit_date: new Date(dt).toISOString(),
+              status: 'pendiente',
+              lead_id: lead.id,
+              notes: txt || null
+            }]);
             await db().from('leads').update({ last_contacted_at: new Date().toISOString(), next_followup_at: dt }).eq('id', lead.id);
-          } else {
+} else {
             await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', lead.id);
           }
           toast(d.label + ' guardado.', 'success');
@@ -750,3 +761,75 @@ function init() {
 window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel };
 window.initCrm = init;
 })();
+
+/* -- Agenda de Visitas dentro del panel lateral -- */
+function agendaSectionHtml(visits) {
+  var rows = '';
+  if (visits && visits.length) {
+    rows = visits.map(function (v) {
+      var dt = v.visit_date ? fmtDateTime(v.visit_date) : 'Sin fecha';
+      var st = v.status || 'pendiente';
+      var isPast = v.visit_date && new Date(v.visit_date) < new Date();
+      var cls = st === 'confirmada' ? 'crm-visit--confirmed' : st === 'completada' ? 'crm-visit--done' : st === 'cancelada' ? 'crm-visit--cancelled' : (isPast ? 'crm-visit--overdue' : '');
+      var actions = '';
+      if (st === 'pendiente') actions += '<button class="crm-visit-btn" data-visit-action="confirm" data-visit-id="' + v.id + '" style="color:var(--success);"><i class="fas fa-check"></i></button>';
+      if (st === 'pendiente' || st === 'confirmada') {
+        actions += '<button class="crm-visit-btn" data-visit-action="reschedule" data-visit-id="' + v.id + '" style="color:var(--warning);"><i class="fas fa-clock"></i></button>';
+        actions += '<button class="crm-visit-btn" data-visit-action="cancel" data-visit-id="' + v.id + '" style="color:var(--danger);"><i class="fas fa-times"></i></button>';
+        actions += '<button class="crm-visit-btn" data-visit-action="complete" data-visit-id="' + v.id + '" style="color:var(--accent);"><i class="fas fa-check-double"></i></button>';
+      }
+      return '<div class="crm-visit-item ' + cls + '">' +
+        '<div class="crm-visit-info">' +
+          '<div class="crm-visit-date">' + dt + '</div>' +
+          '<div class="crm-visit-status">' + (VISIT_STATUS_LABELS[st] || st) + '</div>' +
+        '</div>' +
+        '<div class="crm-visit-actions">' + actions + '</div>' +
+      '</div>';
+    }).join('');
+  } else {
+    rows = '<div class="crm-timeline-empty">Sin visitas agendadas.</div>';
+  }
+  return '<div class="crm-side-section"><h4 class="crm-side-section-title">Agenda</h4>' +
+    '<div class="crm-side-fields"><div class="crm-visit-list">' + rows + '</div></div></div>';
+}
+
+var VISIT_STATUS_LABELS = { pendiente: 'Pendiente', confirmada: 'Confirmada', completada: 'Completada', cancelada: 'Cancelada' };
+
+async function updateVisitStatus(visitId, newStatus, leadId, panel) {
+  try {
+    var patch = { status: newStatus };
+    if (newStatus === 'completada') patch.check_out = new Date().toISOString();
+    if (newStatus === 'confirmada') patch.confirmed_at = new Date().toISOString();
+    var r = await db().from('visits').update(patch).eq('id', visitId);
+    if (r.error) throw new Error(r.error.message);
+    toast('Visita ' + (VISIT_STATUS_LABELS[newStatus] || newStatus).toLowerCase() + '.', 'success');
+    closeDetailPanel();
+    openDetailPanel(leadId);
+    await loadLeads();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function rescheduleVisit(visitId, leadId, panel) {
+  var input = prompt('Nueva fecha y hora (YYYY-MM-DDTHH:mm):');
+  if (!input) return;
+  try {
+    var r = await db().from('visits').update({ visit_date: new Date(input).toISOString(), status: 'pendiente' }).eq('id', visitId);
+    if (r.error) throw new Error(r.error.message);
+    toast('Visita reprogramada.', 'success');
+    closeDetailPanel(); openDetailPanel(leadId);
+    await loadLeads();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+function bindAgendaActions(panel, leadId) {
+  panel.querySelectorAll('[data-visit-action]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var vid = this.dataset.visitId;
+      var act = this.dataset.visitAction;
+      if (act === 'confirm') updateVisitStatus(vid, 'confirmada', leadId, panel);
+      else if (act === 'complete') updateVisitStatus(vid, 'completada', leadId, panel);
+      else if (act === 'cancel') { if (confirm('Cancelar esta visita?')) updateVisitStatus(vid, 'cancelada', leadId, panel); }
+      else if (act === 'reschedule') rescheduleVisit(vid, leadId, panel);
+    });
+  });
+}
