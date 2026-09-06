@@ -114,7 +114,6 @@ function applyBaseFilters(q) {
   }
   var st = $id('crmStatusFilter'); if (st && st.value) q = q.eq('stage', st.value);
   var or = $id('crmOriginFilter'); if (or && or.value) q = q.eq('source', or.value);
-  var tc = $id('crmTipoClienteFilter'); if (tc && tc.value) q = q.eq('tipo_cliente', tc.value);
   var tp = $id('crmTipoOperacionFilter'); if (tp && tp.value) q = q.eq('operation_type', tp.value);
   var ag = $id('crmAgentFilter'); if (ag && ag.value) q = q.eq('assigned_to', ag.value);
   if (_hasFollowupFilter) q = q.not('next_followup_at', 'is', 'null');
@@ -852,7 +851,7 @@ function init() {
     clearTimeout(_searchTimer);
     _searchTimer = setTimeout(function () { _page = 1; loadLeads(); }, 350);
   });
-  ['crmStatusFilter', 'crmOriginFilter', 'crmTipoClienteFilter', 'crmTipoOperacionFilter', 'crmAgentFilter'].forEach(function (id) {
+  ['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmAgentFilter'].forEach(function (id) {
     var el = $id(id);
     if (el) el.addEventListener('change', function () { _page = 1; loadLeads(); });
   });
@@ -861,12 +860,6 @@ function init() {
     orSel.dataset.filled = '1';
     orSel.innerHTML = '<option value="">Todos los origenes</option>' +
       ORIGINS.map(function (o) { return '<option value="' + o + '">' + (ORIGIN_LABELS[o] || o) + '</option>'; }).join('');
-  }
-  var tcSel = $id('crmTipoClienteFilter');
-  if (tcSel && !tcSel.dataset.filled) {
-    tcSel.dataset.filled = '1';
-    tcSel.innerHTML = '<option value="">Todos los tipos</option>' +
-      TIPO_CLIENTE_OPTS.map(function (t) { return '<option value="' + t + '">' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>'; }).join('');
   }
   var tpSel = $id('crmTipoOperacionFilter');
   if (tpSel && !tpSel.dataset.filled) {

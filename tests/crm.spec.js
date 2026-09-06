@@ -13,7 +13,7 @@ test.describe('CRM — estructura del módulo nuevo', () => {
     const html = await (await request.get('/admin.html')).text();
     const ids = [
       'tab-leads', 'crmLeadList', 'crmSidePanel', 'crmSearch', 'crmStatusFilter',
-      'crmOriginFilter', 'crmTipoClienteFilter', 'crmTipoOperacionFilter',
+      'crmOriginFilter', 'crmTipoOperacionFilter',
       'crmAgentFilter', 'crmFollowupWrap', 'crmKpiTotal', 'crmKpiNuevo',
       'crmKpiGanados', 'crmKpiPerdidos', 'btnNewLead'
     ];
