@@ -29,6 +29,7 @@ var _selectedLeadId = null;
 var _hasFollowupFilter = false;
 var _searchTimer = null;
 var __initialized = false;
+var _nextActions = {};
 
 function $id(id) { return document.getElementById(id); }
 function esc(s) {
@@ -145,6 +146,17 @@ async function loadLeads() {
       var pr = await db().from('properties').select('id, title, image_urls').in('id', ids);
       (pr.data || []).forEach(function (p) { props[p.id] = p; });
     }
+    var leadIds = _leads.map(function (x) { return x.id; });
+    var visitsByLead = {}, tasksByLead = {};
+    if (leadIds.length) {
+      try {
+        var vRes = await db().from('visits').select('lead_id, visit_date, status').in('lead_id', leadIds);
+        (vRes.data || []).forEach(function (v) { if (!visitsByLead[v.lead_id]) visitsByLead[v.lead_id] = []; visitsByLead[v.lead_id].push(v); });
+        var tRes = await db().from('lead_tasks').select('lead_id, status, due_at').in('lead_id', leadIds);
+        (tRes.data || []).forEach(function (tk) { if (!tasksByLead[tk.lead_id]) tasksByLead[tk.lead_id] = []; tasksByLead[tk.lead_id].push(tk); });
+      } catch (e) {}
+    }
+    _nextActions = {};
     _leads.forEach(function (l) {
       l.agent_name = agentMap[l.assigned_to] || null;
       l.props = l.property_id && props[l.property_id]
@@ -152,6 +164,10 @@ async function loadLeads() {
         : [];
     });
 
+    _nextActions = {};
+    _leads.forEach(function (l) {
+      _nextActions[l.id] = recommendedNextAction(l, visitsByLead[l.id] || [], tasksByLead[l.id] || []);
+    });
     renderLeadList(c);
     updateKpis();
     var sub = $id('crmSubtitle');
@@ -213,9 +229,10 @@ function renderLeadList(c) {
       : '<span class="crm-muted">&#8212;</span>';
     var actDot = hasRecentActivity(l.last_contacted_at) ? '<span class="crm-activity-dot"></span> ' : '';
     var actTxt = l.last_contacted_at ? fmtDate(l.last_contacted_at) : '&#8212;';
+    var rec = _nextActions[l.id];
     var nextTxt = l.next_followup_at
-      ? '<span class="crm-next-action' + (isFollowupDue(l.next_followup_at) ? ' crm-next-action--due' : '') + '">' + fmtDate(l.next_followup_at) + '</span>'
-      : '<span class="crm-muted">&#8212;</span>';
+      ? '<span class="crm-next-action' + (isFollowupDue(l.next_followup_at) ? ' crm-next-action--due' : '') + '" title="' + (rec ? esc(rec) : 'Próx. acción programada') + '">' + fmtDate(l.next_followup_at) + '</span>'
+      : (rec ? '<span class="crm-next-action crm-next-action--due" title="' + esc(rec) + '">⚠</span>' : '<span class="crm-muted">&#8212;</span>');
     var createdTxt = l.created_at ? fmtDate(l.created_at) : '&#8212;';
     var tipoChip = l.tipo_cliente ? '<span class="crm-tipo-chip crm-tipo-chip--' + esc(l.tipo_cliente) + '">' + esc(l.tipo_cliente) + '</span>' : '';
     rows +=
