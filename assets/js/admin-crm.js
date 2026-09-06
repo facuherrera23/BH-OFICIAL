@@ -369,6 +369,7 @@ function renderSide(panel, lead, activities, props) {
         '<button class="btn-action" data-action="addNoteInline"><i class="fas fa-sticky-note"></i> Nota</button>' +
         '<button class="btn-action" data-action="scheduleVisit"><i class="fas fa-calendar"></i> Visita</button>' +
         '<button class="btn-action" data-action="scheduleFollowup"><i class="fas fa-clock"></i> Followup</button>' +
+        '<button class="btn-action crm-action--danger" data-action="markLost" title="Marcar como perdido / rechazado (accesible desde cualquier etapa)"><i class="fas fa-ban"></i> Perdido</button>' +
       '</div>' +
       '<div id="crmQuickActionPanel"></div>' +
       '<div class="crm-side-save"><button class="btn-luxury-action" id="crmSideSaveBtn" style="width:100%;">Guardar cambios</button></div>' +
