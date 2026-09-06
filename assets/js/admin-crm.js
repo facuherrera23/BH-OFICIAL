@@ -364,12 +364,12 @@ function renderSide(panel, lead, activities, props) {
       sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, buildTimelineHTML(activities)) +
       '<div id="crmTasksPanel"><div class="loading-state">Cargando tareas...</div></div>' +
       '<button class="btn-action crm-new-task-btn" id="crmNewTaskBtn">+ Nueva tarea</button>' +
-      '<div class="crm-side-actions">' +
-        '<button class="btn-action" data-action="logCall"><i class="fas fa-phone"></i> Llamada</button>' +
-        '<button class="btn-action" data-action="addNoteInline"><i class="fas fa-sticky-note"></i> Nota</button>' +
-        '<button class="btn-action" data-action="scheduleVisit"><i class="fas fa-calendar"></i> Visita</button>' +
-        '<button class="btn-action" data-action="scheduleFollowup"><i class="fas fa-clock"></i> Followup</button>' +
-        '<button class="btn-action crm-action--danger" data-action="markLost" title="Marcar como perdido / rechazado (accesible desde cualquier etapa)"><i class="fas fa-ban"></i> Perdido</button>' +
+      '<div class="crm-qa-row">' +
+        '<button class="crm-qa-btn" data-action="logCall" aria-label="Registrar llamada"><i class="fas fa-phone"></i><span class="crm-qa-tip">Llamada</span></button>' +
+        '<button class="crm-qa-btn" data-action="addNoteInline" aria-label="Agregar nota"><i class="fas fa-sticky-note"></i><span class="crm-qa-tip">Nota</span></button>' +
+        '<button class="crm-qa-btn" data-action="scheduleVisit" aria-label="Agendar visita"><i class="fas fa-calendar"></i><span class="crm-qa-tip">Visita</span></button>' +
+        '<button class="crm-qa-btn" data-action="scheduleFollowup" aria-label="Programar followup"><i class="fas fa-clock"></i><span class="crm-qa-tip">Followup</span></button>' +
+        '<button class="crm-qa-btn crm-qa-btn--danger" data-action="markLost" aria-label="Marcar como perdido"><i class="fas fa-ban"></i><span class="crm-qa-tip">Perdido</span></button>' +
       '</div>' +
       '<div id="crmQuickActionPanel"></div>' +
       '<div class="crm-side-save"><button class="btn-luxury-action" id="crmSideSaveBtn" style="width:100%;">Guardar cambios</button></div>' +
