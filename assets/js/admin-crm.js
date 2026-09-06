@@ -270,7 +270,7 @@ async function loadLeads() {
     }
     _nextActions = {};
     _leads.forEach(function (l) {
-      l.agent_name = agentMap[l.assigned_to] || null;
+      l.agent_name = _agentMapById[l.assigned_to] || null;
       l.props = l.property_id && props[l.property_id]
         ? [{ property_id: l.property_id, property_title: props[l.property_id].title, image: (props[l.property_id].image_urls || [])[0] || null }]
         : [];
