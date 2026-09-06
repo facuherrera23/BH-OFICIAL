@@ -29,6 +29,9 @@ var _selectedLeadId = null;
 var _hasFollowupFilter = false;
 var _searchTimer = null;
 var __initialized = false;
+var _viewMode = 'leads';
+var _owners = [];
+var _ownerTasks = {};
 var _nextActions = {};
 
 function $id(id) { return document.getElementById(id); }
@@ -114,6 +117,76 @@ function applyBaseFilters(q) {
   var ag = $id('crmAgentFilter'); if (ag && ag.value) q = q.eq('assigned_to', ag.value);
   if (_hasFollowupFilter) q = q.not('next_followup_at', 'is', 'null');
   return q.is('deleted_at', null);
+}
+
+
+async function loadOwners() {
+  var c = $id('crmLeadList');
+  if (!c) return;
+  c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Cargando propietarios...</div>';
+  closeDetailPanel();
+  try {
+    var r = await db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, created_at').order('full_name', { ascending: true });
+    if (r.error) throw new Error(r.error.message);
+    _owners = r.data || [];
+    // cargar tareas pendientes por owner (no excluidos)
+    var ids = _owners.map(function (o) { return o.id; });
+    _ownerTasks = {};
+    if (ids.length) {
+      var tRes = await db().from('owner_tasks').select('owner_id, id, title, description, status, priority, due_date').in('owner_id', ids);
+      (tRes.data || []).forEach(function (tk) {
+        if (!_ownerTasks[tk.owner_id]) _ownerTasks[tk.owner_id] = [];
+        _ownerTasks[tk.owner_id].push(tk);
+      });
+    }
+    renderOwnerList(c);
+  } catch (e) {
+    c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--danger);">Error: ' + esc(e.message) + '</div>';
+  }
+}
+
+/* -- Tabla Owners -- */
+function renderOwnerList(c) {
+  if (!_owners.length) {
+    c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin propietarios cargados.</div>';
+    return;
+  }
+  var rows = '';
+  for (var i = 0; i < _owners.length; i++) {
+    var o = _owners[i];
+    var inits = getInitials(o.full_name);
+    var avColor = getAvatarColor(o.full_name);
+    var tareas = (_ownerTasks[o.id] || []).filter(function (tk) { return tk.status !== 'completada' && tk.status !== 'cancelada'; });
+    var actionClass = tareas.length ? 'crm-activity-dot' : '';
+    var contactMetrics = [];
+    if (o.email) contactMetrics.push(o.email);
+    if (o.phone) contactMetrics.push(o.phone);
+    rows += '<tr class="crm-row" data-id="' + o.id + '" data-kind="owner">' +
+      '<td><div class="crm-client-row"><span class="crm-client-avatar" style="background:' + avColor + '">' + inits + '</span><div><strong>' + esc(o.full_name) + '</strong>' + (o.exclusive ? '<span class="crm-tipo-chip crm-tipo-chip--estado">EXCLUSIVO</span>' : '') + '<div class="crm-meta">' + esc(contactMetrics.join(' · ')) + '</div></div></div></td>' +
+      '<td>' + (o.dni_cuit ? '<code style="font-size:11px;color:var(--text-secondary);">' + esc(o.dni_cuit) + '</code>' : '<span class="crm-muted">—</span>') + '</td>' +
+      '<td>' + (tareas.length ? '<span class="crm-priority crm-priority--media">' + tareas.length + ' pendientes</span>' : '<span class="crm-muted">—</span>') + '</td>' +
+      '<td>' + (o.exclusive && o.exclusive_end ? fmtDate(o.exclusive_end) : '<span class="crm-muted">—</span>') + '</td>' +
+      '<td>' + (o.created_at ? fmtDate(o.created_at) : '—') + '</td>' +
+      '<td class="crm-td-actions">' +
+        '<button class="btn-action" data-action="viewOwner" data-id="' + o.id + '" title="Ver detalle"><i class="fas fa-eye"></i></button>' +
+        '<button class="btn-action crm-icon-action" data-action="addOwnerNote" data-id="' + o.id + '" title="Agregar nota"><i class="fas fa-sticky-note"></i></button>' +
+      '</td>' +
+    '</tr>';
+  }
+  c.innerHTML =
+    '<div class="crm-table-wrap luxury-table-wrap"><table class="luxury-table crm-table">' +
+      '<thead><tr>' +
+        '<th>Propietario</th><th>DNI/CUIT</th><th>Tareas pendientes</th><th>Exclusivo hasta</th><th>Creado</th><th></th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' + buildPagination();
+  c.querySelectorAll('.crm-row').forEach(function (r) {
+    r.addEventListener('click', function () { openOwnerPanel(this.dataset.id); });
+  });
+  c.querySelectorAll('[data-action="viewOwner"],[data-action="addOwnerNote"]').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openOwnerPanel(this.dataset.id);
+    });
+  });
 }
 
 async function loadLeads() {
@@ -779,10 +852,170 @@ function init() {
     stSel.innerHTML = '<option value="">Todos los estados</option>' +
       LEAD_STATUSES.map(function (s) { return '<option value="' + s + '">' + STATUS_LABELS[s] + '</option>'; }).join('');
   }
+  _bindViewModeToggle();
   loadAgents().then(function () { return loadLeads(); });
 }
 
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel };
+
+
+/* -- Modo Lead vs Propietario -- */
+function _bindViewModeToggle() {
+  var btn = $id('crmModeToggle');
+  if (!btn || btn.dataset.crmBound) return;
+  btn.dataset.crmBound = '1';
+  btn.addEventListener('click', function () {
+    _viewMode = _viewMode === 'leads' ? 'owners' : 'leads';
+    console.log('CRM mode:', _viewMode);
+    _syncHeader();
+    if (_viewMode === 'owners') loadOwners(); else loadLeads();
+  });
+}
+function _syncHeader() {
+  var btn = $id('crmModeToggle');
+  var newLead = $id('btnNewLead');
+  var titleEl = $id('crmTitle');
+  if (btn) {
+    btn.innerHTML = _viewMode === 'leads'
+      ? '<i class="fas fa-user-tie"></i> Propietarios'
+      : '<i class="fas fa-users"></i> Leads';
+  }
+  if (newLead) {
+    newLead.style.display = _viewMode === 'leads' ? '' : 'none';
+  }
+  if (titleEl) {
+    titleEl.textContent = _viewMode === 'leads' ? 'Leads & CRM' : 'Propietarios y Asignaciones';
+  }
+}
+
+/* -- Panel lateral de propietario -- */
+function openOwnerPanel(ownerId) {
+  _selectedLeadId = null;
+  var panel = $id('crmSidePanel');
+  if (!panel) return;
+  if (panel.parentNode !== document.body) document.body.appendChild(panel);
+  var backdrop = $id('crmBackdrop');
+  if (!backdrop) {
+    backdrop = document.createElement('div');
+    backdrop.className = 'crm-backdrop'; backdrop.id = 'crmBackdrop';
+    backdrop.addEventListener('click', closeDetailPanel);
+    document.body.appendChild(backdrop);
+  }
+  panel.innerHTML = '<div class="crm-side-header"><h3>Cargando...</h3></div><div class="crm-side-body"></div>';
+  backdrop.classList.add('open');
+  panel.classList.add('open');
+  Promise.all([
+    db().from('owners').select('*').eq('id', ownerId).single(),
+    db().from('owner_tasks').select('*').eq('owner_id', ownerId).order('due_date', { ascending: true }),
+    db().from('properties').select('id, title, status, price_usd, image_urls').eq('owner_id', ownerId).order('title')
+  ]).then(function (res) {
+    var owner = res[0].data;
+    var tasks = res[1].data || [];
+    var props = res[2].data || [];
+    if (!owner) throw new Error('Propietario no encontrado');
+    panel.innerHTML =
+      '<div class="crm-side-header">' +
+        '<div class="crm-side-header-info"><span class="crm-status-dot crm-status-dot--propietario"></span><h3 class="crm-side-title">' + esc(owner.full_name) + '</h3></div>' +
+        '<button class="crm-side-close" aria-label="Cerrar"><i class="fas fa-times"></i></button>' +
+      '</div>' +
+      '<div class="crm-side-body">' +
+        // info
+        '<div class="crm-side-section"><h4 class="crm-side-section-title">Información</h4>' +
+          '<div class="crm-side-fields">' +
+            '<div class="crm-side-field"><span class="crm-side-field-label">Contacto preferido</span><div class="crm-side-field-value">' + esc(owner.preferred_contact || '—') + '</div></div>' +
+            '<div class="crm-side-field"><span class="crm-side-field-label">Email</span><div class="crm-side-field-value">' + esc(owner.email || '—') + '</div></div>' +
+            '<div class="crm-side-field"><span class="crm-side-field-label">Teléfono</span><div class="crm-side-field-value">' + esc(owner.phone || '—') + '</div></div>' +
+            '<div class="crm-side-field"><span class="crm-side-field-label">DNI/CUIT</span><div class="crm-side-field-value">' + esc(owner.dni_cuit || '—') + '</div></div>' +
+            '<div class="crm-side-field"><span class="crm-side-field-label">Dirección</span><div class="crm-side-field-value">' + esc(owner.address || '—') + '</div></div>' +
+            '<div class="crm-side-field"><span class="crm-side-field-label">Exclusividad</span><div class="crm-side-field-value">' + (owner.exclusive ?
+              (owner.exclusive_start ? 'Desde ' + fmtDate(owner.exclusive_start) : '') + (owner.exclusive_end ? ' hasta ' + fmtDate(owner.exclusive_end) : '') :
+              'No exclusivo') + '</div></div>' +
+          '</div></div>' +
+        // propiedades
+        '<div class="crm-side-section"><h4 class="crm-side-section-title">Propiedades (' + props.length + ')</h4>' +
+          '<div class="crm-side-fields">' +
+            (props.length
+              ? props.map(function (p) { return '<div class="crm-prop-item"><span>' + esc(p.title || 'Sin título') + '</span><span style="margin-left:8px;color:var(--text-dim);font-size:11px;text-transform:uppercase;"><' + (p.status || 'sm') + '></span></div>'; }).join('')
+              : '<div class="crm-side-field-value">Sin propiedades asignadas</div>') +
+          '</div></div>' +
+        // tareas
+        '<div class="crm-side-section"><h4 class="crm-side-section-title">Tareas pendientes (' + tasks.filter(function(tk){ return tk.status === 'pendiente'; }).length + ')</h4>' +
+          '<div class="crm-side-fields">' +
+            (tasks.filter(function(tk){return tk.status !== 'completada' && tk.status !== 'cancelada'; }).length
+              ? tasks.filter(function(tk){return tk.status !== 'completada' && tk.status !== 'cancelada'; }).map(function (tk) {
+                  return '<div class="crm-prop-item" style="flex-direction:column;align-items:flex-start;gap:4px;">' +
+                    '<strong style="font-size:13px;color:#fff;">' + esc(tk.title) + '</strong>' +
+                    '<div style="font-size:12px;color:var(--text-secondary);">' + esc(tk.description || '') + '</div>' +
+                    '<div style="font-size:11px;color:var(--text-dim);">' + (tk.due_date ? fmtDateTime(tk.due_date) : 'sin fecha') + ' · ' + esc(tk.priority) + '</div>' +
+                    '<button class="btn-action" style="margin-top:6px;font-size:11px;" data-action="completeOwnerTask" data-task-id="' + tk.id + '"><i class="fas fa-check"></i> Completar</button>' +
+                  '</div>';
+                }).join('')
+              : '<div class="crm-timeline-empty">Sin tareas pendientes.</div>') +
+          '</div></div>' +
+        // nueva tarea
+        '<div class="crm-side-section"><h4 class="crm-side-section-title">Nueva tarea</h4>' +
+          '<div class="crm-side-fields">' +
+            '<input class="crm-field-input" id="crmOwnerTaskTitle" placeholder="Título *">' +
+            '<textarea class="crm-field-input" id="crmOwnerTaskDesc" rows="2" placeholder="Descripción (opcional)"></textarea>' +
+            '<input class="crm-field-input" type="datetime-local" id="crmOwnerTaskDue">' +
+            '<select class="crm-field-input" id="crmOwnerTaskPriority">' +
+              '<option value="baja">Baja</option>' +
+              '<option value="media" selected>Media</option>' +
+              '<option value="alta">Alta</option>' +
+              '<option value="urgente">Urgente</option>' +
+            '</select>' +
+            '<button class="btn-luxury-action" id="crmOwnerTaskSave" style="width:100%;margin-top:4px;">+ Agregar tarea</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    panel.querySelector('.crm-side-close').addEventListener('click', closeDetailPanel);
+    panel.querySelectorAll('[data-action="completeOwnerTask"]').forEach(function (b) {
+      b.addEventListener('click', async function (e) {
+        e.stopPropagation();
+        var taskId = this.dataset.taskId;
+        try {
+          var rr = await db().from('owner_tasks').update({ status: 'completada' }).eq('id', taskId);
+          if (rr.error) throw rr.error;
+          toast('Tarea completada.', 'success');
+          closeDetailPanel();
+          openOwnerPanel(ownerId);
+        } catch (err) { toast('Error: ' + err.message, 'error'); }
+      });
+    });
+    var saveBtn = panel.querySelector('#crmOwnerTaskSave');
+    if (saveBtn) saveBtn.addEventListener('click', async function () {
+      var title = (panel.querySelector('#crmOwnerTaskTitle') || {}).value || '';
+      var desc = (panel.querySelector('#crmOwnerTaskDesc') || {}).value || '';
+      var due = (panel.querySelector('#crmOwnerTaskDue') || {}).value || '';
+      var prio = (panel.querySelector('#crmOwnerTaskPriority') || {}).value || 'media';
+      if (!title.trim()) { toast('El título es obligatorio.', 'error'); return; }
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Guardando...';
+      try {
+        var rr = await db().from('owner_tasks').insert([{
+          owner_id: ownerId,
+          title: title.trim(),
+          description: desc.trim() || null,
+          due_date: due || new Date().toISOString(),
+          priority: prio,
+          status: 'pendiente'
+        }]);
+        if (rr.error) throw rr.error;
+        toast('Tarea agregada.', 'success');
+        saveBtn.disabled = false;
+        saveBtn.textContent = '+ Agregar tarea';
+        openOwnerPanel(ownerId);
+      } catch (err) {
+        toast('Error: ' + err.message, 'error');
+        saveBtn.disabled = false;
+        saveBtn.textContent = '+ Agregar tarea';
+      }
+    });
+  }).catch(function (e) { toast('Error: ' + e.message, 'error'); closeDetailPanel(); });
+}
+
+/* ctypes */
+
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, refreshOwners: loadOwners };
 window.initCrm = init;
 })();
 
