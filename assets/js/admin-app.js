@@ -182,6 +182,8 @@ function esc(s) {
     preferred_zone: z.string().max(80).optional().nullable(),
     preferred_type: z.string().max(50).optional().nullable(),
     preferred_rooms: z.number().int().min(0).max(20).optional().nullable(),
+    tipo_cliente: z.enum(['propietario','comprador','inversor']).optional().nullable(),
+    operation_type: z.enum(['compra','venta','alquiler']).optional().nullable(),
     notes: z.string().max(2000).optional().nullable(),
   });
 
@@ -1455,6 +1457,8 @@ function esc(s) {
         property_id: validated.property_id,
         assigned_to: validated.assigned_to,
         preferred_rooms: validated.preferred_rooms,
+        tipo_cliente: validated.tipo_cliente,
+        operation_type: validated.operation_type,
       };
 
       if (editingLeadId) {
