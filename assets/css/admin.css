@@ -4384,3 +4384,29 @@ input[type="range"]::-moz-range-thumb {
 .crm-loading{color:var(--text-dim);font-size:12.5px;padding:8px 0}
 
 .crm-followup-wrap{display:inline-flex}
+﻿
+/* ============================================================
+   CRM QUICK ACTIONS — fix identidad visual (v2)
+   ============================================================ */
+.crm-side-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.crm-side-actions .btn-action{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:10px 8px;font-size:12.5px;font-weight:600;
+  border-radius:10px;border:1px solid var(--border-subtle);
+  background:rgba(255,255,255,0.03);color:var(--text-secondary);
+  transition:all .18s ease;cursor:pointer;text-align:center;
+}
+.crm-side-actions .btn-action:hover{
+  background:rgba(31,200,195,0.08);border-color:rgba(31,200,195,0.35);
+  color:var(--accent);transform:translateY(-1px);
+  box-shadow:0 4px 12px rgba(31,200,195,0.12);
+}
+.crm-side-actions .btn-action i{font-size:14px;color:var(--accent)}
+.crm-new-task-btn{
+  width:100%;display:flex;align-items:center;justify-content:center;gap:6px;
+  padding:11px 8px;margin-top:10px;font-size:13px;font-weight:600;
+  border-radius:10px;border:1px dashed var(--border-subtle);
+  background:rgba(31,200,195,0.04);color:var(--accent);
+  cursor:pointer;transition:all .18s ease;
+}
+.crm-new-task-btn:hover{background:rgba(31,200,195,0.12);border-color:var(--accent)}

@@ -407,9 +407,7 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, timelineHtm
         '<div class="crm-side-field-row">' +
           '<div class="crm-side-field"><span class="crm-side-field-label">Tipo operacion</span><select class="crm-field-input crm-field-input--select" id="crmDtlTipoOp"><option value="">&#8212;</option>' + tpOpts + '</select></div>' +
           '<div class="crm-side-field"><span class="crm-side-field-label">Agente</span><select class="crm-field-input crm-field-input--select" id="crmDtlAgent"><option value="">Sin agente</option>' + aopts + '</select></div></div>' +
-        '<div class="crm-side-field-row">' +
-          '<div class="crm-side-field"><span class="crm-side-field-label">Estado</span><select class="crm-field-input crm-field-input--select" id="crmDtlStatus">' + sopts + '</select></div>' +
-          '<div class="crm-side-field"><span class="crm-side-field-label">Score</span><input class="crm-field-input" id="crmDtlScore" type="number" value="' + (lead.lead_score != null ? lead.lead_score : '') + '"></div></div>' +
+        '<div class="crm-side-field"><span class="crm-side-field-label">Estado</span><select class="crm-field-input crm-field-input--select" id="crmDtlStatus">' + sopts + '</select></div>' +
       '</div></div>' +
     '<div class="crm-side-section"><h4 class="crm-side-section-title">Propiedades relacionadas</h4>' +
       '<div class="crm-side-fields"><div id="crmDtlPropsWrap">' + ph +
@@ -422,11 +420,7 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, timelineHtm
         sideField('USD', 'crmDtlBudget', 'number', lead.budget_usd) +
         sideField('Valor estimado (USD)', 'crmDtlEstValue', 'number', lead.estimated_value) +
       '</div></div>' +
-    '<div class="crm-side-section"><h4 class="crm-side-section-title">Tracking</h4>' +
-      '<div class="crm-side-fields">' +
-        sideField('UTM Source', 'crmDtlUtmSource', 'text', lead.utm_source) +
-        sideField('UTM Campaign', 'crmDtlUtmCampaign', 'text', lead.utm_campaign) +
-      '</div></div>' +
+    
     '<div class="crm-side-section"><h4 class="crm-side-section-title">Actividad reciente</h4>' +
       '<div class="crm-timeline">' + (timelineHtml || buildTimelineHTML([])) + '</div></div>' +
     '<div class="crm-side-section"><h4 class="crm-side-section-title">Notas</h4>' +
@@ -514,9 +508,6 @@ function collectSideForm(panel) {
     assigned_to: v('crmDtlAgent') || null,
     budget_usd: n('crmDtlBudget'),
     estimated_value: n('crmDtlEstValue'),
-    lead_score: v('crmDtlScore') ? parseInt(v('crmDtlScore'), 10) : null,
-    utm_source: v('crmDtlUtmSource'),
-    utm_campaign: v('crmDtlUtmCampaign'),
     notes: v('crmDtlNotes')
   };
 }
