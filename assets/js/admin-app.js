@@ -7339,6 +7339,16 @@ async function mutate(table, fn) {
      ------------------------------------------------ */
   let _notifItems = [];
   const NOTIF_SEEN_KEY = 'bh_notif_last_seen';
+  const NOTIF_READ_IDS_KEY = 'bh_notif_read_ids';
+
+  function getNotifReadIds() {
+    try { return new Set(JSON.parse(localStorage.getItem(NOTIF_READ_IDS_KEY)) || []); } catch (_) { return new Set(); }
+  }
+  function saveNotifReadIds(set) {
+    try { localStorage.setItem(NOTIF_READ_IDS_KEY, JSON.stringify(Array.from(set).slice(-300))); } catch (_) {}
+  }
+  function markNotifRead(id) { const ids = getNotifReadIds(); ids.add(id); saveNotifReadIds(ids); }
+  function isNotifRead(item, lastSeen) { const readIds = getNotifReadIds(); return readIds.has(item.id) || (item.ts <= lastSeen && item.ts <= Date.now()); }
 
   function getNotifLastSeen() {
     const v = localStorage.getItem(NOTIF_SEEN_KEY);
@@ -7468,7 +7478,7 @@ async function mutate(table, fn) {
     if (!listEl) return;
 
     const lastSeen = getNotifLastSeen();
-    const unseenCount = _notifItems.filter(n => n.ts > lastSeen).length;
+    const unseenCount = _notifItems.filter(n => !isNotifRead(n, lastSeen)).length;
     if (pingEl) pingEl.style.display = unseenCount > 0 ? 'block' : 'none';
 
     if (!_notifItems.length) {
@@ -7477,7 +7487,7 @@ async function mutate(table, fn) {
     }
 
     listEl.innerHTML = _notifItems.map(n => {
-      const isUnread = n.ts > lastSeen;
+      const isUnread = !isNotifRead(n, lastSeen);
       const bg = n.color.startsWith('#') ? n.color + '20' : 'rgba(31,200,195,0.15)';
       return `
         <div class="notif-item${isUnread ? ' is-unread' : ''}" data-tab="${esc(n.tab)}" data-id="${esc(n.id)}">
@@ -7518,6 +7528,9 @@ async function mutate(table, fn) {
     markAllBtn?.addEventListener('click', (e) => {
       e.stopPropagation();
       setNotifLastSeen(Date.now());
+      const ids = getNotifReadIds();
+      _notifItems.forEach((n) => ids.add(n.id));
+      saveNotifReadIds(ids);
       renderNotifications();
     });
 
@@ -7526,8 +7539,8 @@ async function mutate(table, fn) {
       if (!item) return;
       const n = _notifItems.find((x) => x.id === item.dataset.id);
       if (n) {
-        /* Click = leída hasta ese punto (marca esta y las más viejas) */
-        if (n.ts > getNotifLastSeen()) setNotifLastSeen(n.ts);
+        /* Click = leída. Solo este ítem (ids), sin mover lastSeen (evita ocultar futuras) */
+        markNotifRead(n.id);
         renderNotifications();
         if (n.tab) {
           navigateTo(n.tab);
