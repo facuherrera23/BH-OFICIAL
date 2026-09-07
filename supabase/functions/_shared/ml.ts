@@ -89,6 +89,35 @@ export async function getMlCredentials(
 }
 
 /**
+ * Resuelve la redirect URI de OAuth de Mercado Libre.
+ * Orden canónico: site_settings (ml_redirect_uri) → portal_settings (legacy) → env ML_REDIRECT_URI → default ml-oauth.
+ * IMPORTANTE: el valor devuelto debe coincidir EXACTO con la URI registrada
+ * en la consola de desarrollador de Mercado Libre para el app.
+ */
+export async function getMlRedirectUri(supabase: SupabaseClient): Promise<string> {
+    const { data: siteSettings } = await supabase
+        .from('site_settings')
+        .select('key, value')
+        .eq('key', 'ml_redirect_uri')
+        .maybeSingle();
+    const fromSiteSettings = (siteSettings?.value?.value as string) ?? '';
+    if (fromSiteSettings) return fromSiteSettings;
+
+    const { data: portalSettings } = await supabase
+        .from('portal_settings')
+        .select('settings')
+        .eq('portal_name', 'Mercado Libre')
+        .maybeSingle();
+    const fromPortalSettings = (portalSettings?.settings?.ml_redirect_uri as string) ?? '';
+    if (fromPortalSettings) return fromPortalSettings;
+
+    return (
+        Deno.env.get('ML_REDIRECT_URI') ??
+        `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/ml-oauth`
+    );
+}
+
+/**
  * Obtiene client_id y client_secret desencriptados desde la BD.
  * Requiere que el caller sea staff (validado en RPC get_ml_credentials).
  * @deprecated Usar getMlCredentials(supabase) en nuevo código.

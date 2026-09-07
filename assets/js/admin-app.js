@@ -5438,7 +5438,13 @@ try {
       });
       clearTimeout(timer);
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || 'Error al generar URL de autenticación');
+      if (!res.ok) {
+        const msg = result.error || 'Error al generar URL de autenticación';
+        if (/no configurad/i.test(msg)) {
+          throw new Error('Credenciales de Mercado Libre no configuradas. Un super_admin debe guardarlas en Portales > Mercado Libre.');
+        }
+        throw new Error(msg);
+      }
       const authUrl = result.authorizationUrl || result.authUrl;
       if (!authUrl) throw new Error('ml-oauth/start no devolvió authorizationUrl');
 
@@ -5449,8 +5455,10 @@ try {
       const popup = window.open(authUrl, 'ml_oauth',
         `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`);
 
-      /* Listen for message from ml-callback Edge Function */
+      /* Listen for postMessage from ml-oauth Edge Function */
+      const ML_MSG_ORIGIN = new URL(window.BH_CONFIG.SUPABASE_URL).origin;
       const handler = async (event) => {
+        if (event.origin !== ML_MSG_ORIGIN) return;
         if (event.data?.type === 'ML_AUTH_SUCCESS') {
           window.removeEventListener('message', handler);
           if (popup && !popup.closed) popup.close();
@@ -9249,8 +9257,9 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
         // El callback redirige a /admin#/mercadolibre?ml=... — leer params dentro del hash, no en ?query
         const hashPart = url.hash.includes('?') ? url.hash.split('?')[1] : '';
         const hashParams = new URLSearchParams(hashPart);
-        const mlStatus = hashParams.get('ml');
-        if (!mlStatus) return;
+        const mlRaw = hashParams.get('ml');
+        if (!mlRaw) return;
+        const mlStatus = mlRaw.startsWith('connected') ? 'connected' : mlRaw;
         if (mlStatus === 'connected') {
           showToast('¡Cuenta de Mercado Libre conectada exitosamente!', 'success');
           ml_connected = true;

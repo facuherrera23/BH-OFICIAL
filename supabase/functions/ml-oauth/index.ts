@@ -5,6 +5,7 @@ import {
     getMe,
     runMlApiCallWithRetry,
     getMlCredentials,
+    getMlRedirectUri,
     registerMlWebhooks,
     getRegisteredMlWebhookTopics,
     ML_WEBHOOK_TOPICS,
@@ -117,7 +118,8 @@ Deno.serve(async (req) => {
 
             // Obtener user_id de ML
             const userResult = await runMlApiCallWithRetry(accessToken, () => getMe(accessToken), 'getMe');
-            if (!userResult.ok) return respond(429, { error: userResult.error, retry_after: 60 });
+if (!userResult.ok)
+            return completionPage({ ok: false, adminUrl: validatedAdminUrl, message: `No se pudo obtener el usuario de Mercado Libre: ${userResult.error}` });
             const user = userResult.data;
 
             const results = await registerMlWebhooks(accessToken, user.id, `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/ml-webhook`, webhookSecret);
@@ -157,8 +159,8 @@ Deno.serve(async (req) => {
             });
         if (error) return respond(500, { error: 'No se pudo iniciar OAuth' });
         const { clientId } = await getMlCredentials(supabase);
-        const redirectUri = Deno.env.get('ML_REDIRECT_URI') ?? '';
-        if (!redirectUri) return respond(500, { error: 'ML_REDIRECT_URI no configurado' });
+        const redirectUri = await getMlRedirectUri(supabase);
+        if (!redirectUri) return respond(500, { error: 'Redirect URI de ML no configurada' });
         const authorizationUrl =
             `https://auth.mercadolibre.com.ar/authorization?response_type=code` +
             `&client_id=${encodeURIComponent(clientId)}` +
@@ -213,7 +215,7 @@ Deno.serve(async (req) => {
     if (!code || !stateRaw) {
         return respond(200, {
             message:
-                'Endpoint OAuth de BIENENHAUS. Usá /callback con ?code= y ?state= para completar la conexión con Mercado Libre.',
+                'Endpoint OAuth de BIENENHAUS. Este endpoint recibe el callback de Mercado Libre (code/state) y completa la conexión con postMessage al panel administrativo.',
         });
     }
 
@@ -231,7 +233,7 @@ Deno.serve(async (req) => {
         );
         if (!timingSafeEqual(expected, state.sig)) throw new Error('state inválido');
     } catch {
-        return respond(400, { error: 'OAuth state inválido o expirado' });
+        return completionPage({ ok: false, adminUrl: '/admin', message: 'OAuth state inválido o expirado. Volvé al panel e intentá conectar nuevamente.' });
     }
 
     const { data: oauthState, error: oauthStateError } = await supabase
@@ -242,7 +244,7 @@ Deno.serve(async (req) => {
         .gt('expires_at', new Date().toISOString())
         .maybeSingle();
     if (oauthStateError || !oauthState)
-        return respond(400, { error: 'OAuth state inválido o ya utilizado' });
+        return completionPage({ ok: false, adminUrl: '/admin', message: 'OAuth state inválido o ya utilizado. Volvé al panel e intentá conectar nuevamente.' });
     await supabase
         .from('ml_oauth_states')
         .update({ consumed_at: new Date().toISOString() })
@@ -253,7 +255,7 @@ Deno.serve(async (req) => {
         ? adminUrl
         : (console.warn('[ml-oauth] blocked external redirect:', adminUrl),
           Deno.env.get('ADMIN_BASE_URL') ?? '/admin');
-    const redirectUri = Deno.env.get('ML_REDIRECT_URI') ?? `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/ml-oauth`;
+    const redirectUri = await getMlRedirectUri(supabase);
 
     try {
         // Obtener client_id/client_secret para exchangeCode
@@ -264,7 +266,8 @@ Deno.serve(async (req) => {
             () => exchangeCode(code, redirectUri, oauthState.code_verifier, clientId, clientSecret),
             'exchangeCode',
         );
-        if (!tokenResult.ok) return respond(429, { error: tokenResult.error, retry_after: 60 });
+        if (!tokenResult.ok)
+            return completionPage({ ok: false, adminUrl: validatedAdminUrl, message: `Mercado Libre rechazó la conexión: ${tokenResult.error}` });
         const tokens = tokenResult.data;
 
         const userResult = await runMlApiCallWithRetry(
@@ -298,7 +301,7 @@ Deno.serve(async (req) => {
 
         if (insertError || !insertedConnection?.id) {
             console.error('ml-oauth insert error', insertError);
-            return respond(500, { error: 'No se pudo guardar la conexión' });
+            return completionPage({ ok: false, adminUrl: validatedAdminUrl, message: 'No se pudo guardar la conexión en la base de datos.' });
         }
 
         await supabase
@@ -342,12 +345,58 @@ Deno.serve(async (req) => {
             console.warn('ml-oauth: ML_WEBHOOK_SECRET no configurado, saltando registro de webhooks');
         }
 
-        const redirectTarget = validatedAdminUrl.endsWith('/admin')
-            ? `${validatedAdminUrl}#/mercadolibre?ml=connected=1`
-            : `${validatedAdminUrl}/admin#/mercadolibre?ml=connected=1`;
-        return Response.redirect(redirectTarget, 302);
+        return completionPage({
+            ok: true,
+            adminUrl: validatedAdminUrl,
+            user: { id: user.id, nickname: user.nickname, email: user.email },
+        });
     } catch (err) {
         console.error('ml-oauth error', err);
-        return respond(500, { error: (err as Error).message });
+        return completionPage({
+            ok: false,
+            adminUrl: validatedAdminUrl,
+            message: `Error inesperado al completar la conexión: ${(err as Error).message}`,
+        });
     }
 });
+
+/**
+ * Devuelve una página HTML que, abierta como popup del panel, avisa al panel
+ * vía postMessage (ML_AUTH_SUCCESS / ML_AUTH_ERROR) y se cierra sola.
+ * Si el usuario la abre como pestaña directa (sin opener), muestra un enlace de vuelta al panel.
+ */
+function completionPage(p: {
+    ok: boolean;
+    adminUrl: string;
+    message?: string;
+    user?: { id: number | string; nickname?: string; email?: string };
+}): Response {
+    const payload = p.ok
+        ? { type: 'ML_AUTH_SUCCESS', user: p.user ?? {} }
+        : { type: 'ML_AUTH_ERROR', error: p.message ?? 'Error desconocido' };
+    const payloadJson = JSON.stringify(payload).replace(/</g, '\\u003c');
+    const title = p.ok ? 'Cuenta de Mercado Libre conectada' : 'No se pudo conectar Mercado Libre';
+    const body = p.ok
+        ? `¡Listo! Puedés cerrar esta ventana. <a href="${escHtml(p.adminUrl)}" target="_blank" rel="noopener">Abrir panel de control</a>.`
+        : escHtml(p.message ?? 'Error desconocido');
+    const html =
+        `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${title}</title></head>` +
+        `<body style="font-family:system-ui,sans-serif;margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fafafa;color:#111">` +
+        `<div style="text-align:center;max-width:520px;padding:2rem">` +
+        `<h2 style="margin-top:0">${title}</h2><p>${body}</p>` +
+        `</div><script>window.opener&&window.opener.postMessage(${payloadJson},'*');setTimeout(function(){try{window.close()}catch(e){}},1200);</script>` +
+        `</body></html>`;
+    return new Response(html, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
+}
+
+/** Escapa texto para insertarlo seguro dentro de HTML. */
+function escHtml(s: string): string {
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}

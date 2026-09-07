@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { invalidateMlCredentialsCache, getMlRedirectUri } from "../_shared/ml.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,17 +39,25 @@ serve(async (req) => {
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
     if (req.method === "GET") {
-      const { data } = await adminClient
+      const { data: appRows } = await adminClient
+        .from("site_settings")
+        .select("key, value")
+        .in("key", ["ml_app_id", "ml_client_secret"]);
+      const appId = appRows?.find((r) => r.key === "ml_app_id")?.value?.value ?? null;
+      const hasSecret = !!appRows?.find((r) => r.key === "ml_client_secret")?.value?.value;
+      const redirectUri = await getMlRedirectUri(adminClient);
+
+      const { data: portal } = await adminClient
         .from("portal_settings")
         .select("settings")
         .eq("portal_name", "Mercado Libre")
-        .single();
+        .maybeSingle();
+      const legacyAppId = portal?.settings?.ml_app_id ?? null;
 
-      const settings = data?.settings || {};
       return new Response(JSON.stringify({
-        ml_app_id: settings.ml_app_id || null,
-        ml_redirect_uri: settings.ml_redirect_uri || null,
-        has_secret: !!settings.ml_secret_key,
+        ml_app_id: appId ?? legacyAppId,
+        ml_redirect_uri: redirectUri,
+        has_secret: hasSecret,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -57,29 +66,30 @@ serve(async (req) => {
     if (req.method === "POST") {
       const body = await req.json();
       const { ml_app_id, ml_secret_key, ml_redirect_uri } = body;
+      const appId = (ml_app_id ?? "").trim();
+      const secret = (ml_secret_key ?? "").trim();
 
-      if (!ml_app_id || !ml_secret_key) {
+      if (!appId || !secret) {
         return new Response(JSON.stringify({ error: "ML_APP_ID and ML_SECRET_KEY are required" }), {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
+      const redirectUri = (ml_redirect_uri ?? "").trim() || `${supabaseUrl}/functions/v1/ml-oauth`;
+
+      await adminClient.from("site_settings").upsert([
+        { key: "ml_app_id", value: { value: appId } },
+        { key: "ml_client_secret", value: { value: secret } },
+        { key: "ml_redirect_uri", value: { value: redirectUri } },
+      ], { onConflict: "key" });
+
       const { data: existing } = await adminClient
         .from("portal_settings")
         .select("settings")
         .eq("portal_name", "Mercado Libre")
-        .single();
-
+        .maybeSingle();
       const currentSettings = existing?.settings || {};
-      const redirectUri = ml_redirect_uri || `${supabaseUrl}/functions/v1/ml-callback`;
-
-      const newSettings = {
-        ...currentSettings,
-        ml_app_id: ml_app_id,
-        ml_secret_key: ml_secret_key,
-        ml_redirect_uri: redirectUri,
-      };
 
       await adminClient.from("portal_settings").upsert({
         portal_name: "Mercado Libre",
@@ -87,8 +97,15 @@ serve(async (req) => {
         sync_enabled: currentSettings.sync_enabled || false,
         api_key: currentSettings.api_key || null,
         api_secret: currentSettings.api_secret || null,
-        settings: newSettings,
+        settings: {
+          ...currentSettings,
+          ml_app_id: appId,
+          ml_secret_key: secret,
+          ml_redirect_uri: redirectUri,
+        },
       }, { onConflict: "portal_name" });
+
+      invalidateMlCredentialsCache();
 
       return new Response(JSON.stringify({ success: true, redirect_uri: redirectUri }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
