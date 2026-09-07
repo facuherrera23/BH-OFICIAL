@@ -2623,7 +2623,7 @@ let dayCount = 1;
       }
 
       const severityColors = { critical: '#EF4444', high: '#F97316', medium: '#FFB800', low: '#3B82F6', info: '#1FC8C3' };
-      const severityLabels = { critical: '?? Crítica', high: '?? Alta', medium: '?? Media', low: '?? Baja', info: '? Info' };
+      const severityLabels = { critical: 'Crítica', high: 'Alta', medium: 'Media', low: 'Baja', info: 'Info' };
       const statusLabels = { open: 'Abierta', acknowledged: 'Reconocida', investigating: 'Investigando', resolved: 'Resuelta', dismissed: 'Descartada', false_positive: 'Falso Positivo' };
       const statusPillClass = {
         open: 'pending', acknowledged: 'active', investigating: 'active',
@@ -2727,7 +2727,7 @@ let dayCount = 1;
       const { data } = await window.supabaseClient.from('supervision_anomalies').select('*').eq('id', id).single();
       if (!data) return;
       const severityColors = { critical: '#EF4444', high: '#F97316', medium: '#FFB800', low: '#3B82F6', info: '#1FC8C3' };
-      const severityLabels = { critical: '?? Crítica', high: '?? Alta', medium: '?? Media', low: '?? Baja', info: '? Info' };
+      const severityLabels = { critical: 'Crítica', high: 'Alta', medium: 'Media', low: 'Baja', info: 'Info' };
       const statusLabels = { open: 'Abierta', acknowledged: 'Reconocida', investigating: 'Investigando', resolved: 'Resuelta', dismissed: 'Descartada', false_positive: 'Falso Positivo' };
       const color = severityColors[data.severity] || 'var(--text-secondary)';
       
@@ -7237,6 +7237,12 @@ function setupCoreRealtime() {
   let _gsActiveIndex = -1;
   let _gsRunId = 0;
 
+  /* Búsqueda tolerante a tildes/diacríticos (castellano) */
+  const GS_ACCENT = { a: '[a\u00e0\u00e1\u00e4\u00e2]', e: '[e\u00e8\u00e9\u00eb\u00ea]', i: '[i\u00ec\u00ed\u00ef\u00ee]', o: '[o\u00f2\u00f3\u00f6\u00f4]', u: '[u\u00f9\u00fa\u00fc\u00fb]', n: '[n\u00f1]', c: '[c\u00e7]' };
+  function gsNorm(str) {
+    return String(str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
   async function getSearchCache() {
     if (_searchCache && Date.now() < _searchCacheExpiresAt) return _searchCache;
     const empty = { properties: [], leads: [], agents: [], owners: [], visits: [], tasaciones: [], profiles: [], conversations: [] };
@@ -7244,7 +7250,7 @@ function setupCoreRealtime() {
 
     /* Promise.allSettled: si un módulo falla o falta permiso RLS, los demás siguen funcionando */
     const requests = [
-      ['properties', window.supabaseClient.from('properties').select('id, title, zone, address, price_usd, status').is('deleted_at', null).order('created_at', { ascending: false }).limit(200)],
+      ['properties', window.supabaseClient.from('properties').select('id, title, zone, address, price_usd, status, property_code').is('deleted_at', null).order('created_at', { ascending: false }).limit(200)],
       ['leads', window.supabaseClient.from('leads').select('id, full_name, email, phone, stage').is('deleted_at', null).order('created_at', { ascending: false }).limit(200)],
       ['agents', window.supabaseClient.from('agents').select('id, full_name, email, matricula').is('deleted_at', null).order('created_at', { ascending: false }).limit(100)],
       ['owners', window.supabaseClient.from('owners').select('id, full_name, email, phone').is('deleted_at', null).order('created_at', { ascending: false }).limit(100)],
@@ -7283,13 +7289,15 @@ async function mutate(table, fn) {
   }
 }
 
-  /* Resalta la coincidencia con <mark> sobre texto YA escapado (CSP/XSS safe) */
+  /* Resalta la coincidencia con <mark> sobre texto YA escapado (CSP/XSS safe).
+     Tolerante a tildes: cada vocal matchea sus variantes con diacríticos. */
   function gsHighlight(text, q) {
     const safe = esc(String(text ?? ''));
-    if (!q) return safe;
-    const needle = esc(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const qn = gsNorm(q).trim();
+    if (!qn) return safe;
+    const pat = qn.split('').map((ch) => GS_ACCENT[ch] || ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('');
     try {
-      return safe.replace(new RegExp('(' + needle + ')', 'gi'), '<mark>$1</mark>');
+      return safe.replace(new RegExp('(' + pat + ')', 'gi'), '<mark>$1</mark>');
     } catch (_err) {
       return safe;
     }
@@ -7418,7 +7426,7 @@ async function mutate(table, fn) {
 
       // Supervisión: alertas critical/high abiertas
       const severityColors = { critical: '#EF4444', high: '#F97316' };
-      const severityLabels = { critical: '?? Crítica', high: '?? Alta' };
+      const severityLabels = { critical: 'Crítica', high: 'Alta' };
       const severityIcons = { critical: 'fas fa-shield-alt', high: 'fas fa-exclamation-triangle' };
       (alertsRes.data || []).forEach(a => {
         items.push({
@@ -7472,7 +7480,7 @@ async function mutate(table, fn) {
       const isUnread = n.ts > lastSeen;
       const bg = n.color.startsWith('#') ? n.color + '20' : 'rgba(31,200,195,0.15)';
       return `
-        <div class="notif-item${isUnread ? ' is-unread' : ''}" data-tab="${esc(n.tab)}">
+        <div class="notif-item${isUnread ? ' is-unread' : ''}" data-tab="${esc(n.tab)}" data-id="${esc(n.id)}">
           <div class="notif-item-icon" style="color:${n.color}; background:${bg};"><i class="${esc(n.icon)}"></i></div>
           <div class="notif-item-body">
             <div class="notif-item-title">${esc(n.title)}</div>
@@ -7516,11 +7524,17 @@ async function mutate(table, fn) {
     panel.addEventListener('click', (e) => {
       const item = e.target.closest('.notif-item');
       if (!item) return;
-      if (item.dataset.tab) {
-        navigateTo(item.dataset.tab);
-        // Si es supervisión y tiene vista específica, cambiar sub-tab
-        if (item.dataset.tab === 'tab-supervision' && item._supView) {
-          setTimeout(() => switchSupView(item._supView), 100);
+      const n = _notifItems.find((x) => x.id === item.dataset.id);
+      if (n) {
+        /* Click = leída hasta ese punto (marca esta y las más viejas) */
+        if (n.ts > getNotifLastSeen()) setNotifLastSeen(n.ts);
+        renderNotifications();
+        if (n.tab) {
+          navigateTo(n.tab);
+          // Si es supervisión y tiene vista específica, cambiar sub-tab
+          if (n.tab === 'tab-supervision' && n._supView) {
+            setTimeout(() => switchSupView(n._supView), 100);
+          }
         }
       }
       closePanel();
@@ -8195,7 +8209,7 @@ on(document, 'keydown', (e) => {
       }
 
       const severityColors = { critical: '#EF4444', high: '#F97316', medium: '#FFB800', low: '#3B82F6', info: '#1FC8C3' };
-      const severityLabels = { critical: '?? Crítica', high: '?? Alta', medium: '?? Media', low: '?? Baja', info: '? Info' };
+      const severityLabels = { critical: 'Crítica', high: 'Alta', medium: 'Media', low: 'Baja', info: 'Info' };
       const statusLabels = { open: 'Abierta', assigned: 'Asignada', investigating: 'Investigando', acknowledged: 'Reconocida', resolved: 'Resuelta', dismissed: 'Descartada' };
       const statusPillClass = {
         open: 'pending', assigned: 'active', investigating: 'active',
@@ -9238,7 +9252,7 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
 
     async function runGlobalSearch(rawQuery) {
       const myRun = ++_gsRunId;
-      const q = String(rawQuery || '').toLowerCase().trim();
+      const q = gsNorm(rawQuery).trim();
       const resultsContainer = $('#globalSearchResults');
       if (!resultsContainer) return;
       if (!q || q.length < 2) { resultsContainer.innerHTML = ''; resultsContainer.style.display = 'none'; _gsActiveIndex = -1; return; }
@@ -9247,14 +9261,30 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
       if (myRun !== _gsRunId) return;
       const results = [];
 
-      if ('ficha'.startsWith(q) || q.includes('ficha')) {
-        results.push({ icon: 'fas fa-file-export', text: 'Módulo Ficha HTML', sub: 'Generador de fichas por propiedad', tab: 'tab-ficha-html', color: '#14B8A6', action: () => navigateTo('tab-ficha-html') });
-      }
+      /* Atajos de módulo: escribir el nombre del módulo también lo encuentra */
+      const MODULE_HITS = [
+        { name: 'Fichas HTML', sub: 'Generador de fichas por propiedad', tab: 'tab-ficha-html', color: '#14B8A6', icon: 'fas fa-file-export', keys: ['ficha'] },
+        { name: 'Propiedades', sub: 'Catálogo de inmuebles', tab: 'tab-propiedades', color: 'var(--accent)', icon: 'fas fa-building', keys: ['propiedad', 'inmueb', 'catalogo'] },
+        { name: 'Leads & CRM', sub: 'Prospectos y propietarios', tab: 'tab-leads', color: '#3B82F6', icon: 'fas fa-users', keys: ['lead', 'crm', 'prospecto'] },
+        { name: 'Agenda', sub: 'Visitas y recordatorios', tab: 'tab-agenda', color: '#F59E0B', icon: 'fas fa-calendar', keys: ['agenda', 'visita', 'calendario'] },
+        { name: 'Tasaciones', sub: 'Valoraciones de inmuebles', tab: 'tab-tasaciones', color: '#EF4444', icon: 'fas fa-calculator', keys: ['tasacion', 'tasar'] },
+        { name: 'Agentes & Brokers', sub: 'Equipo comercial', tab: 'tab-agentes', color: '#10B981', icon: 'fas fa-id-badge', keys: ['agente', 'broker', 'equipo'] },
+        { name: 'Chat Redes Sociales', sub: 'Conversaciones entrantes', tab: 'tab-chat-redes', color: '#06B6D4', icon: 'fas fa-comments', keys: ['chat', 'mensaje', 'zernio', 'whatsapp', 'redes'] },
+        { name: 'Sitio Web (CMS)', sub: 'Contenido del sitio público', tab: 'tab-sitio-web', color: '#8B5CF6', icon: 'fas fa-globe', keys: ['sitio', 'web', 'cms', 'contenido'] },
+        { name: 'Portales', sub: 'Mercado Libre y RELA', tab: 'tab-portales', color: '#FACC15', icon: 'fas fa-store', keys: ['portal', 'mercado', 'rela'] },
+        { name: 'Usuarios', sub: 'Roles y permisos', tab: 'tab-usuarios', color: '#8B5CF6', icon: 'fas fa-user-shield', keys: ['usuario', 'rol', 'permiso'] },
+        { name: 'Configuración', sub: 'Integraciones y ajustes', tab: 'tab-configuracion', color: 'var(--text-dim)', icon: 'fas fa-cog', keys: ['config', 'ajuste', 'integracion'] },
+      ];
+      MODULE_HITS.forEach((m) => {
+        if (m.keys.some((k) => gsNorm(k).startsWith(q) || (q.length >= 3 && gsNorm(k).includes(q)))) {
+          results.push({ icon: m.icon, text: 'Módulo: ' + m.name, sub: m.sub, tab: m.tab, color: m.color, action: () => navigateTo(m.tab) });
+        }
+      });
 
-      const matches = (fields) => fields.some(f => f && f.toLowerCase().includes(q));
+      const matches = (fields) => fields.some(f => f && gsNorm(f).includes(q));
 
       for (const p of cache.properties) {
-        if (!matches([p.title, p.zone, p.address])) continue;
+        if (!matches([p.title, p.zone, p.address, p.property_code])) continue;
         results.push({ icon: 'fas fa-home', text: p.title || 'Sin título', sub: [p.zone, p.address].filter(Boolean).join(', '), tab: 'tab-propiedades', color: 'var(--accent)', action: () => { navigateTo('tab-propiedades'); window.adminApp.editProperty(p.id); } });
       }
       for (const l of cache.leads) {
@@ -9315,6 +9345,7 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
       if (e.key === 'Escape') {
         container.style.display = 'none';
         _gsActiveIndex = -1;
+        e.target.value = '';
         return;
       }
 
