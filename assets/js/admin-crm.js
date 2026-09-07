@@ -1049,8 +1049,6 @@ function openOwnerPanel(ownerId) {
 
 window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners };
 window.initCrm = init;
-})();
-
 /* -- Agenda de Visitas dentro del panel lateral -- */
 function agendaSectionHtml(visits) {
   var rows = '';
@@ -1176,3 +1174,4 @@ function recommendedNextAction(lead, visits, tasks) {
   if (days >= 7) return 'Sin contacto desde hace ' + days + ' días. Considerar followup.';
   return null;
 }
+})();
