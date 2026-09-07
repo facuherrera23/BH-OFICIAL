@@ -1575,20 +1575,21 @@ function esc(s) {
       if (!form) return;
 
       await loadAgentSelect($('#leadBrokerSelect'), lead.assigned_to);
-      form.elements.full_name.value = lead.full_name || '';
-      form.elements.phone.value = lead.phone || '';
-      form.elements.email.value = lead.email || '';
-      form.elements.whatsapp.value = lead.whatsapp || '';
-      form.elements.budget_usd.value = lead.budget_usd || '';
-      form.elements.stage.value = lead.stage || 'nuevo';
-      form.elements.preferred_type.value = lead.preferred_type || '';
-      form.elements.preferred_zone.value = lead.preferred_zone || '';
-      form.elements.preferred_rooms.value = lead.preferred_rooms ?? '';
-      form.elements.notes.value = lead.notes || '';
-      form.elements.source.value = lead.source || 'manual';
-      form.elements.assigned_to.value = lead.assigned_to || '';
-      const propSel = form.elements.property_id;
-      if (propSel) propSel.value = lead.property_id || '';
+      /* setF defensivo: el form actual puede no tener todos los campos heredados */
+      const setF = (name, val) => { const el = form.elements[name]; if (el) el.value = val; };
+      setF('full_name', lead.full_name || '');
+      setF('phone', lead.phone || '');
+      setF('email', lead.email || '');
+      setF('whatsapp', lead.whatsapp || '');
+      setF('budget_usd', lead.budget_usd || '');
+      setF('stage', lead.stage || 'nuevo');
+      setF('preferred_type', lead.preferred_type || '');
+      setF('preferred_zone', lead.preferred_zone || '');
+      setF('preferred_rooms', lead.preferred_rooms ?? '');
+      setF('notes', lead.notes || '');
+      setF('source', lead.source || 'manual');
+      setF('assigned_to', lead.assigned_to || '');
+      setF('property_id', lead.property_id || '');
       openModal('leadModal');
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
