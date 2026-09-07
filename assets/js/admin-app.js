@@ -1953,6 +1953,7 @@ let dayCount = 1;
         <td style="font-size:12px; color:var(--text-dim);">${v.leads?.full_name ? esc(v.leads.full_name) : '—'}</td>
         <td>
           <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+            ${v.confirmation_token && v.client_email ? '<button class="btn-action" title="Copiar link de confirmacion" onclick="window.adminApp.copyVisitLink(\'${v.id}\')"><i class="fas fa-link"></i></button>' : ''}
             <button class="btn-action" title="Editar" onclick="window.adminApp.editVisit('${v.id}')"><i class="fas fa-pen"></i></button>
             ${checkinHtml}
             ${checkinTimeHtml}
@@ -2778,7 +2779,19 @@ let dayCount = 1;
 
 
 /* Edit visit */
-  window.adminApp.editVisit = async function (id) {
+  window.adminApp.copyVisitLink = async function (id) {
+  try {
+    const { data, error } = await window.supabaseClient
+      .from('visits').select('confirmation_token, client_email').eq('id', id).single();
+    if (error) throw error;
+    if (!data?.confirmation_token) { showToast('Esta visita no tiene link de confirmación.', 'error'); return; }
+    const url = `${window.location.origin}/confirmar-visita.html?token=${data.confirmation_token}`;
+    try { await navigator.clipboard.writeText(url); showToast('Link copiado: ' + url, 'success', 6000); }
+    catch (_) { window.prompt('Copiá este link:', url); }
+  } catch (err) { showToast('Error: ' + err.message, 'error'); }
+};
+
+window.adminApp.editVisit = async function (id) {
     try {
       const { data, error } = await window.supabaseClient
         .from('visits')
@@ -9509,7 +9522,7 @@ let _execToDate = '';
       ] = await Promise.all([
         window.supabaseClient.from('leads').select('id, stage, created_at, budget_usd').gte('created_at', _execFromDate).lte('created_at', _execToDate),
         window.supabaseClient.from('visits').select('id, visit_date, lead_id').gte('visit_date', _execFromDate).lte('visit_date', _execToDate),
-        window.supabaseClient.from('leads').select('id, stage, created_at, budget_usd').in('stage', ['cerrado']).gte('closed_at', _execFromDate).lte('closed_at', _execToDate),
+        window.supabaseClient.from('leads').select('id, stage, created_at, budget_usd').eq('stage', 'cerrado_ganado').gte('updated_at', _execFromDate).lte('updated_at', _execToDate),
         window.supabaseClient.from('properties').select('price_usd, price_currency, status, is_published').eq('is_published', true).neq('status', 'vendido'),
         window.supabaseClient.from('audit_log').select('user_id, action, status, created_at, metadata').gte('created_at', new Date(_execFromDate).toISOString()).lte('created_at', new Date(_execToDate).toISOString()),
         window.supabaseClient.from('agents').select('id, full_name, sales_ytd').eq('status', 'activo').is('deleted_at', null)
@@ -9532,7 +9545,7 @@ let _execToDate = '';
       if (closed.length > 0) {
         const closeTimes = closed.map(l => {
           const created = new Date(l.created_at).getTime();
-          const closedAt = new Date(l.closed_at || l.updated_at).getTime();
+          const closedAt = new Date(l.updated_at).getTime();
           return (closedAt - created) / (1000 * 60 * 60 * 24);
         });
         const avgClose = (closeTimes.reduce((a, b) => a + b, 0) / closeTimes.length).toFixed(1);
@@ -9585,7 +9598,7 @@ let _execToDate = '';
       const [leadsRes, visitsRes, closedRes] = await Promise.all([
         window.supabaseClient.from('leads').select('created_at').gte('created_at', new Date(_execFromDate).toISOString()).lte('created_at', _execToDate),
         window.supabaseClient.from('visits').select('visit_date').gte('visit_date', new Date(_execFromDate).toISOString()).lte('visit_date', new Date(_execToDate).toISOString()),
-        window.supabaseClient.from('leads').select('closed_at').in('stage', ['cerrado']).gte('closed_at', new Date(_execFromDate).toISOString()).lte('closed_at', new Date(_execToDate).toISOString())
+        window.supabaseClient.from('leads').select('updated_at').eq('stage', 'cerrado_ganado').gte('updated_at', new Date(_execFromDate).toISOString()).lte('updated_at', new Date(_execToDate).toISOString())
       ]);
 
       const leads = leadsRes.data || [];
@@ -9610,7 +9623,7 @@ let _execToDate = '';
           month: m.label,
           leads: leads.filter(l => l.created_at >= start && l.created_at < end).length,
           visits: visits.filter(v => v.visit_date >= start && v.visit_date < end).length,
-          closed: closed.filter(c => c.closed_at >= start && c.closed_at < end).length
+          closed: closed.filter(c => c.updated_at >= start && c.updated_at < end).length
         };
       });
 
@@ -9791,7 +9804,7 @@ let _execToDate = '';
       const [leadsRes, visitsRes, closedRes, propsRes] = await Promise.all([
         window.supabaseClient.from('leads').select('created_at, budget_usd, stage').gte('created_at', new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString()),
         window.supabaseClient.from('visits').select('visit_date').gte('visit_date', new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString()),
-        window.supabaseClient.from('leads').select('closed_at, budget_usd').eq('stage', 'cerrado').gte('closed_at', new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString()),
+        window.supabaseClient.from('leads').select('updated_at, budget_usd').eq('stage', 'cerrado_ganado').gte('updated_at', new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString()),
         window.supabaseClient.from('properties').select('created_at, price_usd, status').eq('is_published', true).gte('created_at', new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString())
       ]);
 
@@ -9806,13 +9819,13 @@ let _execToDate = '';
 
         const mLeads = leads.filter(l => l.created_at >= start && l.created_at < end);
         const mVisits = visits.filter(v => v.visit_date >= start && v.visit_date < end);
-        const mClosed = closed.filter(c => c.closed_at >= start && c.closed_at < end);
+        const mClosed = closed.filter(c => c.updated_at >= start && c.updated_at < end);
         const mProps = props.filter(p => p.created_at >= start && p.created_at < end);
 
         const totalValue = mClosed.reduce((sum, c) => sum + (c.budget_usd || 0), 0);
         const convRate = mLeads.length > 0 ? ((mClosed.length / mLeads.length) * 100).toFixed(1) : 0;
         const avgCloseTime = mClosed.length > 0 ? 
-          (mClosed.reduce((sum, c) => sum + (new Date(c.closed_at || c.updated_at).getTime() - new Date(c.created_at).getTime()) / (1000 * 60 * 60 * 24), 0) / mClosed.length).toFixed(1) : 0;
+          (mClosed.reduce((sum, c) => sum + (new Date(c.updated_at).getTime() - new Date(c.created_at).getTime()) / (1000 * 60 * 60 * 24), 0) / mClosed.length).toFixed(1) : 0;
         const avgTicket = mClosed.length > 0 ? (totalValue / mClosed.length).toFixed(0) : 0;
 
         return `<tr style="border-bottom:1px solid var(--border-subtle);">

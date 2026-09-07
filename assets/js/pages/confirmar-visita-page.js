@@ -77,10 +77,13 @@
         document.getElementById('detailNotes').textContent = v.notes || '—';
         details.style.display = 'block';
 
-        // WhatsApp link
-        if (v.client_phone) {
-          const msg = encodeURIComponent(`Hola, confirmo mi visita del ${new Date(v.visit_date).toLocaleDateString('es-AR')} a las ${new Date(v.visit_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}.`);
-          btnWhatsApp.href = `https://wa.me/${v.client_phone.replace(/\D/g, '')}?text=${msg}`;
+        // WhatsApp al agente/casa central (nunca al propio cliente que ya abrió el link)
+        const waPhone = (v.agents && v.agents.phone) || v.broker_phone || null;
+        if (waPhone) {
+          const msg = encodeURIComponent(`Hola, te escribo por la visita del ${new Date(v.visit_date).toLocaleDateString('es-AR')} a las ${new Date(v.visit_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}.`);
+          btnWhatsApp.href = `https://wa.me/${String(waPhone).replace(/\D/g, '')}?text=${msg}`;
+        } else {
+          btnWhatsApp.style.display = 'none';
         }
 
         // Confirm action
