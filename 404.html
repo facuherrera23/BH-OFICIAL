@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Página no encontrada | Bienenhaus Propiedades</title>
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-void: #020305;
+    --bg-primary: #05070A;
+    --accent: #1FC8C3;
+    --accent-hover: #2DE2DA;
+    --glow-soft: rgba(31, 200, 195, 0.18);
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-accent: rgba(31, 200, 195, 0.38);
+    --text-main: #F8FAFC;
+    --text-secondary: #CBD5E1;
+    --text-tertiary: #94A3B8;
+    --font-heading: 'Playfair Display', Georgia, serif;
+    --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: var(--font-body);
+    background: var(--bg-void);
+    color: var(--text-main);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 32px 20px;
+    overflow-x: hidden;
+    position: relative;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(600px 400px at 20% 10%, var(--glow-soft), transparent 60%),
+      radial-gradient(800px 500px at 85% 85%, rgba(31, 200, 195, 0.08), transparent 60%);
+    pointer-events: none;
+  }
+  .brand {
+    position: absolute;
+    top: 32px;
+    left: 40px;
+    text-decoration: none;
+    display: block;
+  }
+  .brand-name {
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: 4px;
+    color: var(--text-main);
+  }
+  .brand-name .accent { color: var(--accent); }
+  .brand-sub {
+    font-size: 10px;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-top: 2px;
+  }
+  .error-code {
+    font-family: var(--font-heading);
+    font-size: clamp(110px, 22vw, 220px);
+    font-weight: 700;
+    line-height: 1;
+    background: linear-gradient(135deg, var(--text-main) 20%, var(--accent) 80%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: -2px;
+  }
+  .error-title {
+    font-family: var(--font-heading);
+    font-size: clamp(26px, 4vw, 40px);
+    font-weight: 400;
+    margin-top: 8px;
+  }
+  .error-title em { font-style: italic; color: var(--accent); }
+  .error-desc {
+    color: var(--text-secondary);
+    font-size: 16px;
+    line-height: 1.7;
+    max-width: 480px;
+    margin-top: 18px;
+  }
+  .actions {
+    display: flex;
+    gap: 16px;
+    margin-top: 38px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--accent);
+    color: #04211F;
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    text-decoration: none;
+    padding: 16px 34px;
+    border: none;
+    border-radius: 60px;
+    cursor: pointer;
+    transition: background .2s ease, transform .2s ease;
+  }
+  .btn-primary:hover { background: var(--accent-hover); transform: translateY(-2px); }
+  .btn-outline {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    text-decoration: none;
+    padding: 16px 34px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 60px;
+    cursor: pointer;
+    transition: border-color .2s ease, color .2s ease;
+  }
+  .btn-outline:hover { border-color: var(--border-accent); color: var(--text-main); }
+  .footer-note {
+    margin-top: 60px;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  @media (max-width: 600px) {
+    .brand { position: static; margin-bottom: 40px; }
+  }
+</style>
+</head>
+<body>
+
+<a class="brand" href="/">
+  <div class="brand-name">BIENENHAUS<span class="accent">®</span></div>
+  <div class="brand-sub">Propiedades</div>
+</a>
+
+<main>
+  <div class="error-code">404</div>
+  <h1 class="error-title">Esta página <em>no existe</em></h1>
+  <p class="error-desc">
+    La dirección que buscás no está disponible. Puede que la propiedad se haya vendido,
+    el enlace esté vencido o haya un error de tipeo.
+  </p>
+  <div class="actions">
+    <a class="btn-primary" href="/">Ver propiedades</a>
+    <a class="btn-outline" href="/#contacto">Contactanos</a>
+  </div>
+</main>
+
+<p class="footer-note">Bienenhaus Propiedades · Inmobiliaria Premium</p>
+
+</body>
+</html>

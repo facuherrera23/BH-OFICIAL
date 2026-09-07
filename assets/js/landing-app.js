@@ -199,6 +199,7 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
   const propertyModal = document.getElementById('propertyModal');
   const propertyModalClose = document.getElementById('propertyModalClose');
   let currentProperty = null;
+  let interestedProperty = null;
   let currentGalleryImages = [];
   let currentImageIndex = 0;
 
@@ -421,18 +422,30 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
           full_name: data.nombre || '',
           email: data.email || '',
           phone: data.telefono || '',
-          preferred_type: data.tipo_propiedad || '',
+          preferred_type: data.tipo_propiedad || null,
           budget_usd: parseFloat(data.presupuesto) || null,
           notes: data.mensaje || 'Consulta desde landing page',
           source: 'landing_page',
           preferred_zone: data.zona || '',
         };
 
+        // Vínculo automático: si la consulta salió de una propiedad, la adjunta
+        if (interestedProperty && interestedProperty.id) {
+          payload.property_id = interestedProperty.id;
+          const propLabel = interestedProperty.title || interestedProperty.property_code || interestedProperty.id;
+          payload.notes = `[Interesado en: ${propLabel}${interestedProperty.property_code ? ' (Cod. ' + interestedProperty.property_code + ')' : ''}]\n` + payload.notes;
+        }
+
         const { error } = await window.supabaseClient
           .from('leads')
           .insert([payload]);
 
         if (error) throw error;
+
+        // Limpiar contexto de propiedad tras enviar
+        interestedProperty = null;
+        const chipDone = document.getElementById('interestPropertyChip');
+        if (chipDone) chipDone.style.display = 'none';
 
         contactForm.style.display = 'none';
         if (submitSuccess) submitSuccess.classList.add('show');
@@ -447,6 +460,27 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
       }
     });
   }
+
+  const propertyContactCta = document.getElementById('propertyContactCta');
+  const interestChip = document.getElementById('interestPropertyChip');
+  const interestChipText = document.getElementById('interestPropertyChipText');
+
+  propertyContactCta?.addEventListener('click', () => {
+    if (currentProperty) {
+      interestedProperty = currentProperty;
+      if (interestChip && interestChipText) {
+        interestChipText.textContent = 'Consultando por: ' + (currentProperty.title || 'Propiedad') + (currentProperty.property_code ? ' (Cod. ' + currentProperty.property_code + ')' : '');
+        interestChip.style.display = 'flex';
+      }
+    }
+    closePropertyModal();
+    document.getElementById('contacto')?.scrollIntoView({ behavior: 'smooth' });
+  });
+
+  document.getElementById('interestPropertyChipClear')?.addEventListener('click', () => {
+    interestedProperty = null;
+    if (interestChip) interestChip.style.display = 'none';
+  });
 
   // Form pill toggles
   document.querySelectorAll('.form-pills').forEach(group => {
@@ -1613,7 +1647,28 @@ function renderSocialLinks(social) {
       updateResultsCount(allProperties.length);
     } catch (err) {
       logError('Error loading properties:', err);
-      renderEmptyState(grid, 'No hay propiedades disponibles', 'Estamos preparando nuevas opciones para vos.');
+      showServiceBanner();
+      grid.innerHTML = '';
+      const wrapper = document.createElement('div');
+      wrapper.className = 'empty-state';
+      const iconWrap = document.createElement('div');
+      iconWrap.className = 'empty-state-icon';
+      iconWrap.appendChild(makeIcon('fas fa-arrows-rotate'));
+      const title = document.createElement('h3');
+      title.className = 'empty-state-title';
+      title.textContent = 'Estamos actualizando el catálogo';
+      const text = document.createElement('p');
+      text.className = 'empty-state-text';
+      text.textContent = 'El servicio está temporalmente limitado. Reintentá en unos minutos.';
+      const retryBtn = document.createElement('button');
+      retryBtn.type = 'button';
+      retryBtn.className = 'btn-primary';
+      retryBtn.style.cssText = 'margin:18px auto 0; display:inline-flex; align-items:center; gap:8px;';
+      retryBtn.appendChild(makeIcon('fas fa-rotate-right'));
+      retryBtn.appendChild(document.createTextNode(' Reintentar'));
+      retryBtn.addEventListener('click', () => window.location.reload());
+      wrapper.append(iconWrap, title, text, retryBtn);
+      grid.appendChild(wrapper);
     }
   }
 
@@ -2010,7 +2065,30 @@ function renderSocialLinks(social) {
     }
   }
 
+  function showServiceBanner() {
+    if (document.getElementById('serviceBanner')) return;
+    const banner = document.createElement('div');
+    banner.id = 'serviceBanner';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;background:rgba(245,158,11,0.12);border-bottom:1px solid rgba(245,158,11,0.4);color:#F8FAFC;padding:12px 18px;font-family:var(--font-body);font-size:13px;text-align:center;backdrop-filter:blur(8px);';
+    const icon = document.createElement('i');
+    icon.className = 'fas fa-triangle-exclamation';
+    icon.style.cssText = 'color:#F59E0B;';
+    const msg = document.createElement('span');
+    msg.textContent = 'Estamos actualizando el catálogo. Algunas secciones pueden no estar disponibles.';
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.style.cssText = 'background:#F59E0B;color:#131313;border:none;border-radius:60px;padding:8px 18px;font-weight:700;font-size:11px;letter-spacing:1px;text-transform:uppercase;cursor:pointer;';
+    retry.textContent = 'Reintentar';
+    retry.addEventListener('click', () => window.location.reload());
+    banner.append(icon, msg, retry);
+    document.body.prepend(banner);
+  }
+
   async function loadLandingData() {
+    if (!window.supabaseClient) {
+      showServiceBanner();
+      return;
+    }
     await Promise.all([
       loadCMSContent(),
       loadProperties(),

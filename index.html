@@ -584,6 +584,12 @@
                 <button type="button" class="form-pill" data-value="invertir">Invertir</button>
               </div>
 
+              <div id="interestPropertyChip" style="display:none; align-items:center; gap:10px; background:rgba(31,200,195,0.08); border:1px solid rgba(31,200,195,0.4); border-radius:12px; padding:10px 14px; margin:0 0 16px; font-size:13px; color:var(--accent);">
+                <i class="fas fa-home"></i>
+                <span id="interestPropertyChipText" style="flex:1;"></span>
+                <button type="button" id="interestPropertyChipClear" aria-label="Quitar propiedad de la consulta" style="background:none; border:none; color:inherit; cursor:pointer; padding:2px 4px;"><i class="fas fa-times"></i></button>
+              </div>
+
               <div class="form-fields">
                 <div class="form-field">
                   <label>Nombre completo <span class="required">*</span></label>
@@ -796,6 +802,9 @@
             <ul class="property-detail-features" id="propertyDetailFeatures"></ul>
             <h4 class="property-detail-subtitle">Descripción</h4>
             <p class="property-detail-desc" id="propertyDetailDesc"></p>
+            <button type="button" id="propertyContactCta" class="btn-primary" style="margin-top:22px; display:inline-flex; align-items:center; justify-content:center; gap:10px; padding:14px 26px;">
+              <i class="fas fa-envelope"></i> Consultar por esta propiedad
+            </button>
           </div>
         </div>
       </div>
@@ -813,6 +822,6 @@
 <script src="assets/js/config.js?v=31"></script>
 <script src="assets/js/supabase-client.js?v=29"></script>
 <script src="assets/js/cloudinary.js?v=32"></script>
-<script src="assets/js/landing-app.js?v=36"></script>
+<script src="assets/js/landing-app.js?v=37"></script>
 </body>
 </html>
