@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 <!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-<link rel="stylesheet" href="assets/css/admin.css?v=61" />
+<link rel="stylesheet" href="assets/css/admin.css?v=67" />
 </head>
 <body class="is-loading">
 <!-- PRELOADER LUXURY -->
@@ -469,7 +469,7 @@
 <section class="tab-module" id="tab-leads">
 <div class="panel-header" style="margin-bottom:18px;">
 <div>
-<h2 class="panel-title">Leads &amp; CRM</h2>
+<h2 class="panel-title" id="crmTitle">Leads &amp; CRM</h2>
 <p class="crm-subtitle" id="crmSubtitle" style="color:var(--text-muted); font-size:12.5px;">Pipeline comercial y gestión de prospectos.</p>
 </div>
 <div style="display:flex; gap:10px;">
@@ -477,6 +477,7 @@
 <button class="btn-luxury-action" data-action="exportLeadsCSV" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV">
 <i class="fas fa-download"></i> CSV</button>
 <button class="btn-luxury-action" id="btnNewLead">+ Agregar Lead</button>
+<button class="btn-luxury-action" id="btnNewOwnerCrm" style="display:none;" title="Registrar nuevo propietario"><i class="fas fa-user-plus"></i> Registrar Propietario</button>
 </div>
 </div>
 
@@ -2152,7 +2153,7 @@
 </div>
 <div class="form-grid-2">  <div class="form-field">    <label>Origen</label>    <select name="source">      <option value="manual">Manual</option>      <option value="landing">Landing / Formulario</option>      <option value="ml">Mercado Libre</option>      <option value="chat">Chat / WhatsApp</option>      <option value="referido">Referido</option>      <option value="tasacion">Tasación</option>      <option value="walkin">Visita en persona</option>    </select>  </div>  <div class="form-field"></div>
 </div>
-<div class="form-grid-2">  <div class="form-field">    <label>Tipo de Cliente</label>    <select name="tipo_cliente">      <option value="">—</option>      <option value="propietario">Propietario</option>      <option value="comprador">Comprador</option>      <option value="inversor">Inversor</option>    </select>  </div>  <div class="form-field">    <label>Operación</label>    <select name="operation_type">      <option value="">—</option>      <option value="compra">Compra</option>      <option value="venta">Venta</option>      <option value="alquiler">Alquiler</option>    </select>  </div></div><div class="form-grid-2">  <div class="form-field">    <label>Tipo Preferido</label>    <select name="preferred_type">      <option value="">Sin preferencia</option>      <option value="casa">Casa</option>      <option value="departamento">Departamento</option>      <option value="terreno">Terreno</option>      <option value="local">Local</option>      <option value="oficina">Oficina</option>      <option value="galpon">Galpón</option>      <option value="quinta">Quinta</option>      <option value="otro">Otro</option>    </select>  </div>  <div class="form-field">
+<div class="form-grid-2">  <div class="form-field">    <label>Tipo de Cliente</label>    <select name="tipo_cliente">      <option value="">—</option>      <option value="propietario">Propietario</option>      <option value="comprador">Comprador</option>      <option value="inversor">Inversor</option>      <option value="inquilino">Inquilino</option>    </select>  </div>  <div class="form-field">    <label>Operación</label>    <select name="operation_type">      <option value="">—</option>      <option value="compra">Compra</option>      <option value="venta">Venta</option>      <option value="alquiler">Alquiler</option>    </select>  </div></div><div class="form-grid-2">  <div class="form-field">    <label>Tipo Preferido</label>    <select name="preferred_type">      <option value="">Sin preferencia</option>      <option value="casa">Casa</option>      <option value="departamento">Departamento</option>      <option value="terreno">Terreno</option>      <option value="local">Local</option>      <option value="oficina">Oficina</option>      <option value="galpon">Galpón</option>      <option value="quinta">Quinta</option>      <option value="otro">Otro</option>    </select>  </div>  <div class="form-field">
 <label>Ambientes Preferidos</label>
 <input type="number" name="preferred_rooms" min="0" max="20" placeholder="3" />
 </div>
@@ -2822,6 +2823,6 @@
 </i>Tu bloqueador de anuncios está impidiendo que el panel cargue correctamente.<strong>Desactivá las extensiones</strong> para este sitio o abrí en ventana incógnita.<a href="#" data-action="closeCdnWarning">Cerrar</a>
 </div>
 <!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Bloqueador de anuncios detectado.</strong> Desactivá las extensiones para este sitio o abrí en ventana incógnita. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="assets/js/zod.umd.js"></script><script src="assets/js/utils.js?v=27"></script><script src="assets/js/config.js?v=31"></script><script src="assets/js/supabase-client.js?v=30"></script><script src="assets/js/cloudinary.js?v=32"></script><script src="assets/js/admin-crm-tasks.js"></script>
-<script src="assets/js/admin-crm.js"></script>
+<script src="assets/js/admin-crm.js?v=8"></script>
 <script src="assets/js/admin-app.js?v=260"></script></body>
 </html>

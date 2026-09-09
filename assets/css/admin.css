@@ -4271,6 +4271,9 @@ input[type="range"]::-moz-range-thumb {
 .crm-table-wrap{overflow-x:auto;border:1px solid var(--border-subtle);border-radius:12px;background:rgba(255,255,255,0.02)}
 .crm-table{width:100%;border-collapse:collapse}
 .crm-table thead th{padding:12px 14px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);border-bottom:1px solid var(--border-subtle)}
+.crm-table thead th.crm-th-sort{cursor:pointer;user-select:none;transition:color .2s}
+.crm-table thead th.crm-th-sort:hover{color:#fff}
+.crm-table thead th .crm-sort-ind{display:inline-block;margin-left:5px;font-size:9px;color:var(--accent)}
 .crm-table tbody tr{border-bottom:1px solid var(--border-subtle);transition:background .2s}
 .crm-table tbody tr:hover{background:rgba(255,255,255,0.02)}
 .crm-table tbody tr:last-child{border-bottom:0}
@@ -4299,6 +4302,7 @@ input[type="range"]::-moz-range-thumb {
 .crm-priority--baja{background:rgba(255,255,255,0.06);color:var(--text-secondary)}
 
 .crm-prop-row{display:flex;align-items:center;gap:10px;min-width:0}
+.crm-prop-info{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0}
 .crm-prop-thumb{width:36px;height:36px;border-radius:10px;object-fit:cover;border:1px solid var(--border-subtle)}
 .crm-prop-thumb--empty{display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.06);color:var(--text-dim);font-size:14px}
 .crm-prop-name{font-size:12.5px;color:#fff;line-height:1.2}
@@ -4311,10 +4315,13 @@ input[type="range"]::-moz-range-thumb {
 .crm-tipo-chip--propietario{background:rgba(31,200,195,0.15);color:var(--accent)}
 .crm-tipo-chip--comprador{background:rgba(96,165,250,0.15);color:#60a5fa}
 .crm-tipo-chip--inversor{background:rgba(167,139,250,0.15);color:#a78bfa}
+.crm-tipo-chip--inquilino{background:rgba(251,191,36,0.15);color:#fbbf24}
 
 .crm-activity-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px rgba(31,200,195,0.2);margin-right:4px}
 .crm-next-action{display:inline-flex;align-items:center;font-size:12.5px;color:var(--text-secondary)}
 .crm-next-action--due{color:var(--warning);font-weight:700}
+.crm-next-action--recommend{color:var(--warning);font-weight:600;cursor:pointer;text-decoration:underline dotted}
+.crm-next-action--assign{color:var(--text-secondary);font-size:12.5px;cursor:pointer;text-decoration:underline dotted}
 
 .crm-pagination{display:flex;align-items:center;gap:12px;justify-content:center;margin-top:14px;color:var(--text-secondary)}
 .crm-pag-info{font-size:13px}
@@ -4354,13 +4361,20 @@ input[type="range"]::-moz-range-thumb {
 .crm-timeline-empty{font-size:12.5px;color:var(--text-dim);padding:12px 0}
 
 .crm-prop-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border-subtle);border-radius:10px;margin-bottom:6px;font-size:13px;color:#fff}
-.crm-prop-add{display:flex;gap:8px}
-.crm-prop-results{display:flex;flex-direction:column;gap:4px;margin-top:8px}
-.crm-prop-result-btn{text-align:left;justify-content:flex-start}
+.crm-prop-add{display:flex;gap:8px;position:relative}
+.crm-prop-results{position:absolute;top:calc(100% + 8px);left:0;right:0;z-index:60;display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;padding:8px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,0.45)}
+.crm-prop-result-btn{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;background:var(--surface-2);border:1px solid var(--border-subtle);border-radius:8px;color:#fff;font-size:13px;cursor:pointer;text-align:left;transition:background .15s,border-color .15s}
+.crm-prop-result-btn:hover{background:rgba(31,200,195,0.12);border-color:var(--accent)}
+.crm-prop-result-thumb{width:36px;height:36px;border-radius:6px;background:var(--surface-2) center/cover no-repeat;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.crm-prop-result-thumb i{font-size:15px;color:var(--text-dim)}
+.crm-prop-result-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.crm-prop-result-code{font-size:10px;color:var(--accent);letter-spacing:.5px;text-transform:uppercase;font-weight:600}
+.crm-prop-result-title{font-size:13px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-.crm-quick-panel{margin-top:10px;padding:12px;border:1px solid var(--border-subtle);border-radius:12px;background:rgba(255,255,255,0.02)}
-.crm-quick-panel-label{display:block;font-size:12px;color:var(--text-dim);margin-bottom:8px}
-.crm-quick-panel-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+.crm-quick-panel{margin-top:10px;padding:14px;border:1px solid rgba(31,200,195,0.18);border-radius:12px;background:rgba(31,200,195,0.04)}
+.crm-quick-panel-label{display:block;font-size:12.5px;font-weight:700;color:var(--accent);margin-bottom:10px}
+.crm-quick-panel .crm-field-input{width:100%}
+.crm-quick-panel-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
 
 .crm-task-list{display:flex;flex-direction:column;gap:8px}
 .crm-task-card{display:flex;gap:10px;padding:10px;border:1px solid var(--border-subtle);border-radius:10px;background:rgba(255,255,255,0.02);align-items:flex-start}
@@ -4409,7 +4423,7 @@ input[type="range"]::-moz-range-thumb {
   background:rgba(31,200,195,0.04);color:var(--accent);
   cursor:pointer;transition:all .18s ease;
 }
-.crm-new-task-btn:hover{background:rgba(31,200,195,0.12);border-color:var(--accent)}
+.crm-new-task-btn:hover{background:rgba(31,200,195,0.12);border-color:var(--accent);box-shadow:0 4px 12px rgba(31,200,195,0.15);transform:translateY(-1px)}
 
 /* ============================================================
    CRM QUICK ACTIONS — variantes función
@@ -4431,10 +4445,11 @@ input[type="range"]::-moz-range-thumb {
    CRM QUICK ACTIONS v3 — icon buttons con tooltip (hover) 
    Fila horizontal, consistente con identidad BH (teal/dark)
    ============================================================ */
-.crm-qa-row{display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+.crm-qa-row{display:flex;gap:8px;justify-content:stretch;margin-top:14px;flex-wrap:wrap}
 .crm-qa-btn{
-  position:relative;display:inline-flex;align-items:center;justify-content:center;
-  width:46px;height:46px;border-radius:50%;
+  flex:1 1 52px;min-width:52px;display:inline-flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:4px;
+  padding:8px 4px;border-radius:10px;
   border:1px solid var(--border-subtle);
   background:rgba(255,255,255,0.03);
   color:var(--text-secondary);
@@ -4445,37 +4460,29 @@ input[type="range"]::-moz-range-thumb {
   color:var(--accent);transform:translateY(-2px);
   box-shadow:0 6px 16px rgba(31,200,195,0.15);
 }
-.crm-qa-btn i{font-size:16px}
+.crm-qa-btn i{font-size:15px;line-height:1}
 .crm-qa-tip{
-  position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%) scale(.8);
-  background:var(--accent);color:#000;padding:4px 10px;border-radius:6px;
-  font-size:11px;font-weight:700;white-space:nowrap;opacity:0;pointer-events:none;
-  transition:all .15s ease;z-index:1000;
+  position:static;transform:none;opacity:1;pointer-events:none;
+  background:transparent;color:inherit;padding:0;border-radius:0;
+  font-size:10px;font-weight:600;white-space:nowrap;line-height:1.2;
 }
-.crm-qa-tip::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--accent)}
-.crm-qa-btn:hover .crm-qa-tip{opacity:1;transform:translateX(-50%) scale(1)}
+.crm-qa-tip::after{display:none}
 
 /* variantes coloridas para cada acción (identidad: verdes/teal para proactivas, rojo para peligro) */
 .crm-qa-btn[data-action="logCall"]{color:#9CCFFF}
 .crm-qa-btn[data-action="logCall"]:hover{border-color:#9CCFFF;color:#9CCFFF;box-shadow:0 6px 16px rgba(156,207,255,0.15)}
-.crm-qa-btn[data-action="logCall"] .crm-qa-tip{background:#9CCFFF;color:#000}
-.crm-qa-btn[data-action="logCall"] .crm-qa-tip::after{border-top-color:#9CCFFF}
 
 .crm-qa-btn[data-action="addNoteInline"]{color:#f59e0b}
 .crm-qa-btn[data-action="addNoteInline"]:hover{border-color:#f59e0b;color:#f59e0b;box-shadow:0 6px 16px rgba(245,158,11,0.15)}
-.crm-qa-btn[data-action="addNoteInline"] .crm-qa-tip{background:#f59e0b;color:#000}
-.crm-qa-btn[data-action="addNoteInline"] .crm-qa-tip::after{border-top-color:#f59e0b}
 
 .crm-qa-btn[data-action="scheduleVisit"]{color:#a78bfa}
 .crm-qa-btn[data-action="scheduleVisit"]:hover{border-color:#a78bfa;color:#a78bfa;box-shadow:0 6px 16px rgba(167,139,250,0.15)}
-.crm-qa-btn[data-action="scheduleVisit"] .crm-qa-tip{background:#a78bfa;color:#000}
-.crm-qa-btn[data-action="scheduleVisit"] .crm-qa-tip::after{border-top-color:#a78bfa}
 
 .crm-qa-btn[data-action="scheduleFollowup"]{color:var(--accent)}
+.crm-qa-btn[data-action="scheduleFollowup"]:hover{border-color:var(--accent);color:var(--accent);box-shadow:0 6px 16px rgba(31,200,195,0.15)}
+
 .crm-qa-btn--danger{color:#f87171}
 .crm-qa-btn--danger:hover{border-color:var(--danger);color:var(--danger);box-shadow:0 6px 16px rgba(220,38,38,0.15)}
-.crm-qa-btn--danger .crm-qa-tip{background:var(--danger);color:#fff}
-.crm-qa-btn--danger .crm-qa-tip::after{border-top-color:var(--danger)}
 
 /* ============================================================
    CRM AGENDA (visits) dentro del panel lateral del lead

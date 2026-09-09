@@ -1,4 +1,4 @@
-﻿/* ============================================================
+/* ============================================================
    BIENENHAUS - Admin CRM Module
    Vista de tabla + panel lateral para leads (reemplaza Kanban).
    - window.supabaseClient (RLS via supabaseClient auth session)
@@ -18,11 +18,15 @@ var STATUS_LABELS = {
 var LEGACY_STAGE_MAP = { visita: 'visita_agendada', oferta: 'negociacion', cerrado: 'cerrado_ganado', perdido: 'cerrado_perdido' };
 var ORIGINS = ['manual','landing','ml','chat','referido','tasacion','walkin','contacto','propiedad','whatsapp','web'];
 var ORIGIN_LABELS = { manual:'Manual', landing:'Landing', ml:'Mercado Libre', chat:'Chat', referido:'Referido', tasacion:'Tasacion', walkin:'Walk-in', contacto:'Contacto', propiedad:'Propiedad', whatsapp:'WhatsApp', web:'Web' };
-var TIPO_CLIENTE_OPTS = ['propietario','comprador','inversor'];
+var TIPO_CLIENTE_OPTS = ['propietario','comprador','inversor','inquilino'];
 var OPERATION_OPTS = ['compra','venta','alquiler'];
 
 var PAGE_SIZE = 25;
 var _page = 1, _totalPages = 1, _totalRows = 0;
+var _sortKey = 'created', _sortDir = 'desc';
+var DEFAULT_SORT_DIR = { created: 'desc', cliente: 'asc', propiedad: 'asc', estado: 'asc', prioridad: 'desc', actividad: 'desc', prox: 'asc' };
+var _ownerSortKey = 'creado', _ownerSortDir = 'desc';
+var OWNER_DEFAULT_SORT_DIR = { propietario: 'asc', dni: 'asc', propiedades: 'desc', agente: 'asc', tareas: 'desc', exclusivo: 'asc', creado: 'desc' };
 var _leads = [];
 var _agents = [];
 var _selectedLeadId = null;
@@ -35,12 +39,18 @@ var _ownerTasks = {};
 var _agentMapById = {};
 var _ownerProps = {};
 var _nextActions = {};
+var _ownerSearch = '';
+var _ownerFiltered = [];
 
 function $id(id) { return document.getElementById(id); }
 function esc(s) {
   if (window.BHUtils && typeof window.BHUtils.esc === 'function') return window.BHUtils.esc(s);
   if (s === null || s === undefined) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function safeCssUrl(u) {
+  if (window.BHUtils && typeof window.BHUtils.safeCssUrl === 'function') return window.BHUtils.safeCssUrl(u);
+  return '';
 }
 function fmtDate(d) {
   if (!d) return null;
@@ -93,6 +103,49 @@ function hasRecentActivity(d) {
 }
 function normalizeStage(s) { return LEGACY_STAGE_MAP[s] || s; }
 
+/* -- Orden de la tabla de leads -- */
+function nextActionEffectiveDate(l) {
+  var rec = _nextActions[l.id];
+  if (rec && rec.kind === 'task' && rec.due) return new Date(rec.due).getTime();
+  if (l.next_followup_at) return new Date(l.next_followup_at).getTime();
+  return null;
+}
+function sortValueFor(l, key) {
+  if (key === 'cliente') return { v: (l.full_name || '').toLowerCase() };
+  if (key === 'propiedad') {
+    var p = l.props && l.props[0];
+    return { v: p && (p.property_code || p.property_title) ? (p.property_code || p.property_title).toLowerCase() : null };
+  }
+  if (key === 'estado') {
+    var idx = LEAD_STATUSES.indexOf(normalizeStage(l.stage || 'nuevo'));
+    return { v: idx < 0 ? LEAD_STATUSES.length : idx };
+  }
+  if (key === 'prioridad') {
+    return { v: ({ baja: 0, media: 1, alta: 2 }[getPriority(l.lead_score)] || 0) };
+  }
+  if (key === 'actividad') return { v: l.last_contacted_at ? new Date(l.last_contacted_at).getTime() : null };
+  if (key === 'prox') return { v: nextActionEffectiveDate(l) };
+  return { v: l.created_at ? new Date(l.created_at).getTime() : null };
+}
+function applySort() {
+  var dir = _sortDir === 'asc' ? 1 : -1;
+  var key = _sortKey;
+  _leads.sort(function (a, b) {
+    var sa = sortValueFor(a, key), sb = sortValueFor(b, key);
+    if (sa.v == null && sb.v == null) return 0;
+    if (sa.v == null) return 1;
+    if (sb.v == null) return -1;
+    var cmp;
+    if (typeof sa.v === 'number') cmp = sa.v - sb.v;
+    else cmp = sa.v < sb.v ? -1 : sa.v > sb.v ? 1 : 0;
+    if (cmp === 0 && key === 'prioridad') {
+      var na = a.lead_score || 0, nb = b.lead_score || 0;
+      cmp = na - nb;
+    }
+    return cmp * dir;
+  });
+}
+
 /* -- Data access (Supabase directo, RLS via sesion) -- */
 function db() { return window.supabaseClient; }
 
@@ -121,13 +174,49 @@ function applyBaseFilters(q) {
 }
 
 
+function ownerPendingTasks(o) {
+  return (_ownerTasks[o.id] || []).filter(function (tk) { return tk.status !== 'completada' && tk.status !== 'cancelada'; });
+}
+function openOwnerTasksList(tasks) {
+  return (tasks || []).filter(function (tk) { return tk.status !== 'completada' && tk.status !== 'cancelada'; });
+}
+function ownerAgentNames(o) {
+  var ps = _ownerProps[o.id] || [];
+  var agentIds = [];
+  ps.forEach(function (p) { if (p.agent_id && agentIds.indexOf(p.agent_id) < 0) agentIds.push(p.agent_id); });
+  return agentIds.map(function (aid) { return (_agentMapById[aid] || '').toLowerCase(); }).join(' ');
+}
+function ownerSortValueFor(o, key) {
+  if (key === 'propietario') return { v: (o.full_name || '').toLowerCase() };
+  if (key === 'dni') return { v: (o.dni_cuit || '').toLowerCase() };
+  if (key === 'propiedades') return { v: (_ownerProps[o.id] || []).length };
+  if (key === 'agente') return { v: ownerAgentNames(o) || null };
+  if (key === 'tareas') return { v: ownerPendingTasks(o).length };
+  if (key === 'exclusivo') return { v: o.exclusive_end ? new Date(o.exclusive_end).getTime() : null };
+  return { v: o.created_at ? new Date(o.created_at).getTime() : null };
+}
+function applyOwnerSort() {
+  var dir = _ownerSortDir === 'asc' ? 1 : -1;
+  var key = _ownerSortKey;
+  _owners.sort(function (a, b) {
+    var sa = ownerSortValueFor(a, key), sb = ownerSortValueFor(b, key);
+    if (sa.v == null && sb.v == null) return 0;
+    if (sa.v == null) return 1;
+    if (sb.v == null) return -1;
+    var cmp;
+    if (typeof sa.v === 'number') cmp = sa.v - sb.v;
+    else cmp = sa.v < sb.v ? -1 : sa.v > sb.v ? 1 : 0;
+    return cmp * dir;
+  });
+}
+
 async function loadOwners() {
   var c = $id('crmLeadList');
   if (!c) return;
   c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Cargando propietarios...</div>';
   closeDetailPanel();
   try {
-    var r = await db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, created_at').order('full_name', { ascending: true });
+var r = await db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, created_at').is('deleted_at', null);
     if (r.error) throw new Error(r.error.message);
     _owners = r.data || [];
     /* cargar agentes (mapa) */
@@ -135,22 +224,37 @@ async function loadOwners() {
     _agents = (aRes.data || []);
     _agents.forEach(function(x){ _agentMapById[x.id] = x.full_name; });
     window._crmAgents = _agents;
-    // cargar tareas pendientes por owner (no excluidos)
+// cargar tareas pendientes por owner (no excluidos)
     var ids = _owners.map(function (o) { return o.id; });
     _ownerTasks = {};
+    _ownerProps = {};
     if (ids.length) {
-      var tRes = await db().from('owner_tasks').select('owner_id, id, title, description, status, priority, due_date').in('owner_id', ids);
-    var pRes = await db().from('properties').select('id, title, property_code, price_usd, status, owner_id, agent_id').in('owner_id', ids);
-    (pRes.data || []).forEach(function (p) {
-      if (!_ownerProps[p.owner_id]) _ownerProps[p.owner_id] = [];
-      _ownerProps[p.owner_id].push(p);
-    });
-      (tRes.data || []).forEach(function (tk) {
-        if (!_ownerTasks[tk.owner_id]) _ownerTasks[tk.owner_id] = [];
-        _ownerTasks[tk.owner_id].push(tk);
+      var CH = 50, pJobs = [], tJobs = [], k;
+      for (k = 0; k < ids.length; k += CH) {
+        var chunk = ids.slice(k, k + CH);
+        pJobs.push(db().from('properties').select('id, title, property_code, price_usd, status, owner_id, agent_id').in('owner_id', chunk).then(function (r) { return r.data || []; }, function () { return []; }));
+        tJobs.push(db().from('owner_tasks').select('owner_id, id, type, description, status, priority, due_date').in('owner_id', chunk).then(function (r) { return r.data || []; }, function () { return []; }));
+      }
+      var pAll = await Promise.all(pJobs);
+      var tAll = await Promise.all(tJobs);
+      pAll.forEach(function (rows) {
+        (rows || []).forEach(function (p) {
+          if (!_ownerProps[p.owner_id]) _ownerProps[p.owner_id] = [];
+          _ownerProps[p.owner_id].push(p);
+        });
+      });
+      tAll.forEach(function (rows) {
+        (rows || []).forEach(function (tk) {
+          if (!_ownerTasks[tk.owner_id]) _ownerTasks[tk.owner_id] = [];
+          _ownerTasks[tk.owner_id].push(tk);
+        });
       });
     }
+applyOwnerSort();
     renderOwnerList(c);
+    updateOwnerKpis();
+    var sub = $id('crmSubtitle');
+    if (sub) sub.textContent = _totalRows + (_ownerSearch.trim() ? ' propietarios (filtro)' : ' propietarios');
   } catch (e) {
     c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--danger);">Error: ' + esc(e.message) + '</div>';
   }
@@ -183,27 +287,55 @@ function renderOwnerAgentCell(ownerId) {
 }
 
 /* -- Tabla Owners -- */
+function ownerSearchText(o) {
+  var q = _ownerSearch.trim().toLowerCase();
+  if (!q) return true;
+  var hay = [o.full_name, o.dni_cuit, o.email, o.phone, o.address].join(' ').toLowerCase();
+  var ps = _ownerProps[o.id] || [];
+  ps.forEach(function (p) { hay += ' ' + (p.title || '') + ' ' + (p.property_code || ''); });
+  hay += ' ' + ownerAgentNames(o);
+  return hay.indexOf(q) !== -1;
+}
 function renderOwnerList(c) {
-  if (!_owners.length) {
-    c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin propietarios cargados.</div>';
+  _ownerFiltered = _owners.filter(ownerSearchText);
+  if (!_ownerFiltered.length) {
+    c.innerHTML = _owners.length
+      ? '<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin propietarios que coincidan con la búsqueda.</div>'
+      : '<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin propietarios cargados.</div>';
     return;
   }
+  var sortArrow = function (k) {
+    return _ownerSortKey === k ? '<span class="crm-sort-ind">' + (_ownerSortDir === 'asc' ? '\u25B2' : '\u25BC') + '</span>' : '';
+  };
+  _totalRows = _ownerFiltered.length;
+  _totalPages = Math.max(1, Math.ceil(_ownerFiltered.length / PAGE_SIZE));
   var rows = '';
-  for (var i = 0; i < _owners.length; i++) {
-    var o = _owners[i];
+  var start = (_page - 1) * PAGE_SIZE;
+  var end = Math.min(start + PAGE_SIZE, _ownerFiltered.length);
+  for (var i = start; i < end; i++) {
+    var o = _ownerFiltered[i];
     var inits = getInitials(o.full_name);
     var avColor = getAvatarColor(o.full_name);
-    var tareas = (_ownerTasks[o.id] || []).filter(function (tk) { return tk.status !== 'completada' && tk.status !== 'cancelada'; });
+    var tareas = ownerPendingTasks(o);
     var actionClass = tareas.length ? 'crm-activity-dot' : '';
     var contactMetrics = [];
     if (o.email) contactMetrics.push(o.email);
     if (o.phone) contactMetrics.push(o.phone);
+    var tareaCell;
+    if (tareas.length) {
+      var vencidas = tareas.filter(function (tk) { return tk.due_date && new Date(tk.due_date).getTime() < Date.now(); }).length;
+      var tip = tareas.map(function (tk) { return (tk.type || 'Tarea') + (tk.due_date ? ' - vence ' + fmtDate(tk.due_date) : ''); }).join(' | ');
+      var cls = vencidas ? 'crm-priority crm-priority--alta' : 'crm-priority crm-priority--media';
+      tareaCell = '<span class="' + cls + '" style="cursor:pointer;" title="' + esc(tip) + '" data-action="viewOwnerTasks" data-id="' + o.id + '">' + tareas.length + ' pendiente' + (tareas.length > 1 ? 's' : '') + (vencidas ? ' <span style="color:var(--danger);font-weight:800;">(' + vencidas + ' venc.)</span>' : '') + '</span>';
+    } else {
+      tareaCell = '<span class="crm-muted">—</span>';
+    }
     rows += '<tr class="crm-row" data-id="' + o.id + '" data-kind="owner">' +
       '<td><div class="crm-client-row"><span class="crm-client-avatar" style="background:' + avColor + '">' + inits + '</span><div><strong>' + esc(o.full_name) + '</strong>' + (o.exclusive ? '<span class="crm-tipo-chip crm-tipo-chip--estado">EXCLUSIVO</span>' : '') + '<div class="crm-meta">' + esc(contactMetrics.join(' · ')) + '</div></div></div></td>' +
       '<td>' + (o.dni_cuit ? '<code style="font-size:11px;color:var(--text-secondary);">' + esc(o.dni_cuit) + '</code>' : '<span class="crm-muted">—</span>') + '</td>' +
       '<td>' + renderOwnerPropsCell(o.id) + '</td>' +
       '<td>' + renderOwnerAgentCell(o.id) + '</td>' +
-      '<td>' + (tareas.length ? '<span class="crm-priority crm-priority--media">' + tareas.length + ' pendientes</span>' : '<span class="crm-muted">—</span>') + '</td>' +
+      '<td>' + tareaCell + '</td>' +
       '<td>' + (o.exclusive && o.exclusive_end ? fmtDate(o.exclusive_end) : '<span class="crm-muted">—</span>') + '</td>' +
       '<td>' + (o.created_at ? fmtDate(o.created_at) : '—') + '</td>' +
       '<td class="crm-td-actions">' +
@@ -215,15 +347,43 @@ function renderOwnerList(c) {
   c.innerHTML =
     '<div class="crm-table-wrap luxury-table-wrap"><table class="luxury-table crm-table">' +
       '<thead><tr>' +
-        '<th>Propietario</th><th>DNI/CUIT</th><th>Propiedades</th><th>Agente asignado</th><th>Tareas pendientes</th><th>Exclusivo hasta</th><th>Creado</th><th></th>' +
+        '<th class="crm-th-sort" data-sort="propietario">Propietario' + sortArrow('propietario') + '</th>' +
+        '<th class="crm-th-sort" data-sort="dni">DNI/CUIT' + sortArrow('dni') + '</th>' +
+        '<th class="crm-th-sort" data-sort="propiedades">Propiedades' + sortArrow('propiedades') + '</th>' +
+        '<th class="crm-th-sort" data-sort="agente">Agente asignado' + sortArrow('agente') + '</th>' +
+        '<th class="crm-th-sort" data-sort="tareas">Tareas pendientes' + sortArrow('tareas') + '</th>' +
+        '<th class="crm-th-sort" data-sort="exclusivo">Exclusivo hasta' + sortArrow('exclusivo') + '</th>' +
+        '<th class="crm-th-sort" data-sort="creado">Creado' + sortArrow('creado') + '</th><th></th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>' + buildPagination();
   c.querySelectorAll('.crm-row').forEach(function (r) {
     r.addEventListener('click', function () { openOwnerPanel(this.dataset.id); });
   });
-  c.querySelectorAll('[data-action="viewOwner"],[data-action="addOwnerNote"]').forEach(function (b) {
+c.querySelectorAll('[data-action="viewOwner"],[data-action="addOwnerNote"]').forEach(function (b) {
     b.addEventListener('click', function (e) {
       e.stopPropagation();
       openOwnerPanel(this.dataset.id);
+    });
+  });
+  c.querySelectorAll('[data-action="viewOwnerTasks"]').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openOwnerPanel(this.dataset.id);
+    });
+  });
+  c.querySelectorAll('th[data-sort]').forEach(function (th) {
+    th.addEventListener('click', function () {
+      var k = this.dataset.sort;
+      if (_ownerSortKey === k) _ownerSortDir = _ownerSortDir === 'asc' ? 'desc' : 'asc';
+      else { _ownerSortKey = k; _ownerSortDir = OWNER_DEFAULT_SORT_DIR[k] || 'asc'; }
+      applyOwnerSort();
+      renderOwnerList(c);
+    });
+  });
+  c.querySelectorAll('[data-page]').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      _page = parseInt(this.dataset.page, 10) || 1;
+      renderOwnerList(c);
     });
   });
 }
@@ -234,51 +394,63 @@ async function loadLeads() {
   c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Cargando prospectos...</div>';
   closeDetailPanel();
   try {
-    var from = (_page - 1) * PAGE_SIZE;
-    var to = from + PAGE_SIZE - 1;
     var countRes = await applyBaseFilters(
       db().from('leads').select('id', { count: 'exact', head: true }));
     _totalRows = (countRes && countRes.count) || 0;
-    _totalPages = Math.max(1, Math.ceil(_totalRows / PAGE_SIZE));
 
-    var q = applyBaseFilters(db().from('leads').select('id, full_name, email, phone, whatsapp, stage, source, tipo_cliente, operation_type, lead_score, assigned_to, property_id, next_followup_at, last_contacted_at, created_at')
-      .order('created_at', { ascending: false }).range(from, to));
+    var q = applyBaseFilters(db().from('leads').select('id, full_name, email, phone, whatsapp, stage, source, tipo_cliente, operation_type, lead_score, assigned_to, property_id, next_followup_at, last_contacted_at, created_at'));
     var r = await q;
     if (r.error) { throw new Error(r.error.message); }
     _leads = r.data || [];
+    _totalPages = Math.max(1, Math.ceil(_leads.length / PAGE_SIZE));
 
-    /* Enriquecer: agente + propiedad */
+/* Enriquecer: agente + propiedad (campo directo + join lead_properties) */
     _agents.forEach(function (a) { _agentMapById[a.id] = a.full_name; });
+    var leadIds = _leads.map(function (x) { return x.id; });
     var propIds = {};
     _leads.forEach(function (l) { if (l.property_id) propIds[l.property_id] = true; });
+    var linkByLead = {};
+    if (leadIds.length) {
+      try {
+        var lpRes = await db().from('lead_properties').select('lead_id, property_id').in('lead_id', leadIds);
+        (lpRes.data || []).forEach(function (lp) {
+          if (!lp || !lp.property_id) return;
+          if (!linkByLead[lp.lead_id]) linkByLead[lp.lead_id] = [];
+          if (linkByLead[lp.lead_id].indexOf(lp.property_id) === -1) linkByLead[lp.lead_id].push(lp.property_id);
+          propIds[lp.property_id] = true;
+        });
+      } catch (e) {}
+    }
     var props = {};
     var ids = Object.keys(propIds);
     if (ids.length) {
-      var pr = await db().from('properties').select('id, title, image_urls').in('id', ids);
+      var pr = await db().from('properties').select('id, title, property_code, image_urls').in('id', ids);
       (pr.data || []).forEach(function (p) { props[p.id] = p; });
     }
-    var leadIds = _leads.map(function (x) { return x.id; });
     var visitsByLead = {}, tasksByLead = {};
     if (leadIds.length) {
       try {
         var vRes = await db().from('visits').select('lead_id, visit_date, status').in('lead_id', leadIds);
         (vRes.data || []).forEach(function (v) { if (!visitsByLead[v.lead_id]) visitsByLead[v.lead_id] = []; visitsByLead[v.lead_id].push(v); });
-        var tRes = await db().from('lead_tasks').select('lead_id, status, due_at').in('lead_id', leadIds);
+        var tRes = await db().from('lead_tasks').select('lead_id, status, due_at, title').in('lead_id', leadIds);
         (tRes.data || []).forEach(function (tk) { if (!tasksByLead[tk.lead_id]) tasksByLead[tk.lead_id] = []; tasksByLead[tk.lead_id].push(tk); });
       } catch (e) {}
     }
     _nextActions = {};
-    _leads.forEach(function (l) {
+_leads.forEach(function (l) {
       l.agent_name = _agentMapById[l.assigned_to] || null;
-      l.props = l.property_id && props[l.property_id]
-        ? [{ property_id: l.property_id, property_title: props[l.property_id].title, image: (props[l.property_id].image_urls || [])[0] || null }]
-        : [];
+      var pIds = [];
+      if (l.property_id) pIds.push(l.property_id);
+      (linkByLead[l.id] || []).forEach(function (pid) { if (pIds.indexOf(pid) === -1) pIds.push(pid); });
+      l.props = pIds
+        .filter(function (pid) { return props[pid]; })
+        .map(function (pid) { return { property_id: pid, property_code: props[pid].property_code || null, property_title: props[pid].title, image: (props[pid].image_urls || [])[0] || null }; });
     });
-
     _nextActions = {};
     _leads.forEach(function (l) {
       _nextActions[l.id] = recommendedNextAction(l, visitsByLead[l.id] || [], tasksByLead[l.id] || []);
     });
+    applySort();
     renderLeadList(c);
     updateKpis();
     var sub = $id('crmSubtitle');
@@ -290,8 +462,34 @@ async function loadLeads() {
   }
 }
 
+function setKpiLabels(labels) {
+  var els = document.querySelectorAll('.crm-kpis .crm-kpi-label');
+  for (var i = 0; i < els.length && i < labels.length; i++) els[i].textContent = labels[i];
+}
+
+function updateOwnerKpis() {
+  var total = _owners.length;
+  var exclusivos = 0;
+  var vencidas = 0;
+  var props = 0;
+  _owners.forEach(function (o) {
+    if (o.exclusive) exclusivos++;
+    props += (_ownerProps[o.id] || []).length;
+    ownerPendingTasks(o).forEach(function (tk) {
+      if (tk.due_date && new Date(tk.due_date).getTime() < Date.now()) vencidas++;
+    });
+  });
+  setKpiLabels(['Propietarios', 'Exclusivos', 'Vencidas', 'Propiedades']);
+  var el;
+  el = $id('crmKpiTotal'); if (el) el.textContent = total;
+  el = $id('crmKpiNuevo'); if (el) el.textContent = exclusivos;
+  el = $id('crmKpiGanados'); if (el) el.textContent = vencidas;
+  el = $id('crmKpiPerdidos'); if (el) el.textContent = props;
+}
+
 async function updateKpis() {
   try {
+    setKpiLabels(['Total', 'Nuevos', 'Ganados', 'Perdidos']);
     var stages = ['nuevo', 'cerrado_ganado', 'cerrado_perdido'];
     var out = { total: _totalRows, nuevo: 0, ganados: 0, perdidos: 0 };
     await Promise.all(stages.map(function (s) {
@@ -317,7 +515,9 @@ function renderLeadList(c) {
     return;
   }
   var rows = '';
-  for (var i = 0; i < _leads.length; i++) {
+  var start = (_page - 1) * PAGE_SIZE;
+  var end = Math.min(start + PAGE_SIZE, _leads.length);
+  for (var i = start; i < end; i++) {
     var l = _leads[i];
     var stage = normalizeStage(l.stage || 'nuevo');
     var inits = getInitials(l.full_name);
@@ -325,13 +525,14 @@ function renderLeadList(c) {
     var sb = '<span class="crm-status-badge crm-status-badge--' + stage + '"><span class="crm-status-dot crm-status-dot--' + stage + '"></span>' + (STATUS_LABELS[stage] || stage) + '</span>';
     var pr = getPriority(l.lead_score);
     var pb = '<span class="crm-priority crm-priority--' + pr + '">' + getPriorityLabel(pr) + '</span>';
-    var propCell;
+var propCell;
     if (l.props && l.props.length) {
       var p = l.props[0];
       var thumb = p.image
         ? '<img class="crm-prop-thumb" src="' + esc(p.image) + '" alt="" loading="lazy">'
         : '<span class="crm-prop-thumb crm-prop-thumb--empty"><i class="fas fa-house-chimney"></i></span>';
-      propCell = '<div class="crm-prop-row">' + thumb + '<span class="crm-prop-name">' + esc(p.property_title || 'Propiedad') + '</span></div>';
+      var code = p.property_code || ('PROP-' + String(p.property_id).slice(0, 6)).toUpperCase();
+      propCell = '<div class="crm-prop-row">' + thumb + '<div class="crm-prop-info"><span class="crm-prop-code crm-prop-code--sm" title="' + esc(p.property_title || 'Propiedad') + '">' + esc(code) + '</span><span class="crm-prop-name">' + esc(p.property_title || 'Propiedad') + '</span></div></div>';
     } else {
       propCell = '<span class="crm-prop-name crm-muted">Sin propiedad</span>';
     }
@@ -341,9 +542,19 @@ function renderLeadList(c) {
     var actDot = hasRecentActivity(l.last_contacted_at) ? '<span class="crm-activity-dot"></span> ' : '';
     var actTxt = l.last_contacted_at ? fmtDate(l.last_contacted_at) : '&#8212;';
     var rec = _nextActions[l.id];
-    var nextTxt = l.next_followup_at
-      ? '<span class="crm-next-action' + (isFollowupDue(l.next_followup_at) ? ' crm-next-action--due' : '') + '" title="' + (rec ? esc(rec) : 'Próx. acción programada') + '">' + fmtDate(l.next_followup_at) + '</span>'
-      : (rec ? '<span class="crm-next-action crm-next-action--due" title="' + esc(rec) + '">⚠</span>' : '<span class="crm-muted">&#8212;</span>');
+    var nextTxt;
+    if (rec && rec.kind === 'task') {
+      var taskDate = rec.due ? fmtDate(rec.due) : null;
+      nextTxt = '<span class="crm-next-action' + (rec.due && isFollowupDue(rec.due) ? ' crm-next-action--due' : '') + '" title="' + esc(rec.label) + '">' + (taskDate || 'Tarea') + '</span>';
+    } else if (l.next_followup_at) {
+      nextTxt = '<span class="crm-next-action' + (isFollowupDue(l.next_followup_at) ? ' crm-next-action--due' : '') + '" title="' + (rec ? esc(rec.label) : 'Próx. acción programada') + '">' + fmtDate(l.next_followup_at) + '</span>';
+    } else if (rec && rec.kind === 'recommend') {
+      nextTxt = '<span class="crm-next-action crm-next-action--recommend" title="' + esc(rec.label) + '">Recomendar la próxima tarea</span>';
+    } else if (rec && rec.kind === 'assign') {
+      nextTxt = '<span class="crm-next-action crm-next-action--assign" title="Asignar una tarea pendiente a este lead">Asignar próxima tarea</span>';
+    } else {
+      nextTxt = '<span class="crm-muted">&#8212;</span>';
+    }
     var createdTxt = l.created_at ? fmtDate(l.created_at) : '&#8212;';
     var tipoChip = l.tipo_cliente ? '<span class="crm-tipo-chip crm-tipo-chip--' + esc(l.tipo_cliente) + '">' + esc(l.tipo_cliente) + '</span>' : '';
     rows +=
@@ -363,11 +574,20 @@ function renderLeadList(c) {
         '</td>' +
       '</tr>';
   }
+  var sortArrow = function (k) {
+    return _sortKey === k ? '<span class="crm-sort-ind">' + (_sortDir === 'asc' ? '\u25B2' : '\u25BC') + '</span>' : '';
+  };
   c.innerHTML =
     '<div class="crm-table-wrap luxury-table-wrap"><table class="luxury-table crm-table">' +
       '<thead><tr>' +
-        '<th>Cliente</th><th>Propiedad</th><th>Agente</th><th>Estado</th><th>Prioridad</th>' +
-        '<th>Actividad</th><th>Prox. Accion</th><th>Creado</th><th></th>' +
+        '<th class="crm-th-sort" data-sort="cliente">Cliente' + sortArrow('cliente') + '</th>' +
+        '<th class="crm-th-sort" data-sort="propiedad">Propiedad' + sortArrow('propiedad') + '</th>' +
+        '<th>Agente</th>' +
+        '<th class="crm-th-sort" data-sort="estado">Estado' + sortArrow('estado') + '</th>' +
+        '<th class="crm-th-sort" data-sort="prioridad">Prioridad' + sortArrow('prioridad') + '</th>' +
+        '<th class="crm-th-sort" data-sort="actividad">Actividad' + sortArrow('actividad') + '</th>' +
+        '<th class="crm-th-sort" data-sort="prox">Prox. Accion' + sortArrow('prox') + '</th>' +
+        '<th class="crm-th-sort" data-sort="created">Creado' + sortArrow('created') + '</th><th></th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>' + buildPagination();
   bindListHandlers(c);
 }
@@ -394,6 +614,15 @@ function bindListHandlers(c) {
   });
   c.querySelectorAll('[data-page]').forEach(function (b) {
     b.addEventListener('click', function (e) { e.stopPropagation(); _page = parseInt(this.dataset.page, 10) || 1; loadLeads(); });
+  });
+  c.querySelectorAll('th[data-sort]').forEach(function (th) {
+    th.addEventListener('click', function () {
+      var k = this.dataset.sort;
+      if (_sortKey === k) _sortDir = _sortDir === 'asc' ? 'desc' : 'asc';
+      else { _sortKey = k; _sortDir = DEFAULT_SORT_DIR[k] || 'asc'; }
+      _page = 1;
+      loadLeads();
+    });
   });
 }
 
@@ -428,11 +657,11 @@ function getLeadProps(id) {
     }).catch(function () { return []; });
 }
 
-function openDetailPanel(id) {
-  /* fix de stacking/clipping: el panel vive dentro de #tab-leads, que está dentro de un contenedor con overflow.
-     position:fixed quedaría restringido a ese padre (se ve cortado y los clics no escucha). Lo movemos a <body>. */
-  var _panelNode = $id('crmSidePanel');
-  if (_panelNode && _panelNode.parentNode !== document.body) { document.body.appendChild(_panelNode); }
+function openDetailPanel(id) {
+  /* fix de stacking/clipping: el panel vive dentro de #tab-leads, que está dentro de un contenedor con overflow.
+     position:fixed quedaría restringido a ese padre (se ve cortado y los clics no escucha). Lo movemos a <body>. */
+  var _panelNode = $id('crmSidePanel');
+  if (_panelNode && _panelNode.parentNode !== document.body) { document.body.appendChild(_panelNode); }
 
   _selectedLeadId = id;
   var panel = $id('crmSidePanel');
@@ -709,8 +938,17 @@ function bindPropSearch(panel, leadId) {
     wrap.className = 'crm-prop-results';
     list.forEach(function (p) {
       var b = document.createElement('button');
-      b.className = 'btn-action crm-prop-result-btn';
-      b.textContent = p.title || 'Propiedad';
+      b.className = 'crm-prop-result-btn';
+      b.type = 'button';
+      var imgUrl = (p.image_urls && p.image_urls[0]) ? safeCssUrl(p.image_urls[0]) : '';
+      var thumb = imgUrl
+        ? '<span class="crm-prop-result-thumb" style="background-image:url(' + imgUrl + ')"></span>'
+        : '<span class="crm-prop-result-thumb"><i class="fas fa-home"></i></span>';
+      b.innerHTML = thumb +
+        '<span class="crm-prop-result-text">' +
+          '<span class="crm-prop-result-code">' + esc(p.property_code || '—') + '</span>' +
+          '<span class="crm-prop-result-title">' + esc(p.title || 'Propiedad') + '</span>' +
+        '</span>';
       b.addEventListener('click', function (e) {
         e.stopPropagation();
         linkProperty(leadId, p.id, panel);
@@ -727,7 +965,7 @@ function bindPropSearch(panel, leadId) {
     if (dd) dd.remove();
     if (val.length < 2) return;
     timer = setTimeout(function () {
-      db().from('properties').select('id, title').ilike('title', '%' + val.replace(/[%_]/g, ' ') + '%').limit(8)
+      db().from('properties').select('id, title, property_code, image_urls').ilike('title', '%' + val.replace(/[%_]/g, ' ') + '%').limit(8)
         .then(function (r) { renderResults(r.data || []); })
         .catch(function () {});
     }, 300);
@@ -735,7 +973,7 @@ function bindPropSearch(panel, leadId) {
   btn.addEventListener('click', async function () {
     var val = inp.value.trim();
     if (!val) { toast('Ingresa un titulo.', 'error'); return; }
-    var r = await db().from('properties').select('id, title').ilike('title', '%' + val.replace(/[%_]/g, ' ') + '%').limit(5);
+    var r = await db().from('properties').select('id, title, property_code, image_urls').ilike('title', '%' + val.replace(/[%_]/g, ' ') + '%').limit(5);
     if (!r.data || !r.data.length) { toast('No se encontraron propiedades.', 'error'); return; }
     renderResults(r.data);
   });
@@ -750,7 +988,7 @@ async function linkProperty(leadId, propertyId, panel) {
     var inp = panel.querySelector('#crmDtlPropSearch'); if (inp) inp.value = '';
     var props = await getLeadProps(leadId);
     rerenderProps(panel, leadId, props);
-    await db().from('lead_activities').insert([{ lead_id: leadId, activity_type: 'note', title: 'Propiedad vinculada' }]).catch(function () {});
+    await db().from('lead_activities').insert([{ lead_id: leadId, activity_type: 'note', title: 'Propiedad vinculada' }]).then(function () {}, function () {});
   } catch (e) { toast('Error: ' + e.message, 'error'); }
 }
 
@@ -847,9 +1085,18 @@ function init() {
   var btn = $id('btnNewLead');
   if (btn && !btn.dataset.crmBound) { btn.dataset.crmBound = '1'; /* el modal existente hace submit a loadCRM */ }
   var search = $id('crmSearch');
-  if (search) search.addEventListener('input', function () {
+if (search) search.addEventListener('input', function () {
     clearTimeout(_searchTimer);
-    _searchTimer = setTimeout(function () { _page = 1; loadLeads(); }, 350);
+    _searchTimer = setTimeout(function () {
+      _page = 1;
+      if (_viewMode === 'owners') {
+        _ownerSearch = search.value;
+        var c = $id('crmLeadList');
+        if (c) renderOwnerList(c);
+      } else {
+        loadLeads();
+      }
+    }, 350);
   });
   ['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmAgentFilter'].forEach(function (id) {
     var el = $id(id);
@@ -898,24 +1145,48 @@ function _bindViewModeToggle() {
   btn.addEventListener('click', function () {
     _viewMode = _viewMode === 'leads' ? 'owners' : 'leads';
     console.log('CRM mode:', _viewMode);
+    _ownerSearch = '';
+    var sr = $id('crmSearch');
+    if (sr) sr.value = '';
+    _page = 1;
     _syncHeader();
     if (_viewMode === 'owners') loadOwners(); else loadLeads();
   });
+  var ownerBtn = $id('btnNewOwnerCrm');
+  if (ownerBtn && !ownerBtn.dataset.crmBound) {
+    ownerBtn.dataset.crmBound = '1';
+    ownerBtn.addEventListener('click', function () {
+      var nb = document.getElementById('btnNewOwner');
+      if (nb) nb.click();
+      else {
+        var chip = document.querySelector('.quick-action-chip[data-action="openOwnerModal"]');
+        if (chip) chip.click();
+      }
+    });
+  }
 }
 function _syncHeader() {
+  var ownersMode = _viewMode === 'owners';
   var btn = $id('crmModeToggle');
   var newLead = $id('btnNewLead');
+  var newOwnerCrm = $id('btnNewOwnerCrm');
   var titleEl = $id('crmTitle');
+  var searchEl = $id('crmSearch');
+  var leadOnly = ['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmAgentFilter', 'crmFollowupWrap'];
   if (btn) {
-    btn.innerHTML = _viewMode === 'leads'
-      ? '<i class="fas fa-user-tie"></i> Propietarios'
-      : '<i class="fas fa-users"></i> Leads';
+    btn.innerHTML = ownersMode
+      ? '<i class="fas fa-users"></i> Leads'
+      : '<i class="fas fa-user-tie"></i> Propietarios';
   }
-  if (newLead) {
-    newLead.style.display = _viewMode === 'leads' ? '' : 'none';
-  }
+  if (newLead) newLead.style.display = ownersMode ? 'none' : '';
+  if (newOwnerCrm) newOwnerCrm.style.display = ownersMode ? '' : 'none';
+  if (searchEl) searchEl.placeholder = ownersMode ? 'Buscar propietario, CUIT o inmueble...' : 'Buscar nombre, email o teléfono...';
+  leadOnly.forEach(function (id) {
+    var el = $id(id);
+    if (el) el.style.display = ownersMode ? 'none' : '';
+  });
   if (titleEl) {
-    titleEl.textContent = _viewMode === 'leads' ? 'Leads & CRM' : 'Propietarios y Asignaciones';
+    titleEl.textContent = ownersMode ? 'Propietarios y Asignaciones' : 'Leads & CRM';
   }
 }
 
@@ -969,13 +1240,13 @@ function openOwnerPanel(ownerId) {
               ? props.map(function (p) { return '<div class="crm-prop-item"><span>' + esc(p.title || 'Sin título') + '</span><span style="margin-left:8px;color:var(--text-dim);font-size:11px;text-transform:uppercase;"><' + (p.status || 'sm') + '></span></div>'; }).join('')
               : '<div class="crm-side-field-value">Sin propiedades asignadas</div>') +
           '</div></div>' +
-        // tareas
-        '<div class="crm-side-section"><h4 class="crm-side-section-title">Tareas pendientes (' + tasks.filter(function(tk){ return tk.status === 'pendiente'; }).length + ')</h4>' +
+// tareas
+        '<div class="crm-side-section"><h4 class="crm-side-section-title">Tareas pendientes (' + openOwnerTasksList(tasks).length + ')</h4>' +
           '<div class="crm-side-fields">' +
-            (tasks.filter(function(tk){return tk.status !== 'completada' && tk.status !== 'cancelada'; }).length
-              ? tasks.filter(function(tk){return tk.status !== 'completada' && tk.status !== 'cancelada'; }).map(function (tk) {
+            (openOwnerTasksList(tasks).length
+              ? openOwnerTasksList(tasks).map(function (tk) {
                   return '<div class="crm-prop-item" style="flex-direction:column;align-items:flex-start;gap:4px;">' +
-                    '<strong style="font-size:13px;color:#fff;">' + esc(tk.title) + '</strong>' +
+                    '<strong style="font-size:13px;color:#fff;">' + esc(tk.type || 'Tarea') + '</strong>' +
                     '<div style="font-size:12px;color:var(--text-secondary);">' + esc(tk.description || '') + '</div>' +
                     '<div style="font-size:11px;color:var(--text-dim);">' + (tk.due_date ? fmtDateTime(tk.due_date) : 'sin fecha') + ' · ' + esc(tk.priority) + '</div>' +
                     '<button class="btn-action" style="margin-top:6px;font-size:11px;" data-action="completeOwnerTask" data-task-id="' + tk.id + '"><i class="fas fa-check"></i> Completar</button>' +
@@ -1023,10 +1294,10 @@ function openOwnerPanel(ownerId) {
       saveBtn.disabled = true;
       saveBtn.textContent = 'Guardando...';
       try {
-        var rr = await db().from('owner_tasks').insert([{
+var rr = await db().from('owner_tasks').insert([{
           owner_id: ownerId,
-          title: title.trim(),
-          description: desc.trim() || null,
+          type: title.trim(),
+          description: desc.trim() || ' ',
           due_date: due || new Date().toISOString(),
           priority: prio,
           status: 'pendiente'
@@ -1163,15 +1434,21 @@ function buildUnifiedTimeline(activities, visits, tasks) {
   }).join('');
 }
 
-/* sugerencia de next-action: si no hay nada pendiente, recomendar Followup */
+/* próxima acción: prioriza la tarea pendiente más próxima; si no hay, recomendar Followup */
 function recommendedNextAction(lead, visits, tasks) {
-  var hasPendingTask = (tasks || []).some(function (t) { return t.status === 'pendiente' || t.status === 'en_progreso'; });
-  var hasFutureVisit = (visits || []).some(function (v) { return new Date(v.visit_date).getTime() > Date.now() && v.status !== 'cancelada'; });
-  if (hasPendingTask) return null;
-  if (hasFutureVisit) return null;
-  if (!lead.last_contacted_at) return 'Sin contacto aún. Sugerencia: llamada o WhatsApp.';
+  var pending = (tasks || []).filter(function (t) { return t.status === 'pendiente' || t.status === 'en_progreso'; });
+  if (pending.length) {
+    pending.sort(function (a, b) {
+      var da = a.due_at ? new Date(a.due_at).getTime() : Infinity;
+      var db = b.due_at ? new Date(b.due_at).getTime() : Infinity;
+      return da - db;
+    });
+    var t = pending[0];
+    return { kind: 'task', due: t.due_at || null, label: (t.title || 'Tarea') + (t.due_at ? ' · ' + fmtDate(t.due_at) : '') };
+  }
+  if (!lead.last_contacted_at) return { kind: 'recommend', label: 'Sin contacto aún. Sugerencia: llamada o WhatsApp.' };
   var days = Math.floor((Date.now() - new Date(lead.last_contacted_at).getTime()) / 86400000);
-  if (days >= 7) return 'Sin contacto desde hace ' + days + ' días. Considerar followup.';
-  return null;
+  if (days >= 7) return { kind: 'recommend', label: 'Sin contacto desde hace ' + days + ' días. Considerar followup.' };
+  return { kind: 'assign', label: 'Asignar próxima tarea' };
 }
 })();
