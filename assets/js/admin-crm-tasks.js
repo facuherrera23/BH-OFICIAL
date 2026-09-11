@@ -152,10 +152,23 @@ function showTaskForm(leadId, taskId, panel) {
       if (r.error) throw new Error(r.error.message);
       toast('Tarea creada.', 'success');
       q.innerHTML = '';
-      await loadLeadTasks(leadId, panel);
+      if (leadId && window.BH_CRM && typeof window.BH_CRM.refresh === 'function') {
+        window.BH_CRM.refresh();
+        window.BH_CRM.open(leadId);
+      } else {
+        await loadLeadTasks(leadId, panel);
+      }
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   });
 }
 
-window.CrmTasks = { loadLeadTasks: loadLeadTasks, showTaskForm: showTaskForm };
+window.CrmTasks = {
+  loadLeadTasks: loadLeadTasks,
+  showTaskForm: showTaskForm,
+  completeTask: completeTask,
+  deleteTask: deleteTask,
+  priorityLabels: TASK_PRIORITY_LABELS,
+  statusLabels: TASK_STATUS_LABELS,
+  priorityClass: taskPriorityClass
+};
 })();

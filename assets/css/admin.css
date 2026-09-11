@@ -2724,6 +2724,77 @@ input[type="range"]::-moz-range-thumb {
 .calendar-legend .badge-dot { width: 8px; height: 8px; }
 
 /* ================================================================
+   AGENDA UNIFICADA - vistas semana/dia + colores por tipo
+   ================================================================ */
+.cal-view-switcher { display: flex; gap: 6px; }
+.calendar-week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.calendar-day-view { display: block; }
+
+.cal-week-col {
+    min-height: 120px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 6px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+.cal-week-col:hover { border-color: var(--border-accent); }
+.cal-week-col.today { border-color: var(--accent); background: rgba(31, 200, 195, 0.07); }
+.cal-week-day-head { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-bottom: 6px; }
+.cal-week-dayname { font-size: 10px; text-transform: uppercase; color: var(--text-dim); font-weight: 600; }
+.cal-week-daynum { font-size: 13px; font-weight: 700; color: var(--text-muted); }
+.cal-week-col.today .cal-week-daynum { color: var(--accent); }
+.cal-week-events { display: flex; flex-direction: column; gap: 3px; align-items: stretch; }
+.cal-week-empty { font-size: 10px; color: var(--text-dim); text-align: center; padding: 8px 0; opacity: 0.6; }
+
+.cal-day-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+.cal-day-row:hover { border-color: var(--border-accent); }
+.cal-day-row-time { min-width: 52px; font-size: 11px; font-weight: 600; color: var(--text-muted); padding-top: 3px; }
+.cal-day-row-main { flex: 1; min-width: 0; }
+.cal-day-row-main .cal-event { white-space: normal; font-size: 12px; padding: 4px 8px; }
+.cal-day-row-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.cal-day-empty { text-align: center; padding: 40px 0; color: var(--text-dim); font-size: 12px; }
+
+.ag-event-time { font-weight: 600; font-size: 9px; opacity: 0.85; margin-right: 2px; }
+
+.cal-event.ev-visita { background: rgba(52, 211, 153, 0.14); color: #34d399; }
+.cal-event.ev-llamada { background: rgba(96, 165, 250, 0.14); color: #60a5fa; }
+.cal-event.ev-nota { background: rgba(251, 191, 36, 0.14); color: #fbbf24; }
+.cal-event.ev-email { background: rgba(34, 211, 238, 0.14); color: #22d3ee; }
+.cal-event.ev-followup { background: rgba(251, 146, 60, 0.14); color: #fb923c; }
+.cal-event.ev-tarea { background: rgba(167, 139, 250, 0.14); color: #a78bfa; }
+.cal-event.ev-cambio { background: rgba(148, 163, 184, 0.14); color: #94a3b8; }
+.cal-event.ev-alerta { background: rgba(248, 113, 113, 0.14); color: #f87171; }
+.cal-event.ev-comision { background: rgba(110, 231, 183, 0.14); color: #6ee7b7; }
+.cal-event.ev-documento { background: rgba(129, 140, 248, 0.14); color: #818cf8; }
+.cal-event.ev-contacto { background: rgba(244, 114, 182, 0.14); color: #f472b6; }
+
+.badge-dot.ev-dot-visita { background: #34d399; box-shadow: 0 0 6px #34d399; }
+.badge-dot.ev-dot-llamada { background: #60a5fa; box-shadow: 0 0 6px #60a5fa; }
+.badge-dot.ev-dot-nota { background: #fbbf24; box-shadow: 0 0 6px #fbbf24; }
+.badge-dot.ev-dot-email { background: #22d3ee; box-shadow: 0 0 6px #22d3ee; }
+.badge-dot.ev-dot-followup { background: #fb923c; box-shadow: 0 0 6px #fb923c; }
+.badge-dot.ev-dot-tarea { background: #a78bfa; box-shadow: 0 0 6px #a78bfa; }
+.badge-dot.ev-dot-cambio { background: #94a3b8; box-shadow: 0 0 6px #94a3b8; }
+.badge-dot.ev-dot-alerta { background: #f87171; box-shadow: 0 0 6px #f87171; }
+.badge-dot.ev-dot-comision { background: #6ee7b7; box-shadow: 0 0 6px #6ee7b7; }
+.badge-dot.ev-dot-documento { background: #818cf8; box-shadow: 0 0 6px #818cf8; }
+.badge-dot.ev-dot-contacto { background: #f472b6; box-shadow: 0 0 6px #f472b6; }
+
+
+/* ================================================================
    39. UTILIDADES DE LAYOUT & ESPACIADO
    ================================================================ */
 .flex-row { display: flex; align-items: center; }
@@ -4329,8 +4400,8 @@ input[type="range"]::-moz-range-thumb {
 /* --------------------------------------------------------- */
 /* PANEL LATERAL                                             */
 /* --------------------------------------------------------- */
-.crm-side-panel{position:fixed;top:0;right:-28rem;width:min(28rem,100vw);height:100%;background:#0d0f14;border-left:1px solid var(--border-subtle);z-index:100000;transition:right .25s ease;display:flex;flex-direction:column}
-.crm-side-panel.open{right:0}
+.crm-side-panel{position:fixed;top:0;right:0;width:min(max(28rem,46vw),100vw);height:100%;background:#0d0f14;border-left:1px solid var(--border-subtle);z-index:100000;transition:transform .25s ease;transform:translateX(100%);display:flex;flex-direction:column}
+.crm-side-panel.open{transform:none}
 .crm-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:99999;opacity:0;pointer-events:none;transition:opacity .2s}
 .crm-backdrop.open{opacity:1;pointer-events:auto}
 .crm-side-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--border-subtle)}
@@ -4478,8 +4549,8 @@ input[type="range"]::-moz-range-thumb {
 .crm-qa-btn[data-action="scheduleVisit"]{color:#a78bfa}
 .crm-qa-btn[data-action="scheduleVisit"]:hover{border-color:#a78bfa;color:#a78bfa;box-shadow:0 6px 16px rgba(167,139,250,0.15)}
 
-.crm-qa-btn[data-action="scheduleFollowup"]{color:var(--accent)}
-.crm-qa-btn[data-action="scheduleFollowup"]:hover{border-color:var(--accent);color:var(--accent);box-shadow:0 6px 16px rgba(31,200,195,0.15)}
+#crmQaTaskBtn{color:var(--accent)}
+#crmQaTaskBtn:hover{border-color:var(--accent);color:var(--accent);box-shadow:0 6px 16px rgba(31,200,195,0.15)}
 
 .crm-qa-btn--danger{color:#f87171}
 .crm-qa-btn--danger:hover{border-color:var(--danger);color:var(--danger);box-shadow:0 6px 16px rgba(220,38,38,0.15)}
@@ -4540,3 +4611,65 @@ input[type="range"]::-moz-range-thumb {
 /* Chip propiedad variante */
 .crm-prop-code--sm{padding:2px 6px;font-size:10px}
 .crm-prop-code--muted{background:rgba(255,255,255,0.05);border-color:var(--border-subtle);color:var(--text-dim);font-weight:600}
+
+/* ============================================================
+   CRM QUICK ACTION MENU — menu unico de acciones del lead
+   ============================================================ */
+.crm-qa-menu-wrap{position:relative;margin:12px 0 4px;display:flex;justify-content:flex-end}
+.crm-qa-menu-btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:9px 14px;border-radius:9px;border:1px solid var(--border-subtle);
+  background:rgba(255,255,255,0.04);color:var(--text-main);font-size:13px;font-weight:600;
+  cursor:pointer;transition:all .15s ease;
+}
+.crm-qa-menu-btn:hover{border-color:var(--accent);background:rgba(31,200,195,0.08)}
+.crm-qa-menu-btn i{color:var(--accent);font-size:12px}
+.crm-qa-menu{
+  position:absolute;top:calc(100% + 6px);right:0;z-index:60;min-width:210px;
+  background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:10px;
+  box-shadow:0 12px 32px rgba(0,0,0,0.45);padding:6px;display:none;
+}
+.crm-qa-menu.open{display:flex;flex-direction:column;gap:2px}
+.crm-qa-menu-item{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:9px 12px;border-radius:7px;border:none;background:transparent;
+  color:var(--text-main);font-size:13px;cursor:pointer;transition:background .12s ease;
+}
+.crm-qa-menu-item:hover{background:rgba(255,255,255,0.07)}
+.crm-qa-menu-item i{width:16px;text-align:center;color:var(--text-dim);font-size:12px}
+.crm-qa-menu-item--danger{color:var(--danger)}
+.crm-qa-menu-item--danger i{color:var(--danger)}
+
+/* Fila de acciones rápidas con submenú de "Follow up" */
+.crm-qa-btn-wrap{position:relative;flex:1 1 52px;min-width:52px;display:flex}
+.crm-qa-btn-wrap .crm-qa-btn{flex:1}
+.crm-qa-submenu{
+  position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);z-index:60;
+  min-width:160px;background:var(--bg-surface);border:1px solid var(--border-subtle);
+  border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,0.45);padding:6px;display:none;
+}
+.crm-qa-submenu.open{display:flex;flex-direction:column;gap:2px}
+
+/* ============================================================
+   CRM UNIFIED TIMELINE — tareas accionables en el feed
+   ============================================================ */
+.crm-tl-task-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.crm-tl-task-head strong{flex:1;min-width:0}
+.crm-tl-task-actions{display:flex;align-items:center;gap:2px;flex-shrink:0}
+.crm-tl-task-del{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border-radius:6px;border:none;background:transparent;
+  color:var(--text-dim);font-size:12px;cursor:pointer;transition:all .12s ease;
+}
+.crm-tl-task-del:hover{color:var(--danger);background:var(--danger-bg)}
+.crm-tl-task-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.crm-tl-task--done{opacity:.55}
+.crm-tl-task--done .crm-tl-task-head strong{text-decoration:line-through}
+.crm-tl-status{
+  display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;
+  background:rgba(255,255,255,0.06);color:var(--text-dim);
+}
+.crm-tl-status--done{background:var(--success-bg);color:var(--success)}
+.crm-tl-vencida{color:var(--danger);font-weight:600;font-size:11px}
+.crm-tl-inline-actions{display:flex;gap:6px;margin-top:8px}
+.crm-tl-inline-actions .crm-visit-btn{width:28px;height:28px;font-size:12px}

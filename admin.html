@@ -103,7 +103,7 @@
 <div class="nav-item-left">
 <i class="fas fa-calendar-check">
 </i>
-<span>Agenda de Visitas</span>
+<span>Agenda</span>
 </div>
 <span class="nav-badge" id="sideBadgeVisits">0 Citas</span>
 </div>
@@ -503,39 +503,25 @@
 </section>
 <section class="tab-module" id="tab-agenda">
 <div class="glass-panel">
-<div style="background:rgba(31,200,195,0.06); border:1px solid rgba(31,200,195,0.25); border-radius:12px; padding:12px 16px; margin-bottom:16px; font-size:13px; color:var(--text-secondary); display:flex; align-items:center; gap:10px;"><i class="fas fa-info-circle" style="color:var(--accent); font-size:16px;"></i><span><strong>Vista global:</strong> este calendario reúne todas las visitas. La gestión por cliente se hace en el <strong>panel lateral del CRM</strong> (Leads & CRM → click en una fila → scroll a "Agenda").</span></div><div class="panel-header">
+<div style="background:rgba(31,200,195,0.06); border:1px solid rgba(31,200,195,0.25); border-radius:12px; padding:12px 16px; margin-bottom:16px; font-size:13px; color:var(--text-secondary); display:flex; align-items:center; gap:10px;"><i class="fas fa-info-circle" style="color:var(--accent); font-size:16px;"></i><span><strong>Vista global:</strong> este calendario reúne visitas, tareas, llamadas, notas, emails, followups y cambios de estado de todos tus <strong>leads</strong> y <strong>propietarios</strong>. La gestión por cliente se hace en el <strong>panel lateral del CRM</strong> (Leads & CRM → click en una fila → scroll a "Agenda").</span></div><div class="panel-header">
 <div>
-<h2 class="panel-title">Agenda de Visitas — Vista Global</h2>
-<p style="color:var(--text-muted); font-size:12.5px;">Coordinación de recorridos presenciales con prospectos.</p>
+<h2 class="panel-title">Agenda</h2>
+<p style="color:var(--text-muted); font-size:12.5px;">Toda la actividad de tus clientes y propiedades, en un solo calendario.</p>
 </div>
 <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
 <button class="btn-luxury-action" id="btnNewVisit">+ Agendar Visita</button>
-<div style="display:flex; gap:6px; margin-left:auto;">
-<button class="status-pill" id="btnExportICS" title="Exportar a Calendario (ICS)">
-<i class="fas fa-calendar-plus">
-</i> .ics</button>
-<button class="status-pill" id="btnExportCSV" title="Exportar a Excel (CSV)">
-<i class="fas fa-file-csv">
-</i> .csv</button>
-<button class="status-pill" id="viewCalendarBtn" title="Vista Calendario">
-<i class="fas fa-calendar-alt">
-</i> Calendario</button>
-<button class="status-pill active" id="viewTableBtn" title="Vista Tabla">
-<i class="fas fa-table">
-</i> Tabla</button>
-</div>
 </div>
 </div>
 <!-- Vista Calendario -->
-<div id="visitsCalendarView" style="display:none;">
+<div id="visitsCalendarView">
 <div class="calendar-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
 <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-<button class="btn-action" id="calPrevMonth" title="Mes anterior" style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;">
+<button class="btn-action" id="calPrevMonth" title="Anterior" style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;">
 <i class="fas fa-chevron-left">
 </i>
 </button>
 <h3 id="calCurrentMonth" style="font-family:var(--font-heading); font-size:20px; color:#fff; margin:0; min-width:180px; text-align:center;">Mes Año</h3>
-<button class="btn-action" id="calNextMonth" title="Mes siguiente" style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;">
+<button class="btn-action" id="calNextMonth" title="Siguiente" style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;">
 <i class="fas fa-chevron-right">
 </i>
 </button>
@@ -543,13 +529,33 @@
 <i class="fas fa-calendar-day">
 </i> Hoy</button>
 </div>
+<div class="cal-view-switcher" id="calViewSwitcher" style="display:flex; gap:6px;">
+<button class="status-pill active" id="calViewMonthBtn" title="Vista mes">Mes</button>
+<button class="status-pill" id="calViewWeekBtn" title="Vista semana">Semana</button>
+<button class="status-pill" id="calViewDayBtn" title="Vista día">Día</button>
+</div>
 <div style="display:flex; gap:8px; flex-wrap:wrap;">
 <select id="calStatusFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
 <option value="">Todos los estados</option>
 <option value="pendiente">Pendiente</option>
+<option value="en_progreso">En progreso</option>
 <option value="confirmada">Confirmada</option>
 <option value="completada">Completada</option>
 <option value="cancelada">Cancelada</option>
+</select>
+<select id="calTypeFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
+<option value="">Todos los tipos</option>
+<option value="visita">Visita</option>
+<option value="llamada">Llamada</option>
+<option value="nota">Nota</option>
+<option value="email">Email</option>
+<option value="followup">Followup</option>
+<option value="tarea">Tarea</option>
+<option value="cambio">Cambio de estado</option>
+<option value="alerta">Alerta</option>
+<option value="comision">Comisión</option>
+<option value="documento">Documento</option>
+<option value="contacto">Contacto</option>
 </select>
 <select id="calBrokerFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
 <option value="">Todos los brokers</option>
@@ -567,46 +573,23 @@
 <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Sáb</div>
 <!-- Los días se insertan aquí via JS -->
 </div>
-</div>
-<!-- Vista Tabla (existente) -->
-<div id="visitsTableView">
-<div class="table-responsive">
-<table class="luxury-table">
-<thead>
-<tr>
-<th>Fecha & Hora</th>
-<th>Cliente / Prospecto</th>
-<th>Lead (CRM)</th>
-<th>Propiedad</th>
-<th>Estado</th>
-<th>Vinculado</th>
-<th>Acciones</th>
-</tr>
-</thead>
-<tbody id="visitsTableBody">
-<tr>
-<td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando visitas...</td>
-</tr>
-</tbody>
-</table>
-<div id="visitsPagination" style="display:flex; justify-content:center; align-items:center; gap:12px; margin-top:16px; padding:12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-md); flex-wrap:wrap;">
-<select id="visitsBrokerFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
-<option value="">Todos los brokers</option>
-</select>
-<button id="visitsPagePrev" class="btn-action" title="Página anterior" disabled>
-<i class="fas fa-chevron-left">
-</i>
-</button>
-<span id="visitsPageInfo" style="color:var(--text-secondary); font-size:13px;">Página 1 de 1</span>
-<button id="visitsPageNext" class="btn-action" title="Página siguiente" disabled>
-<i class="fas fa-chevron-right">
-</i>
-</button>
-<select id="visitsPageSize" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:6px 12px; color:#fff; font-size:12px;">
-<option value="25">25 por página</option>
-<option value="50">50 por página</option>
-<option value="100">100 por página</option>
-</select>
+<!-- Vista Semana -->
+<div class="calendar-week-grid" id="calendarWeekGrid" style="display:none;"></div>
+<!-- Vista Día -->
+<div class="calendar-day-view" id="calendarDayView" style="display:none;"></div>
+<!-- Leyenda de tipos -->
+<div class="calendar-legend" id="calendarLegend">
+<span><span class="badge-dot ev-dot-visita"></span> Visita</span>
+<span><span class="badge-dot ev-dot-llamada"></span> Llamada</span>
+<span><span class="badge-dot ev-dot-nota"></span> Nota</span>
+<span><span class="badge-dot ev-dot-email"></span> Email</span>
+<span><span class="badge-dot ev-dot-followup"></span> Followup</span>
+<span><span class="badge-dot ev-dot-tarea"></span> Tarea</span>
+<span><span class="badge-dot ev-dot-cambio"></span> Cambio</span>
+<span><span class="badge-dot ev-dot-alerta"></span> Alerta</span>
+<span><span class="badge-dot ev-dot-comision"></span> Comisión</span>
+<span><span class="badge-dot ev-dot-documento"></span> Documento</span>
+<span><span class="badge-dot ev-dot-contacto"></span> Contacto</span>
 </div>
 </div>
 </div>
@@ -2034,9 +2017,12 @@
 </div>
 <div class="form-field">
 <label>Propietario</label>
-<select name="owner_id" id="propOwnerSelect">
+<div style="display:flex; gap:8px; align-items:center;">
+<select name="owner_id" id="propOwnerSelect" style="flex:1;">
 <option value="">Sin propietario asignado</option>
 </select>
+<button type="button" id="btnAddOwnerInline" class="btn-action" title="Crear nuevo propietario" style="flex-shrink:0; font-size:16px; padding:8px 12px; border-radius:12px;" aria-label="Crear nuevo propietario"><i class="fas fa-plus"></i></button>
+</div>
 </div>
 <div class="form-field">
 <label>Descripción</label>
@@ -2055,6 +2041,34 @@
 <span style="font-size:11px; color:var(--text-dim); margin-top:4px; display:block;">Soporta youtube.com/watch?v=, youtu.be/, youtube.com/shorts/</span>
 </div>
 <div class="form-grid-2">
+<div class="form-field">
+<label>Link de Facebook</label>
+<input type="url" name="facebook_url" placeholder="https://www.facebook.com/..." title="URL pública de Facebook de la propiedad" />
+</div>
+<div class="form-field">
+<label>Link de TikTok</label>
+<input type="url" name="tiktok_url" placeholder="https://www.tiktok.com/..." title="URL pública de TikTok de la propiedad" />
+</div>
+</div>
+<div id="propertyDocsSection" style="display:none; margin-top:22px; border-top:1px solid var(--border-subtle); padding-top:16px;">
+<h4 style="color:#fff; font-size:14px; font-weight:600; margin-bottom:4px;">Documentación de la Propiedad</h4>
+<p style="color:var(--text-dim); font-size:12px; margin-bottom:12px;">Checklist fija de 12 documentos del expediente</p>
+<div id="propertyDocsChecklist" style="min-height:100px; max-height:320px; overflow-y:auto;">
+<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Guardá la propiedad para gestionar la documentación</p>
+</div>
+</div>
+<div id="propertyNotesSection" style="margin-top:22px; border-top:1px solid var(--border-subtle); padding-top:16px;">
+<h4 style="color:#fff; font-size:14px; font-weight:600; margin-bottom:4px;">Notas Internas</h4>
+<p style="color:var(--text-dim); font-size:12px; margin-bottom:12px;">Historial de notas del equipo (solo visibles en el panel admin)</p>
+<div id="propertyNotesList" style="min-height:40px; max-height:280px; overflow-y:auto;"></div>
+<div style="margin-top:12px;">
+<textarea id="propertyNoteInput" rows="3" placeholder="Escribí una nota interna..." style="width:100%; box-sizing:border-box; background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:12px; padding:12px 16px; color:#fff; font-size:13.5px; resize:vertical;"></textarea>
+<div style="display:flex; justify-content:flex-end; margin-top:10px;">
+<button type="button" id="propertyNoteAddBtn" class="btn-luxury-action btn-sm" title="Agregar nota"><i class="fas fa-plus"></i> Agregar nota</button>
+</div>
+</div>
+</div>
+<div class="form-grid-2" style="margin-top:18px;">
 <div class="form-field">
 <label class="pf-toggle" data-type="published" for="prop_is_published" title="Visible en el catálogo público del sitio">
 <input type="checkbox" name="is_published" id="prop_is_published" />
@@ -2137,9 +2151,10 @@
 <label>WhatsApp (si difiere)</label>
 <input type="text" name="whatsapp" placeholder="+54 9 387 000-0000" />
 </div>
+</div>
+<div class="form-field">
 <label>Email</label>
 <input type="email" name="email" placeholder="cliente@email.com" />
-</div>
 </div>
 <div class="form-grid-2">  <div class="form-field">
 <label>Presupuesto Máximo (USD)</label>
@@ -2823,6 +2838,6 @@
 </i>Tu bloqueador de anuncios está impidiendo que el panel cargue correctamente.<strong>Desactivá las extensiones</strong> para este sitio o abrí en ventana incógnita.<a href="#" data-action="closeCdnWarning">Cerrar</a>
 </div>
 <!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Bloqueador de anuncios detectado.</strong> Desactivá las extensiones para este sitio o abrí en ventana incógnita. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="assets/js/zod.umd.js"></script><script src="assets/js/utils.js?v=28"></script><script src="assets/js/config.js?v=32"></script><script src="assets/js/supabase-client.js?v=31"></script><script src="assets/js/cloudinary.js?v=33"></script><script src="assets/js/admin-crm-tasks.js"></script>
-<script src="assets/js/admin-crm.js?v=8"></script>
-<script src="assets/js/admin-app.js?v=261"></script></body>
+<script src="assets/js/admin-crm.js?v=10"></script>
+<script src="assets/js/admin-app.js?v=262"></script></body>
 </html>

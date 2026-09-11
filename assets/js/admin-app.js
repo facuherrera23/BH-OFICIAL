@@ -49,10 +49,15 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   let currentSection = 'tab-dashboard';
   let editingPropertyId = null;
   let _submittingProperty = false;
+  let _pendingPropertyNotes = [];
   let _submittingAgent = false;
-  let _submittingOwner = false;
-  let _submittingPortal = false;
-
+let _submittingOwner = false;
+
+  let _ownerFormSourcePropertyModal = false;
+
+  let _createdOwnerId = null;
+
+  let _submittingPortal = false;
   /* Pagination state */
   let _propPage = 1;
   let _propPageSize = 25;
@@ -60,9 +65,6 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   let _crmPage = 1;
   let _crmPageSize = 25;
   let _crmTotalCount = 0;
-  let _visitsPage = 1;
-  let _visitsPageSize = 25;
-  let _visitsTotalCount = 0;
   let _tasacionesPage = 1;
   let _tasacionesPageSize = 25;
   let _tasacionesTotalCount = 0;
@@ -158,6 +160,10 @@ function esc(s) {
     rooms: z.number().int().min(0).max(20).default(0),
     video_url: z.string().url('URL de video inválida').optional().nullable(),
     is_published: z.boolean().default(false),
+    facebook_url: z.string().url('URL de Facebook inválida').optional().nullable(),
+
+    tiktok_url: z.string().url('URL de TikTok inválida').optional().nullable(),
+
     featured: z.boolean().default(false),
     is_retasada: z.boolean().default(false),
     is_oportunidad: z.boolean().default(false),
@@ -713,7 +719,7 @@ function esc(s) {
       'tab-dashboard': 'Dashboard Principal',
       'tab-propiedades': 'Gestión de Propiedades',
       'tab-leads': 'CRM & Prospectos',
-      'tab-agenda': 'Agenda de Visitas',
+      'tab-agenda': 'Agenda',
       'tab-tasaciones': 'Tasaciones',
       'tab-sitio-web': 'Editor del Sitio Web',
       'tab-portales': 'Portales & APIs',
@@ -738,7 +744,7 @@ function esc(s) {
       'tab-dashboard': loadDashboard,
       'tab-propiedades': loadProperties,
       'tab-leads': loadCRM,
-      'tab-agenda': loadVisits,
+      'tab-agenda': loadAgenda,
       'tab-tasaciones': loadTasaciones,
       'tab-sitio-web': loadCMS,
       'tab-chat-redes': loadChatRedes,
@@ -1144,7 +1150,18 @@ function esc(s) {
     const codeInput = $('#propCode');
     if (codeInput) { codeInput.value = ''; codeInput.removeAttribute('readonly'); }
     const title = $('#propModalTitle');
-    if (title) title.textContent = 'Nueva Propiedad';
+    if (title) title.textContent = 'Nueva Propiedad';
+
+    const docsSection = $('#propertyDocsSection');
+
+    if (docsSection) docsSection.style.display = 'none';
+    const notesSection = $('#propertyNotesSection');
+    if (notesSection) notesSection.style.display = 'block';
+    const notesList = $('#propertyNotesList');
+    if (notesList) notesList.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:16px;">Todavía no hay notas</p>';
+    const noteInput = $('#propertyNoteInput');
+    if (noteInput) noteInput.value = '';
+    _pendingPropertyNotes = [];
   }
 
   /* Vista previa inmediata de las imágenes nuevas seleccionadas (antes de guardar) */
@@ -1232,13 +1249,16 @@ function esc(s) {
         });
         showToast('Propiedad actualizada correctamente', 'success');
       } else {
-        await mutate('properties', async () => {
-          const { error } = await window.supabaseClient
+        const newPropId = await mutate('properties', async () => {
+          const { data: inserted, error } = await window.supabaseClient
             .from('properties')
-            .insert([data]);
+            .insert([data])
+            .select('id');
           if (error) throw error;
+          return inserted?.[0]?.id || null;
         });
         showToast('Propiedad creada correctamente', 'success');
+        if (_pendingPropertyNotes.length && newPropId) await flushPendingPropertyNotes(newPropId);
       }
 
       closeModal('propertyModal');
@@ -1298,7 +1318,9 @@ function esc(s) {
         form.elements.is_shared.checked = data.is_shared || false;
         form.elements.is_vendida.checked = data.is_vendida || false;
         form.elements.is_reservada.checked = data.is_reservada || false;
-        form.elements.video_url.value = data.video_url || '';
+        form.elements.video_url.value = data.video_url || '';
+        form.elements.facebook_url.value = data.facebook_url || '';
+        form.elements.tiktok_url.value = data.tiktok_url || '';
 
         const ownerSel = $('#propOwnerSelect');
         if (ownerSel) ownerSel.value = data.owner_id || '';
@@ -1329,7 +1351,15 @@ function esc(s) {
       }
 
       const title = $('#propModalTitle');
-      if (title) title.textContent = 'Editar Propiedad';
+      if (title) title.textContent = 'Editar Propiedad';
+
+      const docsSection = $('#propertyDocsSection');
+
+      if (docsSection) docsSection.style.display = 'block';
+
+      loadPropertyDocs(editingPropertyId);
+      _pendingPropertyNotes = [];
+      loadPropertyNotes(editingPropertyId);
       openModal('propertyModal');
     } catch (err) {
       showToast('Error al cargar propiedad', 'error');
@@ -1340,6 +1370,18 @@ function esc(s) {
   window.adminApp.deleteProperty = async function (id) {
     if (!confirm('¿Eliminar esta propiedad? Esta acción no se puede deshacer.')) return;
     try {
+      if (window.supabaseClient) {
+
+        const { data: propDocs } = await window.supabaseClient.from('property_documents').select('storage_path').eq('property_id', id);
+
+        if (propDocs?.length) {
+
+          await window.supabaseClient.storage.from('property-documents').remove(propDocs.map(d => d.storage_path));
+
+        }
+
+      }
+
       const { error } = await window.supabaseClient.from('properties').delete().eq('id', id);
       if (error) throw error;
       showToast('Propiedad eliminada', 'success');
@@ -1619,127 +1661,250 @@ function esc(s) {
   
 
   /* ------------------------------------------------
-     8. VISITS / AGENDA
+     8. AGENDA
      ------------------------------------------------ */
-  async function loadVisits() {
+  let calCurrentDate = new Date();
+  let calEventsCache = [];
+  let calViewMode = 'month'; // 'month' | 'week' | 'day'
+
+  const AGENDA_TYPE_LABELS = {
+    visita: 'Visita',
+    llamada: 'Llamada',
+    nota: 'Nota',
+    email: 'Email',
+    followup: 'Followup',
+    tarea: 'Tarea',
+    cambio: 'Cambio de estado',
+    alerta: 'Alerta',
+    comision: 'Comisión',
+    documento: 'Documento',
+    contacto: 'Contacto'
+  };
+
+  const ACTIVITY_TO_TYPE = {
+    call: 'llamada',
+    note: 'nota',
+    email: 'email',
+    visit: 'visita',
+    followup: 'followup',
+    status_change: 'cambio',
+    task: 'tarea'
+  };
+
+  const TIMELINE_TO_TYPE = {
+    note: 'nota',
+    alert: 'alerta',
+    commission: 'comision',
+    document: 'documento',
+    contact: 'contacto'
+  };
+
+  async function loadAgenda() {
     invalidateSearchCache();
-    const tbody = $('#visitsTableBody');
-    const pageInfo = $('#visitsPageInfo');
-    const pagePrev = $('#visitsPagePrev');
-    const pageNext = $('#visitsPageNext');
-    const pageSize = $('#visitsPageSize');
-    const visitsBrokerFilter = $('#visitsBrokerFilter');
-    const calBrokerFilter = $('#calBrokerFilter');
-    if (!tbody) return;
     const client = await getAuthedClient();
     if (!client) return;
 
-    /* Get selected broker filter */
-    const brokerFilter = (visitsBrokerFilter?.value || calBrokerFilter?.value || '').trim();
-
     try {
-      /* Get total count for pagination */
-      let countQuery = client.from('visits').select('*', { count: 'exact', head: true });
-       if (brokerFilter) countQuery = countQuery.eq('agent_id', brokerFilter);
-      const { count: totalCount, error: countError } = await countQuery;
-      if (countError) throw countError;
-      _visitsTotalCount = totalCount || 0;
+      const [visitsRes, actsRes, tasksRes, timelineRes] = await Promise.all([
+        client
+          .from('visits')
+          .select('*, leads(id, full_name, stage), agents(id, full_name), properties(id, title, property_code)')
+          .order('visit_date', { ascending: true }),
+        client
+          .from('lead_activities')
+          .select('*, leads(id, full_name, stage, assigned_to)')
+          .order('created_at', { ascending: false })
+          .limit(1000),
+        client
+          .from('lead_tasks')
+          .select('*, leads(id, full_name, stage, assigned_to)')
+          .order('due_at', { ascending: true })
+          .limit(500),
+        client
+          .from('owner_timeline_entries')
+          .select('*, owners(id, full_name)')
+          .order('created_at', { ascending: false })
+          .limit(1000)
+      ]);
+      if (visitsRes.error) throw visitsRes.error;
+      if (actsRes.error) throw actsRes.error;
+      if (tasksRes.error) throw tasksRes.error;
+      if (timelineRes.error) throw timelineRes.error;
 
-      const from = (_visitsPage - 1) * _visitsPageSize;
-      const to = from + _visitsPageSize - 1;
+      const events = [];
 
-      /* JOIN con leads para mostrar nombre del lead y link a CRM */
-      let dataQuery = client
-        .from('visits')
-        .select('*, leads(id, full_name, stage), agents(id, full_name), properties(id, title, property_code)')
-        .order('visit_date', { ascending: true })
-        .range(from, to);
-      if (brokerFilter) dataQuery = dataQuery.eq('agent_id', brokerFilter);
-      const { data, error } = await dataQuery;
+      /* Visitas programadas */
+      (visitsRes.data || []).forEach(v => {
+        if (!v.visit_date) return;
+        events.push({
+          key: 'vis-' + v.id,
+          type: 'visita',
+          source: 'visits',
+          entity: v.client_name || 'Visita',
+          date: new Date(v.visit_date),
+          title: v.client_name || 'Visita',
+          subtitle: (v.properties?.title ? v.properties.title : '') +
+            (v.leads?.full_name ? (v.properties?.title ? ' · ' : '') + v.leads.full_name : ''),
+          status: v.status || 'pendiente',
+          brokerId: v.agent_id || null,
+          leadId: v.lead_id || null,
+          onClick: function () { window.adminApp.editVisit(v.id); }
+        });
+      });
 
-      if (error) throw error;
+      /* Actividades de leads (sin estado de visita propio) */
+      (actsRes.data || []).forEach(a => {
+        const type = ACTIVITY_TO_TYPE[a.activity_type] || 'nota';
+        events.push({
+          key: 'act-' + a.id,
+          type: type,
+          source: 'lead_activities',
+          entity: a.leads?.full_name || 'Lead',
+          date: new Date(a.created_at),
+          title: a.title || AGENDA_TYPE_LABELS[type],
+          subtitle: (a.description || '') +
+            (a.leads?.full_name ? (a.description ? ' · ' : '') + a.leads.full_name : ''),
+          status: '',
+          brokerId: a.leads?.assigned_to || null,
+          leadId: a.lead_id || null,
+          onClick: function () {
+            if (a.lead_id && window.adminApp.editLead) window.adminApp.editLead(a.lead_id);
+          }
+        });
+      });
 
-      calVisitsCache = data || [];
-      renderCalendar();
+      /* Tareas de leads (fecha = due_at) */
+      (tasksRes.data || []).forEach(t => {
+        if (!t.due_at) return;
+        events.push({
+          key: 'task-' + t.id,
+          type: 'tarea',
+          source: 'lead_tasks',
+          entity: t.leads?.full_name || 'Tarea',
+          date: new Date(t.due_at),
+          title: t.title || 'Tarea',
+          subtitle: ('Prioridad: ' + (t.priority || 'media')) +
+            (t.leads?.full_name ? ' · ' + t.leads.full_name : ''),
+          status: t.status || 'pendiente',
+          brokerId: t.assigned_to || t.leads?.assigned_to || null,
+          leadId: t.lead_id || null,
+          onClick: function () {
+            if (t.lead_id && window.adminApp.editLead) window.adminApp.editLead(t.lead_id);
+          }
+        });
+      });
 
-      /* Update pagination UI */
-      const totalPages = Math.ceil(_visitsTotalCount / _visitsPageSize);
-      if (pageInfo) pageInfo.textContent = `Página ${_visitsPage} de ${totalPages || 1}`;
-      if (pagePrev) pagePrev.disabled = _visitsPage <= 1;
-      if (pageNext) pageNext.disabled = _visitsPage >= totalPages;
+      /* Timeline de propietarios */
+      (timelineRes.data || []).forEach(o => {
+        const type = TIMELINE_TO_TYPE[o.type] || 'nota';
+        events.push({
+          key: 'own-' + o.id,
+          type: type,
+          source: 'owner_timeline_entries',
+          entity: o.owners?.full_name || 'Propietario',
+          date: new Date(o.created_at),
+          title: (o.owners?.full_name || 'Propietario') + ' · ' + AGENDA_TYPE_LABELS[type],
+          subtitle: o.text || '',
+          status: '',
+          brokerId: o.created_by || null,
+          ownerId: o.owner_id || null,
+          onClick: function () {
+            if (o.owner_id && window.adminApp.editOwner) window.adminApp.editOwner(o.owner_id);
+          }
+        });
+      });
 
-      if (!data?.length) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">No hay visitas programadas</td></tr>';
-        return;
-      }
-
-      tbody.innerHTML = data.map(visitRowHtml).join('');
-
-      /* Actualizar header de la tabla si existe */
-      const thead = tbody.closest('table').querySelector('thead');
-      if (thead && !thead.querySelector('th:nth-child(3)')?.textContent?.includes('Lead')) {
-        thead.innerHTML = `
-          <tr>
-            <th>Fecha y Hora</th>
-            <th>Cliente</th>
-            <th>Lead (CRM)</th>
-            <th>Propiedad</th>
-            <th>Estado</th>
-            <th>Vinculado</th>
-            <th>Acciones</th>
-          </tr>`;
-      }
+      calEventsCache = events;
+      renderAgenda();
     } catch (err) {
-      logError('Visits error:', err);
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar visitas</td></tr>';
+      logError('Agenda error:', err);
+      showToast('Error al cargar la agenda', 'error');
     }
   }
 
-  /* ========== CALENDARIO AGENDA ========== */
-  let calCurrentDate = new Date();
-  let calVisitsCache = [];
-  let calViewMode = 'table';
+  /* ---------- Helpers de fecha ---------- */
+  const AGENDA_MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const AGENDA_DOW_SHORT = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 
-  function renderCalendar(visitsCache = calVisitsCache) {
+  function agendaDayKey(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function agendaFilters() {
+    return {
+      status: $('#calStatusFilter')?.value || '',
+      type: $('#calTypeFilter')?.value || '',
+      broker: $('#calBrokerFilter')?.value || ''
+    };
+  }
+
+  function agendaMatches(ev, f) {
+    if (f.type && ev.type !== f.type) return false;
+    if (f.broker && ev.brokerId !== f.broker) return false;
+    if (f.status && (!ev.status || ev.status !== f.status)) return false;
+    return true;
+  }
+
+  function agendaLabel() {
+    if (calViewMode === 'day') {
+      return AGENDA_MONTH_NAMES[calCurrentDate.getMonth()] + ' ' + calCurrentDate.getDate() + ', ' + calCurrentDate.getFullYear();
+    }
+    if (calViewMode === 'week') {
+      const start = new Date(calCurrentDate);
+      start.setDate(calCurrentDate.getDate() - calCurrentDate.getDay());
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      const sameMonth = start.getMonth() === end.getMonth();
+      if (start.getFullYear() !== end.getFullYear()) {
+        return start.getDate() + ' ' + AGENDA_MONTH_NAMES[start.getMonth()] + ' — ' + end.getDate() + ' ' + AGENDA_MONTH_NAMES[end.getMonth()] + ' ' + end.getFullYear();
+      }
+      return (sameMonth ? '' : AGENDA_MONTH_NAMES[start.getMonth()] + ' ') + start.getDate() + ' — ' + AGENDA_MONTH_NAMES[end.getMonth()] + ' ' + end.getDate() + ', ' + end.getFullYear();
+    }
+    return AGENDA_MONTH_NAMES[calCurrentDate.getMonth()] + ' ' + calCurrentDate.getFullYear();
+  }
+
+  function agendaEventEl(ev) {
+    const timeStr = ev.date
+      ? ev.date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+      : '';
+    const tooltip = ev.subtitle ? ev.title + ' — ' + ev.subtitle : ev.title;
+    return '<div class="cal-event ev-' + ev.type + '" data-key="' + ev.key + '" title="' + esc(tooltip) + '">' +
+      (timeStr ? '<span class="ag-event-time">' + esc(timeStr) + '</span> ' : '') +
+      esc(ev.title) +
+      '</div>';
+  }
+
+  /* ---------- Vista Mes ---------- */
+  function renderMonthView() {
     const grid = $('#calendarGrid');
     if (!grid) return;
-
+    const f = agendaFilters();
     const year = calCurrentDate.getFullYear();
     const month = calCurrentDate.getMonth();
     const today = new Date();
-    const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    const todayStr = agendaDayKey(today);
 
     const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
     const startDay = firstDay.getDay();
-    const daysInMonth = lastDay.getDate();
     const prevMonthLastDay = new Date(year, month, 0).getDate();
 
-    const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const eventsByDay = {};
+    calEventsCache.forEach(ev => {
+      if (!agendaMatches(ev, f)) return;
+      const dk = agendaDayKey(ev.date);
+      if (!eventsByDay[dk]) eventsByDay[dk] = [];
+      eventsByDay[dk].push(ev);
+    });
+    Object.keys(eventsByDay).forEach(dk => {
+      eventsByDay[dk].sort((a, b) => (a.date - b.date));
+    });
+
     const monthEl = $('#calCurrentMonth');
-    if (monthEl) monthEl.textContent = monthNames[calCurrentDate.getMonth()] + ' ' + calCurrentDate.getFullYear();
+    if (monthEl) monthEl.textContent = agendaLabel();
 
-    const statusFilter = $('#calStatusFilter')?.value || '';
-    const brokerFilter = $('#calBrokerFilter')?.value || '';
-    const monthVisits = visitsCache.filter(v => {
-      if (!v.visit_date) return false;
-      const d = new Date(v.visit_date);
-      if (d.getFullYear() !== calCurrentDate.getFullYear() || d.getMonth() !== calCurrentDate.getMonth()) return false;
-      if (statusFilter && v.status !== statusFilter) return false;
-      if (brokerFilter && v.agent_id !== brokerFilter) return false;
-      return true;
-    });
-
-    const visitsByDay = {};
-    monthVisits.forEach(v => {
-      const dv = new Date(v.visit_date);
-      const dayStr = dv.getFullYear() + '-' + String(dv.getMonth() + 1).padStart(2, '0') + '-' + String(dv.getDate()).padStart(2, '0');
-      if (!visitsByDay[dayStr]) visitsByDay[dayStr] = [];
-      visitsByDay[dayStr].push(v);
-    });
-
-let html = '';
-let dayCount = 1;
+    let html = '';
+    let dayCount = 1;
     let nextMonthDay = 1;
 
     for (let week = 0; week < 6; week++) {
@@ -1749,12 +1914,10 @@ let dayCount = 1;
         let dateStr = '';
 
         if (week === 0 && dow < startDay) {
-          const prevMonthLastDay = new Date(year, month, 0).getDate();
           dayNum = prevMonthLastDay - (startDay - dow - 1);
           const prevMonth = month === 0 ? 11 : month - 1;
           const prevYear = month === 0 ? year - 1 : year;
           dateStr = prevYear + '-' + String(prevMonth + 1).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
-          isCurrentMonth = false;
         } else if (dayCount <= daysInMonth) {
           dayNum = dayCount++;
           dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
@@ -1764,33 +1927,26 @@ let dayCount = 1;
           const nextMonth = month === 11 ? 0 : month + 1;
           const nextYear = month === 11 ? year + 1 : year;
           dateStr = nextYear + '-' + String(nextMonth + 1).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
-          isCurrentMonth = false;
         }
 
         const isToday = dateStr === todayStr;
-        const dayVisits = visitsByDay[dateStr] || [];
-
+        const dayEvents = eventsByDay[dateStr] || [];
+        const maxShow = 3;
         let eventsHtml = '';
-        if (dayVisits.length > 0) {
-          const filteredEvents = dayVisits.filter(v => !statusFilter || v.status === statusFilter);
-          const maxShow = 3;
-          filteredEvents.slice(0, maxShow).forEach(v => {
-            const timeStr = v.visit_date ? new Date(v.visit_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
-            const leadName = v.leads?.full_name ? ' · ' + v.leads.full_name : '';
-            eventsHtml += '<div class="cal-event ' + v.status + '" data-visit-id="' + v.id + '" style="cursor:pointer;" onclick="event.stopPropagation(); window.adminApp.editVisit(\'' + v.id + '\')">' + esc(timeStr) + ' ' + esc(v.client_name || 'Sin cliente') + leadName + '</div>';
-          });
-          if (filteredEvents.length > 3) {
-            eventsHtml += '<div class="cal-event-more" onclick="event.stopPropagation(); filterVisitsByDate(\'' + dateStr + '\')">+' + (filteredEvents.length - 3) + ' más</div>';
-          }
+        dayEvents.slice(0, maxShow).forEach(ev => {
+          eventsHtml += agendaEventEl(ev);
+        });
+        if (dayEvents.length > maxShow) {
+          eventsHtml += '<div class="cal-event-more" data-goto-date="' + dateStr + '">+' + (dayEvents.length - maxShow) + ' más</div>';
         }
 
         const otherMonthClass = isCurrentMonth ? '' : ' other-month';
-        const todayClass = isCurrentMonth && dateStr === todayStr ? ' today' : '';
+        const todayClass = isCurrentMonth && isToday ? ' today' : '';
 
         html += '<div class="cal-day' + otherMonthClass + todayClass + '" data-date="' + dateStr + '" data-current-month="' + isCurrentMonth + '">' +
           '<div class="cal-day-number">' + dayNum + '</div>' +
           '<div class="cal-events">' + eventsHtml + '</div>' +
-        '</div>';
+          '</div>';
       }
     }
 
@@ -1801,63 +1957,178 @@ let dayCount = 1;
       headers.forEach(h => gridEl.appendChild(h));
       gridEl.insertAdjacentHTML('beforeend', html);
     }
+    bindAgendaClicks();
   }
 
-  function updateViewToggle() {
-    const calView = $('#visitsCalendarView');
-    const tableView = $('#visitsTableView');
-    const calBtn = $('#viewCalendarBtn');
-    const tableBtn = $('#viewTableBtn');
-    if (calView && tableView) {
-      if (calViewMode === 'calendar') {
-        calView.style.display = 'block';
-        tableView.style.display = 'none';
-        calBtn?.classList.add('active');
-        tableBtn?.classList.remove('active');
-      } else {
-        calView.style.display = 'none';
-        tableView.style.display = 'block';
-        calBtn?.classList.remove('active');
-        tableBtn?.classList.add('active');
-      }
+  /* ---------- Vista Semana ---------- */
+  function renderWeekView() {
+    const container = $('#calendarWeekGrid');
+    if (!container) return;
+    const f = agendaFilters();
+    const monthEl = $('#calCurrentMonth');
+    if (monthEl) monthEl.textContent = agendaLabel();
+
+    const start = new Date(calCurrentDate);
+    start.setDate(calCurrentDate.getDate() - calCurrentDate.getDay());
+    start.setHours(0, 0, 0, 0);
+
+    const eventsByDay = {};
+    calEventsCache.forEach(ev => {
+      if (!agendaMatches(ev, f)) return;
+      const dk = agendaDayKey(ev.date);
+      if (!eventsByDay[dk]) eventsByDay[dk] = [];
+      eventsByDay[dk].push(ev);
+    });
+    Object.keys(eventsByDay).forEach(dk => {
+      eventsByDay[dk].sort((a, b) => (a.date - b.date));
+    });
+
+    const todayStr = agendaDayKey(new Date());
+    let html = '';
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const dk = agendaDayKey(d);
+      const isToday = dk === todayStr;
+      let eventsHtml = '';
+      (eventsByDay[dk] || []).forEach(ev => {
+        eventsHtml += agendaEventEl(ev);
+      });
+      html +=
+        '<div class="cal-week-col' + (isToday ? ' today' : '') + '" data-date="' + dk + '">' +
+        '<div class="cal-week-day-head">' +
+        '<span class="cal-week-dayname">' + AGENDA_DOW_SHORT[d.getDay()] + '</span>' +
+        '<span class="cal-week-daynum">' + d.getDate() + '</span>' +
+        '</div>' +
+        '<div class="cal-week-events">' + (eventsHtml || '<span class="cal-week-empty">—</span>') + '</div>' +
+        '</div>';
     }
+    container.innerHTML = html;
+    bindAgendaClicks();
   }
 
-  $('#viewCalendarBtn')?.addEventListener('click', function() {
-    calViewMode = 'calendar';
-    updateViewToggle();
-  });
-  $('#viewTableBtn')?.addEventListener('click', function() {
-    calViewMode = 'table';
-    updateViewToggle();
-    loadVisits();
-  });
+  /* ---------- Vista Día ---------- */
+  function renderDayView() {
+    const container = $('#calendarDayView');
+    if (!container) return;
+    const f = agendaFilters();
+    const monthEl = $('#calCurrentMonth');
+    if (monthEl) monthEl.textContent = agendaLabel();
 
-  $('#calPrevMonth')?.addEventListener('click', function() {
-    calCurrentDate.setMonth(calCurrentDate.getMonth() - 1);
-    renderCalendar();
-  });
-  $('#calNextMonth')?.addEventListener('click', function() {
-    calCurrentDate.setMonth(calCurrentDate.getMonth() + 1);
-    renderCalendar();
-  });
-  $('#calTodayBtn')?.addEventListener('click', function() {
+    const dk = agendaDayKey(calCurrentDate);
+    const dayEvents = calEventsCache
+      .filter(ev => agendaDayKey(ev.date) === dk && agendaMatches(ev, f))
+      .sort((a, b) => (a.date - b.date));
+
+    let html = '';
+    if (!dayEvents.length) {
+      html = '<div class="cal-day-empty">Sin eventos para este día</div>';
+    } else {
+      dayEvents.forEach(ev => {
+        const timeStr = ev.date
+          ? ev.date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+          : '';
+        html +=
+          '<div class="cal-day-row" data-key="' + ev.key + '">' +
+          '<div class="cal-day-row-time">' + esc(timeStr) + '</div>' +
+          '<div class="cal-day-row-main">' +
+          '<div class="cal-event ev-' + ev.type + '" data-key="' + ev.key + '">' + esc(ev.title) + '</div>' +
+          (ev.subtitle ? '<div class="cal-day-row-sub">' + esc(ev.subtitle) + '</div>' : '') +
+          '</div>' +
+          '</div>';
+      });
+    }
+    container.innerHTML = html;
+    bindAgendaClicks();
+  }
+
+  function renderAgenda() {
+    if (calViewMode === 'week') renderWeekView();
+    else if (calViewMode === 'day') renderDayView();
+    else renderMonthView();
+    updateViewSwitcher();
+  }
+
+  function updateViewSwitcher() {
+    $('#calViewMonthBtn')?.classList.toggle('active', calViewMode === 'month');
+    $('#calViewWeekBtn')?.classList.toggle('active', calViewMode === 'week');
+    $('#calViewDayBtn')?.classList.toggle('active', calViewMode === 'day');
+    const grid = $('#calendarGrid');
+    const week = $('#calendarWeekGrid');
+    const day = $('#calendarDayView');
+    if (grid) grid.style.display = calViewMode === 'month' ? 'grid' : 'none';
+    if (week) week.style.display = calViewMode === 'week' ? 'grid' : 'none';
+    if (day) day.style.display = calViewMode === 'day' ? 'block' : 'none';
+  }
+
+  function goToDayView(dateStr) {
+    const parts = String(dateStr).split('-');
+    if (parts.length !== 3) return;
+    calCurrentDate = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+    calViewMode = 'day';
+    renderAgenda();
+  }
+
+  function calStep(dir) {
+    if (calViewMode === 'day') calCurrentDate.setDate(calCurrentDate.getDate() + dir);
+    else if (calViewMode === 'week') calCurrentDate.setDate(calCurrentDate.getDate() + 7 * dir);
+    else calCurrentDate.setMonth(calCurrentDate.getMonth() + dir);
+    renderAgenda();
+  }
+
+  function bindAgendaClicks() {
+    document.querySelectorAll('#calendarGrid .cal-day[data-date]').forEach(el => {
+      el.onclick = function (e) {
+        if (e.target.closest('.cal-event, .cal-event-more')) return;
+        goToDayView(el.getAttribute('data-date'));
+      };
+    });
+    document.querySelectorAll('#calendarWeekGrid .cal-week-col[data-date]').forEach(el => {
+      el.onclick = function (e) {
+        if (e.target.closest('.cal-event')) return;
+        goToDayView(el.getAttribute('data-date'));
+      };
+    });
+    document.querySelectorAll('#calendarGrid .cal-event[data-key], #calendarWeekGrid .cal-event[data-key], #calendarDayView .cal-event[data-key], .cal-day-row[data-key]').forEach(el => {
+      el.onclick = function (e) {
+        e.stopPropagation();
+        const key = el.getAttribute('data-key');
+        const ev = calEventsCache.find(x => x.key === key);
+        if (ev && ev.onClick) ev.onClick();
+      };
+    });
+    document.querySelectorAll('#calendarGrid .cal-event-more[data-goto-date]').forEach(el => {
+      el.onclick = function (e) {
+        e.stopPropagation();
+        goToDayView(el.getAttribute('data-goto-date'));
+      };
+    });
+  }
+
+  /* ---------- Handlers de cabecera ---------- */
+  $('#calPrevMonth')?.addEventListener('click', function () { calStep(-1); });
+  $('#calNextMonth')?.addEventListener('click', function () { calStep(1); });
+  $('#calTodayBtn')?.addEventListener('click', function () {
     calCurrentDate = new Date();
-    renderCalendar();
+    renderAgenda();
   });
-  $('#calStatusFilter')?.addEventListener('change', function() {
-    renderCalendar();
+  $('#calViewMonthBtn')?.addEventListener('click', function () {
+    calViewMode = 'month';
+    renderAgenda();
   });
-  $('#calBrokerFilter')?.addEventListener('change', function() {
-    renderCalendar();
-    loadVisits(); // Also refresh table with same filter
+  $('#calViewWeekBtn')?.addEventListener('click', function () {
+    calViewMode = 'week';
+    renderAgenda();
   });
-  $('#visitsBrokerFilter')?.addEventListener('change', function() {
-    _visitsPage = 1;
-    loadVisits();
+  $('#calViewDayBtn')?.addEventListener('click', function () {
+    calViewMode = 'day';
+    renderAgenda();
   });
+  $('#calStatusFilter')?.addEventListener('change', function () { renderAgenda(); });
+  $('#calTypeFilter')?.addEventListener('change', function () { renderAgenda(); });
+  $('#calBrokerFilter')?.addEventListener('change', function () { renderAgenda(); });
 
-  /* Populate broker filters on load */
+  /* ---------- Filtro de brokers (solo calendario) ---------- */
   async function populateBrokerFilters() {
     if (!window.supabaseClient) return;
     try {
@@ -1870,7 +2141,6 @@ let dayCount = 1;
       if (error) throw error;
       const brokers = data || [];
       const calFilter = $('#calBrokerFilter');
-      const tableFilter = $('#visitsBrokerFilter');
       if (calFilter) {
         const current = calFilter.value;
         calFilter.innerHTML = '<option value="">Todos los brokers</option>';
@@ -1882,21 +2152,9 @@ let dayCount = 1;
         });
         if (current) calFilter.value = current;
       }
-      if (tableFilter) {
-        const current = tableFilter.value;
-        tableFilter.innerHTML = '<option value="">Todos los brokers</option>';
-        brokers.forEach(b => {
-          const opt = document.createElement('option');
-          opt.value = b.id;
-          opt.textContent = b.full_name;
-          tableFilter.appendChild(opt);
-        });
-        if (current) tableFilter.value = current;
-      }
     } catch (_) { /* silent */ }
   }
 
-  /* Call populate on module init */
   populateBrokerFilters();
 
   function visitRowHtml(v) {
@@ -2405,9 +2663,25 @@ let dayCount = 1;
       });
       if (selectedValue) selectEl.value = selectedValue;
     } catch (_) { /* silent */ }
-  }
-
-  /* Save visit */
+}
+
+  async function refreshOwnerSelect(selectEl, selectedId = null) {
+    if (!selectEl || !window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('owners')
+        .select('id, full_name')
+        .is('deleted_at', null)
+        .order('full_name');
+      if (error) return;
+      selectEl.innerHTML = '<option value="">Sin propietario asignado</option>' +
+        (data || []).map(o => `<option value="${esc(o.id)}">${esc(o.full_name)}</option>`).join('');
+      if (selectedId) selectEl.value = selectedId;
+    } catch (_) { /* silent */ }
+  }
+
+
+  /* Save visit */
   let _submittingVisit = false;
   /* Visit date: día + mes + hora (el año se infiere: año actual, o el siguiente si la fecha ya pasó) */
 
@@ -2565,7 +2839,7 @@ let dayCount = 1;
       closeModal('visitModal');
       /* Limpiar flag pendiente */
       delete window._pendingLeadId;
-      loadVisits();
+      loadAgenda();
       loadCRM(); // Refrescar CRM por si cambió stage
       updateSidebarBadges();
     } catch (err) {
@@ -2904,7 +3178,7 @@ window.adminApp.editVisit = async function (id) {
       const { error } = await window.supabaseClient.from('visits').delete().eq('id', id);
       if (error) throw error;
       showToast('Visita eliminada', 'success');
-      loadVisits();
+      loadAgenda();
       updateSidebarBadges();
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
@@ -2920,7 +3194,7 @@ window.adminApp.editVisit = async function (id) {
         .eq('id', id);
       if (error) throw error;
       showToast('Llegada registrada', 'success');
-      loadVisits();
+      loadAgenda();
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
     }
@@ -2934,7 +3208,7 @@ window.adminApp.editVisit = async function (id) {
         .eq('id', id);
       if (error) throw error;
       showToast('Salida registrada', 'success');
-      loadVisits();
+      loadAgenda();
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
     }
@@ -3867,9 +4141,18 @@ ${(() => { const t = nextTaskByOwner[o.id]; if (!t) return '<div style="font-siz
     if (title) title.textContent = 'Expediente de Propietario';
 
     loadAgentSelect($('#ownerTaskAgentSelect'));
-    openModal('ownerModal');
-  });
-
+openModal('ownerModal');
+
+  });
+
+  on($('#btnAddOwnerInline'), 'click', () => {
+    _ownerFormSourcePropertyModal = true;
+    editingOwnerId = null;
+    $('#ownerForm')?.reset();
+    const title = $('#ownerModalTitle');
+    if (title) title.textContent = 'Nuevo Propietario';
+    openModal('ownerModal');
+  });
   /* Save owner */
   on($('#ownerForm'), 'submit', async (e) => {
     e.preventDefault();
@@ -3925,14 +4208,21 @@ ${(() => { const t = nextTaskByOwner[o.id]; if (!t) return '<div style="font-siz
         showToast('Propietario actualizado', 'success');
       } else {
         await mutate('owners', async () => {
-          const { error } = await window.supabaseClient.from('owners').insert([data]);
-          if (error) throw error;
+const { data: created, error } = await window.supabaseClient.from('owners').insert([data]).select('id').single();
+          if (error) throw error;
+          _createdOwnerId = created?.id || null;
         });
         showToast('Propietario creado', 'success');
       }
-
-      closeModal('ownerModal');
-      loadOwners();
+closeModal('ownerModal');
+
+      if (_ownerFormSourcePropertyModal) {
+        _ownerFormSourcePropertyModal = false;
+        await refreshOwnerSelect($('#propOwnerSelect'), _createdOwnerId);
+        _createdOwnerId = null;
+      }
+
+      loadOwners();
       updateSidebarBadges();
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
@@ -4401,9 +4691,415 @@ ${(() => { const t = nextTaskByOwner[o.id]; if (!t) return '<div style="font-siz
     };
     input.click();
   });
-
-  /* Owner Properties */
-  async function loadOwnerProperties(ownerId) {
+/* Property Documents */
+
+  const PROPERTY_DOC_TYPES = [
+
+    { key: 'dni_frente', label: 'DNI Titular · Frente', icon: 'fa-id-card' },
+
+    { key: 'dni_dorso', label: 'DNI Titular · Dorso', icon: 'fa-id-card' },
+
+    { key: 'escritura', label: 'Escritura', icon: 'fa-file-signature' },
+
+    { key: 'rentas_provincial', label: 'Rentas Provincial', icon: 'fa-file-invoice' },
+
+    { key: 'tasa_municipal', label: 'Tasa Municipal', icon: 'fa-city' },
+
+    { key: 'planos_aprobados', label: 'Planos Aprobados', icon: 'fa-drafting-compass' },
+
+    { key: 'factura_luz', label: 'Factura de Luz', icon: 'fa-bolt' },
+
+    { key: 'factura_gas', label: 'Factura de Gas', icon: 'fa-fire' },
+
+    { key: 'factura_agua', label: 'Factura de Agua', icon: 'fa-tint' },
+
+    { key: 'expensas', label: 'Expensas', icon: 'fa-receipt' },
+
+    { key: 'autorizacion_venta', label: 'Autorización de Venta', icon: 'fa-file-signature' },
+
+    { key: 'reserva', label: 'Reserva', icon: 'fa-handshake' }
+
+  ];
+
+
+
+  function propertyDocStateMarkup(doc) {
+
+    return doc
+
+      ? '<span class="status-pill active" style="font-size:10px; padding:3px 8px;">Subido</span>'
+
+      : '<span class="status-pill pending" style="font-size:10px; padding:3px 8px;">Falta</span>';
+
+  }
+
+
+
+  function propertyDocMetaMarkup(doc) {
+
+    if (!doc) return '<div style="font-size:11px; color:var(--text-dim);">Sin archivo cargado</div>';
+
+    const size = doc.size ? (doc.size / 1024).toFixed(1) + ' KB' : '';
+
+    const date = doc.uploaded_at ? ' · ' + new Date(doc.uploaded_at).toLocaleDateString('es-AR') : '';
+
+    return `<div style="font-size:11px; color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(doc.name)} · ${size}${date}</div>`;
+
+  }
+
+
+
+  async function loadPropertyDocs(propertyId) {
+
+    const el = $('#propertyDocsChecklist');
+
+    if (!el) return;
+
+    if (!window.supabaseClient) return;
+
+    if (!propertyId) {
+
+      el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Guardá la propiedad para gestionar la documentación</p>';
+
+      return;
+
+    }
+
+    try {
+
+      const { data, error } = await window.supabaseClient
+
+        .from('property_documents')
+
+        .select('*')
+
+        .eq('property_id', propertyId);
+
+      if (error) throw error;
+
+      const byKey = {};
+
+      (data || []).forEach(d => { byKey[d.document_key] = d; });
+
+      const uploaded = (data || []).length;
+
+      const header = document.querySelector('#propertyDocsSection h4');
+
+      if (header) header.textContent = `Documentación de la Propiedad (${uploaded}/${PROPERTY_DOC_TYPES.length})`;
+
+      el.innerHTML = PROPERTY_DOC_TYPES.map(t => {
+
+        const doc = byKey[t.key];
+
+        const actions = doc
+
+          ? '<a href="#" class="btn-action" title="Ver" onclick="event.preventDefault(); window.adminApp.openPropertyDoc(\'' + propertyId + '\', \'' + t.key + '\')"><i class="fas fa-eye"></i></a>' +
+
+            '<button type="button" class="btn-action danger" title="Eliminar" onclick="window.adminApp.deletePropertyDoc(\'' + propertyId + '\', \'' + t.key + '\')"><i class="fas fa-trash"></i></button>'
+
+          : '';
+
+        const uploadBtn = '<button type="button" class="btn-action" title="' + (doc ? 'Reemplazar' : 'Subir') + '" onclick="window.adminApp.uploadPropertyDoc(\'' + propertyId + '\', \'' + t.key + '\')"><i class="fas fa-upload"></i></button>';
+
+        return `
+
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:8px; font-size:13px;">
+
+            <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+
+              <i class="fas ${t.icon}" style="color:var(--accent); font-size:16px; flex-shrink:0;"></i>
+
+              <div style="min-width:0;">
+
+                <div style="font-weight:500; color:#fff;">${esc(t.label)}</div>
+
+                ${propertyDocMetaMarkup(doc)}
+
+              </div>
+
+            </div>
+
+            <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+
+              ${propertyDocStateMarkup(doc)}
+
+              ${actions}
+
+              ${uploadBtn}
+
+            </div>
+
+          </div>
+
+        `;
+
+      }).join('');
+
+    } catch (err) {
+
+      showToast('Error al cargar documentación', 'error');
+
+    }
+
+  }
+
+
+
+  window.adminApp.uploadPropertyDoc = async function (propertyId, key) {
+
+    if (!propertyId) return;
+
+    const input = document.createElement('input');
+
+    input.type = 'file';
+
+    input.accept = '.pdf,.jpg,.jpeg,.png,.heic,.webp';
+
+    input.onchange = async () => {
+
+      const file = input.files[0];
+
+      if (!file) return;
+
+      if (file.size > 10 * 1024 * 1024) return showToast('Máx 10 MB', 'warning');
+
+      try {
+
+        const ext = file.name.split('.').pop();
+
+        const path = `properties/${propertyId}/${key}-${Date.now()}.${ext}`;
+
+        const { error: upErr } = await window.supabaseClient.storage.from('property-documents').upload(path, file);
+
+        if (upErr) throw upErr;
+
+        const { error: insErr } = await window.supabaseClient.from('property_documents').upsert({
+
+          property_id: propertyId,
+
+          document_key: key,
+
+          name: file.name,
+
+          type: file.type,
+
+          size: file.size,
+
+          storage_path: path,
+
+          created_by: currentUser?.id || null
+
+        }, { onConflict: 'property_id,document_key' });
+
+        if (insErr) throw insErr;
+
+        showToast('Documento subido', 'success');
+
+        loadPropertyDocs(propertyId);
+
+      } catch (err) {
+
+        showToast('Error subiendo: ' + err.message, 'error');
+
+      }
+
+    };
+
+    input.click();
+
+  };
+
+
+
+  window.adminApp.openPropertyDoc = async function (propertyId, key) {
+
+    try {
+
+      const { data: doc } = await window.supabaseClient
+
+        .from('property_documents')
+
+        .select('storage_path')
+
+        .eq('property_id', propertyId)
+
+        .eq('document_key', key)
+
+        .single();
+
+      if (!doc?.storage_path) return showToast('Documento no encontrado', 'warning');
+
+      const { data: signed } = await window.supabaseClient.storage
+
+        .from('property-documents')
+
+        .createSignedUrl(doc.storage_path, 3600);
+
+      if (signed?.signedUrl) window.open(signed.signedUrl, '_blank');
+
+      else showToast('No se pudo generar el enlace', 'warning');
+
+    } catch (err) {
+
+      showToast('Error: ' + err.message, 'error');
+
+    }
+
+  };
+
+
+
+  window.adminApp.deletePropertyDoc = async function (propertyId, key) {
+
+    if (!confirm('¿Eliminar este documento?')) return;
+
+    try {
+
+      const { data: doc } = await window.supabaseClient
+
+        .from('property_documents')
+
+        .select('id, storage_path')
+
+        .eq('property_id', propertyId)
+
+        .eq('document_key', key)
+
+        .single();
+
+      if (!doc) return;
+
+      if (doc.storage_path) {
+
+        await window.supabaseClient.storage.from('property-documents').remove([doc.storage_path]);
+
+      }
+
+      const { error } = await window.supabaseClient.from('property_documents').delete().eq('id', doc.id);
+
+      if (error) throw error;
+
+      showToast('Documento eliminado', 'success');
+
+      loadPropertyDocs(propertyId);
+
+    } catch (err) {
+
+      showToast('Error: ' + err.message, 'error');
+
+    }
+
+  };
+
+
+
+
+  /* Notas internas de la propiedad */
+  function pendingPropertyNoteMarkup(text) {
+    return '<div style="padding:10px 12px; background:rgba(31,200,195,0.06); border:1px dashed var(--accent); border-radius:10px; margin-bottom:8px; font-size:13px;">'
+      + '<span style="font-size:11px; color:var(--accent); font-weight:600;">Pendiente de guardar</span>'
+      + '<div style="white-space:pre-wrap; word-break:break-word; color:#fff; margin-top:4px;">' + esc(text) + '</div>'
+      + '</div>';
+  }
+
+  function propertyNoteMarkup(note, author) {
+    return '<div style="padding:10px 12px; background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:10px; margin-bottom:8px; font-size:13px;">'
+      + '<div style="display:flex; justify-content:space-between; gap:8px; margin-bottom:4px;">'
+      + '<span style="font-size:11px; color:var(--accent); font-weight:600;">' + esc(author) + '</span>'
+      + '<span style="font-size:11px; color:var(--text-dim);">' + esc(formatDateTimeWithTZ(note.created_at)) + '</span>'
+      + '</div>'
+      + '<div style="white-space:pre-wrap; word-break:break-word; color:#fff;">' + esc(note.note) + '</div>'
+      + '</div>';
+  }
+
+  function renderPendingPropertyNotes() {
+    const listEl = $('#propertyNotesList');
+    if (!listEl) return;
+    if (!_pendingPropertyNotes.length) {
+      listEl.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:16px;">Todavía no hay notas</p>';
+      return;
+    }
+    listEl.innerHTML = _pendingPropertyNotes.map(pendingPropertyNoteMarkup).join('');
+  }
+
+  async function loadPropertyNotes(propertyId) {
+    const listEl = $('#propertyNotesList');
+    if (!listEl) return;
+    _pendingPropertyNotes = [];
+    if (!propertyId) { renderPendingPropertyNotes(); return; }
+    try {
+      const { data: notes, error } = await window.supabaseClient
+        .from('property_notes')
+        .select('*')
+        .eq('property_id', propertyId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      if (!notes || !notes.length) { renderPendingPropertyNotes(); return; }
+      const userIds = [...new Set(notes.map(n => n.created_by).filter(Boolean))];
+      let nameMap = {};
+      if (userIds.length) {
+        const { data: profiles, error: pErr } = await window.supabaseClient
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', userIds);
+        if (!pErr && profiles) nameMap = Object.fromEntries(profiles.map(p => [p.id, p.full_name || '']));
+      }
+      listEl.innerHTML = notes.map(n =>
+        propertyNoteMarkup(n, n.created_by ? (nameMap[n.created_by] || 'Usuario') : 'Usuario')
+      ).join('');
+    } catch (err) {
+      logError('loadPropertyNotes error:', err);
+      renderPendingPropertyNotes();
+    }
+  }
+
+  async function flushPendingPropertyNotes(propertyId) {
+    const notes = _pendingPropertyNotes.splice(0, _pendingPropertyNotes.length);
+    if (!notes.length || !propertyId) return;
+    try {
+      const { error } = await window.supabaseClient
+        .from('property_notes')
+        .insert(notes.map(text => ({
+          property_id: propertyId,
+          note: text,
+          created_by: (currentUser && currentUser.id) ? currentUser.id : null,
+        })));
+      if (error) throw error;
+    } catch (err) {
+      logError('flushPendingPropertyNotes error:', err);
+      showToast('La propiedad se creó, pero falló al guardar las notas', 'error');
+    }
+  }
+
+  on($('#propertyNoteAddBtn'), 'click', async () => {
+    const input = $('#propertyNoteInput');
+    const text = input && input.value ? input.value.trim() : '';
+    if (!text) {
+      showToast('Escribí una nota antes de guardarla', 'warning');
+      return;
+    }
+    if (input) input.value = '';
+    if (!editingPropertyId) {
+      _pendingPropertyNotes.push(text);
+      renderPendingPropertyNotes();
+      return;
+    }
+    try {
+      const { error } = await window.supabaseClient
+        .from('property_notes')
+        .insert([{ property_id: editingPropertyId, note: text, created_by: (currentUser && currentUser.id) ? currentUser.id : null }]);
+      if (error) throw error;
+      showToast('Nota agregada', 'success');
+      loadPropertyNotes(editingPropertyId);
+    } catch (err) {
+      logError('propiedad nota error:', err);
+      showToast('No se pudo guardar la nota', 'error');
+    }
+  });
+
+  /* Owner Properties */
+
+  async function loadOwnerProperties(ownerId) {
     const el = $('#ownerPropsList');
     if (!el) return;
     if (!window.supabaseClient) return;

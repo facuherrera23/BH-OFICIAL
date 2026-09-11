@@ -25,8 +25,8 @@ var PAGE_SIZE = 25;
 var _page = 1, _totalPages = 1, _totalRows = 0;
 var _sortKey = 'created', _sortDir = 'desc';
 var DEFAULT_SORT_DIR = { created: 'desc', cliente: 'asc', propiedad: 'asc', estado: 'asc', prioridad: 'desc', actividad: 'desc', prox: 'asc' };
-var _ownerSortKey = 'creado', _ownerSortDir = 'desc';
-var OWNER_DEFAULT_SORT_DIR = { propietario: 'asc', dni: 'asc', propiedades: 'desc', agente: 'asc', tareas: 'desc', exclusivo: 'asc', creado: 'desc' };
+var _ownerSortKey = 'prox', _ownerSortDir = 'asc';
+var OWNER_DEFAULT_SORT_DIR = { propietario: 'asc', dni: 'asc', propiedades: 'desc', agente: 'asc', tareas: 'desc', exclusivo: 'asc', prox: 'asc' };
 var _leads = [];
 var _agents = [];
 var _selectedLeadId = null;
@@ -177,6 +177,23 @@ function applyBaseFilters(q) {
 function ownerPendingTasks(o) {
   return (_ownerTasks[o.id] || []).filter(function (tk) { return tk.status !== 'completada' && tk.status !== 'cancelada'; });
 }
+function ownerNextTask(o) {
+  var withDue = ownerPendingTasks(o).filter(function (tk) { return !!tk.due_date; });
+  if (!withDue.length) return null;
+  withDue.sort(function (a, b) { return new Date(a.due_date).getTime() - new Date(b.due_date).getTime(); });
+  return withDue[0];
+}
+function fmtTaskTimeLeft(iso) {
+  var diff = new Date(iso).getTime() - Date.now();
+  var abs = Math.abs(diff);
+  var days = Math.floor(abs / 86400000);
+  var hours = Math.floor((abs % 86400000) / 3600000);
+  var mins = Math.floor((abs % 3600000) / 60000);
+  var human = days > 0 ? days + 'd ' + hours + 'h' : hours > 0 ? hours + 'h ' + mins + 'm' : mins + 'm';
+  if (diff < 0) return { text: 'Vencida hace ' + human, overdue: true };
+  if (diff < 24 * 3600000) return { text: 'Vence hoy · ' + human, soon: true };
+  return { text: 'Vence en ' + human, soon: false };
+}
 function openOwnerTasksList(tasks) {
   return (tasks || []).filter(function (tk) { return tk.status !== 'completada' && tk.status !== 'cancelada'; });
 }
@@ -193,6 +210,7 @@ function ownerSortValueFor(o, key) {
   if (key === 'agente') return { v: ownerAgentNames(o) || null };
   if (key === 'tareas') return { v: ownerPendingTasks(o).length };
   if (key === 'exclusivo') return { v: o.exclusive_end ? new Date(o.exclusive_end).getTime() : null };
+  if (key === 'prox') { var nt = ownerNextTask(o); return { v: nt ? new Date(nt.due_date).getTime() : null }; }
   return { v: o.created_at ? new Date(o.created_at).getTime() : null };
 }
 function applyOwnerSort() {
@@ -330,6 +348,17 @@ function renderOwnerList(c) {
     } else {
       tareaCell = '<span class="crm-muted">—</span>';
     }
+    var nextTask = ownerNextTask(o);
+    var proxCell;
+    if (nextTask) {
+      var tl = fmtTaskTimeLeft(nextTask.due_date);
+      var chipColor = tl.overdue ? 'var(--danger)' : (tl.soon ? 'var(--warning)' : 'var(--accent)');
+      var desc = nextTask.description || nextTask.title || nextTask.type || 'Tarea';
+      proxCell = '<div style="font-size:12px;color:var(--text-main);font-weight:500;">' + esc(desc.length > 42 ? desc.slice(0, 42) + '…' : desc) + '</div>' +
+        '<div style="font-size:11px;font-weight:600;color:' + chipColor + ';margin-top:2px;"><i class="fas fa-clock" style="font-size:10px;margin-right:4px;"></i>' + tl.text + '</div>';
+    } else {
+      proxCell = '<span class="crm-muted">—</span>';
+    }
     rows += '<tr class="crm-row" data-id="' + o.id + '" data-kind="owner">' +
       '<td><div class="crm-client-row"><span class="crm-client-avatar" style="background:' + avColor + '">' + inits + '</span><div><strong>' + esc(o.full_name) + '</strong>' + (o.exclusive ? '<span class="crm-tipo-chip crm-tipo-chip--estado">EXCLUSIVO</span>' : '') + '<div class="crm-meta">' + esc(contactMetrics.join(' · ')) + '</div></div></div></td>' +
       '<td>' + (o.dni_cuit ? '<code style="font-size:11px;color:var(--text-secondary);">' + esc(o.dni_cuit) + '</code>' : '<span class="crm-muted">—</span>') + '</td>' +
@@ -337,7 +366,7 @@ function renderOwnerList(c) {
       '<td>' + renderOwnerAgentCell(o.id) + '</td>' +
       '<td>' + tareaCell + '</td>' +
       '<td>' + (o.exclusive && o.exclusive_end ? fmtDate(o.exclusive_end) : '<span class="crm-muted">—</span>') + '</td>' +
-      '<td>' + (o.created_at ? fmtDate(o.created_at) : '—') + '</td>' +
+      '<td>' + proxCell + '</td>' +
       '<td class="crm-td-actions">' +
         '<button class="btn-action" data-action="viewOwner" data-id="' + o.id + '" title="Ver detalle"><i class="fas fa-eye"></i></button>' +
         '<button class="btn-action crm-icon-action" data-action="addOwnerNote" data-id="' + o.id + '" title="Agregar nota"><i class="fas fa-sticky-note"></i></button>' +
@@ -353,7 +382,7 @@ function renderOwnerList(c) {
         '<th class="crm-th-sort" data-sort="agente">Agente asignado' + sortArrow('agente') + '</th>' +
         '<th class="crm-th-sort" data-sort="tareas">Tareas pendientes' + sortArrow('tareas') + '</th>' +
         '<th class="crm-th-sort" data-sort="exclusivo">Exclusivo hasta' + sortArrow('exclusivo') + '</th>' +
-        '<th class="crm-th-sort" data-sort="creado">Creado' + sortArrow('creado') + '</th><th></th>' +
+        '<th class="crm-th-sort" data-sort="prox">Próx. tarea' + sortArrow('prox') + '</th><th></th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>' + buildPagination();
   c.querySelectorAll('.crm-row').forEach(function (r) {
     r.addEventListener('click', function () { openOwnerPanel(this.dataset.id); });
@@ -732,14 +761,15 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
     '</div>' +
     '<div class="crm-side-body">' +
       sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, buildUnifiedTimeline(activities, visits, tasks)) +
-      agendaSectionHtml(visits) +
-      '<div id="crmTasksPanel"><div class="loading-state">Cargando tareas...</div></div>' +
-      '<button class="btn-action crm-new-task-btn" id="crmNewTaskBtn">+ Nueva tarea</button>' +
       '<div class="crm-qa-row">' +
-        '<button class="crm-qa-btn" data-action="logCall" aria-label="Registrar llamada"><i class="fas fa-phone"></i><span class="crm-qa-tip">Llamada</span></button>' +
-        '<button class="crm-qa-btn" data-action="addNoteInline" aria-label="Agregar nota"><i class="fas fa-sticky-note"></i><span class="crm-qa-tip">Nota</span></button>' +
-        '<button class="crm-qa-btn" data-action="scheduleVisit" aria-label="Agendar visita"><i class="fas fa-calendar"></i><span class="crm-qa-tip">Visita</span></button>' +
-        '<button class="crm-qa-btn" data-action="scheduleFollowup" aria-label="Programar followup"><i class="fas fa-clock"></i><span class="crm-qa-tip">Followup</span></button>' +
+        '<div class="crm-qa-btn-wrap">' +
+          '<button class="crm-qa-btn" id="crmQaTaskBtn" aria-label="Follow up"><i class="fas fa-clock"></i><span class="crm-qa-tip">Follow up</span></button>' +
+          '<div class="crm-qa-submenu" id="crmQaTaskMenu">' +
+            '<button class="crm-qa-menu-item" data-action="logCall"><i class="fas fa-phone"></i> Llamada</button>' +
+            '<button class="crm-qa-menu-item" data-action="addNoteInline"><i class="fas fa-sticky-note"></i> Nota</button>' +
+          '</div>' +
+        '</div>' +
+        '<button class="crm-qa-btn" data-action="scheduleVisit" aria-label="Agendar visita"><i class="fas fa-calendar-check"></i><span class="crm-qa-tip">Visita</span></button>' +
         '<button class="crm-qa-btn crm-qa-btn--danger" data-action="markLost" aria-label="Marcar como perdido"><i class="fas fa-ban"></i><span class="crm-qa-tip">Perdido</span></button>' +
       '</div>' +
       '<div id="crmQuickActionPanel"></div>' +
@@ -752,10 +782,9 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
   });
   bindSideSave(lead, panel);
   bindQuickActions(lead, panel); bindPropSearch(panel, lead.id);
-  window.CrmTasks.loadLeadTasks(lead.id, panel);
+  bindQaMenu(panel);
   bindAgendaActions(panel, lead.id);
-  var ntBtn = panel.querySelector('#crmNewTaskBtn');
-  if (ntBtn) ntBtn.addEventListener('click', function () { window.CrmTasks.showTaskForm(lead.id, null, panel); });
+  bindTlTaskActions(panel, lead.id);
 }
 
 function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, timelineHtml) {
@@ -794,7 +823,7 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, timelineHtm
         sideField('Valor estimado (USD)', 'crmDtlEstValue', 'number', lead.estimated_value) +
       '</div></div>' +
     
-    '<div class="crm-side-section"><h4 class="crm-side-section-title">Actividad reciente</h4>' +
+    '<div class="crm-side-section"><h4 class="crm-side-section-title">Historial</h4>' +
       '<div class="crm-timeline">' + (timelineHtml || buildTimelineHTML([])) + '</div></div>' +
     '<div class="crm-side-section"><h4 class="crm-side-section-title">Notas</h4>' +
       '<div class="crm-side-fields">' +
@@ -997,16 +1026,19 @@ function bindQuickActions(lead, panel) {
   var p = panel.querySelector('#crmQuickActionPanel');
   if (!p) return;
   var defs = [
-    { sel: '[data-action="logCall"]', label: 'Registrar llamada', type: 'call', hasDate: false, placeholder: 'Descripcion...', actTitle: 'Llamada telefonica' },
-    { sel: '[data-action="addNoteInline"]', label: 'Agregar nota', type: 'note', hasDate: false, placeholder: 'Escribi una nota...', actTitle: 'Nota' },
+    { sel: '[data-action="logCall"]', label: 'Registrar llamada', type: 'call', hasDate: true, placeholder: 'Descripcion...', actTitle: 'Llamada telefonica' },
+    { sel: '[data-action="addNoteInline"]', label: 'Agregar nota', type: 'note', hasDate: true, placeholder: 'Escribi una nota...', actTitle: 'Nota' },
     { sel: '[data-action="scheduleVisit"]', label: 'Agendar visita', type: 'visit', hasDate: true, placeholder: 'Notas para la visita...', actTitle: 'Visita agendada' },
-    { sel: '[data-action="scheduleFollowup"]', label: 'Programar followup', type: 'followup', hasDate: true, placeholder: 'Notas del followup...', actTitle: 'Followup programado' }
-    , { sel: '[data-action="markLost"]', label: 'Marcar perdido', type: 'lost', hasDate: false, placeholder: 'Motivo del rechazo (opcional)...', actTitle: 'Perdido / Rechazado' }]
+    { sel: '[data-action="markLost"]', label: 'Marcar perdido', type: 'lost', hasDate: false, placeholder: 'Motivo del rechazo (opcional)...', actTitle: 'Perdido / Rechazado' }]
 
   defs.forEach(function (d) {
     var btn = panel.querySelector(d.sel);
     if (!btn) return;
     btn.addEventListener('click', function () {
+      if (d.type === 'task') {
+        if (window.CrmTasks && window.CrmTasks.showTaskForm) window.CrmTasks.showTaskForm(lead.id, null, panel);
+        return;
+      }
       p.innerHTML = '<div class="crm-quick-panel">' +
         '<span class="crm-quick-panel-label">' + d.label + '</span>' +
         (d.hasDate ? '<input class="crm-field-input" id="crmQaDate" type="datetime-local">' : '') +
@@ -1033,14 +1065,17 @@ function bindQuickActions(lead, panel) {
             await loadLeads();
             return;
           }
-          var row = { lead_id: lead.id, activity_type: d.type, title: d.actTitle, description: txt || null };
-          if (d.type === 'visit') row.activity_type = 'visit';
-          if (d.type === 'followup') row.activity_type = 'followup';
-          if (d.type === 'call') row.activity_type = 'call';
-          var ins = await db().from('lead_activities').insert([row]);
-          if (ins.error) throw new Error(ins.error.message);
-          if (d.type === 'followup') {
-            await db().from('leads').update({ next_followup_at: dt }).eq('id', lead.id);
+          if (d.type === 'call' || d.type === 'note') {
+            var tIns = await db().from('lead_tasks').insert([{
+              lead_id: lead.id,
+              title: d.actTitle,
+              description: txt || null,
+              priority: 'media',
+              status: 'pendiente',
+              due_at: new Date(dt).toISOString()
+            }]);
+            if (tIns.error) throw new Error(tIns.error.message);
+            await db().from('leads').update({ last_contacted_at: new Date().toISOString(), next_followup_at: new Date(dt).toISOString() }).eq('id', lead.id);
           } else if (d.type === 'visit') {
             /* Solo registrar si hay propiedad: la tabla visits exige property_id NOT NULL */
             var lprops = await getLeadProps(lead.id);
@@ -1060,15 +1095,10 @@ function bindQuickActions(lead, panel) {
               lead_id: lead.id,
               notes: txt || null
             }]);
-            await db().from('leads').update({ last_contacted_at: new Date().toISOString(), next_followup_at: dt }).eq('id', lead.id);
-} else {
-            await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', lead.id);
+            await db().from('leads').update({ last_contacted_at: new Date().toISOString(), next_followup_at: new Date(dt).toISOString() }).eq('id', lead.id);
           }
           toast(d.label + ' guardado.', 'success');
           p.innerHTML = '';
-          var acts = await getLeadActivities(lead.id);
-          var tl = panel.querySelector('.crm-timeline');
-          if (tl) tl.innerHTML = buildTimelineHTML(acts);
           await loadLeads();
           _selectedLeadId = lead.id;
           openDetailPanel(lead.id);
@@ -1320,36 +1350,6 @@ var rr = await db().from('owner_tasks').insert([{
 
 window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners };
 window.initCrm = init;
-/* -- Agenda de Visitas dentro del panel lateral -- */
-function agendaSectionHtml(visits) {
-  var rows = '';
-  if (visits && visits.length) {
-    rows = visits.map(function (v) {
-      var dt = v.visit_date ? fmtDateTime(v.visit_date) : 'Sin fecha';
-      var st = v.status || 'pendiente';
-      var isPast = v.visit_date && new Date(v.visit_date) < new Date();
-      var cls = st === 'confirmada' ? 'crm-visit--confirmed' : st === 'completada' ? 'crm-visit--done' : st === 'cancelada' ? 'crm-visit--cancelled' : (isPast ? 'crm-visit--overdue' : '');
-      var actions = '';
-      if (st === 'pendiente') actions += '<button class="crm-visit-btn" data-visit-action="confirm" data-visit-id="' + v.id + '" style="color:var(--success);"><i class="fas fa-check"></i></button>';
-      if (st === 'pendiente' || st === 'confirmada') {
-        actions += '<button class="crm-visit-btn" data-visit-action="reschedule" data-visit-id="' + v.id + '" style="color:var(--warning);"><i class="fas fa-clock"></i></button>';
-        actions += '<button class="crm-visit-btn" data-visit-action="cancel" data-visit-id="' + v.id + '" style="color:var(--danger);"><i class="fas fa-times"></i></button>';
-        actions += '<button class="crm-visit-btn" data-visit-action="complete" data-visit-id="' + v.id + '" style="color:var(--accent);"><i class="fas fa-check-double"></i></button>';
-      }
-      return '<div class="crm-visit-item ' + cls + '">' +
-        '<div class="crm-visit-info">' +
-          '<div class="crm-visit-date">' + dt + '</div>' +
-          '<div class="crm-visit-status">' + (VISIT_STATUS_LABELS[st] || st) + '</div>' +
-        '</div>' +
-        '<div class="crm-visit-actions">' + actions + '</div>' +
-      '</div>';
-    }).join('');
-  } else {
-    rows = '<div class="crm-timeline-empty">Sin visitas agendadas.</div>';
-  }
-  return '<div class="crm-side-section"><h4 class="crm-side-section-title">Agenda</h4>' +
-    '<div class="crm-side-fields"><div class="crm-visit-list">' + rows + '</div></div></div>';
-}
 
 var VISIT_STATUS_LABELS = { pendiente: 'Pendiente', confirmada: 'Confirmada', completada: 'Completada', cancelada: 'Cancelada' };
 
@@ -1393,45 +1393,150 @@ function bindAgendaActions(panel, leadId) {
   });
 }
 
+var __qaMenuDocBound = false;
+
+function bindQaMenu(panel) {
+  var btn = panel.querySelector('#crmQaTaskBtn');
+  var menu = panel.querySelector('#crmQaTaskMenu');
+  if (!btn || !menu) return;
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    menu.classList.toggle('open');
+  });
+  menu.querySelectorAll('.crm-qa-menu-item').forEach(function (item) {
+    item.addEventListener('click', function () { menu.classList.remove('open'); });
+  });
+  if (!__qaMenuDocBound) {
+    __qaMenuDocBound = true;
+    document.addEventListener('click', function (e) {
+      var open = document.querySelector('#crmQaTaskMenu');
+      if (open && open.classList.contains('open') && !open.contains(e.target) && e.target.id !== 'crmQaTaskBtn') {
+        open.classList.remove('open');
+      }
+    });
+  }
+}
+
+/* -- Acciones de tareas dentro del timeline unificado -- */
+async function doCompleteTlTask(item, leadId, panel) {
+  var taskId = item.getAttribute('data-task-id');
+  if (!taskId || !window.CrmTasks || !window.CrmTasks.completeTask) return;
+  try {
+    await window.CrmTasks.completeTask(taskId, item);
+    item.classList.add('crm-tl-task--done');
+    var chip = item.querySelector('.crm-tl-status');
+    if (chip) { chip.textContent = 'Completada'; chip.classList.add('crm-tl-status--done'); }
+    await loadLeads();
+  } catch (e) { console.warn('[crm] complete task:', e.message); }
+}
+
+async function doDeleteTlTask(item, leadId, panel) {
+  var taskId = item.getAttribute('data-task-id');
+  if (!taskId || !window.CrmTasks || !window.CrmTasks.deleteTask) return;
+  if (!confirm('Eliminar esta tarea?')) return;
+  try {
+    await window.CrmTasks.deleteTask(taskId, item);
+    await loadLeads();
+  } catch (e) { console.warn('[crm] delete task:', e.message); }
+}
+
+function bindTlTaskActions(panel, leadId) {
+  panel.querySelectorAll('.crm-tl-task').forEach(function (item) {
+    var cb = item.querySelector('.crm-task-checkbox');
+    if (cb && !cb.dataset.crmTaskBound) {
+      cb.dataset.crmTaskBound = '1';
+      cb.addEventListener('change', function () { doCompleteTlTask(item, leadId, panel); });
+    }
+    var del = item.querySelector('.crm-tl-task-del');
+    if (del && !del.dataset.crmTaskBound) {
+      del.dataset.crmTaskBound = '1';
+      del.addEventListener('click', function (e) { e.stopPropagation(); doDeleteTlTask(item, leadId, panel); });
+    }
+  });
+}
+
 /* ============================================================
    LÍNEA DE TIEMPO UNIFICADA -- actividades + visitas + tareas
    "Lo que está pasando" en un solo feed cronológico.
    ============================================================ */
 function buildUnifiedTimeline(activities, visits, tasks) {
+  var taskStatusLbl = (window.CrmTasks && window.CrmTasks.statusLabels) || { pendiente: 'Pendiente', en_progreso: 'En progreso', completada: 'Completada', cancelada: 'Cancelada' };
+  var taskPrioLbl = (window.CrmTasks && window.CrmTasks.priorityLabels) || { baja: 'Baja', media: 'Media', alta: 'Alta', urgente: 'Urgente' };
+  function prioClass(p) {
+    var m = { baja: 'crm-task-priority--baja', media: 'crm-task-priority--media', alta: 'crm-task-priority--alta', urgente: 'crm-task-priority--urgente' };
+    return m[p] || m.media;
+  }
   var items = [];
   (activities || []).forEach(function (a) {
+    /* las visitas ya se renderizan desde la tabla visits; la actividad 'visit' (Visita agendada) duplicaria cada visita */
+    if (a.activity_type === 'visit') return;
     items.push({
-      _ts: a.created_at, kind: 'activity',
-      title: a.title || a.activity_type, text: a.description || '',
-      dot: 'crm-dot--' + (a.activity_type === 'status_change' ? 'status' : (a.activity_type || 'note'))
+      _ts: a.created_at,
+      html: '<div class="crm-interaction">' +
+        '<span class="crm-interaction-dot ' + (a.activity_type === 'status_change' ? 'crm-dot--status' : 'crm-dot--' + (a.activity_type || 'note')) + '"></span>' +
+        '<div class="crm-interaction-body">' +
+          '<strong>' + esc(a.title || a.activity_type || '') + '</strong>' +
+          (a.description ? '<div class="crm-interaction-text">' + esc(a.description) + '</div>' : '') +
+          '<div class="crm-interaction-date">' + fmtDateTime(a.created_at) + '</div>' +
+        '</div></div>'
     });
   });
   (visits || []).forEach(function (v) {
+    var st = v.status || 'pendiente';
+    var dt = new Date(v.visit_date).getTime();
+    var isPast = !isNaN(dt) && dt < Date.now();
+    var vencida = isPast && (st === 'pendiente' || st === 'confirmada');
+    var actions = '';
+    if (st === 'pendiente') actions += '<button class="crm-visit-btn" data-visit-action="confirm" data-visit-id="' + v.id + '" style="color:var(--success);"><i class="fas fa-check"></i></button>';
+    if (st === 'pendiente' || st === 'confirmada') {
+      actions += '<button class="crm-visit-btn" data-visit-action="reschedule" data-visit-id="' + v.id + '" style="color:var(--warning);"><i class="fas fa-clock"></i></button>';
+      actions += '<button class="crm-visit-btn" data-visit-action="cancel" data-visit-id="' + v.id + '" style="color:var(--danger);"><i class="fas fa-times"></i></button>';
+      actions += '<button class="crm-visit-btn" data-visit-action="complete" data-visit-id="' + v.id + '" style="color:var(--accent);"><i class="fas fa-check-double"></i></button>';
+    }
     items.push({
-      _ts: v.visit_date, kind: 'visit',
-      title: 'Visita ' + (v.status || 'pendiente'),
-      text: v.client_name ? ('para ' + v.client_name) : '',
-      dot: 'crm-dot--visit',
-      isFuture: new Date(v.visit_date).getTime() > Date.now()
+      _ts: v.visit_date,
+      html: '<div class="crm-interaction crm-tl-visit">' +
+        '<span class="crm-interaction-dot crm-dot--visit"></span>' +
+        '<div class="crm-interaction-body">' +
+          '<strong>Visita: ' + (VISIT_STATUS_LABELS[st] || st) + (vencida ? ' <span class="crm-tl-vencida">(vencida)</span>' : '') + '</strong>' +
+          (v.notes ? '<div class="crm-interaction-text">' + esc(v.notes) + '</div>' : '') +
+          '<div class="crm-interaction-date">' + fmtDateTime(v.visit_date) + '</div>' +
+          (actions ? '<div class="crm-tl-inline-actions">' + actions + '</div>' : '') +
+        '</div></div>'
     });
   });
   (tasks || []).forEach(function (t) {
-    var label = t.status === 'completada' ? 'Tarea completada' : (t.status === 'cancelada' ? 'Tarea cancelada' : 'Tarea ' + (t.status || 'pendiente'));
+    var isDone = t.status === 'completada' || t.status === 'cancelada';
+    var checked = t.status === 'completada' ? ' checked' : '';
+    var disabled = isDone ? ' disabled' : '';
+    var dueStr = t.due_at ? fmtDateTime(t.due_at) : '';
+    var overdue = t.due_at && !isDone && new Date(t.due_at).getTime() < Date.now();
+    var stl = t.status === 'completada' ? 'Completada' : t.status === 'cancelada' ? 'Cancelada' : (taskStatusLbl[t.status] || t.status || 'Pendiente');
     items.push({
-      _ts: t.created_at, kind: 'task',
-      title: label + ': ' + (t.title || ''),
-      text: t.description || '',
-      dot: 'crm-dot--task'
+      _ts: t.created_at || t.due_at,
+      html: '<div class="crm-interaction crm-tl-task' + (isDone ? ' crm-tl-task--done' : '') + '" data-task-id="' + t.id + '">' +
+        '<span class="crm-interaction-dot crm-dot--task"></span>' +
+        '<div class="crm-interaction-body">' +
+          '<div class="crm-tl-task-head">' +
+            '<strong>' + esc(t.title || 'Tarea') + '</strong>' +
+            '<span class="crm-tl-task-actions">' +
+              '<label class="crm-task-check" title="Completar tarea"><input type="checkbox" class="crm-task-checkbox"' + checked + disabled + '><span class="crm-task-check-visual"></span></label>' +
+              '<button class="crm-tl-task-del" aria-label="Eliminar tarea"><i class="fas fa-trash"></i></button>' +
+            '</span>' +
+          '</div>' +
+          (t.description ? '<div class="crm-interaction-text">' + esc(t.description) + '</div>' : '') +
+          '<div class="crm-tl-task-meta">' +
+            '<span class="crm-task-priority ' + prioClass(t.priority) + '">' + (taskPrioLbl[t.priority] || 'Media') + '</span>' +
+            (dueStr ? '<span class="crm-task-due' + (overdue ? ' crm-task-due--overdue' : '') + '">' + dueStr + '</span>' : '') +
+            '<span class="crm-tl-status' + (t.status === 'completada' ? ' crm-tl-status--done' : '') + '">' + stl + '</span>' +
+          '</div>' +
+          '<div class="crm-interaction-date">' + fmtDateTime(t.created_at) + '</div>' +
+        '</div></div>'
     });
   });
   items.sort(function (a, b) { return new Date(b._ts) - new Date(a._ts); });
   if (!items.length) return '<div class="crm-timeline-empty">Sin actividad registrada.</div>';
-  return items.map(function (it) {
-    return '<div class="crm-interaction"><span class="crm-interaction-dot ' + it.dot + '"></span><div class="crm-interaction-body">' +
-      '<strong>' + esc(it.title) + '</strong>' +
-      (it.text ? '<div class="crm-interaction-text">' + esc(it.text) + '</div>' : '') +
-      '<div class="crm-interaction-date">' + fmtDateTime(it._ts) + '</div></div></div>';
-  }).join('');
+  return items.map(function (it) { return it.html; }).join('');
 }
 
 /* próxima acción: prioriza la tarea pendiente más próxima; si no hay, recomendar Followup */
