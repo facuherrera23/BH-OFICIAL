@@ -1381,6 +1381,22 @@
     <p>Cargando tu portal...</p>
   </div>
 
+  <!-- LOGIN POR TOKEN -->
+  <div class="portal-error" id="loginState" style="display:none;">
+    <div style="width:100%; max-width:420px; text-align:center;">
+      <div class="portal-error-icon" style="background:var(--gold-dim); margin:0 auto 20px;"><i class="fas fa-key" style="color:var(--gold);"></i></div>
+      <h2 style="font-family:'Playfair Display',serif; font-size:26px; margin-bottom:8px; color:var(--text);">Portal del Propietario</h2>
+      <p style="color:var(--text-dim); font-size:14px; margin-bottom:22px;">Ingresá tu código de acceso para ver el estado de tus propiedades.</p>
+      <form id="tokenLoginForm" style="display:flex; flex-direction:column; gap:10px;">
+        <input type="text" id="tokenInput" placeholder="Tu código de acceso" autocomplete="off" spellcheck="false"
+          style="width:100%; padding:14px 16px; border-radius:10px; border:1px solid var(--border-accent); background:var(--bg-card); color:var(--text); font-size:15px; text-align:center; font-family:ui-monospace,monospace; letter-spacing:1px;" />
+        <button type="submit" class="btn-luxury-action" style="width:100%; padding:14px; border-radius:10px; border:none; cursor:pointer; background:linear-gradient(135deg, var(--gold), #16a09a); color:#06090d; font-weight:700; font-size:14px; letter-spacing:0.5px;">Ingresar</button>
+        <p id="tokenError" style="display:none; color:var(--red); font-size:13px; margin-top:4px;">Código incorrecto o expirado. Pedí uno nuevo a tu asesor.</p>
+      </form>
+      <p style="color:var(--text-muted); font-size:12px; margin-top:22px;">¿No tenés código? Pedíselo a tu asesor de Bienenhaus.</p>
+    </div>
+  </div>
+
   <!-- ERROR -->
   <div class="portal-error" id="errorState" style="display:none;">
     <div class="portal-error-icon"><i class="fas fa-exclamation-triangle"></i></div>

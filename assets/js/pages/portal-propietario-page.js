@@ -38,7 +38,42 @@
     /* ── Token ── */
     var params = new URLSearchParams(location.search);
     var token = params.get('token');
-    if (!token) { showError('Sin acceso', 'No se encontró el token de acceso. Pedí a tu asesor un link válido.'); return; }
+
+    function showLogin() {
+      $('loadingState').style.display = 'none';
+      $('errorState').style.display = 'none';
+      $('loginState').style.display = 'flex';
+    }
+
+    /* Login por token (solo si no hay token en la URL) */
+    if (!token) {
+      var form = $('tokenLoginForm');
+      if (form) {
+        form.addEventListener('submit', async function(ev) {
+          ev.preventDefault();
+          var input = $('tokenInput');
+          var errEl = $('tokenError');
+          var val = (input && input.value || '').trim();
+          if (!val) return;
+          if (errEl) errEl.style.display = 'none';
+          try {
+            if (!window.BH_CONFIG) throw new Error('no config');
+            var sb = window.supabase.createClient(BH_CONFIG.SUPABASE_URL, BH_CONFIG.SUPABASE_ANON_KEY);
+            var { data, error } = await sb.rpc('portal_validate_token', { p_token: val });
+            if (error || !data) {
+              if (errEl) errEl.style.display = 'block';
+              return;
+            }
+            // Token válido: recargamos con él en la URL (persiste en historial/recarga)
+            window.location.href = location.pathname + '?token=' + encodeURIComponent(val);
+          } catch (e) {
+            if (errEl) errEl.style.display = 'block';
+          }
+        });
+      }
+      showLogin();
+      return;
+    }
 
     /* ── Init Supabase ── */
     if (!window.BH_CONFIG) { showError('Error de configuración', 'No se pudo inicializar el sistema.'); return; }
