@@ -241,7 +241,12 @@ function buildItemPayload(property: PropertyRow, defaults: MlDefaults): MlItemPa
             : 'not_specified',
         channels: ['marketplace'],
         attributes,
-        location: property.address ? { address_line: property.address } : undefined,
+        location: {
+            address_line: property.address || undefined,
+            country: { name: 'Argentina' },
+            state: { name: 'Córdoba' },
+            city: { name: location || 'Córdoba' },
+        },
     };
     if (categoryId) payload.category_id = categoryId;
     if (defaults.listing_type_id) payload.listing_type_id = defaults.listing_type_id;

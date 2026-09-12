@@ -98,7 +98,14 @@ export const MlItemPayloadSchema = z.object({
     description: z.object({ plain_text: z.string().max(20000) }).optional(),
     attributes: z.array(MlItemAttributeSchema).optional(),
     channels: z.array(z.literal('marketplace')).optional(),
-    location: z.object({ address_line: z.string().optional() }).optional(),
+    location: z
+        .object({
+            address_line: z.string().optional(),
+            country: z.object({ name: z.string() }).optional(),
+            state: z.object({ name: z.string() }).optional(),
+            city: z.object({ name: z.string() }).optional(),
+        })
+        .optional(),
 });
 
 // ============================================================
