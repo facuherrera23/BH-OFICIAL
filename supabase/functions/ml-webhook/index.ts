@@ -185,6 +185,47 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
         }
     }
 
+    // Cada pregunta nueva en ML crea un lead en el CRM. El dedupe por question_id
+    // lo protege de los reenvíos de webhook que ML a veces hace.
+    try {
+        const { data: existing } = await supabase
+            .from('ml_questions')
+            .select('lead_id')
+            .eq('question_id', questionId)
+            .maybeSingle();
+
+        if (!existing?.lead_id) {
+            const questionText = typeof q?.text === 'string' ? q.text : '';
+            const fromName =
+                typeof q?.from?.nickname === 'string' && q.from.nickname
+                    ? q.from.nickname
+                    : `Interesado ML (user ${typeof q?.from?.user_id === 'number' ? q.from.user_id : 'desconocido'})`;
+
+            const { data: newLead, error: leadErr } = await supabase
+                .from('leads')
+                .insert({
+                    full_name: fromName,
+                    source: 'ml',
+                    stage: 'nuevo',
+                    property_id: propertyId,
+                    notes: questionText
+                        ? `[Pregunta Mercado Libre] ${questionText}`
+                        : 'Consulta desde Mercado Libre',
+                })
+                .select('id')
+                .single();
+
+            if (!leadErr && newLead?.id) {
+                await supabase
+                    .from('ml_questions')
+                    .update({ lead_id: newLead.id })
+                    .eq('question_id', questionId);
+            }
+        }
+    } catch (err) {
+        logWarn({ function: 'ml-webhook', topic: 'questions', question_id: questionId, error: 'lead_create: ' + (err as Error).message });
+    }
+
     if (!template) {
         // Sin plantilla activa: solo registrar como no respondida
         if (propertyId) {
