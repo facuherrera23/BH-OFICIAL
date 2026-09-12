@@ -204,6 +204,7 @@ jobs:
             "manage-users"
             "ml-publish"
             "ml-sync"
+            "ml-webhook"
             "monthly_commission_liquidation"
             "supervision-api"
             "supervision-digest"
