@@ -183,6 +183,15 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
         if (meta) {
             propertyId = meta.property_id;
         }
+        // Fallback: si la publicación se hizo a mano en ML y no está en property_ml_meta
+        if (!propertyId) {
+            const { data: listing } = await supabase
+                .from('ml_listings')
+                .select('property_id')
+                .eq('ml_item_id', itemId)
+                .maybeSingle();
+            if (listing?.property_id) propertyId = listing.property_id;
+        }
     }
 
     // Cada pregunta nueva en ML crea un lead en el CRM. El dedupe por question_id
