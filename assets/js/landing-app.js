@@ -1579,7 +1579,11 @@ function renderSocialLinks(social) {
         if (c.description) setText('.footer-description', c.description);
         if (c.copyright) {
           const footerBottom = document.querySelector('.footer-bottom > span');
-          if (footerBottom) footerBottom.textContent = '© ' + new Date().getFullYear() + ' ' + c.copyright + '. Todos los derechos reservados.';
+          if (footerBottom) {
+            // El CMS ya puede traer el texto completo ("© 2026 ... reservados."). No re-envolverlo.
+            const cr = String(c.copyright).trim();
+            footerBottom.textContent = /^©/.test(cr) ? cr : ('© ' + new Date().getFullYear() + ' ' + cr + '. Todos los derechos reservados.');
+          }
         }
         if (c.matricula) {
           const footerSub = document.querySelector('.footer-logo-sub');

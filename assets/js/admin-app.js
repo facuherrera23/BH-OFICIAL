@@ -999,7 +999,7 @@ function esc(s) {
       const [propsRes, listingsRes, ownersRes, relaRes] = await Promise.all([
         client.from('properties').select('*').order('created_at', { ascending: false }).range(from, to),
         ml_connected
-          ? client.from('ml_listings').select('property_id, ml_listing_id, status')
+          ? client.from('ml_listings').select('property_id, ml_listing_id:ml_item_id, status:ml_status')
           : Promise.resolve({ data: [] }),
         client.from('owners').select('id, full_name').is('deleted_at', null).order('full_name'),
         client.from('rela_listings').select('property_id, codigo_aviso, status, remote_status, last_error'),
