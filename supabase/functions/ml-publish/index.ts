@@ -198,10 +198,10 @@ function buildItemPayload(property: PropertyRow, defaults: MlDefaults): MlItemPa
 
     // En inmuebles, estos atributos son obligatorios en la mayoría de categorías.
     // ML los descarta si se omiten, así que siempre se envían con defaults razonables.
+    // PROPERTY_TYPE/OPERATION se omiten: la categoría hoja ya fija ambos y ML valida
+    // value_id rígido, no texto libre.
     const fullBathrooms = property.full_bathrooms ?? property.bathrooms ?? 1;
     const attributes: Array<{ id: string; value_name: string }> = [
-        { id: 'OPERATION', value_name: operationLabel },
-        { id: 'PROPERTY_TYPE', value_name: propertyType },
         { id: 'ROOMS', value_name: String(property.rooms ?? property.bedrooms ?? 1) },
         { id: 'BEDROOMS', value_name: String(property.bedrooms ?? 1) },
         { id: 'FULL_BATHROOMS', value_name: String(fullBathrooms) },
