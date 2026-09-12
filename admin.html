@@ -115,14 +115,6 @@
 </div>
 <span class="nav-badge" id="sideBadgeTasaciones">0</span>
 </div>
-<div class="nav-item" data-tab="tab-propietarios">
-<div class="nav-item-left">
-<i class="fas fa-handshake" style="color:var(--accent);">
-</i>
-<span style="font-weight:600;">Propietarios</span>
-</div>
-<span class="nav-badge" id="sideBadgeOwners" style="background:rgba(31,200,195,0.2); color:var(--accent);">0 Activos</span>
-</div>
 <div class="menu-category">Red &amp; Difusión</div>
 <div class="nav-item" data-tab="tab-sitio-web">
 <div class="nav-item-left">
@@ -478,6 +470,7 @@
 <i class="fas fa-download"></i> CSV</button>
 <button class="btn-luxury-action" id="btnNewLead">+ Agregar Lead</button>
 <button class="btn-luxury-action" id="btnNewOwnerCrm" style="display:none;" title="Registrar nuevo propietario"><i class="fas fa-user-plus"></i> Registrar Propietario</button>
+<button class="btn-luxury-action" id="btnGenerateTokenCrm" style="display:none; background:rgba(139,92,246,0.12); border:1px solid rgba(139,92,246,0.35); color:#a78bfa;" title="Generar token de acceso al portal"><i class="fas fa-key"></i> + Token</button>
 </div>
 </div>
 
@@ -2316,6 +2309,35 @@
 <button type="submit" class="btn-luxury-action" id="agentSaveBtn">Guardar Broker</button>
 </div>
 </form>
+</div>
+</div>
+<!-- MODAL TOKEN PROPIETARIO -->
+<div class="admin-modal" id="ownerTokenModal">
+<div class="modal-box" style="max-width:540px;">
+<h3 style="font-family:var(--font-heading); font-size:20px; color:#fff; margin-bottom:6px;"><i class="fas fa-key" style="color:var(--accent);"></i> Token de portal — Propietario</h3>
+<p style="color:var(--text-muted); font-size:12.5px; margin-bottom:16px;">Generá un código de 5 caracteres para que el propietario acceda al portal. El código vence a los días que elijas.</p>
+<div class="form-field">
+<label>Propietario *</label>
+<select id="tokenOwnerSelect" required>
+<option value="">— Seleccionar propietario —</option>
+</select>
+</div>
+<div class="form-field">
+<label>Días de validez *</label>
+<input type="number" id="tokenDays" min="1" max="3650" value="30" required />
+<span class="crm-muted" style="font-size:11px;">El código expira pasada esa cantidad de días.</span>
+</div>
+<div id="tokenResult" style="display:none; margin-top:14px; padding:12px 16px; border:1px solid var(--border-subtle); border-radius:10px; background:rgba(255,255,255,0.04);">
+<div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+<div id="tokenResultCode" style="font-family:monospace; font-size:20px; letter-spacing:2px; font-weight:700; color:var(--accent);"></div>
+<button type="button" class="btn-action" id="btnCopyToken" title="Copiar código" style="margin-left:auto;"><i class="fas fa-copy"></i></button>
+</div>
+<div style="margin-top:8px; font-size:12px; color:var(--text-dim);">Link directo: <span id="tokenResultLink" style="color:var(--text); word-break:break-all;"></span> <button type="button" class="btn-action" id="btnCopyLink" title="Copiar link"><i class="fas fa-link"></i></button></div>
+</div>
+<div style="display:flex; justify-content:flex-end; gap:10px; margin-top:18px;">
+<button type="button" class="status-pill pending" data-action="closeTokenModal">Cancelar</button>
+<button type="button" class="btn-luxury-action" id="btnCreateToken"><i class="fas fa-key"></i> Generar & asignar</button>
+</div>
 </div>
 </div>
 <!-- MODAL PROPIETARIO -->

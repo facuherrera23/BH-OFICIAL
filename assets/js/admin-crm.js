@@ -370,6 +370,9 @@ function renderOwnerList(c) {
       '<td class="crm-td-actions">' +
         '<button class="btn-action" data-action="viewOwner" data-id="' + o.id + '" title="Ver detalle"><i class="fas fa-eye"></i></button>' +
         '<button class="btn-action crm-icon-action" data-action="addOwnerNote" data-id="' + o.id + '" title="Agregar nota"><i class="fas fa-sticky-note"></i></button>' +
+        '<button class="btn-action crm-icon-action" data-action="genOwnerToken" data-id="' + o.id + '" title="Generar token portal"><i class="fas fa-key"></i></button>' +
+        '<button class="btn-action" data-action="editOwner" data-id="' + o.id + '" title="Editar"><i class="fas fa-pen"></i></button>' +
+        '<button class="btn-action danger" data-action="deleteOwner" data-id="' + o.id + '" title="Eliminar"><i class="fas fa-trash"></i></button>' +
       '</td>' +
     '</tr>';
   }
@@ -391,6 +394,24 @@ c.querySelectorAll('[data-action="viewOwner"],[data-action="addOwnerNote"]').for
     b.addEventListener('click', function (e) {
       e.stopPropagation();
       openOwnerPanel(this.dataset.id);
+    });
+  });
+  c.querySelectorAll('[data-action="genOwnerToken"]').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (window.adminCrmToken && window.adminCrmToken.open) window.adminCrmToken.open(this.dataset.id);
+    });
+  });
+  c.querySelectorAll('[data-action="editOwner"]').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (window.adminApp && window.adminApp.editOwner) window.adminApp.editOwner(this.dataset.id);
+    });
+  });
+  c.querySelectorAll('[data-action="deleteOwner"]').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (window.adminApp && window.adminApp.deleteOwner) window.adminApp.deleteOwner(this.dataset.id);
     });
   });
   c.querySelectorAll('[data-action="viewOwnerTasks"]').forEach(function (b) {
@@ -1210,6 +1231,8 @@ function _syncHeader() {
   }
   if (newLead) newLead.style.display = ownersMode ? 'none' : '';
   if (newOwnerCrm) newOwnerCrm.style.display = ownersMode ? '' : 'none';
+  var tokenCrm = $id('btnGenerateTokenCrm');
+  if (tokenCrm) tokenCrm.style.display = ownersMode ? '' : 'none';
   if (searchEl) searchEl.placeholder = ownersMode ? 'Buscar propietario, CUIT o inmueble...' : 'Buscar nombre, email o teléfono...';
   leadOnly.forEach(function (id) {
     var el = $id(id);
@@ -1349,6 +1372,111 @@ var rr = await db().from('owner_tasks').insert([{
 /* ctypes */
 
 window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners };
+
+/* --- Generación de token portal desde CRM (en modo propietarios) --- */
+(function () {
+  var modal = $id('ownerTokenModal');
+  if (!modal) return;
+  var _lastToken = null;
+  var _lastOwnerId = null;
+  var _lastDays = null;
+
+  function open(ownerId) {
+    populateTokenOwnerSelect(ownerId || null);
+    var res = $id('tokenResult');
+    if (res) res.style.display = 'none';
+    var d = $id('tokenDays');
+    if (d) d.value = '30';
+    if (modal) { modal.classList.add('is-open'); document.body.style.overflow = 'hidden'; }
+  }
+
+  function close() { if (modal) { modal.classList.remove('is-open'); document.body.style.overflow = ''; } }
+
+  async function populateTokenOwnerSelect(preId) {
+    var sel = $id('tokenOwnerSelect');
+    if (!sel) return;
+    if (!_owners || !_owners.length) await loadOwners();
+    sel.innerHTML = '<option value="">— Seleccionar propietario —</option>' +
+      (_owners || []).map(function (o) {
+        return '<option value="' + esc(String(o.id)) + '"' + (preId === o.id ? ' selected' : '') + '>' + esc(o.full_name) + (o.phone ? ' · ' + esc(o.phone) : '') + '</option>';
+      }).join('');
+  }
+
+  function generate(days) {
+    var rnd = crypto.getRandomValues(new Uint8Array(5));
+    var chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    var out = '';
+    for (var i = 0; i < 5; i++) out += chars[rnd[i] % chars.length];
+    return out;
+  }
+
+  async function onGenerate() {
+    var sel = $id('tokenOwnerSelect');
+    var d = $id('tokenDays');
+    var ownerId = sel && sel.value;
+    var days = parseInt(d && d.value, 10);
+    if (!ownerId) { toast('Seleccioná un propietario', 'error'); return; }
+    if (!days || days < 1) { toast('Ingresá una duración válida', 'error'); return; }
+
+    var btn = $id('btnCreateToken');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando...'; }
+    try {
+      var token = generate(days);
+      var expiresAt = new Date(Date.now() + days * 86400000).toISOString();
+      var sess = await db().auth.getSession();
+      var uid = sess && sess.data && sess.data.session && sess.data.session.user ? sess.data.session.user.id : null;
+      var res = await db().from('owner_portal_tokens').upsert([{
+        owner_id: ownerId,
+        token: token,
+        scopes: ['read_properties', 'read_commissions', 'read_documents'],
+        expires_at: expiresAt,
+        created_by: uid
+      }], { onConflict: 'owner_id' });
+      if (res.error) throw res.error;
+
+      _lastToken = token; _lastOwnerId = ownerId; _lastDays = days;
+      var out = $id('tokenResult');
+      var codeEl = $id('tokenResultCode');
+      var linkEl = $id('tokenResultLink');
+      var link = location.origin + '/portal-propietario.html?token=' + encodeURIComponent(token);
+      if (codeEl) codeEl.textContent = token;
+      if (linkEl) linkEl.textContent = link;
+      if (out) out.style.display = 'block';
+      toast('Token generado: ' + token, 'success');
+    } catch (e) {
+      toast('Error: ' + (e && e.message ? e.message : 'no se pudo generar'), 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-key"></i> Generar & asignar'; }
+    }
+  }
+
+  function bind() {
+    var closeBtn = modal.querySelector('[data-action="closeTokenModal"]');
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    var createBtn = $id('btnCreateToken');
+    if (createBtn) createBtn.addEventListener('click', onGenerate);
+    var ct = $id('btnCopyToken');
+    if (ct) ct.addEventListener('click', function () {
+      if (!_lastToken) return;
+      navigator.clipboard.writeText(_lastToken).then(function(){ toast('Código copiado', 'success'); });
+    });
+    var cl = $id('btnCopyLink');
+    if (cl) cl.addEventListener('click', function () {
+      if (!_lastToken) return;
+      var link = location.origin + '/portal-propietario.html?token=' + encodeURIComponent(_lastToken);
+      navigator.clipboard.writeText(link).then(function(){ toast('Link copiado', 'success'); });
+    });
+    var headerBtn = $id('btnGenerateTokenCrm');
+    if (headerBtn && !headerBtn.dataset.bound) {
+      headerBtn.dataset.bound = '1';
+      headerBtn.addEventListener('click', function () { open(null); });
+    }
+  }
+
+  window.adminCrmToken = { open: open, close: close };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind);
+  else bind();
+})();
 window.initCrm = init;
 
 var VISIT_STATUS_LABELS = { pendiente: 'Pendiente', confirmada: 'Confirmada', completada: 'Completada', cancelada: 'Cancelada' };
