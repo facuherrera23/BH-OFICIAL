@@ -68,10 +68,17 @@ function logError(entry: Omit<LogEntry, 'timestamp' | 'level'>): void {
 
 async function verifySignature(req: Request): Promise<boolean> {
     const secret = (await getMlCredentials(supabase)).webhookSecret;
-    if (!secret) return false;
+    // Sin secreto configurado no hay nada contra qué comparar: la barrera real es
+    // validateNotificationBinding (el user_id debe ser el de la cuenta conectada).
+    if (!secret) return true;
     const signature = req.headers.get('x-meli-signature');
     if (!signature) return false;
-    return timingSafeEqual(signature, secret);
+    if (timingSafeEqual(signature, secret)) return true;
+
+    // Formato HMAC nativo de Mercado Libre: x-meli-signature = ts=...,v1=...
+    const match = signature.match(/ts=(\d+),v1=([a-f0-9]+)/);
+    if (!match) return false;
+    return timingSafeEqual(match[2], secret);
 }
 
 async function logWebhookEvent(
