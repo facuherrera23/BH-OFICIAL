@@ -205,8 +205,8 @@ function buildItemPayload(property: PropertyRow, defaults: MlDefaults): MlItemPa
         { id: 'ROOMS', value_name: String(property.rooms ?? property.bedrooms ?? 1) },
         { id: 'BEDROOMS', value_name: String(property.bedrooms ?? 1) },
         { id: 'FULL_BATHROOMS', value_name: String(fullBathrooms) },
-        { id: 'COVERED_AREA', value_name: String(property.area_covered ?? property.area_total ?? 1) },
-        { id: 'TOTAL_AREA', value_name: String(property.area_total ?? property.area_covered ?? 1) },
+        { id: 'COVERED_AREA', value_name: `${property.area_covered ?? property.area_total ?? 1} m²` },
+        { id: 'TOTAL_AREA', value_name: `${property.area_total ?? property.area_covered ?? 1} m²` },
         { id: 'PARKING_LOTS', value_name: String(property.garages ?? 0) },
     ];
 
