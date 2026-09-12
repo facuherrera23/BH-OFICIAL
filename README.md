@@ -10,39 +10,36 @@ Vanilla JS puro (sin bundler, sin build, scripts IIFE + globals) sobre **Supabas
 
 | Módulo | Archivos | Qué hace |
 |---|---|---|
-| Landing pública | `index.html`, `assets/js/landing-app.js`, `assets/css/landing.css` | Catálogo de propiedades publicadas con filtros, CMS dinámico vía tabla `site_content`, formulario de contacto, SEO via `sitemap.xml` |
-| Panel admin (CRM) | `admin.html`, `assets/js/admin-app.js` (~19.500 líneas) | Propiedades, Leads, Agenda/Visitas, Propietarios, Tasaciones, Portales (Mercado Libre + RELA), Chat Zernio, CMS del sitio, Configuración, Usuarios/roles, Supervisión y auditoría |
-| Portal propietario | `portal-propietario.html` | Acceso del propietario por token a sus tasaciones/propiedades/exclusividad |
+| Landing pública | `index.html`, `assets/js/landing-app.js`, `assets/css/landing.css` | Catálogo de propiedades publicadas, OG/SEO, formulario de contacto que alimenta el CRM |
+| Panel admin (CRM) | `admin.html`, `assets/js/admin-app.js` (~10.600 líneas), `assets/js/admin-crm.js`, `assets/js/admin-crm-tasks.js` | Propiedades, Leads, Agenda/Visitas, **Propietarios y documentación**, Tasaciones, Agentes, Chat Zernio, CMS del sitio |
+| **Portal propietario** | `portal-propietario.html`, `assets/js/pages/portal-propietario-page.js` | Login con token alfanumérico de 5 caracteres (sin `0/O/1/I/L`) con duración configurable por el agente |
 | Tasación pública | `tasacion.html` | Formulario de tasación (JS inline con CSP nonce) |
-| Confirmación de visitas | `confirmar-visita.html` | Confirmación de visita por token |
-| Fichas públicas | `fichas/DA-P*.html`, `scripts/generate-ficha.mjs` | Fichas HTML estáticas por propiedad |
+| Confirmación de visitas | `confirmar-visita.html` | Confirmación por token |
+| Fichas públicas | `fichas/`<br>+ `scripts/generate-ficha.mjs` | Fichas HTML con Open Graph para compartir en WhatsApp; regeneración automática al guardar propiedad |
 
 ## Stack técnico
 
-- **Frontend**: vanilla JS, scripts clásicos (`<script>`), estado global vía `window.*`. Helpers de seguridad en `assets/js/utils.js` (`esc`, `safeUrl`, `safeImageUrl`, `safeCssUrl`).
-- **Config pública**: `assets/js/config.js` expone URL de Supabase y la **anon key** (es público por diseño; la protección real es RLS).
-- **Imágenes**: upload firmado a Cloudinary vía edge function `cloudinary-sign` (firma SHA-1 server-side, allowlist de carpetas, rol activo requerido). El API secret nunca toca el navegador.
-- **Auth admin**: Supabase Auth (email/password + invitaciones). Roles en `profiles`: `super_admin`, `broker`, `agente` (+ `is_active`). Verificación de contraseña contra Have I Been Pwned vía `check-password-hash` (k-anonymity, fail-open).
-- **Edge Functions** (`supabase/functions/`, Deno):
-  - `_shared/`: `http.ts` (CORS allowlist), `rate-limit.ts` (sliding window en `rate_limit_logs`, fail-closed), `crypto.ts` (AES-256-GCM para tokens ML), `auth.ts`, `audit.ts`, `ml.ts`/`ml.schemas.ts` (tokens con lock CAS, validación zod), `rela.ts`/`rela.mapper.ts`, `visits.ts`, `auto_reply.ts`.
-  - Mercado Libre: OAuth (`ml-oauth`/`ml-auth`/`ml-callback`), publicación (`ml-publish`), sync (`ml-sync`, `ml-sync-import`, `ml-import-listings`), webhooks (`ml-webhook`, con firma `x-meli-signature`), preguntas (`ml-answer-question`), métricas (`ml-metrics`), cola (`ml-bulk-enqueue`), config/estado, etc.
-  - RELA (portal): `rela-proxy` (acciones del panel), `rela-callbacks` (webhook autenticado por secret + timing-safe, dedupe por `event_id`), `rela-sync`.
-  - Zernio (chat/WhatsApp): `zernio-proxy`, `zernio-webhook` (HMAC).
-  - CRM/operación: `contact-submit`, `visits-process-reminders`, `owner-tasks-reminder` (emails vía Brevo), `manage-users`, `ficha`, `convert-image`.
-  - Supervisión: `supervision-api`, `supervision-digest`, `supervision-ml-anomaly`, `supervision-notifications`, `supervision-notify`.
-- **Base de datos**: 52 migraciones en `supabase/migrations/`. RLS habilitado en las tablas de negocio (`properties`, `owners`, `owner_tasks`, `leads`, `visits`, `agents`, `tasaciones`, `commissions`, `site_content`, `audit_log`, `ml_*`, `rela_*`, `zernio_*`, etc.). Cron jobs con `pg_cron` + `pg_net` para supervisión, digest, purge, scoring y recordatorios.
+- **Frontend**: vanilla JS puro (sin bundler, estado global vía `window.*`).
+- **Backend**: Supabase (PostgreSQL + Auth + RLS + Realtime + Edge Functions Deno).
+- **Imágenes**: Cloudinary (upload firmado, `cloudinary-sign`).
+- **Deploy**: Cloudflare Pages (estático, rama `main`) + flow de GitHub Actions (lint → test unitarios → test E2E → deploy).
 
-## Scripts
+## Edge Functions importantes
 
-```bash
-npm run lint          # node --check sobre admin-app.js y landing-app.js
-npm test              # Playwright E2E (levanta/reutiliza http://localhost:8788)
-npm run test:unit     # tests unitarios (node --test tests/unit/)
-```
+- **ML**: OAuth tokens en `ml_connection`, publicación (`ml-publish`), sync (`ml-sync`, `ml-sync-import`), webhook (`ml-webhook`), preguntas (`ml-answer-question`), métricas (`ml-metrics`).
+  - Las publicaciones usan **categorías hoja de ML** según `property_type` y siempre incluyen los atributos requeridos de la taxonomía (`TOTAL_AREA`, `COVERED_AREA`, `ROOMS`, `BEDROOMS`, `FULL_BATHROOMS`, `PARKING_LOTS`) con unidades `m²` y encabezado `location` con country/state/city.
+  - El webhook valida firma HMAC `x-meli-signature` y crea lead en el CRM automáticamente (`source='ml'`) con resolución de propiedad por `property_ml_meta` → fallback `ml_listings`. Dedupe por `question_id`.
+- **RELA (ZonaProp)**: `rela-proxy`, `rela-callbacks` (firma timing-safe), `rela-sync`. Pausada: endpoint de producción depende de credenciales no recibidas todavía.
+- **Portal propietario**: `portal_get_portal_data(p_token)` / `portal_validate_token(p_token)` RPCs; RLS filtra por token + expiry.
+- **Auth**: `manage-users` (invite/roles/wa invitations), `check-password-hash` (HIBP k-anonymity).
 
-`scripts/syntax-check-edge.cjs` + `scripts/syntax-run-all.mjs` — verificación estática de las edge functions.
+## Tests
 
-## Notas de seguridad conocidas
+- Lint: `npm run lint` (node --check de los JS principales)
+- Unitarios: `npm run test:unit` (24 passing: mapping RELA, seguridad utils)
+- E2E: `npm test` (Playwright, 29 passing — cubre index, admin auth, CRM, tasación, portal propietario, seguridad CSP)
 
-- Admin requiere CSP `script-src 'unsafe-inline'` (handlers dinámicos); las páginas públicas usan nonce estático (`nonce-bienenhaus2024`) — pendiente de mejora (ver plan de remediación, fase 6).
-- Si un bloqueador de extensiones corta el CDN de Supabase, el panel muestra instrucciones en lugar de fallar en silencio.
+## Notas conservadas
+
+- CSP con `unsafe-inline` en admin (mejora pendiente).
+- Notas internas de propiedades: tabla `property_notes` con RLS SELECT/INSERT append-only, visibles solo desde el panel admin.
