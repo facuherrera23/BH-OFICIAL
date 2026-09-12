@@ -176,37 +176,48 @@ function buildItemPayload(property: PropertyRow, defaults: MlDefaults): MlItemPa
     const roomsLabel = property.rooms ?? property.bedrooms ?? 1;
     const location = property.address?.split(',')[0]?.trim() ?? '';
     const mlTitle =
-        `${operationLabel} ${propertyType} ${roomsLabel} amb. ${location || 'Salta'}`.slice(0, 60);
+        `${operationLabel} ${propertyType} ${roomsLabel} amb. ${location || 'Córdoba'}`.slice(0, 60);
 
+    // ML solo acepta publicar en categorías HOJA (la raíz "Inmuebles" MLA1459 no acepta atributos).
+    const ML_CATEGORY_MAP: Record<string, { venta: string; alquiler: string }> = {
+        departamento: { venta: 'MLA401686', alquiler: 'MLA1473' },
+        casa: { venta: 'MLA401685', alquiler: 'MLA1467' },
+        ph: { venta: 'MLA105182', alquiler: 'MLA105181' },
+        terreno: { venta: 'MLA401687', alquiler: 'MLA1494' },
+        local: { venta: 'MLA79244', alquiler: 'MLA79243' },
+        galpon: { venta: 'MLA1477', alquiler: 'MLA1476' },
+        oficina: { venta: 'MLA50540', alquiler: 'MLA50539' },
+        quinta: { venta: 'MLA50551', alquiler: 'MLA50549' },
+        campo: { venta: 'MLA6413', alquiler: 'MLA6414' },
+    };
+    const normalizedType = propertyType.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const operationKey = property.listing_type === 'alquiler' ? 'alquiler' : 'venta';
+    const categoryId =
+        ML_CATEGORY_MAP[normalizedType]?.[operationKey] ??
+        defaults.category_id;
+
+    // En inmuebles, estos atributos son obligatorios en la mayoría de categorías.
+    // ML los descarta si se omiten, así que siempre se envían con defaults razonables.
+    const fullBathrooms = property.full_bathrooms ?? property.bathrooms ?? 1;
     const attributes: Array<{ id: string; value_name: string }> = [
         { id: 'OPERATION', value_name: operationLabel },
         { id: 'PROPERTY_TYPE', value_name: propertyType },
         { id: 'ROOMS', value_name: String(property.rooms ?? property.bedrooms ?? 1) },
+        { id: 'BEDROOMS', value_name: String(property.bedrooms ?? 1) },
+        { id: 'FULL_BATHROOMS', value_name: String(fullBathrooms) },
+        { id: 'COVERED_AREA', value_name: String(property.area_covered ?? property.area_total ?? 1) },
+        { id: 'TOTAL_AREA', value_name: String(property.area_total ?? property.area_covered ?? 1) },
+        { id: 'PARKING_LOTS', value_name: String(property.garages ?? 0) },
     ];
 
-    if (property.bedrooms !== null)
-        attributes.push({ id: 'BEDROOMS', value_name: String(property.bedrooms) });
-    if (property.full_bathrooms !== null)
-        attributes.push({ id: 'FULL_BATHROOMS', value_name: String(property.full_bathrooms) });
-    if (property.bathrooms !== null)
-        attributes.push({ id: 'BATHROOMS', value_name: String(property.bathrooms) });
-    if (property.area_covered !== null)
-        attributes.push({ id: 'COVERED_AREA', value_name: String(property.area_covered) });
-    if (property.area_total !== null)
-        attributes.push({ id: 'TOTAL_AREA', value_name: String(property.area_total) });
     if (property.pets_allowed !== null) {
-        attributes.push({ id: 'PETS', value_name: property.pets_allowed ? 'SÃ­' : 'No' });
-        attributes.push({
-            id: 'IS_SUITABLE_FOR_PETS',
-            value_name: property.pets_allowed ? 'SÃ­' : 'No',
-        });
+        attributes.push({ id: 'PETS', value_name: property.pets_allowed ? 'Si' : 'No' });
+        attributes.push({ id: 'IS_SUITABLE_FOR_PETS', value_name: property.pets_allowed ? 'Si' : 'No' });
     }
-    if (property.garages !== null && property.garages > 0)
-        attributes.push({ id: 'PARKING_LOTS', value_name: String(property.garages) });
     if (property.has_storage !== null)
-        attributes.push({ id: 'STORAGE', value_name: property.has_storage ? 'SÃ­' : 'No' });
+        attributes.push({ id: 'STORAGE', value_name: property.has_storage ? 'Si' : 'No' });
     if (property.furnished !== null)
-        attributes.push({ id: 'FURNISHED', value_name: property.furnished ? 'SÃ­' : 'No' });
+        attributes.push({ id: 'FURNISHED', value_name: property.furnished ? 'Si' : 'No' });
     if (property.maintenance_fee !== null) {
         attributes.push({ id: 'MAINTENANCE_FEE', value_name: String(property.maintenance_fee) });
         attributes.push({ id: 'COMMON_EXPENSES', value_name: String(property.maintenance_fee) });
@@ -227,7 +238,7 @@ function buildItemPayload(property: PropertyRow, defaults: MlDefaults): MlItemPa
         attributes,
         location: property.address ? { address_line: property.address } : undefined,
     };
-    if (defaults.category_id) payload.category_id = defaults.category_id;
+    if (categoryId) payload.category_id = categoryId;
     if (defaults.listing_type_id) payload.listing_type_id = defaults.listing_type_id;
     return payload;
 }

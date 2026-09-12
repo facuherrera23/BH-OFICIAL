@@ -202,6 +202,7 @@ jobs:
             "cloudinary-sign"
             "cron_exclusivity_renewals"
             "manage-users"
+            "ml-publish"
             "ml-sync"
             "monthly_commission_liquidation"
             "supervision-api"
