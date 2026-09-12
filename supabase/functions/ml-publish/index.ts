@@ -225,6 +225,11 @@ function buildItemPayload(property: PropertyRow, defaults: MlDefaults): MlItemPa
     if (property.inscription_number)
         attributes.push({ id: 'INSCRIPTION_NUMBER', value_name: property.inscription_number });
 
+    // LAND_ACCESS es obligatorio solo en Terrenos
+    if (normalizedType === 'terreno') {
+        attributes.push({ id: 'LAND_ACCESS', value_name: 'Tierra' });
+    }
+
     const payload: MlItemPayload = {
         title: mlTitle,
         price: Number(property.price),
