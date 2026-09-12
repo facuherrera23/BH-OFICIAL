@@ -507,14 +507,18 @@ Deno.serve(async (req) => {
             }
 
             if (action === 'remove') {
-                const item = await closeMlItem(accessToken, mlItemId);
+                let closedStatus = 'closed';
+                try {
+                    const item = await closeMlItem(accessToken, mlItemId);
+                    closedStatus = item.status || 'closed';
+                } catch (err) {
+                    const msg = (err as Error).message;
+                    // Ya fue borrada en ML directamente o nunca existió: limpiar igual.
+                    if (!/404|not found/i.test(msg)) throw err;
+                }
                 await supabase
                     .from('ml_listings')
-                    .update({
-                        status: item.status,
-                        last_synced_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString(),
-                    })
+                    .update({ ml_status: closedStatus, last_sync: new Date().toISOString() })
                     .eq('ml_item_id', mlItemId);
 
                 await auditLog({
@@ -529,7 +533,7 @@ Deno.serve(async (req) => {
                     ok: true,
                     action: 'remove',
                     listing_id: mlItemId,
-                    status: item.status,
+                    status: closedStatus,
                 });
             }
 

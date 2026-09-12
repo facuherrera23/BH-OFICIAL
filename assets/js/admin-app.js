@@ -1051,7 +1051,7 @@ function esc(s) {
           /* Security: ml_listing_id es texto externo (API de ML): viaja en data-* + delegacion, NUNCA dentro de onclick */
           mlButtons = `
               <button class="btn-action" style="font-size:11px; color:#FFE600;" title="Actualizar en ML" data-ml-update-prop="${esc(p.id)}" data-ml-listing="${esc(mlInfo.ml_listing_id)}"><i class="fas fa-arrows-rotate"></i></button>
-              <button class="btn-action danger" style="font-size:11px;" title="Quitar de ML" data-ml-remove data-ml-listing="${esc(mlInfo.ml_listing_id)}"><i class="fas fa-link-slash"></i></button>`;
+              <button class="btn-action danger" style="font-size:11px;" title="Quitar de ML" data-ml-remove data-ml-prop="${esc(p.id)}" data-ml-listing="${esc(mlInfo.ml_listing_id)}"><i class="fas fa-link-slash"></i></button>`;
         } else if (ml_connected) {
           mlButtons = `<button class="btn-action" style="font-size:11px; color:#FFE600;" title="Publicar en ML" data-ml-publish="${esc(p.id)}"><i class="fas fa-shopping-cart"></i></button>`;
         }
@@ -6253,11 +6253,11 @@ try {
   };
 
   /* Remove a property listing from Mercado Libre */
-  window.adminApp.mlRemoveProperty = async function (listingId) {
+  window.adminApp.mlRemoveProperty = async function (listingId, propertyId) {
     if (!confirm('¿Eliminar esta propiedad de Mercado Libre?')) return;
     try {
       showToast('Eliminando de Mercado Libre...', 'info');
-      await mlApiCall('remove', { listing_id: listingId });
+      await mlApiCall('remove', { listing_id: listingId, property_id: propertyId });
       showToast('Propiedad eliminada de Mercado Libre', 'success');
       await mlCheckStatus();
       loadProperties();
@@ -6734,7 +6734,7 @@ try {
     const upd = e.target.closest('[data-ml-update-prop]');
     if (upd) { window.adminApp.mlUpdateProperty(upd.dataset.mlUpdateProp, upd.dataset.mlListing || ''); return; }
     const rem = e.target.closest('[data-ml-remove]');
-    if (rem) { window.adminApp.mlRemoveProperty(rem.dataset.mlListing || ''); return; }
+    if (rem) { window.adminApp.mlRemoveProperty(rem.dataset.mlListing || '', rem.dataset.mlProp || ''); return; }
     const pub = e.target.closest('[data-ml-publish]');
     if (pub) { window.adminApp.mlPublishProperty(pub.dataset.mlPublish); return; }
     const relaBtn = e.target.closest('[data-rela-action]');
