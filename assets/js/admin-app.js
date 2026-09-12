@@ -4320,32 +4320,77 @@ closeModal('ownerModal');
   };
 
   /* Generate Portal Link for Owner */
-  window.adminApp.generateOwnerPortalLink = async function() {
-    if (!editingOwnerId) return showToast('Primero guarde el propietario', 'warning');
-    if (!window.supabaseClient) return;
-    try {
-      const token = crypto.randomUUID();
-      const { error } = await window.supabaseClient
-        .from('owner_portal_tokens')
-        .upsert([{
-          owner_id: editingOwnerId,
-          token: token,
-          scopes: ['read_properties', 'read_commissions', 'read_documents'],
-          created_by: currentUser?.id || null
-        }], { onConflict: 'owner_id' });
-      if (error) throw error;
-      const portalUrl = `${window.location.origin}/portal-propietario.html?token=${token}`;
-      navigator.clipboard.writeText(portalUrl).then(() => {
-        showToast('Link de portal copiado al portapapeles: ' + portalUrl, 'success', 8000);
-      }).catch(() => {
-        showToast('Link generado: ' + portalUrl + ' (copie manualmente)', 'info', 8000);
-      });
-    } catch (err) {
-      showToast('Error: ' + err.message, 'error');
-    }
-  };
-
-  $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateOwnerPortalLink);
+  window.adminApp.generateOwnerPortalLink = async function() {
+
+    if (!editingOwnerId) return showToast('Primero guarde el propietario', 'warning');
+
+    if (!window.supabaseClient) return;
+
+    try {
+
+      /* El agente elige cuántos días el acceso queda válido */
+      const daysStr = prompt('Días de validez del acceso del propietario (ej: 30, 90, 180)', '90');
+
+      if (daysStr === null) return;
+
+      const days = parseInt(daysStr, 10);
+
+      if (!days || days < 1) { showToast('Duración inválida', 'error'); return; }
+
+      /* Código corto legible: sin 0/O ni 1/I/L para no confundir leyendo por teléfono */
+      const CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+      const rnd = crypto.getRandomValues(new Uint8Array(5));
+
+      let token = '';
+
+      for (let i = 0; i < 5; i++) token += CHARS[rnd[i] % CHARS.length];
+
+      const expiresAt = new Date(Date.now() + days * 86400000).toISOString();
+
+      const { error } = await window.supabaseClient
+
+        .from('owner_portal_tokens')
+
+        .upsert([{
+
+          owner_id: editingOwnerId,
+
+          token: token,
+
+          scopes: ['read_properties', 'read_commissions', 'read_documents'],
+
+          expires_at: expiresAt,
+
+          created_by: currentUser?.id || null
+
+        }], { onConflict: 'owner_id' });
+
+      if (error) throw error;
+
+      const portalUrl = window.location.origin + '/portal-propietario.html?token=' + token;
+
+      const msg = 'Código: ' + token + '  ·  Válido hasta: ' + new Date(expiresAt).toLocaleDateString('es-AR') + '. Link directo: ' + portalUrl;
+
+      navigator.clipboard.writeText(msg).then(() => {
+
+        showToast('Código copiado: ' + token, 'success', 8000);
+
+      }).catch(() => {
+
+        showToast('Código: ' + token + ' (copie manualmente)', 'info', 8000);
+
+      });
+
+    } catch (err) {
+
+      showToast('Error: ' + err.message, 'error');
+
+    }
+
+  };
+
+$('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateOwnerPortalLink);
 
   /* Owner Checklist */
   async function loadOwnerChecklist(ownerId) {
