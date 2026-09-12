@@ -346,24 +346,18 @@ async function upsertListing(args: {
             .from('ml_listings')
             .update({
                 ml_item_id: args.mlItemId,
-                status: args.mlStatus,
-                permalink: args.permalink,
-                price: args.price,
-                last_synced_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
+                ml_status: args.mlStatus,
+                last_sync: new Date().toISOString(),
             })
             .eq('id', existing.id);
     } else {
-        await supabase.from('ml_listings').insert({
+        const ins = await supabase.from('ml_listings').insert({
             property_id: args.propertyId,
             ml_item_id: args.mlItemId,
-            status: args.mlStatus,
-            permalink: args.permalink,
-            price: args.price,
-            title: args.title,
-            listing_type: args.listingType,
-            last_synced_at: new Date().toISOString(),
+            ml_status: args.mlStatus,
+            last_sync: new Date().toISOString(),
         });
+        if (ins.error) throw new Error('ml_listings insert: ' + ins.error.message);
     }
 
     await supabase.from('property_ml_meta').upsert(

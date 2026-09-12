@@ -1044,17 +1044,17 @@ function esc(s) {
         let mlBadge = '';
         let mlButtons = '';
 
-        if (mlInfo) {
-          const mlStatusColor = mlInfo.status === 'active' ? 'var(--success)' : mlInfo.status === 'paused' ? 'var(--warning)' : 'var(--text-dim)';
-          const mlStatusText = esc(mlInfo.status === 'active' ? 'En ML' : mlInfo.status === 'paused' ? 'Pausado' : mlInfo.status || 'ML');
-          mlBadge = `<span class="nav-badge status-pill ${mlInfo.status === 'active' ? 'active' : 'paused'}" style="font-size:10px; margin-left:4px;">${mlStatusText}</span>`;
-          /* Security: ml_listing_id es texto externo (API de ML): viaja en data-* + delegacion, NUNCA dentro de onclick */
-          mlButtons = `
-              <button class="btn-action" style="font-size:11px; color:#FFE600;" title="Actualizar en ML" data-ml-update-prop="${esc(p.id)}" data-ml-listing="${esc(mlInfo.ml_listing_id)}"><i class="fas fa-arrows-rotate"></i></button>
-              <button class="btn-action danger" style="font-size:11px;" title="Quitar de ML" data-ml-remove data-ml-listing="${esc(mlInfo.ml_listing_id)}"><i class="fas fa-link-slash"></i></button>`;
-        } else if (ml_connected) {
-          mlButtons = `<button class="btn-action" style="font-size:11px; color:#FFE600;" title="Publicar en ML" data-ml-publish="${esc(p.id)}"><i class="fas fa-shopping-cart"></i></button>`;
-        }
+        if (mlInfo && mlInfo.status !== 'closed') {
+          const mlStatusColor = mlInfo.status === 'active' ? 'var(--success)' : mlInfo.status === 'paused' ? 'var(--warning)' : 'var(--text-dim)';
+          const mlStatusText = esc(mlInfo.status === 'active' ? 'En ML' : mlInfo.status === 'paused' ? 'Pausado' : mlInfo.status || 'ML');
+          mlBadge = `<span class="nav-badge status-pill ${mlInfo.status === 'active' ? 'active' : 'paused'}" style="font-size:10px; margin-left:4px;">${mlStatusText}</span>`;
+          /* Security: ml_listing_id es texto externo (API de ML): viaja en data-* + delegacion, NUNCA dentro de onclick */
+          mlButtons = `
+              <button class="btn-action" style="font-size:11px; color:#FFE600;" title="Actualizar en ML" data-ml-update-prop="${esc(p.id)}" data-ml-listing="${esc(mlInfo.ml_listing_id)}"><i class="fas fa-arrows-rotate"></i></button>
+              <button class="btn-action danger" style="font-size:11px;" title="Quitar de ML" data-ml-remove data-ml-listing="${esc(mlInfo.ml_listing_id)}"><i class="fas fa-link-slash"></i></button>`;
+        } else if (ml_connected) {
+          mlButtons = `<button class="btn-action" style="font-size:11px; color:#FFE600;" title="Publicar en ML" data-ml-publish="${esc(p.id)}"><i class="fas fa-shopping-cart"></i></button>`;
+        }
 
         const relaInfo = relaMap[p.id];
         let relaBadge = '';
@@ -6222,14 +6222,12 @@ try {
       if (!prop.agent_id) errors.push('Broker asignado requerido');
       if (!prop.is_published) errors.push('La propiedad debe estar publicada');
 
-      if (errors.length) {
-        showToast('Validación fallida: ' + errors.join('; '), 'error');
-        return;
-      }
-
-      if (!confirm('¿Publicar esta propiedad en Mercado Libre?')) return;
-
-      showToast('Publicando en Mercado Libre...', 'info');
+      if (errors.length) {
+        showToast('Validación fallida: ' + errors.join('; '), 'error');
+        return;
+      }
+
+      showToast('Publicando en Mercado Libre...', 'info');
       const result = await mlApiCall('publish', { property_id: propertyId });
       const listingId = result.listing_id || result.item_id || result.id || '';
       showToast('¡Propiedad publicada en Mercado Libre! ID: ' + listingId, 'success');
