@@ -38,7 +38,7 @@ export const MlUserSchema = z.object({
 export const MlItemAttributeSchema = z.object({
     id: z.string(),
     value_name: z.string(),
-    value_id: z.string().optional(),
+    value_id: z.string().nullable().optional(),
 });
 
 export const MlItemPictureSchema = z.object({
@@ -46,10 +46,10 @@ export const MlItemPictureSchema = z.object({
     url: z.string().url(),
     secure_url: z.string().url().optional(),
     size: z.string().optional(),
-    max_size: z.number().optional(),
+    max_size: z.union([z.number(), z.string()]).nullable().optional(),
     width: z.number().optional(),
     height: z.number().optional(),
-    quality: z.number().optional(),
+    quality: z.union([z.number(), z.string()]).nullable().optional(),
     variation_id: z.string().optional(),
 });
 
