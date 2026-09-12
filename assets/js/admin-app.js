@@ -1247,7 +1247,9 @@ function esc(s) {
             .eq('id', editingPropertyId);
           if (error) throw error;
         });
-        showToast('Propiedad actualizada correctamente', 'success');
+        showToast('Propiedad actualizada correctamente', 'success');
+        fichaPublishOnSave(editingPropertyId);
+      
       } else {
         const newPropId = await mutate('properties', async () => {
           const { data: inserted, error } = await window.supabaseClient
@@ -1257,7 +1259,9 @@ function esc(s) {
           if (error) throw error;
           return inserted?.[0]?.id || null;
         });
-        showToast('Propiedad creada correctamente', 'success');
+        showToast('Propiedad creada correctamente', 'success');
+        fichaPublishOnSave(newPropId);
+      
         if (_pendingPropertyNotes.length && newPropId) await flushPendingPropertyNotes(newPropId);
       }
 
@@ -1273,7 +1277,30 @@ function esc(s) {
     }
   });
 
-  /* Edit property */
+
+  /* Generar/regenerar ficha HTML tras guardar una propiedad */
+
+  const fichaPublishOnSave = async (propertyId) => {
+    if (!propertyId) return;
+    if (!window.BH_CONFIG?.SUPABASE_URL) return;
+    try {
+      const { data: { session } } = await window.supabaseClient.auth.getSession();
+      if (!session) return;
+      const res = await fetch(window.BH_CONFIG.SUPABASE_URL + '/functions/v1/ficha-publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+        body: JSON.stringify({ property_id: propertyId })
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) { logWarn('ficha-publish falló (' + res.status + '): ' + (out.error || 'desconocido')); return; }
+      console.log('[ficha] generada para', propertyId, out.url || '');
+    } catch (e) {
+      logWarn('ficha-publish fetch error: ' + e.message);
+    }
+  };
+
+
+    /* Edit property */
   window.adminApp = window.adminApp || {};
   window.adminApp.loadSupervision = loadSupervision;
   window.adminApp.loadAnomaliesTable = loadAnomaliesTable;

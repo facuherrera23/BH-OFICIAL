@@ -24,6 +24,7 @@ jobs:
         env:
           SUPABASE_URL: https://rnldqiwwzhjnurkguihu.supabase.co
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: node scripts/generate-ficha.mjs
 
       - name: Commit fichas
