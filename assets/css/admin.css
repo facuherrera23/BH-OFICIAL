@@ -3956,9 +3956,41 @@ input[type="range"]::-moz-range-thumb {
         page-break-inside: avoid;
     }
 
+    #tab-ficha-html .ficha-sheet-hero,
+    #tab-ficha-html .ficha-footer-hero,
+    #tab-ficha-html .ficha-footer-brand {
+        background: #fff !important;
+        color: #000 !important;
+    }
+
+    #tab-ficha-html .ficha-sheet-hero::before,
+    #tab-ficha-html .ficha-sheet-hero::after {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+
+    #tab-ficha-html .ficha-kicker,
+    #tab-ficha-html .ficha-sheet-title span,
+    #tab-ficha-html .ficha-footer-headline span,
+    #tab-ficha-html .ficha-footer-brand-sub {
+        color: #0f766e !important;
+    }
+
+    #tab-ficha-html .ficha-detail strong {
+        color: #0f766e !important;
+    }
+
+    #tab-ficha-html .ficha-contact-band {
+        background: #fff !important;
+        border-top: 2px solid #14b8a6;
+    }
+
+    #tab-ficha-html .ficha-photo {
+        border: 1px solid #e5e5e2;
+    }
+
     @page {
-        margin: 0;
-        size: auto;
+        margin: 12mm;
     }
 }
 
