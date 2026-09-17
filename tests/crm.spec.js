@@ -35,6 +35,15 @@ test.describe('CRM — estructura del módulo nuevo', () => {
     expect(js).not.toContain(".from('leads').delete(");
   });
 
+  test('admin-crm.js renderiza el panel lateral como modal centrado', async ({ request }) => {
+    const js = await (await request.get('/assets/js/admin-crm.js')).text();
+    const occurrences = (js.match(/modal-box--xl crm-side-modal/g) || []).length;
+    expect(occurrences).toBe(4);
+    expect(js).toContain('bindSideOverlayClose');
+    expect(js).toContain("panel.classList.add('open')");
+    expect(js).not.toContain('crmBackdrop');
+  });
+
   test('admin-crm-tasks.js expone window.CrmTasks', async ({ request }) => {
     const js = await (await request.get('/assets/js/admin-crm-tasks.js')).text();
     expect(js).toContain('window.CrmTasks');

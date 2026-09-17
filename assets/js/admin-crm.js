@@ -716,15 +716,8 @@ function openDetailPanel(id) {
   _selectedLeadId = id;
   var panel = $id('crmSidePanel');
   if (!panel) return;
-  var backdrop = $id('crmBackdrop');
-  if (!backdrop) {
-    backdrop = document.createElement('div');
-    backdrop.className = 'crm-backdrop'; backdrop.id = 'crmBackdrop';
-    backdrop.addEventListener('click', closeDetailPanel);
-    document.body.appendChild(backdrop);
-  }
-  panel.innerHTML = '<div class="crm-side-header"><h3>Cargando...</h3></div><div class="crm-side-body"><div style="padding:20px;text-align:center;color:var(--text-dim);">Cargando prospecto...</div></div>';
-  backdrop.classList.add('open');
+  panel.innerHTML = '<div class="modal-box modal-box--xl crm-side-modal"><div class="crm-side-header"><h3>Cargando...</h3></div><div class="crm-side-body"><div style="padding:20px;text-align:center;color:var(--text-dim);">Cargando prospecto...</div></div></div>';
+  bindSideOverlayClose(panel);
   panel.classList.add('open');
 
   Promise.all([getLeadFull(id), getLeadActivities(id), getLeadProps(id), getLeadVisits(id), getLeadTasks(id)])
@@ -755,9 +748,17 @@ function closeDetailPanel() {
   _selectedLeadId = null;
   var panel = $id('crmSidePanel');
   if (panel) panel.classList.remove('open');
-  var backdrop = $id('crmBackdrop');
-  if (backdrop) backdrop.classList.remove('open');
   document.querySelectorAll('.crm-row--selected').forEach(function (r) { r.classList.remove('crm-row--selected'); });
+}
+
+/* Clic fuera de la card (sobre el overlay) cierra el panel, igual que los demás modales.
+   El panel se mueve a <body> al abrir y se reutiliza; la flag evita listeners duplicados. */
+function bindSideOverlayClose(panel) {
+  if (panel.dataset.sideBound) return;
+  panel.dataset.sideBound = '1';
+  panel.addEventListener('click', function (e) {
+    if (e.target === panel) closeDetailPanel();
+  });
 }
 
 function renderSide(panel, lead, activities, props, visits, tasks) {
@@ -776,6 +777,7 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
       }).join('');
 
   panel.innerHTML =
+    '<div class="modal-box modal-box--xl crm-side-modal">' +
     '<div class="crm-side-header">' +
       '<div class="crm-side-header-info"><span class="crm-status-dot crm-status-dot--' + stage + '"></span><h3 class="crm-side-title">' + esc(lead.full_name) + '</h3></div>' +
       '<button class="crm-side-close" aria-label="Cerrar"><i class="fas fa-times"></i></button>' +
@@ -795,6 +797,7 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
       '</div>' +
       '<div id="crmQuickActionPanel"></div>' +
       '<div class="crm-side-save"><button class="btn-luxury-action" id="crmSideSaveBtn" style="width:100%;">Guardar cambios</button></div>' +
+    '</div>' +
     '</div>';
   panel.dataset.leadId = lead.id;
   panel.querySelector('.crm-side-close').addEventListener('click', closeDetailPanel);
@@ -1249,15 +1252,8 @@ function openOwnerPanel(ownerId) {
   var panel = $id('crmSidePanel');
   if (!panel) return;
   if (panel.parentNode !== document.body) document.body.appendChild(panel);
-  var backdrop = $id('crmBackdrop');
-  if (!backdrop) {
-    backdrop = document.createElement('div');
-    backdrop.className = 'crm-backdrop'; backdrop.id = 'crmBackdrop';
-    backdrop.addEventListener('click', closeDetailPanel);
-    document.body.appendChild(backdrop);
-  }
-  panel.innerHTML = '<div class="crm-side-header"><h3>Cargando...</h3></div><div class="crm-side-body"></div>';
-  backdrop.classList.add('open');
+  panel.innerHTML = '<div class="modal-box modal-box--xl crm-side-modal"><div class="crm-side-header"><h3>Cargando...</h3></div><div class="crm-side-body"></div></div>';
+  bindSideOverlayClose(panel);
   panel.classList.add('open');
   Promise.all([
     db().from('owners').select('*').eq('id', ownerId).single(),
@@ -1269,6 +1265,7 @@ function openOwnerPanel(ownerId) {
     var props = res[2].data || [];
     if (!owner) throw new Error('Propietario no encontrado');
     panel.innerHTML =
+      '<div class="modal-box modal-box--xl crm-side-modal">' +
       '<div class="crm-side-header">' +
         '<div class="crm-side-header-info"><span class="crm-status-dot crm-status-dot--propietario"></span><h3 class="crm-side-title">' + esc(owner.full_name) + '</h3></div>' +
         '<button class="crm-side-close" aria-label="Cerrar"><i class="fas fa-times"></i></button>' +
@@ -1322,6 +1319,7 @@ function openOwnerPanel(ownerId) {
             '<button class="btn-luxury-action" id="crmOwnerTaskSave" style="width:100%;margin-top:4px;">+ Agregar tarea</button>' +
           '</div>' +
         '</div>' +
+      '</div>' +
       '</div>';
     panel.querySelector('.crm-side-close').addEventListener('click', closeDetailPanel);
     panel.querySelectorAll('[data-action="completeOwnerTask"]').forEach(function (b) {
