@@ -44,6 +44,11 @@ test.describe('CRM — estructura del módulo nuevo', () => {
     expect(js).not.toContain('crmBackdrop');
   });
 
+  test('admin-crm.js oculta leads perdidos salvo filtro explicito de estado', async ({ request }) => {
+    const js = await (await request.get('/assets/js/admin-crm.js')).text();
+    expect(js).toContain("q.neq('stage', 'cerrado_perdido')");
+  });
+
   test('admin-crm-tasks.js expone window.CrmTasks', async ({ request }) => {
     const js = await (await request.get('/assets/js/admin-crm-tasks.js')).text();
     expect(js).toContain('window.CrmTasks');

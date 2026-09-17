@@ -165,7 +165,7 @@ function applyBaseFilters(q) {
     var s = sv.value.trim().replace(/[%_]/g, ' ');
     q = q.or('full_name.ilike.%' + s + '%,email.ilike.%' + s + '%,phone.ilike.%' + s + '%');
   }
-  var st = $id('crmStatusFilter'); if (st && st.value) q = q.eq('stage', st.value);
+  var st = $id('crmStatusFilter'); if (st && st.value) q = q.eq('stage', st.value); else q = q.neq('stage', 'cerrado_perdido');
   var or = $id('crmOriginFilter'); if (or && or.value) q = q.eq('source', or.value);
   var tp = $id('crmTipoOperacionFilter'); if (tp && tp.value) q = q.eq('operation_type', tp.value);
   var ag = $id('crmAgentFilter'); if (ag && ag.value) q = q.eq('assigned_to', ag.value);
