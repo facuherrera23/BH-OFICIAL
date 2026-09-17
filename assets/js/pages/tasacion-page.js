@@ -831,17 +831,14 @@ init();
 
 /* Auto-print when opened with ?print=1 (PDF export from admin) */
 if (new URLSearchParams(window.location.search).get('print') === '1') {
-  /* Wait for data to load then trigger print dialog */
-  const _origSave = saveToSupabase;
+  const _imgsReady = () => Array.from(document.images).every(im => im.complete);
   const _autoPrintCheck = setInterval(() => {
-    /* Check if the form has been populated (data loaded) */
     const hasData = document.getElementById('comparablesContainer')?.children?.length > 0
       || document.getElementById('dirDomicilio')?.value;
-    if (hasData) {
+    if (hasData && _imgsReady()) {
       clearInterval(_autoPrintCheck);
-      setTimeout(() => window.print(), 600);
+      window.print();
     }
   }, 500);
-  /* Fallback: print after 4s even if data check hasn't triggered */
-  setTimeout(() => { clearInterval(_autoPrintCheck); window.print(); }, 4000);
+  setTimeout(() => { clearInterval(_autoPrintCheck); window.print(); }, 8000);
 }
