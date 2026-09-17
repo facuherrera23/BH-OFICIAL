@@ -41,7 +41,7 @@ test.describe('Smoke: páginas del sistema', () => {
   });
 
   test('portal-propietario.html — token inválido muestra error', async ({ page }) => {
-    await page.goto('/portal-propietario?token=TEST');
+    await page.goto('/portal-propietario.html?token=TEST');
     const console = trackConsoleErrors(page, ALLOWED_406);
     // showError muestra el h2 "Link inválido o expirado".
     await expect(page.locator('h2', { hasText: 'Link inválido o expirado' })).toBeVisible();
