@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 <!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-<link rel="stylesheet" href="assets/css/admin.css?v=86" />
+<link rel="stylesheet" href="assets/css/admin.css?v=88" />
 </head>
 <body class="is-loading">
 <!-- PRELOADER LUXURY -->
@@ -1327,6 +1327,10 @@
 </div>
 <div class="chat-composer" style="padding:16px; border-top:1px solid var(--border-input); background:rgba(0,0,0,0.15); display:none;">
 <div class="composer-row" style="display:flex; gap:8px; align-items:flex-end;">
+<input type="file" id="chatAttachmentInput" accept="image/*,audio/*,video/*,.pdf,.doc,.docx" style="display:none;" />
+<button type="button" class="btn-icon" id="btnAttachFile" title="Adjuntar archivo" aria-label="Adjuntar archivo" style="width:44px; height:44px;">
+<i class="fas fa-paperclip"></i>
+</button>
 <textarea id="chatComposer" placeholder="Escribe tu respuesta..." rows="1" style="flex:1; min-height:44px; max-height:120px; padding:12px 16px; background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:22px; color:#fff; font-size:14px; line-height:1.5; resize:none; font-family:inherit;">
 </textarea>
 <button class="btn-luxury-action" id="btnSendMessage" style="width:44px; height:44px; border-radius:50%; padding:0; display:flex; align-items:center; justify-content:center;">
@@ -1334,6 +1338,7 @@
 </i>
 </button>
 </div>
+<div id="chatAttachPreview" style="display:none; margin-bottom:8px; padding:8px 12px; background:rgba(31,200,195,0.08); border:1px solid rgba(31,200,195,0.25); border-radius:10px; font-size:12px; color:var(--text-secondary); align-items:center; gap:8px;"></div>
 <div class="composer-hint" style="margin-top:6px; font-size:11px; color:var(--text-dim); display:flex; gap:16px; flex-wrap:wrap;">
 <span id="composerPlatformHint">
 </span>
@@ -2846,7 +2851,19 @@
 </div>    </div>    <!-- MODAL ASIGNAR BROKER CHAT -->    <div class="admin-modal" id="brokerAssignModal">      <div class="modal-box">        <h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">          <i class="fas fa-user-tie" style="margin-right:8px; color:var(--accent);">
 </i> Asignar Broker        </h3>        <p style="color:var(--text-dim); font-size:13px; margin-bottom:18px;">Selecciona el broker para esta conversación</p>        <form id="brokerAssignForm" novalidate>          <div class="form-field">            <label>Broker</label>            <select name="broker_id" id="brokerAssignSelect" required style="width:100%; padding:12px 14px; background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:12px; color:#fff; font-size:13.5px; width:100%;">              <option value="">👤 Seleccionar broker</option>            </select>          </div>          <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">            <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>            <button type="submit" class="btn-luxury-action" style="background:linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">
 <i class="fas fa-user-check">
-</i> Asignar Broker</button>          </div>        </form>      </div>    </div>    <!-- TOAST NOTIFICATION -->
+</i> Asignar Broker</button>          </div>        </form>      </div>    </div>        <!-- MODAL CONFIRMACIÓN CONTEXTUAL -->
+<div class="admin-modal" id="confirmModal">
+  <div class="modal-box confirm-box" id="confirmBoxInner" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMsg">
+    <div class="confirm-icon"><i id="confirmIcon" class="fas fa-circle-question"></i></div>
+    <h3 class="confirm-title" id="confirmTitle">Confirmar acción</h3>
+    <p class="confirm-msg" id="confirmMsg"></p>
+    <div class="confirm-actions">
+      <button type="button" class="btn-ghost" id="confirmCancel">Cancelar</button>
+      <button type="button" class="btn-luxury-action" id="confirmOk">Confirmar</button>
+    </div>
+  </div>
+</div>
+<!-- TOAST NOTIFICATION -->
 <div class="toast-msg" id="toastMsg">
 <i class="fas fa-circle-check" style="color:var(--accent); font-size:18px;">
 </i>
@@ -2860,6 +2877,6 @@
 </i>Tu bloqueador de anuncios está impidiendo que el panel cargue correctamente.<strong>Desactivá las extensiones</strong> para este sitio o abrí en ventana incógnita.<a href="#" data-action="closeCdnWarning">Cerrar</a>
 </div>
 <!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Bloqueador de anuncios detectado.</strong> Desactivá las extensiones para este sitio o abrí en ventana incógnita. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="assets/js/zod.umd.js"></script><script src="assets/js/utils.js?v=46"></script><script src="assets/js/config.js?v=50"></script><script src="assets/js/supabase-client.js?v=49"></script><script src="assets/js/cloudinary.js?v=51"></script><script src="assets/js/admin-crm-tasks.js"></script>
-<script src="assets/js/admin-crm.js?v=10"></script>
-<script src="assets/js/admin-app.js?v=280"></script></body>
+<script src="assets/js/admin-crm.js?v=12"></script>
+<script src="assets/js/admin-app.js?v=285"></script></body>
 </html>
