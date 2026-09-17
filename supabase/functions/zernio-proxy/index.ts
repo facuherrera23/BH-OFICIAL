@@ -266,11 +266,17 @@ async function actSendMessage(body: Record<string, unknown>, userId: string): Pr
     if (!conv.account_id) throw new Error('Conversación sin account_id');
 
     let windowClosed = false;
-    if ((conv.platform === 'whatsapp' || conv.platform === 'instagram') && conv.last_message_at) {
-        const lastIn = new Date(conv.last_message_at).getTime();
-        if (Date.now() - lastIn > 24 * 60 * 60 * 1000) {
-            windowClosed = true;
-        }
+    if (conv.platform === 'whatsapp' || conv.platform === 'instagram') {
+        const { data: lastInMsgs } = await supabase
+            .from('zernio_messages')
+            .select('occurred_at')
+            .eq('conversation_id', conversationId)
+            .eq('direction', 'in')
+            .order('occurred_at', { ascending: false })
+            .limit(1);
+        windowClosed = !lastInMsgs || lastInMsgs.length === 0
+            ? true
+            : (Date.now() - new Date(lastInMsgs[0].occurred_at).getTime() > 24 * 60 * 60 * 1000);
     }
 
     if (windowClosed && conv.platform === 'instagram') {
@@ -294,7 +300,7 @@ async function actSendMessage(body: Record<string, unknown>, userId: string): Pr
         method: 'POST',
         body: JSON.stringify({
             accountId: conv.account_id,
-            message: text,
+            text: text,
         }),
     });
 
@@ -311,7 +317,7 @@ async function actSendMessage(body: Record<string, unknown>, userId: string): Pr
     const zData = await res.json();
     // Zernio puede devolver { data: {...} } o el objeto directo
     const msgData = zData.data ?? zData;
-    const platformMsgId = msgData.id ?? msgData.message_id ?? null;
+    const platformMsgId = msgData.messageId ?? msgData.message_id ?? msgData.id ?? null;
 
     // Registrar mensaje saliente en nuestra DB
     const { error } = await supabase.from('zernio_messages').insert({
@@ -342,11 +348,11 @@ async function actSendMessage(body: Record<string, unknown>, userId: string): Pr
         null,
         `Conv ${conversationId}: Msg to ${conv.platform}`,
         { platform: conv.platform, account_id: conv.account_id },
-        { platform_message_id: platformMsgId, window_closed },
+        { platform_message_id: platformMsgId, window_closed: windowClosed },
         { source: 'zernio-proxy', action: 'send_message' }
     );
 
-    return { ok: true, platform_message_id: platformMsgId, window_closed };
+    return { ok: true, platform_message_id: platformMsgId, window_closed: windowClosed };
 }
 
 async function actMarkRead(body: Record<string, unknown>): Promise<unknown> {
@@ -381,6 +387,83 @@ async function actMarkRead(body: Record<string, unknown>): Promise<unknown> {
     return { ok: true };
 }
 
+async function actSendTyping(body: Record<string, unknown>): Promise<unknown> {
+    const conversationId = String(body.conversationId ?? '');
+    if (!conversationId) throw new Error('conversationId requerido');
+
+    const { data: conv } = await supabase
+        .from('zernio_conversations')
+        .select('account_id')
+        .eq('id', conversationId)
+        .maybeSingle();
+
+    if (!conv?.account_id) throw new Error('Conversacion sin account_id');
+
+    const res = await zernioRequest(`/inbox/conversations/${conversationId}/typing?accountId=${encodeURIComponent(conv.account_id)}`, {
+        method: 'POST',
+    });
+
+    return { ok: res.ok };
+}
+
+async function actSendMessageWithAttachment(body: Record<string, unknown>, userId: string): Promise<unknown> {
+    const conversationId = String(body.conversationId ?? '');
+    const text = String(body.text ?? '');
+    const attachmentUrl = String(body.attachmentUrl ?? '');
+    const attachmentType = String(body.attachmentType ?? 'image');
+
+    if (!conversationId) throw new Error('conversationId requerido');
+    if (!attachmentUrl && !text) throw new Error('Se requiere texto o adjunto');
+
+    const { data: conv, error: convErr } = await supabase
+        .from('zernio_conversations')
+        .select('id, account_id, platform')
+        .eq('id', conversationId)
+        .maybeSingle();
+
+    if (convErr) throw new Error('Error cargando conversacion: ' + convErr.message);
+    if (!conv) throw new Error('Conversacion no encontrada');
+    if (!conv.account_id) throw new Error('Conversacion sin account_id');
+
+    const payload: Record<string, unknown> = { text: text || ' ' };
+    if (attachmentUrl) {
+        payload.attachment = { type: attachmentType, url: attachmentUrl };
+    }
+
+    const res = await zernioRequest(`/inbox/conversations/${conversationId}/messages?accountId=${encodeURIComponent(conv.account_id)}`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+        const errText = await res.text();
+        log('warn', { action: 'send_attachment', conv_id: conversationId, status: res.status, error: errText.slice(0, 300) });
+        throw new Error(`Zernio attachment failed: ${errText.slice(0, 300)}`);
+    }
+
+    const zData = await res.json();
+    const msgData = zData.data ?? zData;
+    const platformMsgId = msgData.messageId ?? msgData.message_id ?? msgData.id ?? null;
+
+    await supabase.from('zernio_messages').insert({
+        conversation_id: conversationId,
+        direction: 'out',
+        platform_message_id: platformMsgId,
+        body: text || '[Adjunto]',
+        attachment: attachmentUrl ? { type: attachmentType, url: attachmentUrl } : null,
+        status: 'sent',
+        sent_by: userId,
+        occurred_at: new Date().toISOString(),
+    });
+
+    await supabase.from('zernio_conversations').update({
+        last_message_at: new Date().toISOString(),
+        last_message_preview: (text || '[Adjunto]').slice(0, 119),
+        unread_count: 0,
+    }).eq('id', conversationId);
+
+    return { ok: true, platform_message_id: platformMsgId };
+}
 async function actListAccounts(): Promise<unknown> {
     const res = await zernioRequest('/accounts');
     if (!res.ok) {
@@ -679,7 +762,15 @@ Deno.serve(async (req) => {
                 const result = await actSendMessage(body, auth.userId);
                 return respond(200, result, req);
             }
-            case 'mark_read': {
+                        case 'typing': {
+                const result = await actSendTyping(body);
+                return respond(200, result, req);
+            }
+            case 'send_message_attachment': {
+                const result = await actSendMessageWithAttachment(body, auth.userId);
+                return respond(200, result, req);
+            }
+case 'mark_read': {
                 const result = await actMarkRead(body);
                 return respond(200, result, req);
             }
