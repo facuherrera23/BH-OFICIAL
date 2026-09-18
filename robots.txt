@@ -1,6 +1,4 @@
 User-agent: *
 Allow: /
-Disallow: /admin
-Disallow: /assets/js/
 
 Sitemap: https://bienenhaus.com.ar/sitemap.xml
