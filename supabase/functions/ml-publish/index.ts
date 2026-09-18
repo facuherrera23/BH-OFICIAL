@@ -319,7 +319,38 @@ async function setDescription(
 }
 
 async function closeMlItem(accessToken: string, itemId: string): Promise<MlItem> {
-    return await updateMlItem(accessToken, itemId, { status: 'closed' });
+    const putRes = await fetchWithTimeout(`${ML_API}/items/${itemId}`, {
+        method: 'PUT',
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        },
+        body: JSON.stringify({ status: 'closed' }),
+    });
+    const putText = await putRes.text();
+    if (putRes.ok) {
+        return parseMlResponse(MlItemSchema, JSON.parse(putText), 'mlCloseItem');
+    }
+
+    // Items recién creados quedan not_yet_active (activación pendiente) y ML no
+    // permite PUT closed desde ese estado: la vía de eliminación es DELETE.
+    if (putText.includes('item.status.invalid') && putText.includes('not_yet_active')) {
+        const delRes = await fetchWithTimeout(`${ML_API}/items/${itemId}`, {
+            method: 'DELETE',
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: 'application/json',
+            },
+        });
+        const delText = await delRes.text();
+        if (delRes.ok) {
+            return parseMlResponse(MlItemSchema, JSON.parse(delText), 'mlDeleteItem');
+        }
+        throw new Error(`ML deleteItem failed (${delRes.status}): ${delText.slice(0, 300)}`);
+    }
+
+    throw new Error(`ML updateItem failed (${putRes.status}): ${putText.slice(0, 300)}`);
 }
 
 async function getActiveConnection(): Promise<MlConnectionRow | null> {

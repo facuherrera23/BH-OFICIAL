@@ -367,10 +367,32 @@ async function mlCloseItemValidated(
     });
     const latency = Date.now() - start;
     const text = await res.text();
-    if (!res.ok) throw new Error(`ML closeItem failed (${res.status}): ${text.slice(0, 300)}`);
-    const parsed = parseMlResponse(MlItemSchema, JSON.parse(text), 'mlCloseItem');
-    logger.debug({ function: 'ml-sync', ml_api_latency_ms: latency });
-    return parsed;
+    if (res.ok) {
+        const parsed = parseMlResponse(MlItemSchema, JSON.parse(text), 'mlCloseItem');
+        logger.debug({ function: 'ml-sync', ml_api_latency_ms: latency });
+        return parsed;
+    }
+
+    // Items recién creados quedan not_yet_active y ML no permite PUT closed:
+    // la vía de eliminación para ese estado es DELETE.
+    if (text.includes('item.status.invalid') && text.includes('not_yet_active')) {
+        const delStart = Date.now();
+        const delRes = await fetchWithTimeout(`${ML_API}/items/${itemId}`, {
+            method: 'DELETE',
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: 'application/json',
+            },
+        });
+        const delText = await delRes.text();
+        logger.debug({ function: 'ml-sync', ml_api_latency_ms: Date.now() - delStart });
+        if (delRes.ok) {
+            return parseMlResponse(MlItemSchema, JSON.parse(delText), 'mlDeleteItem');
+        }
+        throw new Error(`ML deleteItem failed (${delRes.status}): ${delText.slice(0, 300)}`);
+    }
+
+    throw new Error(`ML closeItem failed (${res.status}): ${text.slice(0, 300)}`);
 }
 
 async function mlSetDescriptionValidated(
