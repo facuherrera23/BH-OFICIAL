@@ -1,5 +1,5 @@
-/* ============================================================
-   BIENENHAUS PROPIEDADES — Landing Page Styles
+﻿/* ============================================================
+   BIENENHAUS PROPIEDADES â€” Landing Page Styles
    ============================================================ */
 
 /* --- Variables --- */
@@ -374,7 +374,7 @@ section[id], main[id], footer[id] { scroll-margin-top: var(--navbar-height); }
   50% { transform: translate(-50%, 8px); }
 }
 
-/* --- Catálogo / Properties --- */
+/* --- CatÃ¡logo / Properties --- */
 .catalog { padding: 130px 0 100px; position: relative; }
 .catalog-header {
   display: grid; grid-template-columns: 1fr auto; gap: 40px;
@@ -453,8 +453,8 @@ section[id], main[id], footer[id] { scroll-margin-top: var(--navbar-height); }
   letter-spacing: 0.5px; text-transform: uppercase;
 }
 .card-badge--featured { background: var(--warning); color: var(--bg-void); }
-.card-badge--retasada { background: #8b5cf6; color: #fff; }
-.card-badge--oportunidad { background: #ef4444; color: #fff; }
+.card-badge--retasada { background: #6D28D9; color: #fff; }
+.card-badge--oportunidad { background: #B91C1C; color: #fff; }
 
 /* Stack multiple badges vertically */
 .card-image-wrapper .card-badge + .card-badge {
@@ -602,7 +602,7 @@ section[id], main[id], footer[id] { scroll-margin-top: var(--navbar-height); }
 }
 .team-social .social-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-/* --- Estadísticas --- */
+/* --- EstadÃ­sticas --- */
 .stats-premium { padding: 120px 0; background: var(--bg-secondary); position: relative; }
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; margin: 50px 0; }
 .stat-card {
@@ -878,7 +878,7 @@ section[id], main[id], footer[id] { scroll-margin-top: var(--navbar-height); }
 .footer-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 20px; }
 .footer-logo-img { max-width: 160px; height: auto; margin-bottom: 20px; filter: brightness(1.1); }
 .footer-social { display: flex; gap: 8px; }
-.footer-col h4 { font-family: var(--font-heading); font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 18px; }
+.footer-col h3 { font-family: var(--font-heading); font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 18px; }
 .footer-col ul li { margin-bottom: 10px; }
 .footer-col ul li a { font-size: 13px; color: var(--text-secondary); transition: color 0.3s; }
 .footer-col ul li a:hover { color: var(--accent); }
@@ -1088,9 +1088,7 @@ section[id], main[id], footer[id] { scroll-margin-top: var(--navbar-height); }
 
 /* --- Search Bar --- */
 .search-bar {
-  background: var(--card-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: #0a0d12;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-input);
   padding: 28px;
@@ -1284,4 +1282,74 @@ section[id], main[id], footer[id] { scroll-margin-top: var(--navbar-height); }
     grid-column: span 1;
     height: 48px;
   }
+}
+
+/* --- Catalog Pagination --- */
+.catalog-pagination { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 44px; flex-wrap: wrap; }
+.page-btn {
+  min-width: 42px; height: 42px; padding: 0 12px; border-radius: var(--radius-btn);
+  border: 1px solid var(--border-subtle); background: var(--card-bg);
+  color: var(--text-secondary); font-family: var(--font-body); font-size: 13.5px; font-weight: 600;
+  cursor: pointer; transition: border-color 0.3s, color 0.3s, background 0.3s;
+}
+.page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--text-main); }
+.page-btn.active { background: var(--accent); border-color: var(--accent); color: var(--bg-primary); }
+.page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.page-btn:focus-visible { outline: 2px solid var(--glow-strong); outline-offset: 2px; }
+
+/* --- Seccion Nosotros (Mision / Vision / Valores) --- */
+.mvv { padding: 120px 0; position: relative; }
+.mvv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 40px; }
+.mvv-card {
+  background: var(--card-bg); border: 1px solid var(--border-subtle); border-radius: var(--radius-card);
+  padding: 36px 34px; position: relative; overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  transition: border-color 0.4s, transform 0.4s var(--ease-out-expo);
+}
+.mvv-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), transparent); opacity: 0.7;
+}
+.mvv-card:hover { border-color: rgba(31, 200, 195, 0.38); transform: translateY(-4px); }
+.mvv-kicker {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 13px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 18px;
+}
+.mvv-text { font-size: 16.5px; line-height: 1.8; color: var(--text-secondary); margin: 0; font-weight: 300; }
+.mvv-values-title {
+  font-family: var(--font-heading); font-size: clamp(24px, 3.5vw, 32px); font-weight: 700;
+  margin: 64px 0 28px; text-align: center; color: var(--text-main);
+}
+.mvv-values-title .highlight { color: var(--accent); font-style: italic; }
+.mvv-values { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.mvv-value {
+  background: var(--card-bg); border: 1px solid var(--border-subtle); border-radius: var(--radius-card);
+  padding: 30px 26px; text-align: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  transition: border-color 0.4s, transform 0.4s var(--ease-out-expo);
+}
+.mvv-value:hover { border-color: rgba(31, 200, 195, 0.38); transform: translateY(-4px); }
+.mvv-value-icon {
+  width: 54px; height: 54px; border-radius: 50%; margin: 0 auto 18px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(31, 200, 195, 0.12); border: 1px solid rgba(31, 200, 195, 0.35);
+  color: var(--accent); font-size: 20px;
+}
+.mvv-value h4 { font-family: var(--font-heading); font-size: 18px; font-weight: 700; color: var(--text-main); margin-bottom: 10px; }
+.mvv-value p { font-size: 14px; line-height: 1.7; color: var(--text-secondary); margin: 0; }
+.mvv-market {
+  margin-top: 56px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--accent); border-radius: var(--radius-card);
+  padding: 30px 38px; text-align: center;
+}
+.mvv-market-label {
+  display: inline-flex; align-items: center; gap: 10px; justify-content: center;
+  font-size: 13px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 12px;
+}
+.mvv-market p { font-size: 15.5px; line-height: 1.8; color: var(--text-secondary); margin: 0; max-width: 860px; margin-inline: auto; }
+@media (max-width: 900px) {
+  .mvv-grid { grid-template-columns: 1fr; }
+  .mvv-values { grid-template-columns: 1fr; }
 }

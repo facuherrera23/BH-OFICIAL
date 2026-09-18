@@ -27,12 +27,22 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
   /* ------------------------------------------------
      0. PRELOADER & INITIALIZATION
      ------------------------------------------------ */
-  window.addEventListener('load', () => {
+  /* Preloader: ocultar temprano (DOMContentLoaded) para no demorar el LCP;
+     window.load queda como red de seguridad. */
+  function hidePreloader() {
     document.body.classList.remove('is-loading');
-    setTimeout(() => {
-      const pl = document.getElementById('preloader');
-      if (pl) pl.classList.add('is-hidden');
-    }, 800);
+    const pl = document.getElementById('preloader');
+    if (pl) pl.classList.add('is-hidden');
+  }
+  let preloaderHidden = false;
+  const hidePreloaderOnce = () => {
+    if (preloaderHidden) return;
+    preloaderHidden = true;
+    hidePreloader();
+  };
+  document.addEventListener('DOMContentLoaded', () => setTimeout(hidePreloaderOnce, 300));
+  window.addEventListener('load', () => {
+    setTimeout(hidePreloaderOnce, 100);
     initScrollAnimations();
     initCursorGlow();
     initParallax();
@@ -211,7 +221,7 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
     const counter = document.getElementById('galleryCounter');
     const url = currentGalleryImages[currentImageIndex];
     if (!mainImg || !counter || !url) return;
-    mainImg.src = safeImageUrl(url);
+    mainImg.src = safeImageUrl(cloudinaryThumb(url, 1400));
     mainImg.alt = `${currentProperty?.title || 'Propiedad'} — imagen ${currentImageIndex + 1}`;
     counter.textContent = `${currentImageIndex + 1} / ${currentGalleryImages.length}`;
     document.querySelectorAll('#propertyGalleryThumbs .gallery-thumb').forEach((thumb, i) => {
@@ -230,7 +240,7 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
       thumb.className = 'gallery-thumb' + (i === currentImageIndex ? ' is-active' : '');
       thumb.setAttribute('aria-label', `Ver imagen ${i + 1}`);
       const img = document.createElement('img');
-      img.src = safeImageUrl(url);
+      img.src = safeImageUrl(cloudinaryThumb(url, 240));
       img.alt = '';
       img.loading = 'lazy';
       thumb.appendChild(img);
@@ -411,12 +421,17 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
         const formData = new FormData(contactForm);
         const data = Object.fromEntries(formData.entries());
 
-        // Determine interest from active pills
-        const activePills = contactForm.querySelectorAll('.form-pill.active');
-        const interests = Array.from(activePills).flatMap(p => {
-          const v = p.dataset.value || p.textContent.trim();
-          return v ? [v] : [];
-        });
+        // Determine interest from active pills (single-select)
+        const activePill = contactForm.querySelector('.form-pill.active');
+        const interestValue = activePill ? (activePill.dataset.value || activePill.textContent.trim()) : '';
+
+        const INTEREST_MAP = {
+          comprar: { tipo_cliente: 'comprador', operation_type: 'compra' },
+          vender: { tipo_cliente: 'propietario', operation_type: 'venta' },
+          alquilar: { tipo_cliente: 'inquilino', operation_type: 'alquiler' },
+          invertir: { tipo_cliente: 'inversor', operation_type: null },
+        };
+        const interest = INTEREST_MAP[interestValue] || null;
 
         const payload = {
           full_name: data.nombre || '',
@@ -427,6 +442,7 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
           notes: data.mensaje || 'Consulta desde landing page',
           source: 'landing_page',
           preferred_zone: data.zona || '',
+          ...(interest || {}),
         };
 
         // Vínculo automático: si la consulta salió de una propiedad, la adjunta
@@ -482,12 +498,14 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
     if (interestChip) interestChip.style.display = 'none';
   });
 
-  // Form pill toggles
-  document.querySelectorAll('.form-pills').forEach(group => {
+  // Form pill toggles (selección única; el contenedor real es .form-options)
+  document.querySelectorAll('.form-options').forEach(group => {
     group.addEventListener('click', (e) => {
       const pill = e.target.closest('.form-pill');
       if (!pill) return;
-      pill.classList.toggle('active');
+      const wasActive = pill.classList.contains('active');
+      group.querySelectorAll('.form-pill').forEach(p => p.classList.remove('active'));
+      if (!wasActive) pill.classList.add('active');
     });
   });
 
@@ -495,14 +513,59 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
      12. SUPABASE DATA LOADING
      ------------------------------------------------ */
   let allProperties = [];
+  const PROPERTIES_PER_PAGE = 9;
+  let currentPage = 1;
   let allTeam = [];
 
   const FALLBACK_IMG = 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80&fit=crop';
+
+  // Cloudinary sirve el original (hasta 3000px) si no se acota el ancho:
+  // cada contexto pide solo los px que necesita (cards 800, thumbs 240, modal 1400).
+  const cloudinaryThumb = (url, w) => {
+    const u = String(url || '');
+    return (u.includes('res.cloudinary.com') && u.includes('/upload/'))
+      ? u.replace('/upload/', `/upload/w_${w},c_limit/`)
+      : u;
+  };
   const makeIcon = (cls) => {
     const el = document.createElement('i');
     el.className = cls;
     return el;
   };
+
+  /* ------------------------------------------------
+     12b. ROTACIÓN DE TELÉFONO / WHATSAPP
+     Dos líneas reales; cada visitante recibe UNA (aleatoria)
+     y la conserva durante toda su visita (sticky por visita).
+     El JSON-LD de index.html mantiene un número canónico fijo.
+     ------------------------------------------------ */
+  const BH_PHONES = [
+    { display: '+54 9 3516 37-9651', wa: '5493516379651' },
+    { display: '+54 9 3512 00-1437', wa: '5493512001437' },
+  ];
+
+  function pickPhoneVariant() {
+    try {
+      let v = localStorage.getItem('bh_phone_variant');
+      if (v !== '0' && v !== '1') {
+        v = String(Math.floor(Math.random() * BH_PHONES.length));
+        try { localStorage.setItem('bh_phone_variant', v); } catch (_) { /* modo privado */ }
+      }
+      const idx = Number(v);
+      return (idx >= 0 && idx < BH_PHONES.length) ? idx : 0;
+    } catch (_) {
+      return Math.floor(Math.random() * BH_PHONES.length);
+    }
+  }
+
+  function applyRotatingPhone() {
+    const phone = BH_PHONES[pickPhoneVariant()];
+    document.querySelectorAll('a[href*="wa.me"]').forEach(a => { a.href = 'https://wa.me/' + phone.wa; });
+    document.querySelectorAll('.contact-phone').forEach(el => { el.textContent = phone.display; });
+    document.querySelectorAll('.footer-phone').forEach(el => { el.textContent = phone.display; });
+    const phoneInput = document.getElementById('telefono');
+    if (phoneInput) phoneInput.placeholder = phone.display;
+  }
 
   /* ------------------------------------------------
    PERFORMANCE OPTIMIZATIONS
@@ -789,7 +852,7 @@ function renderTeamMembers(members) {
   grid.innerHTML = members.filter(m => m.enabled).sort((a, b) => a.order - b.order).map(m => `
     <div class="team-card" data-animate>
       <div class="team-image-wrapper">
-        <img src="${escAttr(safeImageUrl(m.photo_url || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=600&q=80&fit=crop'))}" alt="${escAttr(m.full_name || 'Agente')}" loading="lazy" />
+        <img src="${escAttr(safeImageUrl(cloudinaryThumb(m.photo_url || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=600&q=80&fit=crop', 600)))}" alt="${escAttr(m.full_name || 'Agente')}" loading="lazy" />
       </div>
       <div class="team-body">
         <h3 class="team-name">${esc(m.full_name || '')}</h3>
@@ -948,7 +1011,7 @@ function renderSocialLinks(social) {
 
       allProperties = data || [];
       populateZoneOptions();
-      renderProperties(allProperties);
+      renderCatalogPage(allProperties);
       updateResultsCount(allProperties.length);
     } catch (err) {
       logError('Error loading properties:', err);
@@ -1002,7 +1065,7 @@ function renderSocialLinks(social) {
       imageWrapper.className = 'card-image-wrapper';
 
       const img = document.createElement('img');
-      img.src = safeImageUrl(mainImg);
+      img.src = safeImageUrl(cloudinaryThumb(mainImg, 800));
       img.alt = p.title || 'Propiedad';
       img.loading = 'lazy';
       imageWrapper.appendChild(img);
@@ -1127,7 +1190,14 @@ function renderSocialLinks(social) {
     }
   }
 
-  function filterProperties() {
+  function filterProperties(resetPage = true) {
+    if (resetPage) currentPage = 1;
+    const filtered = getFilteredProperties();
+    renderCatalogPage(filtered);
+    updateResultsCount(filtered.length);
+  }
+
+  function getFilteredProperties() {
     const activeFilter = document.querySelector('.filters-pills .filter-pill.active');
     const type = activeFilter?.dataset?.type || 'todos';
     const operacion = (document.getElementById('searchOperacion')?.value || '').toLowerCase();
@@ -1169,7 +1239,57 @@ function renderSocialLinks(social) {
     });
 
     renderProperties(filtered);
-    updateResultsCount(filtered.length);
+    return filtered;
+  }
+
+  function renderCatalogPage(filtered) {
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PROPERTIES_PER_PAGE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+    const start = (currentPage - 1) * PROPERTIES_PER_PAGE;
+    renderProperties(filtered.slice(start, start + PROPERTIES_PER_PAGE));
+    renderCatalogPagination(totalPages);
+  }
+
+  function goToCatalogPage(page) {
+    currentPage = page;
+    filterProperties(false);
+    const grid = document.getElementById('propertyGrid');
+    if (grid) {
+      const top = grid.getBoundingClientRect().top + window.scrollY - 110;
+      window.scrollTo({ top: Math.max(top, 0), behavior: 'smooth' });
+    }
+  }
+
+  function renderCatalogPagination(totalPages) {
+    const wrap = document.getElementById('catalogPagination');
+    if (!wrap) return;
+    if (totalPages <= 1) {
+      wrap.hidden = true;
+      wrap.replaceChildren();
+      return;
+    }
+    wrap.hidden = false;
+
+    const frag = document.createDocumentFragment();
+    const appendBtn = (label, page, opts = {}) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.dataset.page = String(page);
+      b.className = 'page-btn' + (opts.nav ? ' page-btn--nav' : '') + (opts.isActive ? ' active' : '');
+      if (opts.disabled) b.disabled = true;
+      b.setAttribute('aria-label', opts.aria || 'Página ' + page);
+      if (opts.isActive) b.setAttribute('aria-current', 'page');
+      b.addEventListener('click', () => goToCatalogPage(page));
+      frag.appendChild(b);
+    };
+
+    appendBtn('‹', currentPage - 1, { nav: true, disabled: currentPage === 1, aria: 'Página anterior' });
+    for (let i = 1; i <= totalPages; i++) appendBtn(String(i), i, { isActive: i === currentPage });
+    appendBtn('›', currentPage + 1, { nav: true, disabled: currentPage === totalPages, aria: 'Página siguiente' });
+
+    wrap.replaceChildren(frag);
   }
 
   function initSearchBar() {
@@ -1238,7 +1358,7 @@ function renderSocialLinks(social) {
       renderTeam(allTeam);
     } catch (err) {
       logError('Error loading team:', err);
-      renderEmptyState(grid, 'Equipo no disponible', 'Proximamente conocé a nuestro equipo.');
+      renderEmptyState(grid, 'Equipo no disponible', 'Próximamente vas a conocer a nuestro equipo.');
     }
   }
 
@@ -1247,14 +1367,14 @@ function renderSocialLinks(social) {
     if (!grid) return;
 
     if (!members.length) {
-      renderEmptyState(grid, 'Equipo no disponible', 'Proximamente conocé a nuestro equipo.');
+      renderEmptyState(grid, 'Equipo no disponible', 'Próximamente vas a conocer a nuestro equipo.');
       return;
     }
 
     grid.innerHTML = members.map(m => `
       <div class="team-card">
         <div class="team-image-wrapper">
-          <img src="${escAttr(safeImageUrl(m.photo_url || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=600&q=80&fit=crop'))}" 
+          <img src="${escAttr(safeImageUrl(cloudinaryThumb(m.photo_url || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=600&q=80&fit=crop', 600)))}" 
                alt="${escAttr(m.full_name || 'Agente')}" loading="lazy" />
         </div>
         <div class="team-body">
@@ -1274,19 +1394,28 @@ function renderSocialLinks(social) {
   }
 
   /* --- Stats --- */
+  let publishedCount = null;
+
   async function loadStats() {
     try {
-      const [propCount, soldCount, agentCount, expYears] = await Promise.all([
+      const [propCount, soldCount, agentCount] = await Promise.all([
         window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('is_published', true),
         window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('status', 'vendido'),
-        window.supabaseClient.from('agents').select('*', { count: 'exact', head: true }).eq('status', 'activo'),
-        Promise.resolve({ count: 15 }) // Default experience years
+        window.supabaseClient.from('agents').select('*', { count: 'exact', head: true }).eq('status', 'activo')
       ]);
 
-      setStatNumber('statProperties', propCount.count || 0);
+      publishedCount = propCount.count || 0;
+      setStatNumber('statProperties', publishedCount);
       setStatNumber('statSold', soldCount.count || 0);
       setStatNumber('statAgents', agentCount.count || 0);
-      setStatNumber('statExperience', expYears.count || 15);
+
+      // "Operaciones Cerradas" con 0 queda mal: ocultar la fila hasta tener datos reales
+      const soldRow = document.getElementById('statSold')?.closest('.stat-row');
+      if (soldRow) soldRow.style.display = (soldCount.count || 0) > 0 ? '' : 'none';
+
+      // Contador dinámico de la tarjeta "Propiedades Publicadas" (sección estadísticas)
+      const catalogCount = document.getElementById('statCatalogCount');
+      if (catalogCount && propCount.count) catalogCount.textContent = String(propCount.count);
     } catch (err) {
       logError('Error loading stats:', err);
     }
@@ -1400,6 +1529,11 @@ function renderSocialLinks(social) {
       loadTeam(),
       loadStats()
     ]);
+    applyRotatingPhone();
+    if (publishedCount) {
+      const catalogCount = document.getElementById('statCatalogCount');
+      if (catalogCount) catalogCount.textContent = String(publishedCount);
+    }
     initLazyLoading();
     openPropertyFromHash();
   }
@@ -1448,12 +1582,20 @@ function renderSocialLinks(social) {
     });
   }
 
+  const FOOTER_SPAN_CLASS = {
+    '.fa-phone': 'footer-phone',
+    '.fa-envelope': 'footer-email',
+    '.fa-clock': 'footer-schedule',
+    '.fa-id-card': 'footer-cuit',
+  };
+
   function setFooterValue(iconClass, value) {
     if (!value) return;
     const fasClass = 'fas ' + iconClass.replace('.', '');
+    const spanClass = FOOTER_SPAN_CLASS[iconClass] || 'footer-contact-value';
     document.querySelectorAll('.footer-contact-item').forEach(item => {
       if (item.querySelector(iconClass)) {
-        item.innerHTML = '<i class="' + escAttr(fasClass) + '"></i> ' + esc(value);
+        item.innerHTML = '<i class="' + escAttr(fasClass) + '"></i> <span class="' + escAttr(spanClass) + '">' + esc(value) + '</span>';
       }
     });
   }
@@ -1645,10 +1787,10 @@ function renderSocialLinks(social) {
 
       case 'catalog':
         if (c.badge) setText('.catalog-label', c.badge);
-        if (c.title) setText('.catalog-title', c.title);
-        if (c.highlight) {
-          const highlightEl = document.querySelector('.catalog-title .highlight');
-          if (highlightEl) highlightEl.textContent = c.highlight;
+        if (c.title) {
+          // HTML saneado (mismo patrón que el hero) para no destruir el span .highlight
+          const titleEl = document.querySelector('.catalog-title');
+          if (titleEl) titleEl.innerHTML = sanitizeRichText(c.title);
         }
         if (c.cta_text) setText('.catalog-cta', c.cta_text);
         if (c.cta_url) setAttr('.catalog-cta', 'href', c.cta_url);
@@ -1712,14 +1854,20 @@ function renderSocialLinks(social) {
   }
 
   function renderStatsItems(items) {
+    if (!items || !items.length) return;
     const grid = document.querySelector('.stats-grid');
     if (!grid) return;
-    grid.innerHTML = items.filter(i => i.enabled).sort((a, b) => a.order - b.order).map(item => {
+    grid.innerHTML = items.filter(i => i.enabled !== false).sort((a, b) => (a.order || 0) - (b.order || 0)).map(item => {
       const suffix = item.suffix || '+';
+      const numberHtml = item.value_key
+        ? `<span id="${escAttr(item.value_key)}">${esc(item.value)}</span><span class="accent-symbol">${esc(suffix)}</span>`
+        : `${esc(item.value)}<span class="accent-symbol">${esc(suffix)}</span>`;
       return `
       <div class="stat-card" data-animate>
-        <div class="stat-card-number">${esc(item.value)}<span class="accent-symbol">${esc(suffix)}</span></div>
+        <div class="stat-icon"><i class="${esc(item.icon)}"></i></div>
+        <div class="stat-card-number">${numberHtml}</div>
         <div class="stat-card-title">${esc(item.title)}</div>
+        <div class="stat-card-desc">${esc(item.description || '')}</div>
       </div>`;
     }).join('');
   }
@@ -1787,11 +1935,10 @@ function renderSocialLinks(social) {
   function renderFormOptions(options) {
     const container = document.querySelector('.form-options');
     if (!container) return;
-    container.innerHTML = options.filter(o => o.enabled).sort((a, b) => a.order - b.order).map(opt => `
-      <label class="form-option">
-        <input type="radio" name="interest" value="${esc(opt.value)}">
-        <span>${esc(opt.label)}</span>
-      </label>
+    // Renderiza pills (no radios) para que el toggle y el submit de contactForm
+    // (que leen .form-pill.active) funcionen igual que en el HTML estático.
+    container.innerHTML = options.filter(o => o.enabled !== false).sort((a, b) => (a.order || 0) - (b.order || 0)).map(opt => `
+      <button type="button" class="form-pill" data-value="${esc(opt.value)}">${esc(opt.label)}</button>
     `).join('');
   }
 
