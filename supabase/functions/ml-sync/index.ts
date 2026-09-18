@@ -115,6 +115,7 @@ interface PropertyRow {
     id: string;
     title: string;
     description: string | null;
+    status: string | null;
     listing_type: string;
     price: number | null;
     currency: string;
@@ -153,6 +154,20 @@ const MAX_CONCURRENT_JOBS = Number(Deno.env.get('ML_SYNC_MAX_CONCURRENT') ?? '3'
 const RATE_LIMIT_FN = 'ml-sync';
 const ML_COOLDOWN_MS = Number(Deno.env.get('ML_SYNC_COOLDOWN_MS') ?? '60000');
 
+// Categorías HOJA por tipo+operación (la raíz "Inmuebles" no acepta atributos).
+// Debe mantenerse en sync con ml-publish/index.ts.
+const ML_CATEGORY_MAP: Record<string, { venta: string; alquiler: string }> = {
+    departamento: { venta: 'MLA401686', alquiler: 'MLA1473' },
+    casa: { venta: 'MLA401685', alquiler: 'MLA1467' },
+    ph: { venta: 'MLA105182', alquiler: 'MLA105181' },
+    terreno: { venta: 'MLA401687', alquiler: 'MLA1494' },
+    local: { venta: 'MLA79244', alquiler: 'MLA79243' },
+    galpon: { venta: 'MLA1477', alquiler: 'MLA1476' },
+    oficina: { venta: 'MLA50540', alquiler: 'MLA50539' },
+    quinta: { venta: 'MLA50551', alquiler: 'MLA50549' },
+    campo: { venta: 'MLA6413', alquiler: 'MLA6414' },
+};
+
 // ============================================================
 // Helpers
 // ============================================================
@@ -161,11 +176,20 @@ async function fetchProperty(id: string): Promise<PropertyRow | null> {
     const { data } = await supabase
         .from('properties')
         .select(
-            'id, title, description, listing_type, price, currency, address, area_total, area_covered, bedrooms, bathrooms, garages, property_type, rooms, full_bathrooms, pets_allowed, has_storage, furnished, maintenance_fee, inscription_number, images:property_images(url, storage_path)',
+            'id, title, description, status, listing_type, price, price_usd, price_currency, currency, address, area_total, area_covered, bedrooms, bathrooms, garages, property_type, rooms, full_bathrooms, pets_allowed, has_storage, furnished, maintenance_fee, inscription_number, images:property_images(url, storage_path)',
         )
         .eq('id', id)
         .maybeSingle();
-    return data ?? null;
+    if (!data) return null;
+    return {
+        ...data,
+        // El admin edita `status`; `listing_type` es legacy. price_usd/price_currency son los vivos.
+        listing_type: data.status === 'alquiler'
+            ? 'alquiler'
+            : (data.status === 'venta' ? 'venta' : (data.listing_type ?? 'venta')),
+        price: data.price_usd ?? data.price ?? null,
+        currency: data.price_currency ?? data.currency ?? 'USD',
+    };
 }
 
 async function fetchDefaults(): Promise<{
@@ -514,16 +538,18 @@ async function runJob(
             if (property.price === null || property.price <= 0) {
                 return { ok: false, error: 'La propiedad debe tener precio para publicarse' };
             }
+            if (property.status === 'vendido' || property.status === 'alquilado') {
+                return { ok: false, error: `La propiedad está marcada como ${property.status}; no se publica en Mercado Libre.` };
+            }
 
             const operationLabel = property.listing_type === 'venta' ? 'Venta' : 'Alquiler';
             const propertyType = property.property_type ?? 'Departamento';
             const roomsLabel = property.rooms ?? property.bedrooms ?? 1;
             const location = property.address?.split(',')[0]?.trim() ?? '';
-            const mlTitle =
-                `${operationLabel} ${propertyType} ${roomsLabel} amb. ${location || 'Salta'}`.slice(
-                    0,
-                    60,
-                );
+            // Título idéntico al del sistema (límite estricto de ML: 60 caracteres)
+            const mlTitle = (property.title || `${operationLabel} ${propertyType} ${roomsLabel} amb. ${location || 'Córdoba'}`)
+                .trim()
+                .slice(0, 60);
 
             const attributes: Array<{ id: string; value_name: string }> = [
                 {
@@ -582,7 +608,11 @@ async function runJob(
                 attributes,
                 location: { address_line: property.address },
             };
-            if (defaults.category_id) payload.category_id = defaults.category_id;
+            const normalizedType = propertyType.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+            const operationKey = property.listing_type === 'alquiler' ? 'alquiler' : 'venta';
+            const categoryId =
+                ML_CATEGORY_MAP[normalizedType]?.[operationKey] ?? defaults.category_id;
+            if (categoryId) payload.category_id = categoryId;
             if (defaults.listing_type_id) payload.listing_type_id = defaults.listing_type_id;
             if (mlImageUrls.length === 0) {
                 return {

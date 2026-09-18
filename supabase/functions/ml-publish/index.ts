@@ -26,6 +26,7 @@ interface PropertyRow {
     id: string;
     title: string;
     description: string | null;
+    status: string | null;
     listing_type: string;
     price: number | null;
     currency: string;
@@ -56,7 +57,7 @@ async function fetchProperty(id: string): Promise<PropertyRow | null> {
     const { data: property } = await supabase
         .from('properties')
         .select(
-            'id, title, description, listing_type, price, price_usd, price_currency, currency, address, area_total, area_covered, surface_total, surface_covered, bedrooms, bathrooms, garages, property_type, rooms, full_bathrooms, pets_allowed, has_storage, furnished, maintenance_fee, inscription_number, image_urls',
+            'id, title, description, status, listing_type, price, price_usd, price_currency, currency, address, area_total, area_covered, surface_total, surface_covered, bedrooms, bathrooms, garages, property_type, rooms, full_bathrooms, pets_allowed, has_storage, furnished, maintenance_fee, inscription_number, image_urls',
         )
         .eq('id', id)
         .maybeSingle();
@@ -78,9 +79,14 @@ async function fetchProperty(id: string): Promise<PropertyRow | null> {
         id: property.id,
         title: property.title,
         description: property.description,
-        listing_type: property.listing_type ?? 'venta',
-        price: property.price ?? property.price_usd ?? null,
-        currency: property.currency ?? property.price_currency ?? 'USD',
+        status: property.status ?? null,
+        // El admin edita `status` (venta/alquiler); `listing_type` es legacy y suele ser NULL.
+        listing_type: property.status === 'alquiler'
+            ? 'alquiler'
+            : (property.status === 'venta' ? 'venta' : (property.listing_type ?? 'venta')),
+        // `price_usd`/`price_currency` son los campos que edita el admin; price/currency son legacy.
+        price: property.price_usd ?? property.price ?? null,
+        currency: property.price_currency ?? property.currency ?? 'USD',
         address: property.address,
         area_total: property.area_total ?? property.surface_total ?? null,
         area_covered: property.area_covered ?? property.surface_covered ?? null,
@@ -175,8 +181,10 @@ function buildItemPayload(property: PropertyRow, defaults: MlDefaults): MlItemPa
     const propertyType = property.property_type ?? 'Departamento';
     const roomsLabel = property.rooms ?? property.bedrooms ?? 1;
     const location = property.address?.split(',')[0]?.trim() ?? '';
-    const mlTitle =
-        `${operationLabel} ${propertyType} ${roomsLabel} amb. ${location || 'Córdoba'}`.slice(0, 60);
+    // Título idéntico al del sistema (límite estricto de ML: 60 caracteres)
+    const mlTitle = (property.title || `${operationLabel} ${propertyType} ${roomsLabel} amb. ${location || 'Córdoba'}`)
+        .trim()
+        .slice(0, 60);
 
     // ML solo acepta publicar en categorías HOJA (la raíz "Inmuebles" MLA1459 no acepta atributos).
     const ML_CATEGORY_MAP: Record<string, { venta: string; alquiler: string }> = {
@@ -437,6 +445,12 @@ Deno.serve(async (req) => {
 
     const property = await fetchProperty(propertyId);
     if (!property) return respond(404, { error: 'Propiedad no encontrada' });
+
+    if (property.status === 'vendido' || property.status === 'alquilado') {
+        return respond(400, {
+            error: `La propiedad está marcada como ${property.status}; no se publica en Mercado Libre.`,
+        });
+    }
 
     try {
         if (action === 'create') {
