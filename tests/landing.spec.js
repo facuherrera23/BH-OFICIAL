@@ -44,4 +44,37 @@ test.describe('Landing — funcionalidad read-only', () => {
     expect(scriptSrc).not.toContain('unsafe-inline');
     expect(scriptSrc).not.toMatch(/nonce-/);
   });
+
+  test('pills de interés: selección única funcional', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('#propertyGrid [data-property-id]').first()).toBeVisible({ timeout: 20000 });
+
+    const pills = page.locator('.form-options .form-pill');
+    await expect(pills).toHaveCount(4);
+
+    const comprar = pills.filter({ hasText: 'Comprar' });
+    const alquilar = pills.filter({ hasText: 'Alquilar' });
+    await comprar.click();
+    await expect(comprar).toHaveClass(/active/);
+    await alquilar.click();
+    await expect(alquilar).toHaveClass(/active/);
+    await expect(comprar).not.toHaveClass(/active/);
+  });
+
+  test('H2 del catálogo incluye Córdoba', async ({ page }) => {
+    await page.goto('/index.html');
+    const console = trackConsoleErrors(page);
+    await expect(page.locator('#propertyGrid [data-property-id]').first()).toBeVisible({ timeout: 20000 });
+    await expect(page.locator('.catalog-title')).toContainText('Córdoba');
+    console.assertClean();
+  });
+
+  test('sección Nosotros: misión, visión y valores presentes', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('#nosotros')).toBeVisible();
+    await expect(page.locator('#nosotros')).toContainText('Nuestra Misión');
+    await expect(page.locator('#nosotros')).toContainText('Nuestra Visión');
+    await expect(page.locator('#nosotros .mvv-value')).toHaveCount(3);
+    await expect(page.locator('#nosotros')).toContainText('Córdoba');
+  });
 });
