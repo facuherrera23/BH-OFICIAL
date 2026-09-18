@@ -4481,6 +4481,25 @@ input[type="range"]::-moz-range-thumb {
 .crm-tipo-chip--inversor{background:rgba(167,139,250,0.15);color:#a78bfa}
 .crm-tipo-chip--inquilino{background:rgba(251,191,36,0.15);color:#fbbf24}
 
+/* --------------------------------------------------------- */
+/* TASACIONES — listado con identidad CRM                     */
+/* --------------------------------------------------------- */
+.crm-tipo-chip--tas{background:rgba(201,169,110,0.15);color:#c9a96e}
+.crm-tipo-chip--tas.tas-chip--alquiler{background:rgba(31,200,195,0.15);color:var(--accent)}
+.tas-valor{color:var(--accent);font-weight:700;font-size:13.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tas-fecha{color:var(--text-muted);font-size:12.5px;white-space:nowrap}
+.tas-th-actions{width:140px}
+.tas-empty{text-align:center;padding:48px 20px;display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--text-dim)}
+.tas-empty i{font-size:30px;opacity:.4}
+.tas-empty p{margin:0;color:#fff;font-weight:600;font-size:14px}
+.tas-empty span{font-size:12.5px}
+.tas-empty-cell{text-align:center;padding:40px;color:var(--text-dim)}
+.tas-pag-btn{background:rgba(255,255,255,0.06);border:1px solid var(--border-subtle);border-radius:9px;color:#fff;padding:8px 13px;font-size:12px;display:inline-flex;align-items:center;cursor:pointer;transition:background .2s,border-color .2s}
+.tas-pag-btn:hover:not(:disabled){background:rgba(255,255,255,0.1);border-color:var(--accent)}
+.tas-pag-btn:disabled{opacity:.35;cursor:not-allowed}
+.tas-page-size{background:rgba(255,255,255,0.03);border:1px solid var(--border-subtle);border-radius:9px;color:#fff;font-size:12px;padding:7px 10px;cursor:pointer}
+.tas-page-size:focus{outline:2px solid var(--accent);outline-offset:1px}
+
 .crm-activity-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px rgba(31,200,195,0.2);margin-right:4px}
 .crm-next-action{display:inline-flex;align-items:center;font-size:12.5px;color:var(--text-secondary)}
 .crm-next-action--due{color:var(--warning);font-weight:700}

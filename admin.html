@@ -812,7 +812,7 @@
 </div>
 <div class="form-field">
 <label>Descripción</label>
-<textarea id="cms_serv_desc" class="cms-field" data-key="description" placeholder="Un equipo dedicado a brindarte la mejor experiencia inmobiliaria en Buenos Aires.">
+<textarea id="cms_serv_desc" class="cms-field" data-key="description" placeholder="Un equipo dedicado a brindarte la mejor experiencia inmobiliaria en Córdoba.">
 </textarea>
 </div>
 <div class="form-field">
@@ -939,7 +939,7 @@
 </div>
 <div class="form-field">
 <label>Teléfono Valor</label>
-<input type="text" id="cms_contact_phone" class="cms-field" data-key="phone" placeholder="+54 11 0000-0000" />
+<input type="text" id="cms_contact_phone" class="cms-field" data-key="phone" placeholder="+54 9 351 ..." />
 </div>
 </div>
 <div class="form-grid-2">
@@ -1073,7 +1073,7 @@
 <div class="cms-section-content" id="cms-footer">
 <div class="form-field">
 <label>Descripción</label>
-<textarea id="cms_footer_description" class="cms-field" data-key="description" placeholder="Inmobiliaria premium en Buenos Aires...">
+<textarea id="cms_footer_description" class="cms-field" data-key="description" placeholder="Inmobiliaria premium en Córdoba...">
 </textarea>
 </div>
 <div class="form-grid-2">
@@ -1083,7 +1083,7 @@
 </div>
 <div class="form-field">
 <label>Matrícula</label>
-<input type="text" id="cms_footer_matricula" class="cms-field" data-key="matricula" placeholder="C.R.I. 183944" />
+<input type="text" id="cms_footer_matricula" class="cms-field" data-key="matricula" placeholder="CPI 1834" />
 </div>
 </div>
 <div class="form-grid-2">
@@ -1095,11 +1095,6 @@
 <label>CUIT</label>
 <input type="text" id="cms_footer_cuit" class="cms-field" data-key="cuit" placeholder="30-00000000-0" />
 </div>
-</div>
-<div class="form-field">
-<label>Descripción</label>
-<textarea id="cms_footer_description" class="cms-field" data-key="description" placeholder="Inmobiliaria premium en Buenos Aires...">
-</textarea>
 </div>
 <hr style="margin:16px 0; border-color:var(--border-subtle);">
 <h4 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Links Navegación</h4>
@@ -1120,7 +1115,7 @@
 <div class="form-grid-2">
 <div class="form-field">
 <label>Teléfono</label>
-<input type="text" id="cms_footer_phone" class="cms-field" data-key="phone" placeholder="+54 11 0000-0000" />
+<input type="text" id="cms_footer_phone" class="cms-field" data-key="phone" placeholder="+54 9 351 ..." />
 </div>
 <div class="form-field">
 <label>Email</label>
@@ -1169,16 +1164,16 @@
 <div class="cms-section-content" id="cms-seo">
 <div class="form-field">
 <label>Title</label>
-<input type="text" id="cms_seo_title" class="cms-field" data-key="title" placeholder="Bienenhaus Propiedades | Inmobiliaria Premium en Buenos Aires" />
+<input type="text" id="cms_seo_title" class="cms-field" data-key="title" placeholder="Bienenhaus Propiedades | Inmobiliaria Premium en Córdoba" />
 </div>
 <div class="form-field">
 <label>Description</label>
-<textarea id="cms_seo_description" class="cms-field" data-key="description" placeholder="Inmobiliaria premium en Buenos Aires...">
+<textarea id="cms_seo_description" class="cms-field" data-key="description" placeholder="Inmobiliaria premium en Córdoba...">
 </textarea>
 </div>
 <div class="form-field">
 <label>OG Title</label>
-<input type="text" id="cms_seo_og_title" class="cms-field" data-key="og_title" placeholder="Bienenhaus Propiedades | Inmobiliaria Premium en Buenos Aires" />
+<input type="text" id="cms_seo_og_title" class="cms-field" data-key="og_title" placeholder="Bienenhaus Propiedades | Inmobiliaria Premium en Córdoba" />
 </div>
 <div class="form-field">
 <label>OG Description</label>
@@ -1217,7 +1212,7 @@
 </div>
 <div class="form-field">
 <label>Twitter Title</label>
-<input type="text" id="cms_seo_twitter_title" class="cms-field" data-key="twitter_title" placeholder="Bienenhaus Propiedades | Inmobiliaria Premium en Buenos Aires" />
+<input type="text" id="cms_seo_twitter_title" class="cms-field" data-key="twitter_title" placeholder="Bienenhaus Propiedades | Inmobiliaria Premium en Córdoba" />
 </div>
 <div class="form-field">
 <label>Twitter Description</label>
@@ -1395,26 +1390,37 @@
 </i> Nueva Tasación</button>
 </div>
 </div>
-<div class="table-responsive">
-<table class="luxury-table">
+<div class="crm-kpis" id="tasacionesKpis">
+<div class="crm-kpi"><span class="crm-kpi-label">Total</span><span class="crm-kpi-value" id="tasKpiTotal">—</span></div>
+<div class="crm-kpi"><span class="crm-kpi-label">Finalizadas</span><span class="crm-kpi-value crm-kpi--win" id="tasKpiFinalizadas">—</span></div>
+<div class="crm-kpi"><span class="crm-kpi-label">Borradores</span><span class="crm-kpi-value crm-kpi--lost" id="tasKpiBorradores">—</span></div>
+<div class="crm-kpi"><span class="crm-kpi-label">Últimos 30 días</span><span class="crm-kpi-value crm-kpi--nuevo" id="tasKpiRecientes">—</span></div>
+</div>
+<div class="crm-table-wrap">
+<table class="crm-table tas-table">
 <thead>
 <tr>
-<th>Título</th>
-<th>Propiedad</th>
-<th>Propietario</th>
-<th>Valor Estimado</th>
-<th>Tipo</th>
+<th>Tasación</th>
+<th>Valor estimado</th>
 <th>Estado</th>
 <th>Fecha</th>
-<th>Acción</th>
+<th class="tas-th-actions"></th>
 </tr>
 </thead>
 <tbody id="tasacionesTableBody">
-<tr>
-<td colspan="8" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando tasaciones...</td>
-</tr>
+<tr><td colspan="5" class="tas-empty-cell">Cargando tasaciones...</td></tr>
 </tbody>
 </table>
+</div>
+<div class="crm-pagination">
+<button class="tas-pag-btn" id="tasacionesPagePrev" title="Página anterior" disabled><i class="fas fa-chevron-left"></i></button>
+<span class="crm-pag-info" id="tasacionesPageInfo">Página 1 de 1</span>
+<button class="tas-pag-btn" id="tasacionesPageNext" title="Página siguiente" disabled><i class="fas fa-chevron-right"></i></button>
+<select id="tasacionesPageSize" class="tas-page-size" title="Filas por página">
+<option value="10">10 por página</option>
+<option value="25" selected>25 por página</option>
+<option value="50">50 por página</option>
+</select>
 </div>
 </div>
 </div>
@@ -1511,7 +1517,7 @@
 <div class="form-grid-2">
 <div class="form-field">
 <label>WhatsApp (formato internacional)</label>
-<input type="text" id="cfg_whatsapp" class="cfg-field" data-key="whatsapp" placeholder="+54 11 0000-0000" />
+<input type="text" id="cfg_whatsapp" class="cfg-field" data-key="whatsapp" placeholder="+54 9 351 ..." />
 </div>
 <div class="form-field">
 <label>Email Corporativo</label>
@@ -1521,7 +1527,7 @@
 <div class="form-grid-2">
 <div class="form-field">
 <label>Teléfono</label>
-<input type="text" id="cfg_phone" class="cfg-field" data-key="phone" placeholder="+54 11 0000-0000" />
+<input type="text" id="cfg_phone" class="cfg-field" data-key="phone" placeholder="+54 9 351 ..." />
 </div>
 </div>
 <div class="form-field">
@@ -1796,7 +1802,7 @@
 </section>
 <!-- ============================================================     SUPERVISION CENTER — tab-supervision     ============================================================ -->
 <section class="tab-module" id="tab-supervision">  <header class="tab-header">    <h2 style="font-family:var(--font-heading); font-size:24px; color:#fff; margin:0;">Centro de Supervisión</h2>    <p style="color:var(--text-muted); font-size:13px; margin:4px 0 0;">Auditoría · Uso · Seguridad · Alertas</p>  </header>  <!-- Toolbar -->  <div class="supervision-toolbar" style="display:flex; gap:12px; flex-wrap:wrap; margin:16px 0; padding:16px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px;">    <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">      <label style="font-size:12px; color:var(--text-dim);">Desde</label>      <input type="date" id="supFromDate" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px;">    </div>    <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">      <label style="font-size:12px; color:var(--text-dim);">Hasta</label>      <input type="date" id="supToDate" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px;">    </div>    <div style="flex:1;">
-</div>    <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">      <select id="supModuleFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:180px;">        <option value="">Todos los módulos</option>      </select>      <select id="supUserFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:180px;">        <option value="">Todos los usuarios</option>      </select>      <select id="supSeverityFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:150px;">        <option value="">Todas las severidades</option>        <option value="critical">🔴 Crítica</option>        <option value="high">🟠 Alta</option>        <option value="medium">🟡 Media</option>        <option value="low">🟢 Baja</option>        <option value="info">ℹ️ Info</option>      </select>      <select id="supTimezoneFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:150px;" title="Zona horaria para mostrar fechas">        <option value="America/Argentina/Buenos_Aires">🌎 AR (Buenos Aires)</option>        <option value="UTC">🌐 UTC</option>      </select>    </div>    <div class="toolbar-group" style="display:flex; gap:8px;">      <button type="button" class="btn-luxury-action" id="supRefreshBtn">
+</div>    <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">      <select id="supModuleFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:180px;">        <option value="">Todos los módulos</option>      </select>      <select id="supUserFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:180px;">        <option value="">Todos los usuarios</option>      </select>      <select id="supSeverityFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:150px;">        <option value="">Todas las severidades</option>        <option value="critical">🔴 Crítica</option>        <option value="high">🟠 Alta</option>        <option value="medium">🟡 Media</option>        <option value="low">🟢 Baja</option>        <option value="info">ℹ️ Info</option>      </select>      <select id="supTimezoneFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:150px;" title="Zona horaria para mostrar fechas">        <option value="America/Argentina/Cordoba">🌎 AR (Córdoba)</option>        <option value="UTC">🌐 UTC</option>      </select>    </div>    <div class="toolbar-group" style="display:flex; gap:8px;">      <button type="button" class="btn-luxury-action" id="supRefreshBtn">
 <i class="fas fa-arrows-rotate">
 </i> Actualizar</button>      <button type="button" class="status-pill active" id="supAutoRefreshBtn" style="background:rgba(31,200,195,0.15); color:var(--accent);">
 <i class="fas fa-broadcast-tower">
@@ -2286,7 +2292,7 @@
 <input type="email" name="email" placeholder="agente@bienenhaus.com.ar" />
 </div>  <div class="form-field">
 <label>Teléfono</label>
-<input type="text" name="phone" placeholder="+54 11 0000-0000" />
+<input type="text" name="phone" placeholder="+54 9 351 ..." />
 </div>
 </div>
 <div class="form-field">  <label>Usuario Auth (para login)</label>  <select name="profile_id" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:12px; padding:10px 12px; color:#fff; font-size:13.5px; width:100%;">    <option value="">— Sin vincular</option>  </select>  <small style="color:var(--text-dim); font-size:11px;">Vincular a un usuario de auth para acceso al panel</small>

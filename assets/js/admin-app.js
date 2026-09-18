@@ -2457,23 +2457,48 @@ function esc(s) {
       </tr>`;
     }
 
-    function buildTasacionRowHtml(t) {
+    function tasAvatarColor(name) {
+      const colors = ['#20B8AB', '#3b82f6', '#8C64DC', '#e67e22', '#39D98A', '#CC3535', '#FFB432', '#1abc9c', '#9b59b6', '#e74c3c'];
+      let hash = 0;
+      const s = String(name || '');
+      for (let i = 0; i < s.length; i++) hash = s.charCodeAt(i) + ((hash << 5) - hash);
+      return colors[Math.abs(hash) % colors.length];
+    }
+
+    function tasInitials(text) {
+      const parts = String(text || '').trim().split(/\s+/).filter(Boolean);
+      if (!parts.length) return 'T';
+      return parts.slice(0, 2).map(p => p.charAt(0)).join('').toUpperCase();
+    }
+
+    function buildTasacionRowHtml(t, extras) {
+      const ownerName = (t.owners && t.owners.full_name) || (extras && extras.ownerName) || null;
+      const propName = t.properties
+        ? [t.properties.code, t.properties.title].filter(Boolean).join(' · ')
+        : ((extras && extras.propName) || null);
       const statusLabel = t.status === 'finalized' ? 'Finalizada' : 'Borrador';
       const statusClass = t.status === 'finalized' ? 'active' : 'pending';
-      const date = t.created_at ? new Date(t.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
-      const valuation = t.valuation_usd ? '$ ' + Number(t.valuation_usd).toLocaleString('es-AR') : '-';
-      return `<tr data-id="${t.id}">
-        <td style="font-weight:600; color:#fff;">${esc(t.title || 'Sin título')}</td>
-        <td style="color:var(--text-muted);">${t.properties ? esc(t.properties.code + ' - ' + t.properties.title) : '-'}</td>
-        <td style="color:var(--text-muted);">${t.owners ? esc(t.owners.full_name) : '-'}</td>
-        <td style="color:var(--accent); font-weight:600;">${valuation}</td>
-        <td><span class="status-pill" style="background:rgba(201,169,110,0.12); color:#c9a96e;">${t.type === 'venta' ? 'Venta' : t.type === 'alquiler' ? 'Alquiler' : t.type || '-'}</span></td>
+      const date = t.created_at ? new Date(t.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+      const typeLabel = t.type === 'venta' ? 'Venta' : t.type === 'alquiler' ? 'Alquiler' : (t.type || '');
+      const typeChip = typeLabel
+        ? `<span class="crm-tipo-chip crm-tipo-chip--tas${t.type === 'alquiler' ? ' tas-chip--alquiler' : ''}">${esc(typeLabel)}</span>`
+        : '';
+      let valuation = t.valuation_usd;
+      if (!valuation && t.data && typeof t.data === 'object') {
+        valuation = t.data.valuation_usd || t.data.final_valuation || null;
+      }
+      const valuationStr = valuation ? 'US$ ' + Number(valuation).toLocaleString('es-AR') : '—';
+      const avatarBase = ownerName || t.title || 'Tasacion';
+      const meta = [ownerName, propName].filter(Boolean).map(x => esc(x)).join(' · ') || 'Sin vínculos en el CRM';
+      return `<tr class="tas-row" data-id="${esc(t.id)}">
+        <td><div class="crm-client-row"><span class="crm-client-avatar" style="background:${tasAvatarColor(avatarBase)}">${esc(tasInitials(avatarBase))}</span><div><strong>${esc(t.title || 'Sin título')}</strong>${typeChip}<div class="crm-meta">${meta}</div></div></div></td>
+        <td><span class="tas-valor">${valuationStr}</span></td>
         <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
-        <td>${date}</td>
-        <td>
-          <button class="icon-badge-btn" title="Abrir" data-open-tasacion="${t.id}" data-tasacion-title="${esc(t.title || '')}"><i class="fas fa-external-link-alt"></i></button>
-          <button class="icon-badge-btn" title="Exportar PDF" data-pdf-tasacion="${t.id}" data-tasacion-title="${esc(t.title || '')}"><i class="fas fa-file-pdf" style="color:var(--danger);"></i></button>
-          <button class="icon-badge-btn" title="Eliminar" data-del-tasacion="${t.id}"><i class="fas fa-trash" style="color:var(--danger);"></i></button>
+        <td><span class="tas-fecha">${date}</span></td>
+        <td class="crm-td-actions">
+          <button class="btn-action" title="Abrir" data-open-tasacion="${esc(t.id)}" data-tasacion-title="${esc(t.title || '')}"><i class="fas fa-external-link-alt"></i></button>
+          <button class="btn-action" title="Exportar PDF" data-pdf-tasacion="${esc(t.id)}" data-tasacion-title="${esc(t.title || '')}"><i class="fas fa-file-pdf"></i></button>
+          <button class="btn-action danger" title="Eliminar" data-del-tasacion="${esc(t.id)}"><i class="fas fa-trash"></i></button>
         </td>
       </tr>`;
     }
@@ -3509,7 +3534,7 @@ window.adminApp.editVisit = async function (id) {
   const DEFAULT_CMS_CONTENT = {
     hero: {
       title: 'Encontrá tu próximo hogar',
-      subtitle: 'en Buenos Aires',
+      subtitle: 'en Córdoba',
       eyebrow: 'Bienvenidos a Bienenhaus',
       description: 'Propiedades seleccionadas, asesoramiento experto y la confianza de una inmobiliaria con trayectoria.',
       bg_image_url: '',
@@ -6666,6 +6691,10 @@ try {
 
   on($('#btnBackToList'), 'click', hideTasacionEditor);
 
+  on($('#tasacionesPagePrev'), 'click', () => { if (_tasacionesPage > 1) { _tasacionesPage--; loadTasaciones(); } });
+  on($('#tasacionesPageNext'), 'click', () => { const totalPages = Math.ceil(_tasacionesTotalCount / _tasacionesPageSize); if (_tasacionesPage < totalPages) { _tasacionesPage++; loadTasaciones(); } });
+  on($('#tasacionesPageSize'), 'change', () => { _tasacionesPageSize = parseInt($('#tasacionesPageSize').value, 10); _tasacionesPage = 1; loadTasaciones(); });
+
   window.addEventListener('message', (e) => {
     if (e.origin !== window.location.origin) return;
     if (e.data?.type === 'tasaciones-back') hideTasacionEditor();
@@ -6720,7 +6749,6 @@ try {
     const pageInfo = $('#tasacionesPageInfo');
     const pagePrev = $('#tasacionesPagePrev');
     const pageNext = $('#tasacionesPageNext');
-    const pageSize = $('#tasacionesPageSize');
     if (!tbody) return;
     if (!currentUser || !window.supabaseClient) return;
 
@@ -6744,12 +6772,22 @@ try {
 
       const propIds = [...new Set((data || []).map(t => t.property_id).filter(Boolean))];
       const ownerIds = [...new Set((data || []).map(t => t.owner_id).filter(Boolean))];
-      const [propsRes, ownersRes] = await Promise.all([
+      const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
+      const [propsRes, ownersRes, finRes, draftRes, recentRes] = await Promise.all([
         propIds.length ? window.supabaseClient.from('properties').select('id, code, title').in('id', propIds) : { data: [] },
-        ownerIds.length ? window.supabaseClient.from('owners').select('id, full_name').in('id', ownerIds) : { data: [] }
+        ownerIds.length ? window.supabaseClient.from('owners').select('id, full_name').in('id', ownerIds) : { data: [] },
+        window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true }).eq('status', 'finalized'),
+        window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true }).eq('status', 'draft'),
+        window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true }).gte('created_at', since30)
       ]);
       const propMap = new Map((propsRes.data || []).map(p => [p.id, p]));
       const ownerMap = new Map((ownersRes.data || []).map(o => [o.id, o]));
+
+      const setKpi = (sel, val) => { const el = $(sel); if (el) el.textContent = val; };
+      setKpi('#tasKpiTotal', _tasacionesTotalCount);
+      setKpi('#tasKpiFinalizadas', finRes.count || 0);
+      setKpi('#tasKpiBorradores', draftRes.count || 0);
+      setKpi('#tasKpiRecientes', recentRes.count || 0);
 
       /* Update pagination UI */
       const totalPages = Math.ceil(_tasacionesTotalCount / _tasacionesPageSize);
@@ -6758,48 +6796,21 @@ try {
       if (pageNext) pageNext.disabled = _tasacionesPage >= totalPages;
 
       if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--text-dim);">No hay tasaciones registradas</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5"><div class="tas-empty"><i class="fas fa-file-invoice"></i><p>No hay tasaciones registradas todavía.</p><span>Creá la primera con “Nueva Tasación”.</span></div></td></tr>';
         return;
       }
 
       tbody.innerHTML = data.map(t => {
-        const statusLabel = t.status === 'finalized' ? 'Finalizada' : 'Borrador';
-        const statusClass = t.status === 'finalized' ? 'active' : 'pending';
-        const date = t.created_at ? new Date(t.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
         const prop = t.property_id ? propMap.get(t.property_id) : null;
-        const propName = prop ? (prop.code ? prop.code + ' - ' + (prop.title || '') : (prop.title || '')) : '-';
+        const propName = prop ? [prop.code, prop.title].filter(Boolean).join(' · ') : null;
         const owner = t.owner_id ? ownerMap.get(t.owner_id) : null;
-        const ownerName = owner ? (owner.full_name || '-') : '-';
-        const typeLabel = t.type === 'venta' ? 'Venta' : t.type === 'alquiler' ? 'Alquiler' : t.type || '-';
-        let valuation = t.valuation_usd;
-        if (!valuation && t.data && typeof t.data === 'object') {
-          valuation = t.data.valuation_usd || t.data.final_valuation || null;
-        }
-        const valuationStr = valuation ? '$ ' + Number(valuation).toLocaleString('es-AR') : '-';
-        return `<tr>
-          <td style="font-weight:600; color:#fff;">${esc(t.title || 'Sin título')}</td>
-          <td style="color:var(--text-muted); font-size:13px;">${esc(propName)}</td>
-          <td style="color:var(--text-muted); font-size:13px;">${esc(ownerName)}</td>
-          <td style="color:var(--accent); font-weight:600; font-size:13px;">${valuationStr}</td>
-          <td><span class="status-pill" style="background:rgba(201,169,110,0.12); color:#c9a96e;">${esc(typeLabel)}</span></td>
-          <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
-          <td style="color:var(--text-muted); font-size:13px;">${date}</td>
-          <td>
-            <button class="icon-badge-btn" title="Abrir" data-open-tasacion="${esc(t.id)}" data-tasacion-title="${esc(t.title || '')}"><i class="fas fa-external-link-alt"></i></button>
-            <button class="icon-badge-btn" title="Exportar PDF" data-pdf-tasacion="${esc(t.id)}" data-tasacion-title="${esc(t.title || '')}"><i class="fas fa-file-pdf" style="color:var(--danger);"></i></button>
-            <button class="icon-badge-btn" title="Eliminar" data-del-tasacion="${esc(t.id)}"><i class="fas fa-trash" style="color:var(--danger);"></i></button>
-          </td>
-        </tr>`;
+        const ownerName = owner ? (owner.full_name || null) : null;
+        return buildTasacionRowHtml(t, { propName, ownerName });
       }).join('');
-
-      /* Pagination controls */
-      on(pagePrev, 'click', () => { if (_tasacionesPage > 1) { _tasacionesPage--; loadTasaciones(); } });
-      on(pageNext, 'click', () => { const totalPages = Math.ceil(_tasacionesTotalCount / _tasacionesPageSize); if (_tasacionesPage < totalPages) { _tasacionesPage++; loadTasaciones(); } });
-      on(pageSize, 'change', () => { _tasacionesPageSize = parseInt(pageSize.value); _tasacionesPage = 1; loadTasaciones(); });
 
     } catch (err) {
       logError('loadTasaciones error:', err);
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:40px; color:var(--danger);">Error al cargar tasaciones</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="tas-empty-cell">Error al cargar tasaciones</td></tr>';
     }
   }
 
