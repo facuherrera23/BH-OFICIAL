@@ -121,7 +121,7 @@ async function sendRenewalEmail(supabase: any, owner: any, days: number) {
         <p>Le recordamos que su contrato de exclusividad con <strong>BIENENHAUS PROPIEDADES</strong> vence el <strong>${new Date(owner.exclusive_end).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</strong> (en ${days} día${days !== 1 ? "s" : ""}).</p>
         <p>Para renovar su exclusividad y mantener la prioridad en la comercialización de su inmueble, por favor contacte a su broker asignado o responda a este email.</p>
         <hr style="margin: 24px 0; border-color: #eee;">
-        <p style="font-size: 12px; color: #666;">BIENENHAUS PROPIEDADES · Buenos Aires</p>
+        <p style="font-size: 12px; color: #666;">BIENENHAUS PROPIEDADES · Córdoba</p>
       </div>
     `;
 

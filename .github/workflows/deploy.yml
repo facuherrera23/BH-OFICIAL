@@ -11,8 +11,6 @@ permissions:
   id-token: write
 
 env:
-  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
   SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
   SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
 
@@ -163,24 +161,6 @@ jobs:
           git pull --rebase origin main
           git push
 
-  deploy-cloudflare:
-    name: Deploy to Cloudflare Pages
-    needs: [lint-and-test, auto-version]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: bienenhaus
-          directory: .
-          branch: main
-
   deploy-supabase:
     name: Deploy Supabase Edge Functions
     needs: [lint-and-test, auto-version]
@@ -195,43 +175,71 @@ jobs:
         with:
           version: latest
 
-      - name: Deploy Edge Functions (only active ones)
+      - name: Deploy Edge Functions (todas las del repo, verify_jwt por funcion)
         run: |
-          # List of functions to deploy (exclude orphaned/deprecated)
-          FUNCTIONS_TO_DEPLOY=(
+          # Experimentales/deprecadas fuera del deploy (nunca desplegadas):
+          EXCLUDED_FUNCTIONS=(
+            "contact-submit"
+            "convert-image"
+          )
+          # Sin verify_jwt (webhooks externos, crons y endpoints pre-login).
+          # Mapa exacto del estado desplegado a 2026-09-18:
+          NO_VERIFY=(
+            "check-password-hash"
             "cloudinary-sign"
             "cron_exclusivity_renewals"
+            "ficha"
             "manage-users"
+            "ml-callback"
+            "ml-oauth"
+            "ml-portal-status"
             "ml-publish"
             "ml-sync"
             "ml-webhook"
             "monthly_commission_liquidation"
+            "owner-tasks-reminder"
+            "process-retention-policies"
+            "rela-callbacks"
+            "rela-sync"
             "supervision-api"
             "supervision-digest"
             "supervision-ml-anomaly"
             "supervision-notifications"
             "supervision-notify"
             "trigger_commission_on_close"
+            "visits-process-reminders"
             "zernio-proxy"
             "zernio-webhook"
             "zernio-webhook-test"
           )
-          
-          for fn in "${FUNCTIONS_TO_DEPLOY[@]}"; do
-            if [ -d "supabase/functions/$fn" ]; then
-              echo "Deploying $fn..."
-              supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt
+          in_list() {
+            local needle="$1"; shift
+            printf '%s\n' "$@" | grep -qx "$needle"
+          }
+          FAILED=0
+          for dir in supabase/functions/*/; do
+            fn=$(basename "$dir")
+            [ -f "$dir/index.ts" ] || continue
+            if in_list "$fn" "${EXCLUDED_FUNCTIONS[@]}"; then
+              echo "Skipping $fn (excluded)"
+              continue
+            fi
+            if in_list "$fn" "${NO_VERIFY[@]}"; then
+              echo "Deploying $fn (--no-verify-jwt)..."
+              supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt || { echo "FAILED: $fn"; FAILED=1; }
             else
-              echo "Skipping $fn (not found in repo)"
+              echo "Deploying $fn (verify_jwt)..."
+              supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" || { echo "FAILED: $fn"; FAILED=1; }
             fi
           done
+          exit $FAILED
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
 
   notify:
     name: Notify Deployment
-    needs: [deploy-cloudflare, deploy-supabase]
+    needs: deploy-supabase
     if: always()
     runs-on: ubuntu-latest
     steps:

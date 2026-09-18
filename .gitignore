@@ -17,3 +17,7 @@ build/
 # Artefactos de tests (Playwright)
 test-results/
 playwright-report/
+
+# Archivos de trabajo que NO deben publicarse en el sitio
+*.docx
+chat-attach-final.png

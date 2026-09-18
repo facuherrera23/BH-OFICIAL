@@ -1,5 +1,21 @@
 # 🔧 Guía de Configuración Cloudflare Pages + API Token
 
+> ## ⚠️ DEPRECADO (2026-09-18)
+>
+> **Este documento ya no refleja la producción.** El deploy a Cloudflare Pages fue eliminado de
+> `deploy.yml` (error 401 por token de cuenta equivocada + el Pages project no recibía tráfico).
+>
+> **Arquitectura actual:** Cloudflare = solo DNS/proxy/SSL/Web Analytics · **GitHub Pages = hosting
+> del sitio** (auto-publish por push a `main`) · Supabase = backend. No re-agregar el job de
+> Cloudflare Pages salvo que se migre la producción allá (mover DNS + CNAME).
+>
+> Notas útiles que siguen vigentes: headers HTTP de seguridad (HSTS etc.) requieren un Transform
+> Rule en el dashboard de Cloudflare (GitHub Pages no los soporta) · el dominio **no tiene MX**:
+> para tener `info@bienenhaus.com.ar` hay que activar Cloudflare Email Routing (gratis) · no
+> borrar el archivo `CNAME` del repo (vincula el dominio custom con GitHub Pages).
+>
+> Lo que sigue abajo es la guía histórica original, solo como referencia del problema del token:
+
 ## 📋 Resumen del Problema
 
 **Error actual:** `401 Authentication error` en `Deploy to Cloudflare Pages`
