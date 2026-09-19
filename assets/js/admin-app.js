@@ -2395,7 +2395,7 @@ function esc(s) {
     function buildTasacionRowHtml(t, extras) {
       const ownerName = (t.owners && t.owners.full_name) || (extras && extras.ownerName) || null;
       const propName = t.properties
-        ? [t.properties.code, t.properties.title].filter(Boolean).join(' · ')
+        ? [t.properties.property_code || t.properties.code, t.properties.title].filter(Boolean).join(' · ')
         : ((extras && extras.propName) || null);
       const statusLabel = t.status === 'finalized' ? 'Finalizada' : 'Borrador';
       const statusClass = t.status === 'finalized' ? 'active' : 'pending';
@@ -3932,8 +3932,9 @@ form.elements.commission_rate.value = data.commission_rate ?? 3;
         form.elements.status.value = data.status || 'activo';
         form.elements.profile_id.value = data.profile_id || '';
         if (form.elements.specialties && data.specialties) {
+          const specSet = new Set(data.specialties);
           Array.from(form.elements.specialties.options).forEach(opt => {
-            opt.selected = (data.specialties || []).includes(opt.value);
+            opt.selected = specSet.has(opt.value);
           });
         }
       }
@@ -6695,13 +6696,13 @@ try {
       const ownerIds = [...new Set((data || []).map(t => t.owner_id).filter(Boolean))];
       const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
       const [propsRes, ownersRes, finRes, draftRes, recentRes] = await Promise.all([
-        propIds.length ? window.supabaseClient.from('properties').select('id, code, title').in('id', propIds) : { data: [] },
+        propIds.length ? window.supabaseClient.from('properties').select('id, property_code, title').in('id', propIds) : { data: [] },
         ownerIds.length ? window.supabaseClient.from('owners').select('id, full_name').in('id', ownerIds) : { data: [] },
         window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true }).eq('status', 'finalized'),
         window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true }).eq('status', 'draft'),
         window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true }).gte('created_at', since30)
       ]);
-      const propMap = new Map((propsRes.data || []).map(p => [p.id, p]));
+      const propMap = new Map((propsRes.data || []).map(p => [p.id, { ...p, code: p.property_code || p.code || null }]));
       const ownerMap = new Map((ownersRes.data || []).map(o => [o.id, o]));
 
       const setKpi = (sel, val) => { const el = $(sel); if (el) el.textContent = val; };
@@ -6846,16 +6847,21 @@ try {
     const propSelect = $('#tasaProperty');
     const ownerSelect = $('#tasaOwner');
     if (!propSelect || !ownerSelect) return;
-    try {
-      const [propsRes, ownersRes] = await Promise.all([
-        window.supabaseClient.from('properties').select('id, code, title').is('deleted_at', null).order('code'),
-        window.supabaseClient.from('owners').select('id, full_name').is('deleted_at', null).order('full_name')
-      ]);
-      propSelect.innerHTML = '<option value="">Sin vincular</option>' +
-        (propsRes.data || []).map(p => '<option value="' + esc(p.id) + '">' + esc(p.code || '') + ' - ' + esc(p.title || '') + '</option>').join('');
-      ownerSelect.innerHTML = '<option value="">Sin vincular</option>' +
-        (ownersRes.data || []).map(o => '<option value="' + esc(o.id) + '">' + esc(o.full_name || '') + '</option>').join('');
-    } catch (_) { /* silent: dropdowns stay with defaults */ }
+      try {
+        const [propsRes, ownersRes] = await Promise.all([
+          window.supabaseClient.from('properties').select('id, property_code, title').is('deleted_at', null).order('property_code'),
+          window.supabaseClient.from('owners').select('id, full_name').is('deleted_at', null).order('full_name')
+        ]);
+        if (propsRes.error) throw propsRes.error;
+        if (ownersRes.error) throw ownersRes.error;
+        propSelect.innerHTML = '<option value="">Sin vincular</option>' +
+          (propsRes.data || []).map(p => '<option value="' + esc(p.id) + '">' + esc(p.property_code || '') + ' - ' + esc(p.title || '') + '</option>').join('');
+        ownerSelect.innerHTML = '<option value="">Sin vincular</option>' +
+          (ownersRes.data || []).map(o => '<option value="' + esc(o.id) + '">' + esc(o.full_name || '') + '</option>').join('');
+      } catch (err) {
+        logError('createNewTasacion error:', err);
+        showToast('No se pudieron cargar propiedades/propietarios: ' + (err && err.message ? err.message : err), 'error');
+      }
     openModal('newTasacionModal');
   }
 
@@ -7074,7 +7080,7 @@ try {
     const propIds = [...new Set((data || []).map(t => t.property_id).filter(Boolean))];
     const ownerIds = [...new Set((data || []).map(t => t.owner_id).filter(Boolean))];
     const [propsRes, ownersRes] = await Promise.all([
-      propIds.length ? window.supabaseClient.from('properties').select('id, code, title').in('id', propIds) : { data: [] },
+      propIds.length ? window.supabaseClient.from('properties').select('id, property_code, title').in('id', propIds) : { data: [] },
       ownerIds.length ? window.supabaseClient.from('owners').select('id, full_name').in('id', ownerIds) : { data: [] }
     ]);
     const propMap = new Map((propsRes.data || []).map(p => [p.id, p]));
@@ -7082,7 +7088,7 @@ try {
     const headers = ['ID', 'Título', 'Tipo', 'Estado', 'Propiedad', 'Propietario', 'Valor Estimado (USD)', 'Fecha creación', 'Última edición'];
     const rows = data.map(function(t) {
       const prop = t.property_id ? propMap.get(t.property_id) : null;
-      const propName = prop ? (prop.code || '') + ' - ' + (prop.title || '') : '';
+      const propName = prop ? (prop.property_code || '') + ' - ' + (prop.title || '') : '';
       const owner = t.owner_id ? ownerMap.get(t.owner_id) : null;
       return [t.id, t.title, t.type || '', t.status, propName, owner?.full_name || '', t.valuation_usd || '', t.created_at, t.updated_at];
     });

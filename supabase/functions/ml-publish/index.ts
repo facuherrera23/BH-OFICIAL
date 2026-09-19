@@ -253,7 +253,7 @@ function buildItemPayload(property: PropertyRow, defaults: MlDefaults): MlItemPa
             address_line: property.address || undefined,
             country: { name: 'Argentina' },
             state: { name: 'Córdoba' },
-            city: { name: location || 'Córdoba' },
+            city: { name: 'Córdoba' },
         },
     };
     if (categoryId) payload.category_id = categoryId;

@@ -199,9 +199,9 @@ function openOwnerTasksList(tasks) {
 }
 function ownerAgentNames(o) {
   var ps = _ownerProps[o.id] || [];
-  var agentIds = [];
-  ps.forEach(function (p) { if (p.agent_id && agentIds.indexOf(p.agent_id) < 0) agentIds.push(p.agent_id); });
-  return agentIds.map(function (aid) { return (_agentMapById[aid] || '').toLowerCase(); }).join(' ');
+  var agentIds = new Set();
+  ps.forEach(function (p) { if (p.agent_id) agentIds.add(p.agent_id); });
+  return Array.from(agentIds).map(function (aid) { return (_agentMapById[aid] || '').toLowerCase(); }).join(' ');
 }
 function ownerSortValueFor(o, key) {
   if (key === 'propietario') return { v: (o.full_name || '').toLowerCase() };
@@ -295,10 +295,10 @@ function renderOwnerPropsCell(ownerId) {
 
 function renderOwnerAgentCell(ownerId) {
   var ps = _ownerProps[ownerId] || [];
-  var agentIds = [];
-  ps.forEach(function (p) { if (p.agent_id && agentIds.indexOf(p.agent_id) < 0) agentIds.push(p.agent_id); });
-  if (!agentIds.length) return '<span class="crm-muted">—</span>';
-  return agentIds.map(function (aid) {
+  var agentIds = new Set();
+  ps.forEach(function (p) { if (p.agent_id) agentIds.add(p.agent_id); });
+  if (!agentIds.size) return '<span class="crm-muted">—</span>';
+  return Array.from(agentIds).map(function (aid) {
     var nm = _agentMapById[aid] || 'Agente';
     return '<div class="crm-agent-row"><span class="crm-agent-avatar">' + getInitials(nm) + '</span><span style="font-size:12px;">' + esc(nm) + '</span></div>';
   }).join('');
@@ -465,8 +465,8 @@ async function loadLeads() {
         var lpRes = await db().from('lead_properties').select('lead_id, property_id').in('lead_id', leadIds);
         (lpRes.data || []).forEach(function (lp) {
           if (!lp || !lp.property_id) return;
-          if (!linkByLead[lp.lead_id]) linkByLead[lp.lead_id] = [];
-          if (linkByLead[lp.lead_id].indexOf(lp.property_id) === -1) linkByLead[lp.lead_id].push(lp.property_id);
+          if (!linkByLead[lp.lead_id]) linkByLead[lp.lead_id] = new Set();
+          linkByLead[lp.lead_id].add(lp.property_id);
           propIds[lp.property_id] = true;
         });
       } catch (e) {}
@@ -489,10 +489,10 @@ async function loadLeads() {
     _nextActions = {};
 _leads.forEach(function (l) {
       l.agent_name = _agentMapById[l.assigned_to] || null;
-      var pIds = [];
-      if (l.property_id) pIds.push(l.property_id);
-      (linkByLead[l.id] || []).forEach(function (pid) { if (pIds.indexOf(pid) === -1) pIds.push(pid); });
-      l.props = pIds
+      var pIds = new Set();
+      if (l.property_id) pIds.add(l.property_id);
+      (linkByLead[l.id] || []).forEach(function (pid) { pIds.add(pid); });
+      l.props = Array.from(pIds)
         .filter(function (pid) { return props[pid]; })
         .map(function (pid) { return { property_id: pid, property_code: props[pid].property_code || null, property_title: props[pid].title, image: (props[pid].image_urls || [])[0] || null }; });
     });

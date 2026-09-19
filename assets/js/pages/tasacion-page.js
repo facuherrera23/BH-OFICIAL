@@ -29,6 +29,9 @@ const urlParams = new URLSearchParams(window.location.search);
 
 const TASACION_ID = urlParams.get('id');
 
+/* Último valor final calculado por recalcAll() (USD), para persistir en valuation_usd */
+let _lastValorFinalUSD = null;
+
 const PESOS = {
   CASA:   {label:'Casa',    vars:[['Calidad de ubicación',0.30],['Cantidad de habitaciones',0.20],['Estado de mantenimiento',0.20],['Antigüedad',0.15],['Comodidades',0.10],['Estacionamiento',0.05]]},
   DEPTO:  {label:'Depto',   vars:[['Calidad de ubicación (barrio)',0.30],['Cantidad de habitaciones',0.20],['Ubicación piso',0.15],['Antigüedad',0.15],['Comodidades (edificio)',0.12],['Ubicación planta',0.08]]},
