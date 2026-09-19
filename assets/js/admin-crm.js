@@ -16,7 +16,7 @@ var STATUS_LABELS = {
   visita: 'Visita agendada', oferta: 'Negociacion', cerrado: 'Ganado', perdido: 'Perdido'
 };
 var LEGACY_STAGE_MAP = { visita: 'visita_agendada', oferta: 'negociacion', cerrado: 'cerrado_ganado', perdido: 'cerrado_perdido' };
-var ORIGINS = ['manual','landing','ml','chat','referido','tasacion','walkin','contacto','propiedad','whatsapp','web'];
+var ORIGINS = ['landing_page','newsletter','manual','landing','ml','chat','referido','tasacion','walkin','contacto','propiedad','whatsapp','web'];
 var ORIGIN_LABELS = { manual:'Manual', landing:'Landing', ml:'Mercado Libre', chat:'Chat', referido:'Referido', tasacion:'Tasacion', walkin:'Walk-in', contacto:'Contacto', propiedad:'Propiedad', whatsapp:'WhatsApp', web:'Web' };
 var TIPO_CLIENTE_OPTS = ['propietario','comprador','inversor','inquilino'];
 var OPERATION_OPTS = ['compra','venta','alquiler'];

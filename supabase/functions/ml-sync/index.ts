@@ -689,18 +689,6 @@ async function runJob(
                 price: Number(item.price),
             };
         }
-        // Auditoría: publicación en Mercado Libre
-        await auditSensitiveAction(
-            supabase,
-            new Request('internal', { method: 'POST' }),
-            'ml_publish',
-            'portales',
-            'property',
-            propertyId,
-            property.title,
-            { ml_item_id: item.id, permalink: item.permalink, price: Number(item.price) },
-            { source: 'ml-sync', operation: 'publish' }
-        );
 
         if (operation === 'update') {
             let itemId = mlItemId;

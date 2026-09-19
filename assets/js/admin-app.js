@@ -180,7 +180,7 @@ function esc(s) {
     email: z.string().email('Email inválido').max(150).optional().nullable(),
     phone: z.string().max(30).optional().nullable(),
     whatsapp: z.string().max(30).optional().nullable(),
-    source: z.enum(['landing', 'ml', 'chat', 'referido', 'tasacion', 'walkin', 'manual']).default('manual'),
+    source: z.enum(['landing_page', 'newsletter', 'landing', 'ml', 'chat', 'referido', 'tasacion', 'walkin', 'manual']).default('manual'),
     stage: z.enum(['nuevo', 'contactado', 'calificado', 'visita_agendada', 'visita_realizada', 'negociacion', 'cerrado_ganado', 'cerrado_perdido']).default('nuevo'),
     property_id: z.string().uuid('ID de propiedad inválido').optional().nullable(),
     assigned_to: z.string().uuid('ID de broker inválido').optional().nullable(),
@@ -955,7 +955,7 @@ function esc(s) {
   function renderDashBrokers(agents) {
     const el = $('#dashBrokersList');
     if (!el) return;
-    const sorted = agents.toSorted((a, b) => (b.sales_ytd || 0) - (a.sales_ytd || 0)).slice(0, 4);
+    const sorted = [...agents].sort((a, b) => (b.sales_ytd || 0) - (a.sales_ytd || 0)).slice(0, 4);
     if (!sorted.length) {
       el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Sin brokers registrados</p>';
       return;
@@ -2254,88 +2254,9 @@ function esc(s) {
 
     // ============================================
     // GRANULAR REALTIME ROW UPDATES
+    // (Las funciones upsert*/remove* están definidas más abajo, junto a sus
+    //  builders HTML correspondientes. Este bloque se duplicaba por error.)
     // ============================================
-
-    function upsertVisitRow(v) {
-      const tbody = $('#visitsTableBody');
-      if (!tbody) return;
-      const existing = tbody.querySelector(`tr[data-id="${v.id}"]`);
-      const rowHtml = visitRowHtml(v);
-      if (existing) {
-        existing.outerHTML = rowHtml;
-      } else {
-        tbody.insertAdjacentHTML('afterbegin', rowHtml);
-      }
-    }
-
-    function removeVisitRow(id) {
-      const row = $('#visitsTableBody')?.querySelector(`tr[data-id="${id}"]`);
-      if (row) row.remove();
-    }
-
-    function upsertPropertyRow(prop) {
-      const tbody = $('#propertiesTableBody');
-      if (!tbody) return;
-      const existing = tbody.querySelector(`tr[data-id="${prop.id}"]`);
-      if (existing) {
-        existing.outerHTML = buildPropertyRowHtml(prop);
-      } else {
-        tbody.insertAdjacentHTML('afterbegin', buildPropertyRowHtml(prop));
-      }
-    }
-
-    function removePropertyRow(id) {
-      const row = $('#propertiesTableBody')?.querySelector(`tr[data-id="${id}"]`);
-      if (row) row.remove();
-    }
-
-    function upsertAgentRow(agent) {
-      const tbody = $('#agentsTableBody');
-      if (!tbody) return;
-      const existing = tbody.querySelector(`tr[data-id="${agent.id}"]`);
-      if (existing) {
-        existing.outerHTML = buildAgentRowHtml(agent);
-      } else {
-        tbody.insertAdjacentHTML('afterbegin', buildAgentRowHtml(agent));
-      }
-    }
-
-    function removeAgentRow(id) {
-      const row = $('#agentsTableBody')?.querySelector(`tr[data-id="${id}"]`);
-      if (row) row.remove();
-    }
-
-    function upsertOwnerRow(owner) {
-      const tbody = $('#ownersTableBody');
-      if (!tbody) return;
-      const existing = tbody.querySelector(`tr[data-id="${owner.id}"]`);
-      if (existing) {
-        existing.outerHTML = buildOwnerRowHtml(owner);
-      } else {
-        tbody.insertAdjacentHTML('afterbegin', buildOwnerRowHtml(owner));
-      }
-    }
-
-    function removeOwnerRow(id) {
-      const row = $('#ownersTableBody')?.querySelector(`tr[data-id="${id}"]`);
-      if (row) row.remove();
-    }
-
-    function upsertTasacionRow(t) {
-      const tbody = $('#tasacionesTableBody');
-      if (!tbody) return;
-      const existing = tbody.querySelector(`tr[data-id="${t.id}"]`);
-      if (existing) {
-        existing.outerHTML = buildTasacionRowHtml(t);
-      } else {
-        tbody.insertAdjacentHTML('afterbegin', buildTasacionRowHtml(t));
-      }
-    }
-
-    function removeTasacionRow(id) {
-      const row = $('#tasacionesTableBody')?.querySelector(`tr[data-id="${id}"]`);
-      if (row) row.remove();
-    }
 
     // Helper: extract row builders from existing load functions
     function buildLeadCardHtml(l) {
@@ -5034,7 +4955,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
 
         .createSignedUrl(doc.storage_path, 3600);
 
-      if (signed?.signedUrl) window.open(signed.signedUrl, '_blank');
+      if (signed?.signedUrl) window.open(signed.signedUrl, '_blank', 'noopener');
 
       else showToast('No se pudo generar el enlace', 'warning');
 
@@ -5446,7 +5367,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
           ${content}
         </body></html>
       `;
-      const w = window.open('', '_blank');
+      const w = window.open('', '_blank', 'noopener');
       w.document.write(html);
       w.document.close();
       w.focus();
@@ -6836,7 +6757,7 @@ try {
 
   function _openTasacionPDF(id) {
     const url = 'tasacion.html?id=' + encodeURIComponent(id) + '&print=1&token=' + encodeURIComponent(window.__bhAdminToken || '');
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener');
   }
 
   /* ------------------------------------------------
@@ -10709,8 +10630,8 @@ let _execToDate = '';
         leads.forEach((l, i) => {
           html += `<div style="padding:10px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
             <div>
-              <div style="font-weight:600; color:#fff;">${i + 1}. ${l.full_name || 'Sin nombre'}</div>
-              <div style="font-size:11px; color:var(--text-dim);">${l.stage} • ${l.property_id ? 'Con propiedad' : 'Sin propiedad'}</div>
+              <div style="font-weight:600; color:#fff;">${i + 1}. ${esc(l.full_name || 'Sin nombre')}</div>
+              <div style="font-size:11px; color:var(--text-dim);">${esc(l.stage)} • ${l.property_id ? 'Con propiedad' : 'Sin propiedad'}</div>
             </div>
             <div style="color:#F59E0B; font-weight:700;">${l.budget_usd ? 'USD ' + l.budget_usd.toLocaleString('es-AR') : 'Sin presupuesto'}</div>
           </div>`;
