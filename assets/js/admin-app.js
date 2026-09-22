@@ -832,25 +832,34 @@ function esc(s) {
     const client = await getAuthedClient();
     if (!client) return;
     try {
-      const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-      const yearStart = new Date(todayStart.getFullYear(), 0, 1).toISOString();
-      const [propsRes, leadsRes, visitsRes, agentsRes, salesRes] = await Promise.all([
+      const now = new Date();
+      const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+      const yearStart = new Date(now.getFullYear(), 0, 1).toISOString();
+      const chartYear = _chartYear ?? now.getFullYear();
+      const chartYearStart = new Date(chartYear, 0, 1).toISOString();
+      const chartYearEnd = new Date(chartYear + 1, 0, 1).toISOString();
+      const [propsRes, leadsRes, visitsRes, agentsRes, salesRes, chartLeadsRes] = await Promise.all([
         client.from('properties').select('price_usd, price_currency, zone, status, is_published, created_at, updated_at, agent_id').is('deleted_at', null),
-        client.from('leads').select('id, stage, created_at, full_name, budget_usd, assigned_to').is('deleted_at', null),
-        client.from('visits').select('*, properties(id, title)').is('deleted_at', null).gte('visit_date', todayStart.toISOString()).order('visit_date', { ascending: true }).limit(8),
-        client.from('agents').select('*').eq('status', 'activo').is('deleted_at', null),
-        client.from('leads').select('assigned_to, estimated_value').eq('stage', 'cerrado_ganado').is('deleted_at', null).gte('updated_at', yearStart),
+        client.from('leads').select('id, stage, created_at, full_name, budget_usd, assigned_to').is('deleted_at', null).gte('created_at', yearStart),
+        client.from('visits').select('id, visit_date, status, client_name, properties(id, title)').is('deleted_at', null).gte('visit_date', todayStart.toISOString()).order('visit_date', { ascending: true }).limit(8),
+        client.from('agents').select('id, full_name, matricula').eq('status', 'activo').is('deleted_at', null),
+        client.from('leads').select('assigned_to, estimated_value').eq('stage', 'cerrado_ganado').is('deleted_at', null).gte('updated_at', chartYearStart).lt('updated_at', chartYearEnd),
+        client.from('leads').select('id, created_at').is('deleted_at', null).gte('created_at', chartYearStart).lt('created_at', chartYearEnd),
       ]);
+      const firstError = [propsRes, leadsRes, visitsRes, agentsRes, salesRes, chartLeadsRes].find(r => r.error);
+      if (firstError) throw firstError.error;
 
       const props = propsRes.data || [];
       const leads = leadsRes.data || [];
       const visits = visitsRes.data || [];
       const agents = agentsRes.data || [];
+      const chartLeads = chartLeadsRes.data || [];
 
-      /* KPIs: solo activos (no vendidos/alquilados/pausados), no eliminados, venta≠alquiler por status canónico */
-      const activos = props.filter(p => p.is_published && p.status !== 'vendido' && p.status !== 'alquilado');
+      /* KPIs: solo en cartera activa (venta/alquiler publicados, no vendidos ni pausados) */
+      const activos = props.filter(p => p.is_published && ['venta', 'alquiler'].includes(p.status));
       const propsVenta = activos.filter(p => p.status === 'venta');
       const propsAlquiler = activos.filter(p => p.status === 'alquiler');
+      /* Ambas columnas suman price_usd → los KPIs se muestran en USD (no mezclar monedas) */
       const volumenVenta = propsVenta.reduce((sum, p) => sum + (p.price_usd || 0), 0);
       const volumenAlquiler = propsAlquiler.reduce((sum, p) => sum + (p.price_usd || 0), 0);
       const activeProps = activos.length;
@@ -858,7 +867,7 @@ function esc(s) {
       const upcomingVisits = visits.filter(v => v.status === 'pendiente' || v.status === 'confirmada').length;
 
       setKPI('kpiVolumenVenta', formatPrice(volumenVenta, 'USD'));
-      setKPI('kpiVolumenAlquiler', formatPrice(volumenAlquiler, 'ARS'));
+      setKPI('kpiVolumenAlquiler', formatPrice(volumenAlquiler, 'USD'));
       setKPI('kpiActivas', activeProps);
       setKPI('kpiLeads', activeLeads);
       setKPI('kpiVisitas', upcomingVisits);
@@ -866,7 +875,7 @@ function esc(s) {
 
       /* Zone progress */
       renderZoneProgress(props);
-      renderConsultasVentasChart(props, leads);
+      renderConsultasVentasChart(props, chartLeads);
 
       /* Dashboard widgets */
       const salesByAgent = {};

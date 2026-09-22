@@ -8,8 +8,12 @@ let _authToken = null;
 const ALLOWED_ORIGINS = [
   window.location.origin,
   'https://rnldqiwwzhjnurkguihu.supabase.co',
-  'https://bienenhaus.vercel.app',
+  'https://bienenhaus.com.ar',
+  'https://www.bienenhaus.com.ar',
+  'https://facuherrera23.github.io',
   'http://localhost:3000',
+  'http://localhost:8788',
+  'http://127.0.0.1:8788',
   'http://127.0.0.1:3000'
 ];
 
@@ -27,7 +31,7 @@ window.addEventListener('message', (e) => {
 
 const urlParams = new URLSearchParams(window.location.search);
 
-const TASACION_ID = urlParams.get('id');
+let TASACION_ID = urlParams.get('id');
 
 /* Último valor final calculado por recalcAll() (USD), para persistir en valuation_usd */
 let _lastValorFinalUSD = null;
@@ -418,10 +422,10 @@ function setLocked(locked){
 }
 
 async function saveToSupabase(finalize){
-  if(_saving) return;
+  if(_saving) return false;
   if(!_authToken){
     showToast('Sesión no válida. Volvé al panel y abrí de nuevo.');
-    return;
+    return false;
   }
   _saving = true;
   const btn = document.getElementById('btnSave');
@@ -445,6 +449,7 @@ async function saveToSupabase(finalize){
       }).select('id').single();
       if(error) throw error;
       if(data && data.id){
+        TASACION_ID = data.id;
         const url = new URL(window.location);
         url.searchParams.set('id', data.id);
         window.history.replaceState({}, '', url);
@@ -455,8 +460,10 @@ async function saveToSupabase(finalize){
     if (finalize) {
       window.parent?.postMessage({ type: 'tasaciones-finalized', id: TASACION_ID }, window.location.origin);
     }
+    return true;
   }catch(e){
     showToast('Error al guardar: ' + (e.message || e));
+    return false;
   }finally{
     _saving = false;
     btn.disabled = false;
@@ -467,8 +474,7 @@ async function saveToSupabase(finalize){
 document.getElementById('btnSave').addEventListener('click', ()=> saveToSupabase(false));
 
 document.getElementById('btnFinish').addEventListener('click', async ()=>{
-  await saveToSupabase(true);
-  setLocked(true);
+  if (await saveToSupabase(true)) setLocked(true);
 });
 
 document.getElementById('btnEdit').addEventListener('click', ()=>{
