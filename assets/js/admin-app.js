@@ -4535,10 +4535,12 @@ window.adminApp.editVisit = async function (id) {
         }
       }));
 
-      const { error: upErr } = await client
-        .from('app_settings')
-        .upsert({ key: 'preferences', value: { usd_rate: rateVal }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
-      if (upErr) throw upErr;
+      if (rateVal !== null) {
+        const { error: upErr } = await client
+          .from('app_settings')
+          .upsert({ key: 'preferences', value: { usd_rate: rateVal }, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+        if (upErr) throw upErr;
+      }
 
       showToast('Configuración guardada correctamente', 'success');
     } catch (err) {
@@ -4674,6 +4676,9 @@ window.adminApp.editVisit = async function (id) {
   on($('#btnNewAgent'), 'click', () => {
     editingAgentId = null;
     $('#agentForm')?.reset();
+    // form.reset() no limpia multi-selects: quedaba la selección del agente editado
+    const specSel = document.querySelector('#agentForm [name="specialties"]');
+    if (specSel) Array.from(specSel.options).forEach(o => { o.selected = false; });
     const title = $('#agentModalTitle');
     if (title) title.textContent = 'Registrar Asesor / Broker';
     const profileSelect = document.querySelector('#agentForm [name="profile_id"]');
