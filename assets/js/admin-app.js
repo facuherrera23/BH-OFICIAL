@@ -11721,7 +11721,7 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
           if (!window.supabaseClient) return;
           try {
             const [propsRes, agentsRes] = await Promise.all([
-              window.supabaseClient.from('properties').select('id, title, property_code, zone, address, price_usd, rooms, area_m2, description, image_urls, agent_id').order('created_at', { ascending: false }),
+        window.supabaseClient.from('properties').select('id, title, property_code, zone, address, price_usd, rooms, area_m2, description, image_urls, agent_id').is('deleted_at', null).order('created_at', { ascending: false }),
 window.supabaseClient.from('agents').select('id, full_name, phone, email').eq('status', 'activo').is('deleted_at', null)
             ]);
             if (propsRes.error) throw propsRes.error;
