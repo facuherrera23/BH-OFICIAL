@@ -8556,11 +8556,11 @@ on(chip, 'click', () => {
 
       if (!conversations.length) {
         listEl.innerHTML = '<div class="chat-empty" style="text-align:center; padding:40px 20px; color:var(--text-dim);">' + ((_chatSearchTerm || _chatPlatformFilter !== 'all') ? 'Sin resultados para el filtro activo' : 'No hay conversaciones') + '</div>';
-        _chatUnreadTotal = 0;
+        _chatUnreadTotal = (_chatConversationsCache || []).reduce((sum, c) => sum + (c.unread_count || 0), 0);
         updateSidebarChatBadge();
         return;
       }
-      _chatUnreadTotal = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+      _chatUnreadTotal = (_chatConversationsCache || []).reduce((sum, c) => sum + (c.unread_count || 0), 0);
       updateSidebarChatBadge();
 
       // Build with DOM to avoid innerHTML sink — all dynamic values already escaped via esc()
@@ -8934,7 +8934,9 @@ on(chip, 'click', () => {
       }
     }
 
+    let _sending = false;
     async function sendMessage() {
+      if (_sending) return;
       if (!_chatCurrentConv || !composerTextarea) return;
       const text = composerTextarea.value.trim();
 
@@ -8943,6 +8945,7 @@ on(chip, 'click', () => {
       const file = attachInput?.files?.[0];
 
       if (!text && !file) return;
+      _sending = true;
 
       let attachmentPayload = null;
       if (file) {
@@ -9028,6 +9031,8 @@ on(chip, 'click', () => {
           };
           tempEl.addEventListener('click', retryHandler);
         }
+      } finally {
+        _sending = false;
       }
     }
 
