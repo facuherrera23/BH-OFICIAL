@@ -1,7 +1,7 @@
 # AUDITORÍA DEL SISTEMA - BIENENHAUS PROPIEDADES
 ## Fecha: 2026-09-04
 
-Este documento corresponde a la auditoría completa realizada en la sesión del 2026-09-04. El objetivo es documentar el estado real del proyecto, y lo encuentro es afectivamente vinculado con lo que declare el proceso de production en�ores_vocabulary:
+Este documento corresponde a la auditoría completa realizada en la sesión del 2026-09-04. El objetivo es documentar el estado real del proyecto, y lo encuentro es afectivamente vinculado con lo que declare el proceso de producción real. 
 
 ## 1. ESTADO REAL DEL PROYECTO - RESUMEN
 

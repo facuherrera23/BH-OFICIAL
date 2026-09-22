@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -8,7 +8,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net/npm/chart.js https://cdn.jsdelivr.net/npm/@supabase/supabase-js https://cdn.jsdelivr.net https://unpkg.com https://static.cloudflareinsights.com https://api.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://*.cloudinary.com https://images.unsplash.com https://*.supabase.co https://res.cloudinary.com; connect-src 'self' https://*.supabase.co https://static.cloudflareinsights.com https://api.cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com https://api.cloudinary.com; frame-src 'self';" />
-  <title>Bienenhaus Propiedades � An�lisis Comparativo de Mercado</title>
+  <title>Bienenhaus Propiedades · Análisis Comparativo de Mercado</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -293,12 +293,12 @@
     .ac-table td, .ac-table th{color:var(--dark) !important;}
     [style*="--muted"]{color:#555 !important;}
 
-    /* Ocultar bloques vac�os (fotos sin cargar, mapa sin ubicar) */
+    /* Ocultar bloques vacíos (fotos sin cargar, mapa sin ubicar) */
     .photo-box:has(.photo-placeholder:not([style*="display: none"])){display:none !important;}
     section.card:has(#leafletMap > .map-placeholder:not([style*="display: none"])){display:none !important;}
     .map-frame{print-color-adjust:exact; -webkit-print-color-adjust:exact; border-radius:6px; overflow:hidden;}
 
-    /* Compactar para reducir p�ginas */
+    /* Compactar para reducir páginas */
     main{padding:16px 14px 20px;}
     header.top{padding:12px 20px;}
     .logo-badge img{height:34px;}
@@ -327,7 +327,7 @@
 <header class="top">
   <div>
     <div class="brand">BIENENHAUS <span>PROPIEDADES</span></div>
-    <div class="subtitle">An�lisis Comparativo de Mercado (ACM)</div>
+    <div class="subtitle">Análisis Comparativo de Mercado (ACM)</div>
   </div>
   <div style="display:flex; align-items:center; gap:16px;">
     <div class="subtitle" id="dateStamp"></div>
@@ -340,7 +340,7 @@
 <main>
 
   <div class="status-bar" id="statusBar">
-    <span><span class="dot"></span><span id="statusText">Documento en edici�n</span></span>
+    <span><span class="dot"></span><span id="statusText">Documento en edición</span></span>
     <span id="lastSaved" style="color:var(--muted); font-weight:400;"></span>
   </div>
 
@@ -351,8 +351,8 @@
     <h2>Datos del Cliente</h2>
     <div class="grid cols-2">
       <div class="field"><label>Solicitante</label><input type="text" id="f_solicitante"></div>
-      <div class="field"><label>Fecha de Tasaci�n</label><input type="date" id="f_fecha"></div>
-      <div class="field"><label>Tel�fono</label><input type="text" id="f_telefono"></div>
+      <div class="field"><label>Fecha de Tasación</label><input type="date" id="f_fecha"></div>
+      <div class="field"><label>Teléfono</label><input type="text" id="f_telefono"></div>
       <div class="field"><label>Destino</label>
         <select id="f_destino"><option value="Venta">Venta</option><option value="Alquiler">Alquiler</option></select>
       </div>
@@ -366,8 +366,8 @@
       <input type="file" id="f_fotoFachada" accept="image/*" style="display:none;">
       <img id="photoPreview" style="display:none;">
       <div class="photo-placeholder" id="photoPlaceholder">
-        <span>?? Click para subir foto de la fachada</span>
-        <span class="photo-hint">Tama�o sugerido aprox. 15 cm � 7 cm (horizontal)</span>
+        <span>📷 Click para subir foto de la fachada</span>
+        <span class="photo-hint">Tamaño sugerido aprox. 15 cm × 7 cm (horizontal)</span>
       </div>
       <button type="button" class="remove" id="photoRemove" style="display:none;">Quitar foto</button>
     </div>
@@ -377,19 +377,19 @@
   <section class="card">
     <h2>Datos del Inmueble</h2>
     <div class="grid cols-2">
-      <div class="field"><label>Direcci�n</label><input type="text" id="f_direccion"></div>
+      <div class="field"><label>Dirección</label><input type="text" id="f_direccion"></div>
       <div class="field"><label>Barrio</label><input type="text" id="f_barrio"></div>
       <div class="field"><label>Localidad</label><input type="text" id="f_localidad"></div>
       <div class="field"><label>Provincia</label><input type="text" id="f_provincia"></div>
-      <div class="field"><label>Superficie Terreno (m�)</label><input type="number" id="f_supTerreno"></div>
-      <div class="field"><label>Superficie Construida (m�)</label><input type="number" id="f_supConstruida"></div>
+      <div class="field"><label>Superficie Terreno (m²)</label><input type="number" id="f_supTerreno"></div>
+      <div class="field"><label>Superficie Construida (m²)</label><input type="number" id="f_supConstruida"></div>
     </div>
     <div class="field" style="margin-top:14px;"><label>Tipo de Inmueble</label>
         <select id="f_tipo">
           <option value="CASA">Casa</option>
           <option value="DEPTO">Depto</option>
           <option value="LOTE">Lote</option>
-          <option value="GALPON">Galp�n</option>
+          <option value="GALPON">Galpón</option>
           <option value="OFICINA">Oficina</option>
           <option value="LOCAL">Local</option>
           <option value="OTRO">Otro</option>
@@ -397,7 +397,7 @@
     </div>
     <div class="valor-row">
       <div class="valor-box">
-        <label>Valor D�lar</label>
+        <label>Valor Dólar</label>
         <div class="valor-input"><span>U$S</span><input type="number" id="f_precioDolar"></div>
       </div>
       <div class="valor-box">
@@ -407,39 +407,39 @@
     </div>
   </section>
 
-  <!-- ============ UBICACI�N EN EL MAPA ============ -->
+  <!-- ============ UBICACIÓN EN EL MAPA ============ -->
   <section class="card">
-    <h2>Plano de Ubicaci�n</h2>
+    <h2>Plano de Ubicación</h2>
     <p style="font-size:12.5px; color:var(--muted); margin:-6px 0 12px; font-family:'Poppins',sans-serif;">
       Muestra la propiedad y todos los comparables juntos en un mismo mapa.
     </p>
     <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
-      <button type="button" class="add-btn" id="btnUpdateMap" style="width:auto; padding:10px 18px;">?? Actualizar mapa con todas las ubicaciones</button>
+      <button type="button" class="add-btn" id="btnUpdateMap" style="width:auto; padding:10px 18px;">📍 Actualizar mapa con todas las ubicaciones</button>
       <span id="mapStatus" style="font-size:12px; color:var(--muted); font-family:'Poppins',sans-serif;"></span>
     </div>
     <div class="map-frame" id="leafletMap">
-      <div class="map-placeholder" id="mainMapPlaceholder">Carg� la direcci�n del inmueble y de los comparables, y presion� "Actualizar mapa"</div>
+      <div class="map-placeholder" id="mainMapPlaceholder">Cargá la dirección del inmueble y de los comparables, y presioná "Actualizar mapa"</div>
     </div>
     <div class="map-legend" id="mapLegend"></div>
   </section>
 
-  <!-- ============ DESCRIPCI�N DE LA PROPIEDAD ============ -->
+  <!-- ============ DESCRIPCIÓN DE LA PROPIEDAD ============ -->
   <div class="print-group" id="printGroupPropiedad">
   <section class="card">
-    <h2>Descripci�n de la Propiedad</h2>
+    <h2>Descripción de la Propiedad</h2>
     <div class="grid cols-4">
-      <div class="field"><label>Tipo de Construcci�n</label>
-        <select id="f_tipoConstruccion"><option value=""></option><option>Ladrillo</option><option>Met�lica</option><option>Madera</option><option>Bloques de hormig�n</option><option>N/A</option></select>
+      <div class="field"><label>Tipo de Construcción</label>
+        <select id="f_tipoConstruccion"><option value=""></option><option>Ladrillo</option><option>Metálica</option><option>Madera</option><option>Bloques de hormigón</option><option>N/A</option></select>
       </div>
-      <div class="field"><label>Espacio Habitable (m�)</label><input type="number" id="f_espacioHabitable"></div>
+      <div class="field"><label>Espacio Habitable (m²)</label><input type="number" id="f_espacioHabitable"></div>
       <div class="field"><label>Cantidad de Plantas</label><input type="number" id="f_plantas"></div>
-      <div class="field"><label>A�o de Construcci�n</label><input type="number" id="f_anioConstruccion"></div>
+      <div class="field"><label>Año de Construcción</label><input type="number" id="f_anioConstruccion"></div>
 
       <div class="field"><label>Imp. Inmobiliario Mensual</label><input type="number" id="f_impInmobiliarios"></div>
       <div class="field"><label>Tipo de Techo</label>
-        <select id="f_tipoTecho"><option value=""></option><option>N/A</option><option>Losa H�A�</option><option>Losa cer�mica</option><option>Tejas s/ estr. Madera</option><option>Pizarra s/ estr. Madera</option><option>Chapa s/ estr. Madera</option><option>Chapa s/ estr. Met�lica</option></select>
+        <select id="f_tipoTecho"><option value=""></option><option>N/A</option><option>Losa H°A°</option><option>Losa cerámica</option><option>Tejas s/ estr. Madera</option><option>Pizarra s/ estr. Madera</option><option>Chapa s/ estr. Madera</option><option>Chapa s/ estr. Metálica</option></select>
       </div>
-      <div class="field"><label>Orientaci�n</label>
+      <div class="field"><label>Orientación</label>
         <select id="f_orientacion"><option value=""></option><option>Norte</option><option>Sur</option><option>Este</option><option>Oeste</option><option>Noreste</option><option>Sudeste</option><option>Noroeste</option><option>Sudoeste</option><option>N/A</option></select>
       </div>
       <div class="field"><label>Luminosidad</label>
@@ -452,7 +452,7 @@
       <div class="field"><label>Calidad de Mantenimiento</label>
         <select id="f_calidadMantenimiento"><option value=""></option><option>Excelente</option><option>Buena</option><option>Media</option><option>Regular</option><option>Mala</option><option>N/A</option></select>
       </div>
-      <div class="field"><label>Detalles de Terminaci�n</label>
+      <div class="field"><label>Detalles de Terminación</label>
         <select id="f_detallesTerminacion"><option value=""></option><option>Excelente</option><option>Bueno</option><option>Medio</option><option>Regular</option><option>Malo</option><option>N/A</option></select>
       </div>
       <div class="field"><label>Estacionamiento</label>
@@ -472,18 +472,18 @@
 
       <div class="amb-field"><span>Cocina-Comedor</span><input type="number" id="f_ambCocinaComedor"></div>
       <div class="amb-field"><span>Suite y Vestidor</span><input type="number" id="f_ambSuiteVestidor"></div>
-      <div class="amb-field"><span>Balc�n</span><input type="number" id="f_ambBalcon"></div>
+      <div class="amb-field"><span>Balcón</span><input type="number" id="f_ambBalcon"></div>
 
       <div class="amb-field"><span>Living</span><input type="number" id="f_ambLiving"></div>
       <div class="amb-field"><span>Dormit. y Vestidor</span><input type="number" id="f_ambDormitVestidor"></div>
       <div class="amb-field"><span>Lavadero</span><input type="number" id="f_ambLavadero"></div>
 
       <div class="amb-field"><span>Living-Comedor</span><input type="number" id="f_ambLivingComedor"></div>
-      <div class="amb-field"><span>Ba�o Servicio</span><input type="number" id="f_ambBanoServicio"></div>
+      <div class="amb-field"><span>Baño Servicio</span><input type="number" id="f_ambBanoServicio"></div>
       <div class="amb-field"><span>Cuarto Guardado</span><input type="number" id="f_ambCuartoGuardado"></div>
 
       <div class="amb-field"><span>Escritorio</span><input type="number" id="f_ambEscritorio"></div>
-      <div class="amb-field"><span>Ba�o</span><input type="number" id="f_ambBano"></div>
+      <div class="amb-field"><span>Baño</span><input type="number" id="f_ambBano"></div>
       <div class="amb-field"><span>Garage / Cochera</span><input type="number" id="f_ambGarage"></div>
     </div>
 
@@ -494,7 +494,7 @@
 
     <p style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:18px 0 8px; font-family:'Poppins',sans-serif;">Comodidades</p>
     <div class="grid cols-3">
-      <div class="field"><label>Doble Circulaci�n</label>
+      <div class="field"><label>Doble Circulación</label>
         <select id="f_comDobleCirculacion"><option value=""></option><option>Si</option><option>No</option><option>N/A</option></select>
       </div>
       <div class="field"><label>Asador</label>
@@ -506,7 +506,7 @@
     </div>
 
     <div class="grid cols-3" style="margin-top:16px;">
-      <div class="field"><label>Calefacci�n</label>
+      <div class="field"><label>Calefacción</label>
         <select id="f_calefaccion"><option value=""></option><option>Central</option><option>Individual</option><option>Inexistente</option><option>N/A</option></select>
       </div>
       <div class="field"><label>Aire Acondicionado</label>
@@ -516,7 +516,7 @@
         <select id="f_aguaCaliente"><option value=""></option><option>Central</option><option>Individual</option><option>Inexistente</option><option>N/A</option></select>
       </div>
     </div>
-    <div class="field" style="margin-top:12px;"><label>Caracter�sticas Adversas / Deficiencias</label><textarea id="f_caracteristicasAdversas"></textarea></div>
+    <div class="field" style="margin-top:12px;"><label>Características Adversas / Deficiencias</label><textarea id="f_caracteristicasAdversas"></textarea></div>
   </section>
 
   <!-- ============ SERVICIOS ============ -->
@@ -526,23 +526,23 @@
   </section>
   </div>
 
-  <!-- ============ CARACTER�STICAS DEL BARRIO ============ -->
+  <!-- ============ CARACTERÍSTICAS DEL BARRIO ============ -->
   <div class="print-group" id="printGroupBarrio">
   <section class="card">
-    <h2>Caracter�sticas del Barrio</h2>
+    <h2>Características del Barrio</h2>
     <div class="grid cols-2">
-      <div class="field"><label>Tipolog�as edilicias predominantes</label>
+      <div class="field"><label>Tipologías edilicias predominantes</label>
         <select id="f_tipologiasEdilicias"><option value=""></option>
-          <option>Construcci�n en altura</option><option>Construcci�n de media altura</option>
+          <option>Construcción en altura</option><option>Construcción de media altura</option>
           <option>Viviendas unifamiliares y PH de hasta tres plantas</option>
           <option>Viviendas unifamiliares y PH de una planta</option><option>Casas quinta</option>
-          <option>Industrias de gran envergadura</option><option>Industrias de peque�a y mediana envergadura</option>
+          <option>Industrias de gran envergadura</option><option>Industrias de pequeña y mediana envergadura</option>
         </select>
       </div>
       <div class="field"><label>Calidad constructiva predominante</label>
-        <select id="f_calidadConstructivaPredom"><option value=""></option><option>Excelente</option><option>Muy Buena</option><option>Buena</option><option>Media</option><option>Econ�mica</option><option>Precaria</option></select>
+        <select id="f_calidadConstructivaPredom"><option value=""></option><option>Excelente</option><option>Muy Buena</option><option>Buena</option><option>Media</option><option>Económica</option><option>Precaria</option></select>
       </div>
-      <div class="field"><label>Construcci�n en altura (prevalencia)</label>
+      <div class="field"><label>Construcción en altura (prevalencia)</label>
         <select id="f_construccionAlturaPrevalencia"><option value=""></option><option>En todo el entorno</option><option>Sobre arterias principales</option><option>Ocasional</option><option>No relevante o inexistente</option></select>
       </div>
       <div class="field"><label>Uso comercial</label>
@@ -551,23 +551,23 @@
       <div class="field"><label>Uso industrial</label>
         <select id="f_usoIndustrialPrevalencia"><option value=""></option><option>En todo el entorno</option><option>Sobre arterias principales</option><option>Ocasional</option><option>No relevante o inexistente</option></select>
       </div>
-      <div class="field"><label>Nivel socioecon�mico</label>
+      <div class="field"><label>Nivel socioeconómico</label>
         <select id="f_nivelSocioeconomicoBarrio"><option value=""></option><option>Alto</option><option>Medio alto</option><option>Medio</option><option>Medio Bajo</option><option>Bajo</option></select>
       </div>
     </div>
   </section>
 
-  <!-- ============ DESCRIPCI�N DEL BARRIO ============ -->
+  <!-- ============ DESCRIPCIÓN DEL BARRIO ============ -->
   <section class="card">
-    <h2>Descripci�n del Barrio</h2>
+    <h2>Descripción del Barrio</h2>
     <div class="grid cols-3">
       <div class="field"><label>Tipo</label>
         <select id="f_barrioTipo"><option value=""></option><option>Urbano</option><option>Suburbano</option><option>Rural</option></select>
       </div>
       <div class="field"><label>Construido</label>
-        <select id="f_construidoPct"><option value=""></option><option>M�s del 75%</option><option>Entre el 75% y el 25%</option><option>Menos del 25%</option></select>
+        <select id="f_construidoPct"><option value=""></option><option>Más del 75%</option><option>Entre el 75% y el 25%</option><option>Menos del 25%</option></select>
       </div>
-      <div class="field"><label>�ndice de Crecimiento</label>
+      <div class="field"><label>Índice de Crecimiento</label>
         <select id="f_indiceCrecimiento"><option value=""></option><option>Estable</option><option>Creciente</option><option>Decreciente</option></select>
       </div>
       <div class="field"><label>Servicio de Vigilancia del Barrio</label>
@@ -577,16 +577,16 @@
         <select id="f_tendenciaValores"><option value=""></option><option>Creciente</option><option>Estable</option><option>Decreciente</option></select>
       </div>
       <div class="field"><label>Demanda / Oferta</label>
-        <select id="f_demandaOferta"><option value=""></option><option>Exceso de Oferta</option><option>Falta de Oferta</option><option>Relaci�n Oferta/Demanda Equilibrada</option></select>
+        <select id="f_demandaOferta"><option value=""></option><option>Exceso de Oferta</option><option>Falta de Oferta</option><option>Relación Oferta/Demanda Equilibrada</option></select>
       </div>
-      <div class="field"><label>Tiempo de Comercializaci�n</label>
-        <select id="f_tiempoComercializacion"><option value=""></option><option>Menos de 3 meses</option><option>Entre 3 y 6 meses</option><option>M�s de 6 meses</option></select>
+      <div class="field"><label>Tiempo de Comercialización</label>
+        <select id="f_tiempoComercializacion"><option value=""></option><option>Menos de 3 meses</option><option>Entre 3 y 6 meses</option><option>Más de 6 meses</option></select>
       </div>
       <div class="field"><label>Cambios Principales en el Uso del Terreno</label>
         <select id="f_cambiosUsoTerreno"><option value=""></option><option>Probable</option><option>Improbable</option><option>En Proceso</option></select>
       </div>
-      <div class="field"><label>Facilidades de Estacionamiento T�pico</label>
-        <select id="f_facilidadesEstacionamiento"><option value=""></option><option>Garage Propio</option><option>Garajes privados</option><option>En la v�a p�blica</option></select>
+      <div class="field"><label>Facilidades de Estacionamiento Típico</label>
+        <select id="f_facilidadesEstacionamiento"><option value=""></option><option>Garage Propio</option><option>Garajes privados</option><option>En la vía pública</option></select>
       </div>
     </div>
     <p style="font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin:16px 0 8px; font-family:'Poppins',sans-serif;">Uso del Terreno %</p>
@@ -601,31 +601,31 @@
 
   <!-- ============ COMPARABLES ============ -->
   <section class="card">
-    <h2>Comparables � Comparaci�n de Caracter�sticas</h2>
+    <h2>Comparables — Comparación de Características</h2>
     <div id="comparablesContainer"></div>
     <button type="button" class="add-btn" id="addComparable">+ Agregar comparable</button>
   </section>
 
-  <!-- ============ AN�LISIS COMPARATIVO ============ -->
+  <!-- ============ ANÁLISIS COMPARATIVO ============ -->
   <section class="card" id="sectionAnalisisComparativo">
-    <h2>An�lisis Comparativo</h2>
+    <h2>Análisis Comparativo</h2>
     <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
-      <label style="font-family:'Poppins',sans-serif; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;">Dispersi�n (�%)</label>
+      <label style="font-family:'Poppins',sans-serif; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;">Dispersión (±%)</label>
       <input type="number" id="ac_dispersion" value="10" min="0" max="100" style="width:70px; padding:7px 8px; border:1px solid var(--line); border-radius:5px; background:#fff; color:var(--input-text); font-family:'Poppins',sans-serif; font-weight:700;">
-      <span style="font-size:11.5px; color:var(--muted); font-family:'Poppins',sans-serif;">Tild� los comparables que quer�s incluir en el promedio final.</span>
+      <span style="font-size:11.5px; color:var(--muted); font-family:'Poppins',sans-serif;">Tildá los comparables que querés incluir en el promedio final.</span>
     </div>
 
     <table class="data-table ac-table">
       <thead>
-        <tr><th style="width:36px;"></th><th>Comparable</th><th>Precio U$S/m�</th><th>Rango -%</th><th>Rango +%</th></tr>
+        <tr><th style="width:36px;"></th><th>Comparable</th><th>Precio U$S/m²</th><th>Rango −%</th><th>Rango +%</th></tr>
       </thead>
       <tbody id="ac_tbody"></tbody>
     </table>
 
     <div class="valuation-summary" style="margin-top:16px;">
-      <div class="box"><div class="lbl">Valor M�nimo</div><div class="val" id="ac_valMin">�</div></div>
-      <div class="box"><div class="lbl">Valor Promedio</div><div class="val" id="ac_valProm">�</div></div>
-      <div class="box"><div class="lbl">Valor M�ximo</div><div class="val" id="ac_valMax">�</div></div>
+      <div class="box"><div class="lbl">Valor Mínimo</div><div class="val" id="ac_valMin">—</div></div>
+      <div class="box"><div class="lbl">Valor Promedio</div><div class="val" id="ac_valProm">—</div></div>
+      <div class="box"><div class="lbl">Valor Máximo</div><div class="val" id="ac_valMax">—</div></div>
     </div>
 
     <div class="ac-chart-wrap">
@@ -633,33 +633,33 @@
     </div>
   </section>
 
-  <!-- ============ VALUACI�N ============ -->
+  <!-- ============ VALUACIÓN ============ -->
   <section class="card">
-    <h2>Valuaci�n</h2>
+    <h2>Valuación</h2>
     <table class="data-table" style="margin-bottom:18px;">
-      <thead><tr><th>Componente</th><th>Total m�</th><th>Precio m� (U$S)</th><th>Total (U$S)</th></tr></thead>
+      <thead><tr><th>Componente</th><th>Total m²</th><th>Precio m² (U$S)</th><th>Total (U$S)</th></tr></thead>
       <tbody>
         <tr>
           <td>Terreno</td>
-          <td id="v_terrenoM2">�</td>
+          <td id="v_terrenoM2">—</td>
           <td><input type="number" id="v_terrenoPrecio"></td>
-          <td id="v_terrenoTotal">�</td>
+          <td id="v_terrenoTotal">—</td>
         </tr>
         <tr>
           <td>Superficie Cubierta</td>
-          <td id="v_cubiertaM2">�</td>
-          <td id="v_cubiertaPrecio">�</td>
-          <td id="v_cubiertaTotal">�</td>
+          <td id="v_cubiertaM2">—</td>
+          <td id="v_cubiertaPrecio">—</td>
+          <td id="v_cubiertaTotal">—</td>
         </tr>
       </tbody>
     </table>
     <p style="font-size:11.5px; color:var(--muted); margin-top:-10px; font-family:'Poppins',sans-serif;">
-      Los m� de Terreno y Superficie Cubierta se completan autom�ticamente desde "Datos del Inmueble".
+      Los m² de Terreno y Superficie Cubierta se completan automáticamente desde "Datos del Inmueble".
     </p>
     <div class="valuation-summary cols-4">
-      <div class="box"><div class="lbl">Precio m� promedio comparables</div><div class="val" id="v_precioPromedio">U$S 0</div></div>
+      <div class="box"><div class="lbl">Precio m² promedio comparables</div><div class="val" id="v_precioPromedio">U$S 0</div></div>
       <div class="box"><div class="lbl">Coef. de condiciones promedio</div><div class="val" id="v_coefPromedio">1.000</div></div>
-      <div class="box"><div class="lbl">Depreciaci�n por Servicios</div><div class="val" id="v_depreciacionServicios">1.000</div></div>
+      <div class="box"><div class="lbl">Depreciación por Servicios</div><div class="val" id="v_depreciacionServicios">1.000</div></div>
       <div class="box final"><div class="lbl">Valor Final Estimado</div><div class="val" id="v_valorFinal">U$S 0</div></div>
     </div>
   </section>
@@ -673,14 +673,14 @@
   <!-- ============ PLAN DE MARKETING (texto fijo) ============ -->
   <section class="card">
     <h2>Plan de Marketing</h2>
-    <p class="marketing-text"><b>1. Cartel:</b> colocaremos un cartel en su propiedad con nuestros n�meros de tel�fono celular para no perder un solo llamado.</p>
+    <p class="marketing-text"><b>1. Cartel:</b> colocaremos un cartel en su propiedad con nuestros números de teléfono celular para no perder un solo llamado.</p>
     <p class="marketing-text"><b>2. Sitio web:</b> bienenhaus.com.ar</p>
-    <p class="marketing-text"><b>3. Otros sitios web:</b> la propiedad ser� publicada en ZonaProp, MercadoLibre, Facebook y Clasificados La Voz.</p>
-    <p class="marketing-text"><b>4. Colaboraci�n con otros profesionales:</b> trabajamos en conjunto con colegas para coordinar la venta; usted trata s�lo conmigo.</p>
-    <p class="marketing-text"><b>5. Carpeta de presentaci�n:</b> incluye caracter�sticas, plano de distribuci�n y detalles de la zona.</p>
-    <p class="marketing-text"><b>6. Cuestionario:</b> aplicado a cada potencial comprador para conocer su reacci�n.</p>
+    <p class="marketing-text"><b>3. Otros sitios web:</b> la propiedad será publicada en ZonaProp, MercadoLibre, Facebook y Clasificados La Voz.</p>
+    <p class="marketing-text"><b>4. Colaboración con otros profesionales:</b> trabajamos en conjunto con colegas para coordinar la venta; usted trata sólo conmigo.</p>
+    <p class="marketing-text"><b>5. Carpeta de presentación:</b> incluye características, plano de distribución y detalles de la zona.</p>
+    <p class="marketing-text"><b>6. Cuestionario:</b> aplicado a cada potencial comprador para conocer su reacción.</p>
     <p class="marketing-text"><b>7. Seguimiento:</b> resumen mensual de acciones de venta y resultados.</p>
-    <p class="marketing-text"><b>8. Evaluaci�n:</b> cada 30 d�as revisamos la actividad y ajustamos la estrategia.</p>
+    <p class="marketing-text"><b>8. Evaluación:</b> cada 30 días revisamos la actividad y ajustamos la estrategia.</p>
   </section>
 
   </fieldset>
@@ -694,13 +694,13 @@
 </footer>
 
 <div class="action-bar">
-  <button class="btn btn-back" id="btnBack">? Volver</button>
-  <button class="btn btn-save" id="btnSave">?? Guardar</button>
-  <button class="btn btn-edit" id="btnEdit" disabled>?? Editar</button>
-  <button class="btn btn-finish" id="btnFinish">? Finalizar</button>
-  <button class="btn btn-pdf" id="btnPdf">? Exportar a PDF</button>
+  <button class="btn btn-back" id="btnBack">← Volver</button>
+  <button class="btn btn-save" id="btnSave">💾 Guardar</button>
+  <button class="btn btn-edit" id="btnEdit" disabled>✏️ Editar</button>
+  <button class="btn btn-finish" id="btnFinish">✅ Finalizar</button>
+  <button class="btn btn-pdf" id="btnPdf">⭳ Exportar a PDF</button>
 </div>
 
-<script src="assets/js/pages/tasacion-page.js?v=1"></script>
+<script src="assets/js/pages/tasacion-page.js"></script>
 </body>
 </html>
