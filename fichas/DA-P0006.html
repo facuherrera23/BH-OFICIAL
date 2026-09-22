@@ -46,6 +46,24 @@
   footer { text-align:center; color:#5d584f; font-size:12px; padding:34px 0 26px; }
   footer a { color:#8a8478; }
   @media (max-width:720px){ .hero{height:52vh} h1{font-size:26px} .sheet{margin:-24px 12px 48px; padding:26px 20px} .cta{width:100%; justify-content:center; } }
+  @media print {
+    @page { margin: 14mm; }
+    body { background:#fff !important; color:#1f1c17 !important; }
+    .hero { print-color-adjust:exact; -webkit-print-color-adjust:exact; height:9cm; min-height:0; max-height:none; border-radius:12px; overflow:hidden; border:1px solid #ddd; }
+    .hero::after { display:none; }
+    .badge { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+    .sheet { background:#fff !important; border:1px solid #ddd !important; box-shadow:none !important; margin:-18px 0 0; border-radius:14px; }
+    h1 { color:#1f1c17 !important; }
+    .loc { color:#555349 !important; }
+    .price { color:#8a6a2f !important; }
+    .chip { background:#f6f3ec !important; border-color:#d9d2c4 !important; color:#3d382f !important; }
+    h2 { color:#8a6a2f !important; border-bottom-color:#ddd !important; }
+    .desc { color:#33302a !important; }
+    .cta { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+    .cta-row, .cta { break-inside:avoid; }
+    footer { color:#6f6a5f !important; }
+    footer a { color:#6f6a5f !important; }
+  }
 </style>
 </head>
 <body>

@@ -17,7 +17,7 @@ var STATUS_LABELS = {
 };
 var LEGACY_STAGE_MAP = { visita: 'visita_agendada', oferta: 'negociacion', cerrado: 'cerrado_ganado', perdido: 'cerrado_perdido' };
 var ORIGINS = ['landing_page','newsletter','manual','landing','ml','chat','referido','tasacion','walkin','contacto','propiedad','whatsapp','web'];
-var ORIGIN_LABELS = { manual:'Manual', landing:'Landing', ml:'Mercado Libre', chat:'Chat', referido:'Referido', tasacion:'Tasacion', walkin:'Walk-in', contacto:'Contacto', propiedad:'Propiedad', whatsapp:'WhatsApp', web:'Web' };
+var ORIGIN_LABELS = { manual:'Manual', landing:'Landing', landing_page:'Landing', newsletter:'Newsletter', ml:'Mercado Libre', chat:'Chat', referido:'Referido', tasacion:'Tasacion', walkin:'Walk-in', contacto:'Contacto', propiedad:'Propiedad', whatsapp:'WhatsApp', web:'Web' };
 var TIPO_CLIENTE_OPTS = ['propietario','comprador','inversor','inquilino'];
 var OPERATION_OPTS = ['compra','venta','alquiler'];
 
@@ -25,6 +25,8 @@ var PAGE_SIZE = 25;
 var _page = 1, _totalPages = 1, _totalRows = 0;
 var _sortKey = 'created', _sortDir = 'desc';
 var DEFAULT_SORT_DIR = { created: 'desc', cliente: 'asc', propiedad: 'asc', estado: 'asc', prioridad: 'desc', actividad: 'desc', prox: 'asc' };
+var SERVER_SORT_COLUMNS = { created: 'created_at', cliente: 'full_name', estado: 'stage', prioridad: 'lead_score', actividad: 'last_contacted_at', prox: 'next_followup_at' };
+var _showTrash = false;
 var _ownerSortKey = 'prox', _ownerSortDir = 'asc';
 var OWNER_DEFAULT_SORT_DIR = { propietario: 'asc', dni: 'asc', propiedades: 'desc', agente: 'asc', tareas: 'desc', exclusivo: 'asc', prox: 'asc' };
 var _leads = [];
@@ -128,6 +130,7 @@ function sortValueFor(l, key) {
   return { v: l.created_at ? new Date(l.created_at).getTime() : null };
 }
 function applySort() {
+  if (SERVER_SORT_COLUMNS[_sortKey]) return;
   var dir = _sortDir === 'asc' ? 1 : -1;
   var key = _sortKey;
   _leads.sort(function (a, b) {
@@ -138,10 +141,6 @@ function applySort() {
     var cmp;
     if (typeof sa.v === 'number') cmp = sa.v - sb.v;
     else cmp = sa.v < sb.v ? -1 : sa.v > sb.v ? 1 : 0;
-    if (cmp === 0 && key === 'prioridad') {
-      var na = a.lead_score || 0, nb = b.lead_score || 0;
-      cmp = na - nb;
-    }
     return cmp * dir;
   });
 }
@@ -156,6 +155,7 @@ async function loadAgents() {
     window._crmAgents = _agents;
     var sel = $id('crmAgentFilter');
     if (sel) sel.innerHTML = '<option value="">Todos los agentes</option>' +
+      '<option value="__none__">Sin asignar</option>' +
       _agents.map(function (a) { return '<option value="' + a.id + '">' + esc(a.full_name) + '</option>'; }).join('');
   } catch (e) { console.warn('[crm] loadAgents:', e.message); }
 }
@@ -163,13 +163,19 @@ async function loadAgents() {
 function applyBaseFilters(q) {
   var sv = $id('crmSearch'); if (sv && sv.value.trim()) {
     var s = sv.value.trim().replace(/[%_]/g, ' ');
-    q = q.or('full_name.ilike.%' + s + '%,email.ilike.%' + s + '%,phone.ilike.%' + s + '%');
+    var ors = ['full_name', 'email', 'phone', 'whatsapp', 'notes', 'preferred_zone'].map(function (f) {
+      return f + '.ilike.%' + s + '%';
+    }).join(',');
+    q = q.or(ors);
   }
   var st = $id('crmStatusFilter'); if (st && st.value) q = q.eq('stage', st.value); else q = q.neq('stage', 'cerrado_perdido');
   var or = $id('crmOriginFilter'); if (or && or.value) q = q.eq('source', or.value);
   var tp = $id('crmTipoOperacionFilter'); if (tp && tp.value) q = q.eq('operation_type', tp.value);
-  var ag = $id('crmAgentFilter'); if (ag && ag.value) q = q.eq('assigned_to', ag.value);
+  var ag = $id('crmAgentFilter');
+  if (ag && ag.value === '__none__') q = q.is('assigned_to', null);
+  else if (ag && ag.value) q = q.eq('assigned_to', ag.value);
   if (_hasFollowupFilter) q = q.not('next_followup_at', 'is', 'null');
+  if (_showTrash) return q.not('deleted_at', 'is', null);
   return q.is('deleted_at', null);
 }
 
@@ -228,15 +234,39 @@ function applyOwnerSort() {
   });
 }
 
+var OWNER_SERVER_SORT = { propietario: 'full_name', dni: 'dni_cuit', exclusivo: 'exclusive_end' };
+
 async function loadOwners() {
   var c = $id('crmLeadList');
   if (!c) return;
   c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Cargando propietarios...</div>';
   closeDetailPanel();
   try {
-var r = await db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, created_at').is('deleted_at', null);
+    var q0 = db().from('owners').select('id', { count: 'exact', head: true }).is('deleted_at', null);
+    var qw = db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, created_at').is('deleted_at', null);
+    if (_ownerSearch.trim()) {
+      var os = _ownerSearch.trim().replace(/[%_]/g, ' ');
+      var ors = ['full_name', 'email', 'phone', 'dni_cuit', 'address'].map(function (f) { return f + '.ilike.%' + os + '%'; }).join(',');
+      var ownerIdsByProp = [];
+      try {
+        var pr = await db().from('properties').select('owner_id').or('title.ilike.%' + os + '%,property_code.ilike.%' + os + '%').is('deleted_at', null).limit(200);
+        ownerIdsByProp = (pr.data || []).map(function (p) { return p.owner_id; }).filter(Boolean);
+      } catch (e) {}
+      if (ownerIdsByProp.length) ors += ',id.in.(' + ownerIdsByProp.join(',') + ')';
+      q0 = q0.or(ors);
+      qw = qw.or(ors);
+    }
+    var countRes = await q0;
+    _totalRows = (countRes && countRes.count) || 0;
+    _totalPages = Math.max(1, Math.ceil(_totalRows / PAGE_SIZE));
+    if (_page > _totalPages) _page = _totalPages;
+    var sortCol = OWNER_SERVER_SORT[_ownerSortKey];
+    if (sortCol) qw = qw.order(sortCol, { ascending: _ownerSortDir === 'asc', nullsFirst: false });
+    qw = qw.range((_page - 1) * PAGE_SIZE, _page * PAGE_SIZE - 1);
+    var r = await qw;
     if (r.error) throw new Error(r.error.message);
     _owners = r.data || [];
+    _ownerFiltered = _owners;
     /* cargar agentes (mapa) */
     var aRes = await db().from('agents').select('id, full_name');
     _agents = (aRes.data || []);
@@ -305,33 +335,19 @@ function renderOwnerAgentCell(ownerId) {
 }
 
 /* -- Tabla Owners -- */
-function ownerSearchText(o) {
-  var q = _ownerSearch.trim().toLowerCase();
-  if (!q) return true;
-  var hay = [o.full_name, o.dni_cuit, o.email, o.phone, o.address].join(' ').toLowerCase();
-  var ps = _ownerProps[o.id] || [];
-  ps.forEach(function (p) { hay += ' ' + (p.title || '') + ' ' + (p.property_code || ''); });
-  hay += ' ' + ownerAgentNames(o);
-  return hay.indexOf(q) !== -1;
-}
 function renderOwnerList(c) {
-  _ownerFiltered = _owners.filter(ownerSearchText);
-  if (!_ownerFiltered.length) {
-    c.innerHTML = _owners.length
+  if (!_owners.length) {
+    c.innerHTML = (_ownerSearch.trim()
       ? '<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin propietarios que coincidan con la búsqueda.</div>'
-      : '<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin propietarios cargados.</div>';
+      : '<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin propietarios cargados.</div>');
     return;
   }
   var sortArrow = function (k) {
-    return _ownerSortKey === k ? '<span class="crm-sort-ind">' + (_ownerSortDir === 'asc' ? '\u25B2' : '\u25BC') + '</span>' : '';
+    return _ownerSortKey === k ? '<span class="crm-sort-ind">' + (_ownerSortDir === 'asc' ? '▲' : '▼') + '</span>' : '';
   };
-  _totalRows = _ownerFiltered.length;
-  _totalPages = Math.max(1, Math.ceil(_ownerFiltered.length / PAGE_SIZE));
   var rows = '';
-  var start = (_page - 1) * PAGE_SIZE;
-  var end = Math.min(start + PAGE_SIZE, _ownerFiltered.length);
-  for (var i = start; i < end; i++) {
-    var o = _ownerFiltered[i];
+  for (var i = 0; i < _owners.length; i++) {
+    var o = _owners[i];
     var inits = getInitials(o.full_name);
     var avColor = getAvatarColor(o.full_name);
     var tareas = ownerPendingTasks(o);
@@ -433,7 +449,7 @@ c.querySelectorAll('[data-action="viewOwner"],[data-action="addOwnerNote"]').for
     b.addEventListener('click', function (e) {
       e.stopPropagation();
       _page = parseInt(this.dataset.page, 10) || 1;
-      renderOwnerList(c);
+      loadOwners();
     });
   });
 }
@@ -447,12 +463,16 @@ async function loadLeads() {
     var countRes = await applyBaseFilters(
       db().from('leads').select('id', { count: 'exact', head: true }));
     _totalRows = (countRes && countRes.count) || 0;
+    _totalPages = Math.max(1, Math.ceil(_totalRows / PAGE_SIZE));
+    if (_page > _totalPages) _page = _totalPages;
 
-    var q = applyBaseFilters(db().from('leads').select('id, full_name, email, phone, whatsapp, stage, source, tipo_cliente, operation_type, lead_score, assigned_to, property_id, next_followup_at, last_contacted_at, created_at'));
+    var sortCol = SERVER_SORT_COLUMNS[_sortKey];
+    var q = applyBaseFilters(db().from('leads').select('id, full_name, email, phone, whatsapp, stage, source, tipo_cliente, operation_type, lead_score, lead_score_breakdown, assigned_to, property_id, next_followup_at, last_contacted_at, created_at'));
+    if (sortCol) q = q.order(sortCol, { ascending: _sortDir === 'asc', nullsFirst: false });
+    q = q.range((_page - 1) * PAGE_SIZE, _page * PAGE_SIZE - 1);
     var r = await q;
     if (r.error) { throw new Error(r.error.message); }
     _leads = r.data || [];
-    _totalPages = Math.max(1, Math.ceil(_leads.length / PAGE_SIZE));
 
 /* Enriquecer: agente + propiedad (campo directo + join lead_properties) */
     _agents.forEach(function (a) { _agentMapById[a.id] = a.full_name; });
@@ -486,8 +506,7 @@ async function loadLeads() {
         (tRes.data || []).forEach(function (tk) { if (!tasksByLead[tk.lead_id]) tasksByLead[tk.lead_id] = []; tasksByLead[tk.lead_id].push(tk); });
       } catch (e) {}
     }
-    _nextActions = {};
-_leads.forEach(function (l) {
+    _leads.forEach(function (l) {
       l.agent_name = _agentMapById[l.assigned_to] || null;
       var pIds = new Set();
       if (l.property_id) pIds.add(l.property_id);
@@ -504,9 +523,9 @@ _leads.forEach(function (l) {
     renderLeadList(c);
     updateKpis();
     var sub = $id('crmSubtitle');
-    if (sub) sub.textContent = _totalRows + ' prospectos';
+    if (sub) sub.textContent = _showTrash ? _totalRows + ' eliminados' : _totalRows + ' prospectos';
     var badge = $id('sideBadgeLeads');
-    if (badge) badge.textContent = _totalRows + ' Activos';
+    if (badge && !_showTrash) badge.textContent = _totalRows + ' Activos';
   } catch (e) {
     c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--danger);">Error: ' + esc(e.message) + '</div>';
   }
@@ -517,64 +536,76 @@ function setKpiLabels(labels) {
   for (var i = 0; i < els.length && i < labels.length; i++) els[i].textContent = labels[i];
 }
 
-function updateOwnerKpis() {
-  var total = _owners.length;
-  var exclusivos = 0;
-  var vencidas = 0;
-  var props = 0;
-  _owners.forEach(function (o) {
-    if (o.exclusive) exclusivos++;
-    props += (_ownerProps[o.id] || []).length;
-    ownerPendingTasks(o).forEach(function (tk) {
-      if (tk.due_date && new Date(tk.due_date).getTime() < Date.now()) vencidas++;
-    });
-  });
+async function updateOwnerKpis() {
   setKpiLabels(['Propietarios', 'Exclusivos', 'Vencidas', 'Propiedades']);
-  var el;
-  el = $id('crmKpiTotal'); if (el) el.textContent = total;
-  el = $id('crmKpiNuevo'); if (el) el.textContent = exclusivos;
-  el = $id('crmKpiGanados'); if (el) el.textContent = vencidas;
-  el = $id('crmKpiPerdidos'); if (el) el.textContent = props;
+  try {
+    var counts = await Promise.all([
+      db().from('owners').select('id', { count: 'exact', head: true }).is('deleted_at', null),
+      db().from('owners').select('id', { count: 'exact', head: true }).eq('exclusive', true).is('deleted_at', null),
+      db().from('owner_tasks').select('id', { count: 'exact', head: true }).not('status', 'in', '("completada","cancelada")').lt('due_date', new Date().toISOString()),
+      db().from('properties').select('id', { count: 'exact', head: true }).is('deleted_at', null).not('owner_id', 'is', null)
+    ]);
+    var el;
+    el = $id('crmKpiTotal'); if (el) el.textContent = counts[0].count || 0;
+    el = $id('crmKpiNuevo'); if (el) el.textContent = counts[1].count || 0;
+    el = $id('crmKpiGanados'); if (el) el.textContent = counts[2].count || 0;
+    el = $id('crmKpiPerdidos'); if (el) el.textContent = counts[3].count || 0;
+  } catch (e) { console.warn('[crm] owner kpis:', e.message); }
 }
 
 async function updateKpis() {
   try {
-    setKpiLabels(['Total', 'Nuevos', 'Ganados', 'Perdidos']);
-    var stages = ['nuevo', 'cerrado_ganado', 'cerrado_perdido'];
-    var out = { total: _totalRows, nuevo: 0, ganados: 0, perdidos: 0 };
-    await Promise.all(stages.map(function (s) {
-      return db().from('leads').select('id', { count: 'exact', head: true }).eq('stage', s).is('deleted_at', null)
-        .then(function (r) {
-          if (s === 'nuevo') out.nuevo = r.count || 0;
-          else if (s === 'cerrado_ganado') out.ganados = r.count || 0;
-          else out.perdidos = r.count || 0;
-        });
-    }));
+    if (_showTrash) {
+      setKpiLabels(['Eliminados', '', '', '']);
+      var elT = $id('crmKpiTotal'); if (elT) elT.textContent = _totalRows;
+      ['crmKpiNuevo', 'crmKpiGanados', 'crmKpiPerdidos'].forEach(function (k) { var e = $id(k); if (e) e.textContent = '—'; });
+      return;
+    }
+    setKpiLabels(['Activos', 'Nuevos (7d)', 'Sin contacto +48h', 'Conversión']);
+    var CLOSED = ['cerrado_ganado', 'cerrado_perdido'];
+    var now = Date.now();
+    var sevenDays = new Date(now - 7 * 86400000).toISOString();
+    var twoDays = new Date(now - 2 * 86400000).toISOString();
+    var leads = db().from('leads');
+    var counts = await Promise.all([
+      leads.select('id', { count: 'exact', head: true }).gte('created_at', sevenDays).is('deleted_at', null),
+      leads.select('id', { count: 'exact', head: true }).or('last_contacted_at.is.null,last_contacted_at.lt.' + twoDays).not('stage', 'in', '("cerrado_ganado","cerrado_perdido")').is('deleted_at', null),
+      leads.select('id', { count: 'exact', head: true }).eq('stage', 'cerrado_ganado').is('deleted_at', null),
+      leads.select('id', { count: 'exact', head: true }).in('stage', CLOSED).is('deleted_at', null),
+    ]);
+    var nuevos7 = counts[0].count || 0;
+    var stale = counts[1].count || 0;
+    var ganados = counts[2].count || 0;
+    var cerrados = counts[3].count || 0;
+    var conv = cerrados > 0 ? Math.round((ganados / cerrados) * 100) + '%' : '—';
     var el;
-    el = $id('crmKpiTotal'); if (el) el.textContent = out.total;
-    el = $id('crmKpiNuevo'); if (el) el.textContent = out.nuevo;
-    el = $id('crmKpiGanados'); if (el) el.textContent = out.ganados;
-    el = $id('crmKpiPerdidos'); if (el) el.textContent = out.perdidos;
+    el = $id('crmKpiTotal'); if (el) el.textContent = _totalRows;
+    el = $id('crmKpiNuevo'); if (el) el.textContent = nuevos7;
+    el = $id('crmKpiGanados'); if (el) el.textContent = stale;
+    el = $id('crmKpiPerdidos'); if (el) el.textContent = conv;
   } catch (e) { console.warn('[crm] kpis:', e.message); }
 }
 
 /* -- Tabla -- */
 function renderLeadList(c) {
   if (!_leads.length) {
-    c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">No hay prospectos con esos filtros.</div>';
+    c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">' +
+      (_showTrash ? 'La papelera está vacía.' : 'No hay prospectos con esos filtros.') + '</div>';
     return;
   }
   var rows = '';
-  var start = (_page - 1) * PAGE_SIZE;
-  var end = Math.min(start + PAGE_SIZE, _leads.length);
-  for (var i = start; i < end; i++) {
+  for (var i = 0; i < _leads.length; i++) {
     var l = _leads[i];
     var stage = normalizeStage(l.stage || 'nuevo');
     var inits = getInitials(l.full_name);
     var avColor = getAvatarColor(l.full_name);
     var sb = '<span class="crm-status-badge crm-status-badge--' + stage + '"><span class="crm-status-dot crm-status-dot--' + stage + '"></span>' + (STATUS_LABELS[stage] || stage) + '</span>';
     var pr = getPriority(l.lead_score);
-    var pb = '<span class="crm-priority crm-priority--' + pr + '">' + getPriorityLabel(pr) + '</span>';
+    var bk = l.lead_score_breakdown;
+    var bkTitle = bk
+      ? 'Prioridad ' + (l.lead_score ?? 0) + '/100 — etapa:' + (bk.etapa || 0) + ' contacto:' + (bk.contacto || 0) + ' interés:' + (bk.interes || 0) + ' propiedad:' + (bk.propiedad || 0) + ' origen:' + (bk.origen || 0)
+      : 'Prioridad ' + (l.lead_score ?? 0) + '/100';
+    var pb = '<span class="crm-priority crm-priority--' + pr + '" title="' + esc(bkTitle) + '">' + getPriorityLabel(pr) + '</span>';
 var propCell;
     if (l.props && l.props.length) {
       var p = l.props[0];
@@ -620,7 +651,9 @@ var propCell;
         '<td class="crm-td-actions">' +
           '<button class="btn-action" data-action="viewLead" data-id="' + l.id + '" title="Ver detalle"><i class="fas fa-eye"></i></button>' +
           '<button class="btn-action" data-action="editLead" data-id="' + l.id + '" title="Editar"><i class="fas fa-pen"></i></button>' +
-          '<button class="btn-action danger" data-action="deleteLead" data-id="' + l.id + '" title="Eliminar"><i class="fas fa-trash"></i></button>' +
+          (_showTrash
+            ? '<button class="btn-action" data-action="restoreLead" data-id="' + l.id + '" title="Restaurar"><i class="fas fa-rotate-left"></i></button>'
+            : '<button class="btn-action danger" data-action="deleteLead" data-id="' + l.id + '" title="Eliminar"><i class="fas fa-trash"></i></button>') +
         '</td>' +
       '</tr>';
   }
@@ -654,11 +687,12 @@ function bindListHandlers(c) {
   c.querySelectorAll('.crm-row').forEach(function (r) {
     r.addEventListener('click', function () { openDetailPanel(this.dataset.id); });
   });
-  c.querySelectorAll('[data-action="viewLead"],[data-action="editLead"],[data-action="deleteLead"]').forEach(function (b) {
+  c.querySelectorAll('[data-action="viewLead"],[data-action="editLead"],[data-action="deleteLead"],[data-action="restoreLead"]').forEach(function (b) {
     b.addEventListener('click', function (e) {
       e.stopPropagation();
       var id = this.dataset.id;
       if (this.dataset.action === 'deleteLead') deleteLead(id);
+      else if (this.dataset.action === 'restoreLead') { restoreLead(id); return; }
       else openDetailPanel(id);
     });
   });
@@ -687,12 +721,137 @@ function getLeadVisits(id) {
     .then(function (r) { return r.data || []; }).catch(function () { return []; });
 }
 
+/* -- Contacto rápido y plantillas WhatsApp -- */
+var WA_TEMPLATES = [
+  { id: 'saludo', label: 'Saludo inicial', text: function (c) { return 'Hola ' + c.nombre + ', te escribo de Bienenhaus Propiedades' + (c.prop ? ' sobre tu consulta por ' + c.prop : ' por tu consulta') + '. ¿Tenés unos minutos para hablar?' + (c.link ? '\nTe comparto la ficha: ' + c.link : ''); } },
+  { id: 'seguimiento', label: 'Seguimiento', text: function (c) { return 'Hola ' + c.nombre + ', retomo tu consulta' + (c.prop ? ' por ' + c.prop : '') + '. ¿Sigue vigente tu búsqueda? Cualquier duda estoy a disposición.'; } },
+  { id: 'visita_propuesta', label: 'Proponer visita', text: function (c) { return 'Hola ' + c.nombre + ', ¿te viene bien venir a ver la propiedad' + (c.prop ? ' ' + c.prop : '') + ' esta semana? Tengo disponibilidad y te coordinamos la visita.'; } },
+  { id: 'post_visita', label: 'Post-visita', text: function (c) { return 'Hola ' + c.nombre + ', gracias por la visita de hoy. Quedo atento a cualquier duda o si querés avanzar con una propuesta.'; } },
+  { id: 'compartir_ficha', label: 'Compartir ficha', text: function (c) { return 'Hola ' + c.nombre + ', te comparto la ficha de la propiedad' + (c.prop ? ' ' + c.prop : '') + ':' + (c.link ? '\n' + c.link : ''); } }
+];
+
+// Normalización AR: soporta 00/54/0/9 y el 15 de celulares; tel: sin el 9 (fijos).
+var AR_MOBILE_AREAS = { '11': 1, '221': 1, '341': 1, '351': 1 };
+function normalizeArPhone(phone) {
+  var d = String(phone || '').replace(/\D/g, '');
+  if (!d) return null;
+  if (d.indexOf('00') === 0) d = d.slice(2);
+  if (d.indexOf('549') === 0) d = d.slice(3);
+  else if (d.indexOf('54') === 0) d = d.slice(2);
+  if (d.indexOf('0') === 0) d = d.slice(1);
+  if (d.indexOf('9') === 0 && d.length <= 12) d = d.slice(1);
+  var area3 = d.slice(0, 3), area2 = d.slice(0, 2);
+  if (AR_MOBILE_AREAS[area3] || AR_MOBILE_AREAS[area2]) {
+    var area = AR_MOBILE_AREAS[area3] ? area3 : area2;
+    var rest = d.slice(area.length);
+    if (rest.indexOf('15') === 0) rest = rest.slice(2); // marcador móvil doméstico, no internacional
+    d = area + rest;
+  } else if (d.indexOf('15') === 0) {
+    d = d.slice(2);
+  }
+  if (d.length < 8 || d.length > 12) return null;
+  return d;
+}
+function waNumber(phone) {
+  var d = normalizeArPhone(phone);
+  return d ? '549' + d : null;
+}
+function telNumber(phone) {
+  var d = normalizeArPhone(phone);
+  return d ? '54' + d : null;
+}
+
+function contactSectionHtml(lead, firstProp) {
+  var propTitle = firstProp && firstProp.property_title;
+  var propLink = firstProp && firstProp.property_code
+    ? 'https://bienenhaus.com.ar/fichas/' + encodeURIComponent(firstProp.property_code) + '.html'
+    : null;
+  var wa = waNumber(lead.whatsapp) || waNumber(lead.phone);
+  var tel = telNumber(lead.phone);
+  var opts = '<option value="">Plantilla de WhatsApp...</option>' + WA_TEMPLATES.map(function (t) { return '<option value="' + t.id + '">' + t.label + '</option>'; }).join('');
+  var row = '<div class="crm-contact-row">';
+  row += wa
+    ? '<a class="crm-contact-btn crm-contact-btn--wa" href="https://wa.me/' + wa + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> WhatsApp</a>'
+    : '<span class="crm-contact-btn is-disabled" title="Sin número de WhatsApp"><i class="fab fa-whatsapp"></i> WhatsApp</span>';
+  row += tel
+    ? '<a class="crm-contact-btn" href="tel:+' + tel + '"><i class="fas fa-phone"></i> Llamar</a>'
+    : '<span class="crm-contact-btn is-disabled" title="Sin teléfono"><i class="fas fa-phone"></i> Llamar</span>';
+  row += lead.email
+    ? '<a class="crm-contact-btn" href="mailto:' + esc(lead.email) + '"><i class="fas fa-envelope"></i> Email</a>'
+    : '<span class="crm-contact-btn is-disabled" title="Sin email"><i class="fas fa-envelope"></i> Email</span>';
+  if (!lead.assigned_to) {
+    row += '<button class="crm-contact-btn crm-contact-btn--assign" id="crmAssignMe" type="button" title="Asignarme este lead"><i class="fas fa-user-check"></i> Asignarme</button>';
+  }
+  row += '</div>';
+  row += '<div class="crm-template-row"><select class="crm-field-input crm-field-input--select" id="crmMsgTemplate">' + opts + '</select>' +
+    '<button class="btn-action' + (wa ? '' : ' is-disabled') + '" id="crmTemplateUse" title="Abrir WhatsApp con la plantilla"' + (wa ? '' : ' disabled') + '><i class="fas fa-paper-plane"></i></button></div>';
+  return '<div class="crm-side-section"><h4 class="crm-side-section-title">Contacto</h4>' + row + '</div>';
+}
+
+function bindContactActions(panel, lead, firstProp) {
+  var propTitle = firstProp && firstProp.property_title;
+  var propLink = firstProp && firstProp.property_code
+    ? 'https://bienenhaus.com.ar/fichas/' + encodeURIComponent(firstProp.property_code) + '.html'
+    : null;
+  var useBtn = panel.querySelector('#crmTemplateUse');
+  var sel = panel.querySelector('#crmMsgTemplate');
+  if (useBtn && sel) {
+    useBtn.addEventListener('click', async function () {
+      var tpl = WA_TEMPLATES.filter(function (t) { return t.id === sel.value; })[0];
+      if (!tpl) { toast('Elegí una plantilla.', 'error'); return; }
+      var wa = waNumber(lead.whatsapp) || waNumber(lead.phone);
+      if (!wa) return;
+      var text = tpl.text({ nombre: (lead.full_name || '').split(' ')[0], prop: propTitle, link: propLink });
+      try {
+        await db().from('lead_activities').insert([{
+          lead_id: lead.id,
+          activity_type: 'note',
+          title: 'WhatsApp enviado (plantilla: ' + tpl.label + ')',
+          description: text
+        }]);
+      } catch (e) { /* el envío no se bloquea por el log */ }
+      window.open('https://wa.me/' + wa + '?text=' + encodeURIComponent(text), '_blank', 'noopener');
+    });
+  }
+  var assignBtn = panel.querySelector('#crmAssignMe');
+  if (assignBtn) {
+    assignBtn.addEventListener('click', async function () {
+      assignBtn.disabled = true;
+      try {
+        var auth = await db().auth.getUser();
+        var uid = auth && auth.data && auth.data.user && auth.data.user.id;
+        if (!uid) throw new Error('Sin sesión activa');
+        var agentRes = await db().from('agents').select('id, full_name').eq('profile_id', uid).eq('status', 'activo').is('deleted_at', null).maybeSingle();
+        if (!agentRes.data) throw new Error('Tu usuario no está vinculado a un agente activo');
+        var upd = await db().from('leads').update({ assigned_to: agentRes.data.id }).eq('id', lead.id).is('assigned_to', null);
+        if (upd.error) throw new Error(upd.error.message);
+        await db().from('lead_activities').insert([{
+          lead_id: lead.id,
+          activity_type: 'note',
+          title: 'Lead asignado a ' + agentRes.data.full_name,
+          description: 'Autoasignado desde el panel.'
+        }]);
+        lead.assigned_to = agentRes.data.id;
+        assignBtn.innerHTML = '<i class="fas fa-check"></i> ' + agentRes.data.full_name;
+        assignBtn.disabled = true;
+        toast('Lead asignado a ' + agentRes.data.full_name + '.', 'success');
+        await loadLeads();
+      } catch (e) {
+        assignBtn.disabled = false;
+        toast('No se pudo asignar: ' + e.message, 'error');
+      }
+    });
+  }
+}
+
 /* -- Panel lateral -- */
 function getLeadFull(id) {
   return db().from('leads').select('*').eq('id', id).single();
 }
-function getLeadActivities(id) {
-  return db().from('lead_activities').select('*').eq('lead_id', id).order('created_at', { ascending: false }).limit(50)
+var TIMELINE_PAGE = 50;
+function getLeadActivities(id, offset) {
+  var from = offset || 0;
+  return db().from('lead_activities').select('*').eq('lead_id', id).order('created_at', { ascending: false }).range(from, from + TIMELINE_PAGE - 1)
     .then(function (r) { return r.data || []; }).catch(function () { return []; });
 }
 function getLeadProps(id) {
@@ -700,9 +859,9 @@ function getLeadProps(id) {
     .then(function (r) {
       var ids = (r.data || []).map(function (x) { return x.property_id; });
       if (!ids.length) return [];
-      return db().from('properties').select('id, title, price_usd').in('id', ids)
+      return db().from('properties').select('id, title, price_usd, property_code').in('id', ids)
         .then(function (pr) {
-          return (pr.data || []).map(function (p) { return { property_id: p.id, property_title: p.title, price_usd: p.price_usd }; });
+          return (pr.data || []).map(function (p) { return { property_id: p.id, property_title: p.title, price_usd: p.price_usd, property_code: p.property_code || null }; });
         });
     }).catch(function () { return []; });
 }
@@ -783,7 +942,12 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
       '<button class="crm-side-close" aria-label="Cerrar"><i class="fas fa-times"></i></button>' +
     '</div>' +
     '<div class="crm-side-body">' +
+      contactSectionHtml(lead, (props && props[0]) || null) +
       sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, buildUnifiedTimeline(activities, visits, tasks)) +
+      '<div class="crm-quickadd">' +
+        '<input type="text" class="crm-field-input" id="crmQuickTask" placeholder="Tarea rápida: “Llamar mañana 10:00”, Enter para crear…">' +
+        '<button class="btn-action" id="crmQuickTaskBtn" title="Crear tarea rápida"><i class="fas fa-bolt"></i></button>' +
+      '</div>' +
       '<div class="crm-qa-row">' +
         '<div class="crm-qa-btn-wrap">' +
           '<button class="crm-qa-btn" id="crmQaTaskBtn" aria-label="Follow up"><i class="fas fa-clock"></i><span class="crm-qa-tip">Follow up</span></button>' +
@@ -806,9 +970,33 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
   });
   bindSideSave(lead, panel);
   bindQuickActions(lead, panel); bindPropSearch(panel, lead.id);
+  bindContactActions(panel, lead, (props && props[0]) || null);
   bindQaMenu(panel);
+  bindQuickTask(panel, lead.id);
   bindAgendaActions(panel, lead.id);
   bindTlTaskActions(panel, lead.id);
+  if (activities.length === TIMELINE_PAGE) {
+    var tl = panel.querySelector('.crm-timeline');
+    if (tl) {
+      var moreBtn = document.createElement('button');
+      moreBtn.type = 'button';
+      moreBtn.className = 'btn-action';
+      moreBtn.style.cssText = 'display:block;margin:10px auto 0;';
+      moreBtn.innerHTML = '<i class="fas fa-clock-rotate-left"></i> Ver historial anterior';
+      moreBtn.addEventListener('click', async function () {
+        moreBtn.disabled = true;
+        var extra = await getLeadActivities(lead.id, activities.length);
+        if (extra.length) {
+          activities = activities.concat(extra);
+          tl.innerHTML = buildUnifiedTimeline(activities, visits, tasks);
+          bindTlTaskActions(panel, lead.id);
+        }
+        if (extra.length < TIMELINE_PAGE) moreBtn.remove();
+        else { moreBtn.disabled = false; tl.appendChild(moreBtn); }
+      });
+      tl.appendChild(moreBtn);
+    }
+  }
 }
 
 function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, timelineHtml) {
@@ -861,8 +1049,6 @@ function sideField(label, id, type, val) {
       ? '<input class="crm-field-input" id="' + id + '" type="number" value="' + v + '">'
       : '<input class="crm-field-input" id="' + id + '" type="' + type + '" value="' + esc(v) + '">') + '</div>';
 }
-function buildTimelineHTML_hardcoded() { return ''; }
-
 function buildTimelineHTML(acts) {
   if (!acts || !acts.length) return '<div class="crm-timeline-empty">Sin actividad registrada.</div>';
   var cls = { call: 'crm-dot-call', note: 'crm-dot-note', email: 'crm-dot-email', visit: 'crm-dot-visit', followup: 'crm-dot-fup', status_change: 'crm-dot-status' };
@@ -879,14 +1065,41 @@ function buildTimelineHTML(acts) {
 function bindSideSave(lead, panel) {
   var btn = panel.querySelector('#crmSideSaveBtn');
   if (!btn) return;
+  var originalStage = lead.stage || 'nuevo';
   btn.addEventListener('click', async function () {
     var d = collectSideForm(panel);
     if (!d.full_name) { toast('El nombre es obligatorio.', 'error'); return; }
+    // teléfono informado pero whatsapp vacío -> copiar (se puede editar después)
+    if (d.phone && !d.whatsapp) d.whatsapp = d.phone;
+    var stageChanged = d.stage && normalizeStage(d.stage) !== normalizeStage(originalStage);
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
     try {
       var r = await db().from('leads').update(d).eq('id', lead.id);
       if (r.error) { throw new Error(r.error.message); }
+      if (stageChanged) {
+        await db().from('lead_activities').insert([{
+          lead_id: lead.id,
+          activity_type: 'status_change',
+          title: 'Cambio de estado: ' + (STATUS_LABELS[normalizeStage(originalStage)] || originalStage) + ' -> ' + (STATUS_LABELS[normalizeStage(d.stage)] || d.stage)
+        }]);
+        await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', lead.id);
+      }
+      if (stageChanged && normalizeStage(d.stage) === 'cerrado_ganado' && !d.estimated_value && !lead.estimated_value) {
+        var val = prompt('Valor final de la operación (USD, opcional):');
+        if (val !== null && val.trim() !== '') {
+          var num = parseFloat(val.replace(/[^\d.]/g, ''));
+          if (isFinite(num) && num > 0) {
+            var rEst = await db().from('leads').update({ estimated_value: num }).eq('id', lead.id);
+            if (!rEst.error) {
+              lead.estimated_value = num;
+              var estInput = panel.querySelector('#crmDtlEstValue');
+              if (estInput) estInput.value = num;
+              toast('Valor de cierre guardado (USD ' + num.toLocaleString('es-AR') + ').', 'success');
+            }
+          }
+        }
+      }
       toast('Prospecto actualizado.', 'success');
       _selectedLeadId = lead.id;
       await loadLeads();
@@ -898,24 +1111,6 @@ function bindSideSave(lead, panel) {
       btn.textContent = 'Guardar cambios';
     }
   });
-  /* cambio de etapa registra actividad */
-  var stSel = panel.querySelector('#crmDtlStatus');
-  if (stSel) {
-    var originalStage = lead.stage || 'nuevo';
-    stSel.addEventListener('change', async function () {
-      var newStage = this.value;
-      if (newStage === normalizeStage(originalStage)) return;
-      try {
-        await db().from('lead_activities').insert([{
-          lead_id: lead.id,
-          activity_type: 'status_change',
-          title: 'Cambio de estado: ' + (STATUS_LABELS[normalizeStage(originalStage)] || originalStage) + ' -> ' + (STATUS_LABELS[normalizeStage(newStage)] || newStage)
-        }]);
-        await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', lead.id);
-        originalStage = newStage;
-      } catch (e) { console.warn('[crm] log status_change:', e.message); }
-    });
-  }
 }
 
 function collectSideForm(panel) {
@@ -944,6 +1139,16 @@ async function deleteLead(id) {
     var r = await db().from('leads').update({ deleted_at: new Date().toISOString() }).eq('id', id);
     if (r.error) throw new Error(r.error.message);
     toast('Prospecto eliminado.', 'success');
+    closeDetailPanel();
+    await loadLeads();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+async function restoreLead(id) {
+  try {
+    var r = await db().from('leads').update({ deleted_at: null }).eq('id', id);
+    if (r.error) throw new Error(r.error.message);
+    toast('Prospecto restaurado.', 'success');
     closeDetailPanel();
     await loadLeads();
   } catch (e) { toast('Error: ' + e.message, 'error'); }
@@ -1050,8 +1255,8 @@ function bindQuickActions(lead, panel) {
   var p = panel.querySelector('#crmQuickActionPanel');
   if (!p) return;
   var defs = [
-    { sel: '[data-action="logCall"]', label: 'Registrar llamada', type: 'call', hasDate: true, placeholder: 'Descripcion...', actTitle: 'Llamada telefonica' },
-    { sel: '[data-action="addNoteInline"]', label: 'Agregar nota', type: 'note', hasDate: true, placeholder: 'Escribi una nota...', actTitle: 'Nota' },
+    { sel: '[data-action="logCall"]', label: 'Registrar llamada', type: 'call', hasDate: false, placeholder: 'Descripcion...', actTitle: 'Llamada telefonica' },
+    { sel: '[data-action="addNoteInline"]', label: 'Agregar nota', type: 'note', hasDate: false, placeholder: 'Escribi una nota...', actTitle: 'Nota' },
     { sel: '[data-action="scheduleVisit"]', label: 'Agendar visita', type: 'visit', hasDate: true, placeholder: 'Notas para la visita...', actTitle: 'Visita agendada' },
     { sel: '[data-action="markLost"]', label: 'Marcar perdido', type: 'lost', hasDate: false, placeholder: 'Motivo del rechazo (opcional)...', actTitle: 'Perdido / Rechazado' }]
 
@@ -1079,6 +1284,7 @@ function bindQuickActions(lead, panel) {
         if (d.hasDate && !dt) { toast('Selecciona fecha y hora.', 'error'); return; }
         try {
           if (d.type === 'lost') {
+            if (!confirm('¿Marcar como perdido? El lead queda fuera del embudo (podés recuperarlo desde su panel cambiando el estado).')) return;
             await db().from('leads').update({ stage: 'cerrado_perdido', last_contacted_at: new Date().toISOString() }).eq('id', lead.id);
             if (txt.trim()) {
               await db().from('lead_activities').insert([{ lead_id: lead.id, activity_type: 'note', title: 'Motivo del rechazo', description: txt.trim() }]);
@@ -1090,16 +1296,14 @@ function bindQuickActions(lead, panel) {
             return;
           }
           if (d.type === 'call' || d.type === 'note') {
-            var tIns = await db().from('lead_tasks').insert([{
+            var aIns = await db().from('lead_activities').insert([{
               lead_id: lead.id,
+              activity_type: d.type,
               title: d.actTitle,
-              description: txt || null,
-              priority: 'media',
-              status: 'pendiente',
-              due_at: new Date(dt).toISOString()
+              description: txt || null
             }]);
-            if (tIns.error) throw new Error(tIns.error.message);
-            await db().from('leads').update({ last_contacted_at: new Date().toISOString(), next_followup_at: new Date(dt).toISOString() }).eq('id', lead.id);
+            if (aIns.error) throw new Error(aIns.error.message);
+            await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', lead.id);
           } else if (d.type === 'visit') {
             /* Solo registrar si hay propiedad: la tabla visits exige property_id NOT NULL */
             var lprops = await getLeadProps(lead.id);
@@ -1108,7 +1312,9 @@ function bindQuickActions(lead, panel) {
               toast('Vinculá una propiedad primero.', 'error');
               return;
             }
-            await db().from('leads').update({ stage: 'visita_agendada' }).eq('id', lead.id);
+            if (['nuevo', 'contactado', 'calificado'].indexOf(normalizeStage(lead.stage || 'nuevo')) !== -1) {
+              await db().from('leads').update({ stage: 'visita_agendada' }).eq('id', lead.id);
+            }
             await db().from('visits').insert([{
               property_id: propId,
               client_name: lead.full_name || '',
@@ -1145,8 +1351,8 @@ if (search) search.addEventListener('input', function () {
       _page = 1;
       if (_viewMode === 'owners') {
         _ownerSearch = search.value;
-        var c = $id('crmLeadList');
-        if (c) renderOwnerList(c);
+        _page = 1;
+        loadOwners();
       } else {
         loadLeads();
       }
@@ -1184,6 +1390,22 @@ if (search) search.addEventListener('input', function () {
     stSel.dataset.filled = '1';
     stSel.innerHTML = '<option value="">Todos los estados</option>' +
       LEAD_STATUSES.map(function (s) { return '<option value="' + s + '">' + STATUS_LABELS[s] + '</option>'; }).join('');
+  }
+  var trashBtn = $id('crmTrashToggle');
+  if (trashBtn && !trashBtn.dataset.bound) {
+    trashBtn.dataset.bound = '1';
+    trashBtn.addEventListener('click', function () {
+      _showTrash = !_showTrash;
+      _page = 1;
+      closeDetailPanel();
+      trashBtn.classList.toggle('is-active', _showTrash);
+      trashBtn.innerHTML = _showTrash
+        ? '<i class="fas fa-arrow-left"></i> Volver a activos'
+        : '<i class="fas fa-trash-can"></i> Papelera';
+      var stFilter = $id('crmStatusFilter');
+      if (stFilter) stFilter.disabled = _showTrash;
+      loadLeads();
+    });
   }
   _bindViewModeToggle();
   loadAgents().then(function () { return loadLeads(); });
@@ -1369,7 +1591,7 @@ var rr = await db().from('owner_tasks').insert([{
 
 /* ctypes */
 
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners };
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, waNumber: waNumber, telNumber: telNumber };
 
 /* --- Generación de token portal desde CRM (en modo propietarios) --- */
 (function () {
@@ -1477,16 +1699,37 @@ window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open:
 })();
 window.initCrm = init;
 
-var VISIT_STATUS_LABELS = { pendiente: 'Pendiente', confirmada: 'Confirmada', completada: 'Completada', cancelada: 'Cancelada' };
+var VISIT_STATUS_LABELS = { pendiente: 'Pendiente', confirmada: 'Confirmada', en_curso: 'En curso', completada: 'Completada', cancelada: 'Cancelada' };
 
-async function updateVisitStatus(visitId, newStatus, leadId, panel) {
+async function updateVisitStatus(visitId, newStatus, leadId, panel, cancelReason) {
   try {
     var patch = { status: newStatus };
-    if (newStatus === 'completada') { patch.check_out = new Date().toISOString(); patch.confirmed_at = new Date().toISOString(); }
-    if (newStatus === 'confirmada') patch.confirmed_at = new Date().toISOString();
+    var nowIso = new Date().toISOString();
+    if (newStatus === 'confirmada') patch.confirmed_at = nowIso;
+    if (newStatus === 'completada') { patch.check_out = nowIso; patch.confirmed_at = nowIso; }
+    if (newStatus === 'en_curso') patch.check_in = nowIso;
+    if (newStatus === 'cancelada' && cancelReason) patch.cancel_reason = cancelReason;
     var r = await db().from('visits').update(patch).eq('id', visitId);
     if (r.error) throw new Error(r.error.message);
     if (newStatus === 'completada') { try { await db().from('leads').update({ stage: 'visita_realizada' }).eq('id', leadId); } catch (e) { console.warn('[crm] stage after visita:', e.message); } }
+    if (newStatus === 'completada') {
+      var outcome = prompt('¿Cómo salió la visita? (opcional)');
+      if (outcome && outcome.trim()) {
+        try {
+          await db().from('lead_activities').insert([{ lead_id: leadId, activity_type: 'note', title: 'Resultado de la visita', description: outcome.trim() }]);
+        } catch (_) {}
+      }
+    }
+    if ((newStatus === 'cancelada' || newStatus === 'confirmada') && leadId) {
+      try {
+        await db().from('lead_activities').insert([{
+          lead_id: leadId,
+          activity_type: 'note',
+          title: newStatus === 'confirmada' ? 'Visita confirmada (panel)' : 'Visita cancelada (panel)',
+          description: (cancelReason || '').trim() || null
+        }]);
+      } catch (_) {}
+    }
     toast('Visita ' + (VISIT_STATUS_LABELS[newStatus] || newStatus).toLowerCase() + '.', 'success');
     closeDetailPanel();
     openDetailPanel(leadId);
@@ -1498,8 +1741,17 @@ async function rescheduleVisit(visitId, leadId, panel) {
   var input = prompt('Nueva fecha y hora (YYYY-MM-DDTHH:mm):');
   if (!input) return;
   try {
+    var prev = await db().from('visits').select('visit_date').eq('id', visitId).single();
     var r = await db().from('visits').update({ visit_date: new Date(input).toISOString(), status: 'pendiente' }).eq('id', visitId);
     if (r.error) throw new Error(r.error.message);
+    try {
+      await db().from('lead_activities').insert([{
+        lead_id: leadId,
+        activity_type: 'note',
+        title: 'Visita reprogramada',
+        description: (prev.data ? fmtDateTime(prev.data.visit_date) : '?') + ' → ' + fmtDateTime(new Date(input).toISOString())
+      }]);
+    } catch (_) {}
     toast('Visita reprogramada.', 'success');
     closeDetailPanel(); openDetailPanel(leadId);
     await loadLeads();
@@ -1513,10 +1765,61 @@ function bindAgendaActions(panel, leadId) {
       var act = this.dataset.visitAction;
       if (act === 'confirm') updateVisitStatus(vid, 'confirmada', leadId, panel);
       else if (act === 'complete') updateVisitStatus(vid, 'completada', leadId, panel);
-      else if (act === 'cancel') { if (confirm('Cancelar esta visita?')) updateVisitStatus(vid, 'cancelada', leadId, panel); }
+      else if (act === 'start') updateVisitStatus(vid, 'en_curso', leadId, panel);
+      else if (act === 'duplicate') duplicateVisit(vid, leadId, panel);
+      else if (act === 'cancel') {
+        var reason = prompt('Motivo de la cancelación (opcional):');
+        if (reason === null) return;
+        if (!confirm('Cancelar esta visita?')) return;
+        updateVisitStatus(vid, 'cancelada', leadId, panel, reason.trim() || null);
+      }
       else if (act === 'reschedule') rescheduleVisit(vid, leadId, panel);
     });
   });
+}
+
+async function duplicateVisit(vid, leadId, panel) {
+  try {
+    var r = await db().from('visits').select('*').eq('id', vid).single();
+    if (r.error || !r.data) throw new Error(r.error && r.error.message);
+    var v = r.data;
+    var copy = {
+      property_id: v.property_id,
+      lead_id: v.lead_id,
+      client_name: v.client_name,
+      client_phone: v.client_phone,
+      client_email: v.client_email,
+      agent_id: v.agent_id,
+      duration_minutes: v.duration_minutes,
+      notes: v.notes,
+      status: 'pendiente',
+      visit_date: new Date(new Date(v.visit_date).getTime() + 7 * 86400000).toISOString(),
+      confirmation_token: crypto.randomUUID()
+    };
+    var ins = await db().from('visits').insert([copy]);
+    if (ins.error) throw new Error(ins.error.message);
+    toast('Visita duplicada para la semana siguiente.', 'success');
+    closeDetailPanel(); openDetailPanel(leadId);
+    await loadLeads();
+  } catch (e) { toast('Error: ' + e.message, 'error'); }
+}
+
+function bindQuickTask(panel, leadId) {
+  var inp = panel.querySelector('#crmQuickTask');
+  var btn = panel.querySelector('#crmQuickTaskBtn');
+  if (!inp || !btn) return;
+  async function go() {
+    var v = inp.value.trim();
+    if (!v || !window.CrmTasks || !window.CrmTasks.createQuick) return;
+    var ok = await window.CrmTasks.createQuick(leadId, v);
+    if (ok) {
+      inp.value = '';
+      await loadLeads();
+      openDetailPanel(leadId);
+    }
+  }
+  btn.addEventListener('click', go);
+  inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
 }
 
 var __qaMenuDocBound = false;
@@ -1548,7 +1851,7 @@ async function doCompleteTlTask(item, leadId, panel) {
   var taskId = item.getAttribute('data-task-id');
   if (!taskId || !window.CrmTasks || !window.CrmTasks.completeTask) return;
   try {
-    await window.CrmTasks.completeTask(taskId, item);
+    await window.CrmTasks.completeTask(taskId, item, panel);
     item.classList.add('crm-tl-task--done');
     var chip = item.querySelector('.crm-tl-status');
     if (chip) { chip.textContent = 'Completada'; chip.classList.add('crm-tl-status--done'); }
@@ -1613,11 +1916,16 @@ function buildUnifiedTimeline(activities, visits, tasks) {
     var isPast = !isNaN(dt) && dt < Date.now();
     var vencida = isPast && (st === 'pendiente' || st === 'confirmada');
     var actions = '';
-    if (st === 'pendiente') actions += '<button class="crm-visit-btn" data-visit-action="confirm" data-visit-id="' + v.id + '" style="color:var(--success);"><i class="fas fa-check"></i></button>';
+    if (st === 'pendiente') actions += '<button class="crm-visit-btn" data-visit-action="confirm" data-visit-id="' + v.id + '" title="Confirmar" style="color:var(--success);"><i class="fas fa-check"></i></button>';
     if (st === 'pendiente' || st === 'confirmada') {
-      actions += '<button class="crm-visit-btn" data-visit-action="reschedule" data-visit-id="' + v.id + '" style="color:var(--warning);"><i class="fas fa-clock"></i></button>';
-      actions += '<button class="crm-visit-btn" data-visit-action="cancel" data-visit-id="' + v.id + '" style="color:var(--danger);"><i class="fas fa-times"></i></button>';
-      actions += '<button class="crm-visit-btn" data-visit-action="complete" data-visit-id="' + v.id + '" style="color:var(--accent);"><i class="fas fa-check-double"></i></button>';
+      actions += '<button class="crm-visit-btn" data-visit-action="start" data-visit-id="' + v.id + '" title="Iniciar visita" style="color:#60a5fa;"><i class="fas fa-play"></i></button>';
+      actions += '<button class="crm-visit-btn" data-visit-action="complete" data-visit-id="' + v.id + '" title="Completar" style="color:var(--accent);"><i class="fas fa-check-double"></i></button>';
+      actions += '<button class="crm-visit-btn" data-visit-action="reschedule" data-visit-id="' + v.id + '" title="Reprogramar" style="color:var(--warning);"><i class="fas fa-clock"></i></button>';
+      actions += '<button class="crm-visit-btn" data-visit-action="duplicate" data-visit-id="' + v.id + '" title="Duplicar visita" style="color:var(--text-secondary);"><i class="fas fa-copy"></i></button>';
+      actions += '<button class="crm-visit-btn" data-visit-action="cancel" data-visit-id="' + v.id + '" title="Cancelar" style="color:var(--danger);"><i class="fas fa-times"></i></button>';
+    }
+    if (st === 'en_curso') {
+      actions += '<button class="crm-visit-btn" data-visit-action="complete" data-visit-id="' + v.id + '" title="Finalizar y completar" style="color:var(--accent);"><i class="fas fa-flag-checkered"></i></button>';
     }
     items.push({
       _ts: v.visit_date,

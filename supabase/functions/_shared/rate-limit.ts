@@ -40,6 +40,7 @@ export const RATE_LIMIT_CONFIG = {
     'ml-portal-status': { requests: 60, windowMs: 60_000 }, // 60/min - polling de estado desde el panel
     'ml-disconnect': { requests: 5, windowMs: 60_000 }, // 5/min - desconexion OAuth
     'ml-sync-import': { requests: 2, windowMs: 60_000 }, // 2/min - importacion full ML -> BH (cron/admin)
+    'contact-submit': { requests: 5, windowMs: 3_600_000 }, // 5/h por IP - formulario público
 } as const;
 
 export type RateLimitFnName = keyof typeof RATE_LIMIT_CONFIG;

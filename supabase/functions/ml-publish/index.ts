@@ -585,12 +585,16 @@ Deno.serve(async (req) => {
             // update
             const defaults = await fetchDefaults();
             const payload = buildItemPayload(property, defaults);
+            // ML no acepta redefinir listing_type_id/category_id en un ítem ya publicado.
+            const updatePayload = { ...(payload as Record<string, unknown>) };
+            delete updatePayload.listing_type_id;
+            delete updatePayload.category_id;
             const mlImageUrls = await prepareImagesForML(accessToken, property.images);
             if (mlImageUrls.length > 0) {
-                payload.pictures = mlImageUrls.map((url) => ({ source: url }));
+                updatePayload.pictures = mlImageUrls.map((url) => ({ source: url }));
             }
 
-            const item = await updateMlItem(accessToken, mlItemId, payload as Record<string, unknown>);
+            const item = await updateMlItem(accessToken, mlItemId, updatePayload);
             if (property.description) {
                 await setDescription(accessToken, item.id, property.description);
             }

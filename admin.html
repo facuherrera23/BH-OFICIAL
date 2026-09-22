@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>  <meta charset="UTF-8" />  <meta name="viewport" content="width=device-width, initial-scale=1.0" />  <title>BIENENHAUS PROPIEDADES | Panel de Control & CRM</title>  <meta name="robots" content="noindex, nofollow" />  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">  <meta http-equiv="Pragma" content="no-cache">  <meta http-equiv="Expires" content="0">  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://*.supabase.co https://r.ldngts.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://*.cloudinary.com https://images.unsplash.com https://*.supabase.co https://res.cloudinary.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.mercadolibre.com https://api.telegram.org https://api.cloudinary.com https://r.ldngts.com https://static.cloudflareinsights.com https://api.cloudflareinsights.com; frame-src 'self';" />  <meta name="theme-color" content="#020305" />  <link rel="icon" href="/assets/images/favicon.ico">  <script nonce="bienenhaus2024">    (function() {      document.documentElement.setAttribute('csp-nonce', 'bienenhaus2024');    })();  </script>  <meta name="theme-color" content="#020305" />  <link rel="icon" href="/assets/images/favicon.ico">
 <!-- Google Fonts -->
@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 <!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-<link rel="stylesheet" href="assets/css/admin.css?v=94" />
+<link rel="stylesheet" href="assets/css/admin.css?v=107" />
 </head>
 <body class="is-loading">
 <!-- PRELOADER LUXURY -->
@@ -99,6 +99,14 @@
 </div>
 <span class="nav-badge" id="sideBadgeLeads">0 Activos</span>
 </div>
+<div class="nav-item" data-tab="tab-propietarios">
+<div class="nav-item-left">
+<i class="fas fa-handshake">
+</i>
+<span>Propietarios</span>
+</div>
+<span class="nav-badge" id="sideBadgeOwners">0</span>
+</div>
 <div class="nav-item" data-tab="tab-agenda">
 <div class="nav-item-left">
 <i class="fas fa-calendar-check">
@@ -133,14 +141,6 @@
 </i>
 <span>Agentes & Brokers</span>
 </div>
-</div>
-<div class="nav-item" data-tab="tab-propietarios">
-<div class="nav-item-left">
-<i class="fas fa-users">
-</i>
-<span>Propietarios</span>
-</div>
-<span class="nav-badge" id="sideBadgeOwners">0</span>
 </div>
 <div class="nav-item" data-tab="tab-chat-redes">
 <div class="nav-item-left">
@@ -178,7 +178,7 @@
 </i>
 <span style="font-weight:600;">Centro de Supervisión</span>
 </div>
-<span class="nav-badge" id="sideBadgeSupervision" style="background:rgba(239,68,68,0.15); color:var(--danger);">0</span>
+<span class="nav-badge" id="sideBadgeSupervision" style="background:rgba(239,68,68,0.15); color:var(--danger); display:none;">0</span>
 </div>
 </nav>
 <div class="sidebar-footer">
@@ -248,6 +248,10 @@
 <div class="content-area">
 <!-- 1. DASHBOARD PRINCIPAL -->
 <section class="tab-module is-active" id="tab-dashboard">
+<div style="display:flex; align-items:center; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
+<span id="dashLastUpdated" style="color:var(--text-dim); font-size:12px;"></span>
+<button class="status-pill" id="dashRefreshBtn" title="Refrescar dashboard"><i class="fas fa-rotate"></i> Refrescar</button>
+</div>
 <div class="quick-actions-bar">
 <div class="quick-action-chip" data-action="openPropertyModal">
 <i class="fas fa-plus-circle">
@@ -354,9 +358,11 @@
 <h2 class="panel-title">Evolución de Consultas &amp; Ventas</h2>
 <p style="color:var(--text-muted); font-size:12px;">Comportamiento mensual de interesados vs operaciones.</p>
 </div>
+<span class="status-pill" id="chartPrevYear" title="Año anterior" style="cursor:pointer;"><i class="fas fa-chevron-left"></i></span>
 <span class="status-pill active" id="chartYearPill">
 <i class="fas fa-calendar">
 </i> 2026</span>
+<span class="status-pill" id="chartNextYear" title="Año siguiente" style="cursor:pointer;"><i class="fas fa-chevron-right"></i></span>
 </div>
 <div id="consultasVentasChart">
 <p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Cargando evolución...</p>
@@ -416,19 +422,53 @@
 <p style="color:var(--text-muted); font-size:12.5px;">Gestión en tiempo real de fichas técnicas y precios.</p>
 </div>
 <div style="display:flex; gap:10px;">
-<input type="text" id="propSearchInput" placeholder="Filtrar por título o zona..." style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); padding:8px 14px; border-radius:var(--radius-sm); font-size:13px; outline:none; color:#fff;" />
+<input type="text" id="propSearchInput" placeholder="Buscar título, zona, código o dirección..." style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); padding:8px 14px; border-radius:var(--radius-sm); font-size:13px; outline:none; color:#fff;" />
 <button class="btn-luxury-action" data-action="exportPropertiesCSV" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV">
 <i class="fas fa-download">
 </i> CSV</button>
+<button class="btn-luxury-action" id="propTrashToggle" title="Ver propiedades eliminadas (recuperables)" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);">
+<i class="fas fa-trash-can"></i> Papelera</button>
 <button class="btn-luxury-action" id="btnNewProp">
 <i class="fas fa-plus">
-</i> Publicar</button>
+</i> Nueva propiedad</button>
 </div>
+</div>
+<div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center;">
+<select id="propStatusFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:7px 12px; color:#fff; font-size:12.5px;">
+<option value="">Todas las operaciones</option>
+<option value="venta">Venta</option>
+<option value="alquiler">Alquiler</option>
+<option value="vendido">Vendido</option>
+<option value="alquilado">Alquilado</option>
+<option value="pausado">Pausado</option>
+</select>
+<select id="propPubFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:7px 12px; color:#fff; font-size:12.5px;">
+<option value="">Publicadas y borradores</option>
+<option value="published">Solo publicadas</option>
+<option value="draft">Solo borradores</option>
+</select>
+<select id="propAgentFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:7px 12px; color:#fff; font-size:12.5px;">
+<option value="">Todos los brokers</option>
+</select>
+</div>
+<div id="propBulkBar" class="props-bulk-bar">
+<span id="propBulkCount" class="props-bulk-count"></span>
+<select id="propBulkAgentSelect" class="props-bulk-select">
+<option value="">Asignar broker...</option>
+</select>
+<button type="button" class="props-bulk-btn" id="propBulkAssign"><i class="fas fa-user-tie"></i> Asignar</button>
+<button type="button" class="props-bulk-btn props-bulk-publish" id="propBulkPublish"><i class="fas fa-globe"></i> Publicar</button>
+<button type="button" class="props-bulk-btn props-bulk-draft" id="propBulkUnpublish"><i class="fas fa-eye-slash"></i> Pasar a borrador</button>
+<button type="button" class="props-bulk-btn props-bulk-clear" id="propBulkClear"><i class="fas fa-xmark"></i> Quitar selección</button>
 </div>
 <div class="table-responsive">
-<table class="luxury-table">
+<table class="luxury-table props-table">
+<colgroup>
+<col class="col-check" /><col class="col-code" /><col class="col-prop" /><col class="col-surf" /><col class="col-rooms" /><col class="col-price" /><col class="col-op" /><col class="col-owner" /><col class="col-state" /><col class="col-act" />
+</colgroup>
 <thead>
 <tr>
+<th style="width:32px;"><input type="checkbox" id="propSelectAll" title="Seleccionar todas las visibles" /></th>
 <th>Código</th>
 <th>Inmueble</th>
 <th>Superficie</th>
@@ -476,6 +516,8 @@
 <button class="btn-luxury-action" id="crmModeToggle" style="background:rgba(31,200,195,0.12); border:1px solid rgba(31,200,195,0.35); color:var(--accent); margin-right:8px;" title="Cambiar a vista Propietarios"><i class="fas fa-user-tie"></i> Propietarios</button>
 <button class="btn-luxury-action" data-action="exportLeadsCSV" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar CSV">
 <i class="fas fa-download"></i> CSV</button>
+<button class="btn-luxury-action" id="crmTrashToggle" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Ver prospectos eliminados (baja lógica, recuperables)">
+<i class="fas fa-trash-can"></i> Papelera</button>
 <button class="btn-luxury-action" id="btnNewLead">+ Agregar Lead</button>
 <button class="btn-luxury-action" id="btnNewOwnerCrm" style="display:none;" title="Registrar nuevo propietario"><i class="fas fa-user-plus"></i> Registrar Propietario</button>
 <button class="btn-luxury-action" id="btnGenerateTokenCrm" style="display:none; background:rgba(139,92,246,0.12); border:1px solid rgba(139,92,246,0.35); color:#a78bfa;" title="Generar token de acceso al portal"><i class="fas fa-key"></i> + Token</button>
@@ -513,6 +555,14 @@
 <button class="btn-luxury-action" id="btnNewVisit">+ Agendar Visita</button>
 </div>
 </div>
+<div id="agendaKpis" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:16px;">
+<div class="crm-kpi"><span class="crm-kpi-label">Hoy</span><span class="crm-kpi-value" id="agendaKpiHoy">0</span></div>
+<div class="crm-kpi"><span class="crm-kpi-label">Esta semana</span><span class="crm-kpi-value" id="agendaKpiSemana">0</span></div>
+<div class="crm-kpi"><span class="crm-kpi-label">Sin confirmar</span><span class="crm-kpi-value crm-kpi--lost" id="agendaKpiSinConfirmar">0</span></div>
+<div class="crm-kpi"><span class="crm-kpi-label">Hechas este mes</span><span class="crm-kpi-value crm-kpi--win" id="agendaKpiMes">0</span></div>
+<div class="crm-kpi"><span class="crm-kpi-label">Vencidas sin cierre</span><span class="crm-kpi-value crm-kpi--lost" id="agendaKpiVencidas">0</span></div>
+<div class="crm-kpi"><span class="crm-kpi-label">Asistencia (mes)</span><span class="crm-kpi-value" id="agendaKpiAsistencia">—</span></div>
+</div>
 <!-- Vista Calendario -->
 <div id="visitsCalendarView">
 <div class="calendar-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
@@ -529,6 +579,10 @@
 <button class="status-pill" id="calTodayBtn" style="margin-left:auto;">
 <i class="fas fa-calendar-day">
 </i> Hoy</button>
+<button class="status-pill" id="calShareDayBtn" title="Compartir la agenda del día por WhatsApp" style="background:rgba(37,211,102,0.08); border-color:rgba(37,211,102,0.3); color:#25D366;">
+<i class="fab fa-whatsapp"></i> Compartir día</button>
+<button class="status-pill" id="calPrintBtn" title="Imprimir la vista actual">
+<i class="fas fa-print"></i> Imprimir</button>
 </div>
 <div class="cal-view-switcher" id="calViewSwitcher" style="display:flex; gap:6px;">
 <button class="status-pill active" id="calViewMonthBtn" title="Vista mes">Mes</button>
@@ -539,10 +593,11 @@
 <select id="calStatusFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
 <option value="">Todos los estados</option>
 <option value="pendiente">Pendiente</option>
-<option value="en_progreso">En progreso</option>
+<option value="en_curso">En curso</option>
 <option value="confirmada">Confirmada</option>
 <option value="completada">Completada</option>
 <option value="cancelada">Cancelada</option>
+<option value="eliminada">🗑 Eliminadas</option>
 </select>
 <select id="calTypeFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
 <option value="">Todos los tipos</option>
@@ -565,13 +620,13 @@
 </div>
 <div class="calendar-grid" id="calendarGrid" style="display:grid; grid-template-columns:repeat(7, 1fr); gap:4px;">
 <!-- Días de la semana -->
-<div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Dom</div>
 <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Lun</div>
 <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Mar</div>
 <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Mié</div>
 <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Jue</div>
 <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Vie</div>
 <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Sáb</div>
+<div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Dom</div>
 <!-- Los días se insertan aquí via JS -->
 </div>
 <!-- Vista Semana -->
@@ -648,6 +703,8 @@
 </div>
 <div style="display:flex; gap:10px; flex-wrap:wrap;">
 <input type="text" id="ownerSearchInput" placeholder="Buscar por nombre, CUIT o inmueble..." style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); padding:8px 14px; border-radius:var(--radius-sm); font-size:13px; outline:none; min-width:240px; color:#fff;" />
+<button class="status-pill" id="ownerTrashToggle" title="Ver propietarios eliminados (baja lógica)">
+<i class="fas fa-trash-can"></i> Papelera</button>
 <button class="status-pill" id="btnExportOwnersCSV" title="Exportar a Excel (CSV)">
 <i class="fas fa-file-csv">
 </i> .csv</button>
@@ -1805,123 +1862,226 @@
 </div>
 </section>
 <!-- ============================================================     SUPERVISION CENTER — tab-supervision     ============================================================ -->
-<section class="tab-module" id="tab-supervision">  <header class="tab-header">    <h2 style="font-family:var(--font-heading); font-size:24px; color:#fff; margin:0;">Centro de Supervisión</h2>    <p style="color:var(--text-muted); font-size:13px; margin:4px 0 0;">Auditoría · Uso · Seguridad · Alertas</p>  </header>  <!-- Toolbar -->  <div class="supervision-toolbar" style="display:flex; gap:12px; flex-wrap:wrap; margin:16px 0; padding:16px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px;">    <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">      <label style="font-size:12px; color:var(--text-dim);">Desde</label>      <input type="date" id="supFromDate" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px;">    </div>    <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">      <label style="font-size:12px; color:var(--text-dim);">Hasta</label>      <input type="date" id="supToDate" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px;">    </div>    <div style="flex:1;">
-</div>    <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">      <select id="supModuleFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:180px;">        <option value="">Todos los módulos</option>      </select>      <select id="supUserFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:180px;">        <option value="">Todos los usuarios</option>      </select>      <select id="supSeverityFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:150px;">        <option value="">Todas las severidades</option>        <option value="critical">🔴 Crítica</option>        <option value="high">🟠 Alta</option>        <option value="medium">🟡 Media</option>        <option value="low">🟢 Baja</option>        <option value="info">ℹ️ Info</option>      </select>      <select id="supTimezoneFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:150px;" title="Zona horaria para mostrar fechas">        <option value="America/Argentina/Cordoba">🌎 AR (Córdoba)</option>        <option value="UTC">🌐 UTC</option>      </select>    </div>    <div class="toolbar-group" style="display:flex; gap:8px;">      <button type="button" class="btn-luxury-action" id="supRefreshBtn">
-<i class="fas fa-arrows-rotate">
-</i> Actualizar</button>      <button type="button" class="status-pill active" id="supAutoRefreshBtn" style="background:rgba(31,200,195,0.15); color:var(--accent);">
-<i class="fas fa-broadcast-tower">
-</i> <span id="supAutoRefreshText">Realtime ON</span>
-</button>      <button type="button" class="status-pill pending" id="supExportBtn" data-action="exportSupOverviewCSV">
-<i class="fas fa-file-export">
-</i> Exportar CSV</button>      <button type="button" class="status-pill pending" id="supExportAlertsBtn" style="display:none;" data-action="exportSupAlertsCSV">
-<i class="fas fa-file-export">
-</i> Exportar Alertas</button>      <button type="button" class="status-pill pending" id="supExportUsersBtn" style="display:none;" data-action="exportSupUsersCSV">
-<i class="fas fa-file-export">
-</i> Exportar Usuarios</button>      <button type="button" class="status-pill pending" id="supExportModulesBtn" style="display:none;" data-action="exportSupModulesCSV">
-<i class="fas fa-file-export">
-</i> Exportar Módulos</button>      <button type="button" class="status-pill pending" id="supExportAnomaliesBtn" style="display:none;" data-action="exportAnomaliesCSV">
-<i class="fas fa-file-export">
-</i> Exportar Anomalías</button>      <button type="button" class="btn-action" id="supAuditLoadMore" style="display:none;" data-action="loadMoreSupAudit">
-<i class="fas fa-chevron-down">
-</i> Cargar más</button>    </div>  </div>  <!-- Sub-tabs: 9 vistas -->  <div class="supervision-subtabs" style="display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid var(--border-subtle); padding-bottom:4px; overflow-x:auto;">    <button class="sup-subtab is-active" data-view="overview" style="padding:10px 16px; background:rgba(31,200,195,0.1); color:var(--accent); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Resumen</button>    <button class="sup-subtab" data-view="executive" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Ejecutivo</button>    <button class="sup-subtab" data-view="activity" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Actividad</button>    <button class="sup-subtab" data-view="users" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Usuarios</button>    <button class="sup-subtab" data-view="modules" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Módulos</button>    <button class="sup-subtab" data-view="alerts" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Alertas</button>    <button class="sup-subtab" data-view="anomalies" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Anomalías</button>    <button class="sup-subtab" data-view="audit" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Auditoría</button>    <button class="sup-subtab" data-view="rules" style="padding:10px 16px; background:transparent; color:var(--text-muted); border:none; border-radius:8px 8px 0 0; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">Reglas</button>  </div>  <!-- VISTA 1: RESUMEN (KPIs) -->  <div class="sup-view is-active" id="supView-overview" style="display:block;">    <div class="kpi-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:24px;">      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Usuarios Activos</div>        <div id="kpiActiveUsers" style="font-family:var(--font-heading); font-size:36px; color:#fff; font-weight:700;">👥</div>      </div>      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Acciones Hoy</div>        <div id="kpiActionsToday" style="font-family:var(--font-heading); font-size:36px; color:#fff; font-weight:700;">⚡</div>      </div>      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Exitosas</div>        <div id="kpiSuccess" style="font-family:var(--font-heading); font-size:36px; color:var(--success); font-weight:700;">✅</div>      </div>      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Fallidas</div>        <div id="kpiErrors" style="font-family:var(--font-heading); font-size:36px; color:var(--danger); font-weight:700;">❌</div>      </div>      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Sensibles</div>        <div id="kpiSensitive" style="font-family:var(--font-heading); font-size:36px; color:var(--warning); font-weight:700;">🔐</div>      </div>      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Alertas Abiertas</div>        <div id="kpiOpenAlerts" style="font-family:var(--font-heading); font-size:36px; color:var(--accent); font-weight:700;">🔔</div>      </div>      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Críticas</div>        <div id="kpiCriticalAlerts" style="font-family:var(--font-heading); font-size:36px; color:#EF4444; font-weight:700;">🔴</div>      </div>      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Exportaciones</div>        <div id="kpiExports" style="font-family:var(--font-heading); font-size:36px; color:#F59E0B; font-weight:700;">📤</div>      </div>      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Ops. Masivas</div>        <div id="kpiBulkOps" style="font-family:var(--font-heading); font-size:36px; color:#8B5CF6; font-weight:700;">⚙️</div>      </div>    </div>    <!-- Rankings -->    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:16px;">      <div class="ranking-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Actividad por Usuario</h3>        <div id="rankingUsers" style="font-size:13px; color:var(--text-secondary);">Cargando...</div>      </div>      <div class="ranking-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Actividad por Módulo</h3>        <div id="rankingModules" style="font-size:13px; color:var(--text-secondary);">Cargando...</div>      </div>      <div class="ranking-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Errores por Usuario</h3>        <div id="rankingErrors" style="font-size:13px; color:var(--text-secondary);">Cargando...</div>      </div>      <div class="ranking-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Acciones Sensibles</h3>        <div id="rankingSensitive" style="font-size:13px; color:var(--text-secondary);">Cargando...</div>      </div>    </div>  </div>  <!-- VISTA EJECUTIVA: DASHBOARD EJECUTIVO -->  <div class="sup-view" id="supView-executive" style="display:none;">    <header class="tab-header" style="margin-bottom:16px;">      <h2 style="font-family:var(--font-heading); font-size:24px; color:#fff; margin:0;">Dashboard Ejecutivo</h2>      <p style="color:var(--text-muted); font-size:13px; margin:4px 0 0;">KPIs cruzados · Tendencias · Alertas estratégicas</p>    </header>    <!-- Toolbar ejecutivo -->    <div class="supervision-toolbar" style="display:flex; gap:12px; flex-wrap:wrap; margin:16px 0; padding:16px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px;">      <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">        <label style="font-size:12px; color:var(--text-dim);">Desde</label>        <input type="date" id="execFromDate" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px;">      </div>      <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">        <label style="font-size:12px; color:var(--text-dim);">Hasta</label>        <input type="date" id="execToDate" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px;">      </div>      <div style="flex:1;">
-</div>      <div class="toolbar-group" style="display:flex; gap:8px;">        <button type="button" class="btn-luxury-action" id="execRefreshBtn">
-<i class="fas fa-arrows-rotate">
-</i> Actualizar</button>        <button type="button" class="status-pill pending" id="execExportBtn">
-<i class="fas fa-file-export">
-</i> Exportar CSV</button>      </div>    </div>    <!-- KPIs Principales -->    <div class="kpi-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:24px;">      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Conversión Lead→Cierre</div>        <div id="execConvRate" style="font-family:var(--font-heading); font-size:36px; color:var(--accent); font-weight:700;">🎯</div>        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">Lead→Visita→Cierre</div>      </div>      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Tiempo Medio Cierre</div>        <div id="execAvgCloseTime" style="font-family:var(--font-heading); font-size:36px; color:#3B82F6; font-weight:700;">⏱️</div>        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">Días desde lead→cierre</div>      </div>      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Cartera Venta</div>        <div id="execPortfolioVenta" style="font-family:var(--font-heading); font-size:36px; color:var(--success); font-weight:700;">🏷️</div>        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">USD en propiedades en venta</div>      </div>      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Cartera Alquiler</div>        <div id="execPortfolioAlquiler" style="font-family:var(--font-heading); font-size:36px; color:var(--success); font-weight:700;">🏠</div>        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">ARS en propiedades en alquiler</div>      </div>      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">ROI Marketing</div>        <div id="execMarketingROI" style="font-family:var(--font-heading); font-size:36px; color:#F59E0B; font-weight:700;">📈</div>        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">Leads/USD invertido</div>      </div>      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Productividad Brokers</div>        <div id="execBrokerProd" style="font-family:var(--font-heading); font-size:36px; color:#8B5CF6; font-weight:700;">📊</div>        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">Cierres/broker activo</div>      </div>      <div class="kpi-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">SLA Respuesta</div>        <div id="execSLAResponse" style="font-family:var(--font-heading); font-size:36px; color:#1FC8C3; font-weight:700;">⏲️</div>        <div style="font-size:11px; color:var(--text-dim); margin-top:4px;">% leads contactados <24h</div>      </div>    </div>    <!-- Tendencias y Rankings -->    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(400px,1fr)); gap:16px; margin-bottom:24px;">      <!-- Tendencia Mensual -->      <div class="exec-chart-card" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Tendencia 12 Meses</h3>        <div id="execTrendChart" style="height:200px;">          <p style="color:var(--text-dim); font-size:12px; text-align:center; padding:40px;">Cargando tendencia...</p>        </div>      </div>      <!-- Top Oportunidades -->      <div class="exec-opportunities" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Top Oportunidades</h3>        <div id="execTopOpps" style="font-size:13px; color:var(--text-secondary);">          <p style="color:var(--text-dim); text-align:center; padding:20px;">Cargando...</p>        </div>      </div>      <!-- Alertas Estratégicas -->      <div class="exec-alerts" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">        <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px;">Alertas Estratégicas</h3>        <div id="execStrategicAlerts" style="font-size:13px; color:var(--text-secondary);">          <p style="color:var(--text-dim); text-align:center; padding:20px;">Cargando...</p>        </div>      </div>    </div>    <!-- Tabla Resumen Mensual -->    <div class="exec-monthly-table" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; overflow:hidden;">      <h3 style="font-size:14px; color:var(--accent); margin:0 0 16px; padding:16px 20px; border-bottom:1px solid var(--border-subtle);">Resumen Mensual</h3>      <table style="width:100%; border-collapse:collapse; font-size:12px;">        <thead style="background:rgba(255,255,255,0.03);">          <tr>            <th style="padding:12px 16px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Mes</th>            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Leads</th>            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Visitas</th>            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Cierres</th>            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Volumen (USD)</th>            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Conv. %</th>            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">T. Cierre (días)</th>            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Ticket Prom.</th>          </tr>        </thead>        <tbody id="execMonthlyTableBody">          <tr>
-<td colspan="8" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td>
-</tr>        </tbody>      </table>    </div>  </div>  <!-- VISTA 2: ACTIVIDAD EN VIVO -->  <div class="sup-view" id="supView-activity" style="display:none;">    <div style="display:flex; gap:12px; margin-bottom:12px; flex-wrap:wrap;">      <div class="toolbar-group" style="display:flex; gap:8px; align-items:center; flex:1; min-width:250px;">        <label style="font-size:12px; color:var(--text-dim);">Buscar</label>        <input type="text" id="supActivitySearch" placeholder="Filtrar por usuario, acción, módulo, metadata..." style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; width:100%;">      </div>      <div style="flex:1;">
-</div>      <div class="toolbar-group" style="display:flex; gap:8px;">        <select id="supActivitySeverityFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px; min-width:150px;">          <option value="">Todas las severidades</option>          <option value="critical">🔴 Crítica</option>          <option value="error">❌ Error</option>          <option value="high">🟠 Alta</option>          <option value="medium">🟡 Media</option>          <option value="low">🟢 Baja</option>          <option value="info">ℹ️ Info</option>          <option value="success">✅ Éxito</option>        </select>      </div>    </div>    <div class="activity-feed" style="max-height:600px; overflow-y:auto; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:16px;">      <div id="activityList" style="font-family:monospace; font-size:12px; line-height:1.8;">        <div style="color:var(--text-dim); text-align:center; padding:40px;">Conectando Realtime…</div>      </div>    </div>  </div>  <!-- VISTA 3: USUARIOS -->  <div class="sup-view" id="supView-users" style="display:none;">    <div class="users-table-wrapper" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; overflow:hidden;">      <table style="width:100%; border-collapse:collapse; font-size:12.5px;">        <thead style="background:rgba(255,255,255,0.03);">          <tr>            <th style="padding:12px 16px; text-align:left; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Empleado</th>            <th style="padding:12px 16px; text-align:left; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Rol</th>            <th style="padding:12px 16px; text-align:left; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Broker</th>            <th style="padding:12px 16px; text-align:left; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Última Actividad</th>            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Acciones</th>            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Errores</th>            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Sensibles</th>            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Exportaciones</th>            <th style="padding:12px 16px; text-align:right; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Alertas</th>            <th style="padding:12px 16px; text-align:center; color:var(--accent); font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Estado</th>          </tr>        </thead>        <tbody id="supUsersTableBody">          <tr>
-<td colspan="10" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td>
-</tr>        </tbody>      </table>    </div>    <!-- Detalle usuario (panel inline) -->    <div id="supUserDetail" style="display:none; margin-top:16px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; padding:20px;">      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">        <h3 id="supUserDetailName" style="font-family:var(--font-heading); font-size:18px; color:#fff; margin:0;">Perfil Operativo</h3>        <button type="button" class="status-pill pending" data-action="closeSupUserDetail">
-<i class="fas fa-times">
-</i> Cerrar</button>      </div>      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px;">        <div class="detail-section">          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Actividad Total</h4>          <div id="udTotalActivity" style="font-size:13px; color:var(--text-secondary);">ℹ️</div>        </div>        <div class="detail-section">          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Por Módulo</h4>          <div id="udByModule" style="font-size:12px; color:var(--text-secondary);">…</div>        </div>        <div class="detail-section">          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Últimos Eventos</h4>          <div id="udRecentEvents" style="font-size:12px; font-family:monospace; color:var(--text-muted); max-height:200px; overflow-y:auto;">📅</div>        </div>        <div class="detail-section">          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Errores</h4>          <div id="udErrors" style="font-size:12px; color:var(--text-secondary);">…</div>        </div>        <div class="detail-section">          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Acciones Sensibles</h4>          <div id="udSensitive" style="font-size:12px; color:var(--text-secondary);">…</div>        </div>        <div class="detail-section">          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Exportaciones</h4>          <div id="udExports" style="font-size:12px; color:var(--text-secondary);">…</div>        </div>        <div class="detail-section">          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Alertas</h4>          <div id="udAlerts" style="font-size:12px; color:var(--text-secondary);">…</div>        </div>        <div class="detail-section">          <h4 style="font-size:12px; color:var(--accent); margin:0 0 12px; text-transform:uppercase;">Comparativas</h4>          <div id="udCompare" style="font-size:12px; color:var(--text-secondary);">ℹ️</div>        </div>      </div>    </div>  </div>  <!-- VISTA 4: MÓDULOS -->  <div class="sup-view" id="supView-modules" style="display:none;">    <div class="modules-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px;">      <!-- Se llena dinámicamente -->    </div>  </div>  <!-- VISTA 5: ALERTAS -->  <div class="sup-view" id="supView-alerts" style="display:none;">    <div class="alerts-table-wrapper" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; overflow:hidden;">      <table style="width:100%; border-collapse:collapse; font-size:12px;">        <thead style="background:rgba(255,255,255,0.03);">          <tr>            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Severidad</th>            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Tipo</th>            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Empleado</th>            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Módulo</th>            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Descripción</th>            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Evidencia</th>            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Fecha</th>            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Estado</th>            <th style="padding:10px 12px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Acciones</th>          </tr>        </thead>        <tbody id="supAlertsTableBody">          <tr>
-<td colspan="10" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td>
-</tr>        </tbody>      </table>    </div>    <div style="display:flex; justify-content:center; margin-top:12px;">      <button type="button" class="btn-action" id="supAlertsLoadMore" style="display:none;" data-action="loadMoreSupAlerts">
-<i class="fas fa-chevron-down">
-</i> Cargar más</button>    </div>  </div>  <!-- VISTA 6: ANOMALÍAS ESTADÍSTICAS -->  <div class="sup-view" id="supView-anomalies" style="display:none;">    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px;">      <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">        <label style="font-size:12px; color:var(--text-dim);">Ventana</label>        <select id="anomTimeWindow" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px;">          <option value="1 hour">1 hora</option>          <option value="15 minutes">15 min</option>          <option value="10 minutes">10 min</option>        </select>      </div>      <div class="toolbar-group" style="display:flex; gap:8px; align-items:center;">        <label style="font-size:12px; color:var(--text-dim);">Severidad mínima</label>        <select id="anomSeverityFilter" style="padding:8px 12px; border:1px solid var(--border-input); border-radius:8px; background:rgba(255,255,255,0.03); color:#fff; font-size:13px;">          <option value="">Todas</option>          <option value="critical">🔴 Crítica</option>          <option value="high">🟠 Alta</option>          <option value="medium">🟡 Media</option>          <option value="low">🟢 Baja</option>          <option value="info">ℹ️ Info</option>        </select>      </div>      <div style="flex:1;">
-</div>      <div class="toolbar-group" style="display:flex; gap:8px;">        <button type="button" class="btn-luxury-action" id="anomRefreshBtn">
-<i class="fas fa-arrows-rotate">
-</i> Actualizar</button>        <button type="button" class="status-pill pending" id="anomExportBtn">
-<i class="fas fa-file-export">
-</i> Exportar CSV</button>      </div>    </div>    <div class="anomalies-table-wrapper" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; overflow:hidden;">      <table style="width:100%; border-collapse:collapse; font-size:11.5px;">        <thead style="background:rgba(255,255,255,0.03);">          <tr>            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Severidad</th>            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Módulo</th>            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Usuario</th>            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Acción</th>            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Métrica</th>            <th style="padding:8px 10px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Ventana</th>            <th style="padding:8px 10px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Observado</th>            <th style="padding:8px 10px; text-align:right; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Esperado</th>            <th style="padding:8px 10px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Z-Score</th>            <th style="padding:8px 10px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Percentil</th>            <th style="padding:8px 10px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Estado</th>            <th style="padding:8px 10px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Acciones</th>          </tr>        </thead>        <tbody id="anomTableBody">          <tr>
-<td colspan="12" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td>
-</tr>        </tbody>      </table>    </div>    <div style="display:flex; justify-content:center; margin-top:12px;">      <button type="button" class="btn-action" id="anomLoadMore" style="display:none;" data-action="loadMoreAnomalies">
-<i class="fas fa-chevron-down">
-</i> Cargar más</button>    </div>  </div>  <!-- VISTA 6: AUDITORÍA AVANZADA -->  <div class="sup-view" id="supView-audit" style="display:none;">    <div class="audit-table-wrapper" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; overflow:hidden;">      <table style="width:100%; border-collapse:collapse; font-size:11.5px;">        <thead style="background:rgba(255,255,255,0.03);">          <tr>            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Fecha</th>            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Usuario</th>            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Rol</th>            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Módulo</th>            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Acción</th>            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Entidad</th>            <th style="padding:8px 10px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Resultado</th>            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">IP</th>            <th style="padding:8px 10px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Request ID</th>          </tr>        </thead>        <tbody id="supAuditTableBody">          <tr>
-<td colspan="9" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td>
-</tr>        </tbody>      </table>    </div>    <!-- Detalle evento (panel lateral) -->    <div id="supAuditDetail" style="display:none; position:fixed; right:0; top:0; bottom:0; width:480px; background:#0f0f0f; border-left:1px solid var(--border-subtle); z-index:1000; padding:20px; overflow-y:auto; box-shadow:-4px 0 30px rgba(0,0,0,0.5);">      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--border-subtle);">        <h3 style="font-family:var(--font-heading); font-size:16px; color:#fff; margin:0;">Detalle del Evento</h3>        <button type="button" class="status-pill pending" data-action="closeSupAuditDetail">
-<i class="fas fa-times">
-</i>
-</button>      </div>      <div id="supAuditDetailContent" style="font-size:12px; color:var(--text-secondary); line-height:1.7;">
-</div>    </div>  </div>  <!-- VISTA 7: REGLAS -->  <div class="sup-view" id="supView-rules" style="display:none;">    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">      <h3 style="font-family:var(--font-heading); font-size:18px; color:#fff; margin:0;">Reglas de Detección</h3>      <button type="button" class="btn-luxury-action" id="supNewRuleBtn">
-<i class="fas fa-plus">
-</i> Nueva Regla</button>    </div>    <div class="rules-table-wrapper" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:12px; overflow:hidden;">      <table style="width:100%; border-collapse:collapse; font-size:12px;">        <thead style="background:rgba(255,255,255,0.03);">          <tr>            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Nombre</th>            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Módulo</th>            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Acción</th>            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Evento</th>            <th style="padding:10px 12px; text-align:left; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Condición</th>            <th style="padding:10px 12px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Severidad</th>            <th style="padding:10px 12px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Cooldown</th>            <th style="padding:10px 12px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Habilitada</th>            <th style="padding:10px 12px; text-align:center; color:var(--accent); font-size:10px; text-transform:uppercase; border-bottom:1px solid var(--border-subtle);">Acciones</th>          </tr>        </thead>        <tbody id="supRulesTableBody">          <tr>
-<td colspan="9" style="padding:40px; text-align:center; color:var(--text-dim);">Cargando...</td>
-</tr>        </tbody>      </table>    </div>    <!-- Modal nueva/editar regla -->    <div class="admin-modal" id="supRuleModal">      <div class="modal-box" style="max-width:520px;">        <h3 id="supRuleModalTitle" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Nueva Regla</h3>        <form id="supRuleForm">          <input type="hidden" name="id" id="supRuleId" />          <div class="form-field">
-<label>Nombre (único) *</label>
-<input type="text" name="name" required placeholder="bulk_export_detection" />
-</div>          <div class="form-field">
-<label>Descripción</label>
-<textarea name="description" placeholder="Detecta exportaciones masivas en 1 hora" rows="2">
-</textarea>
-</div>          <div class="form-grid-2">            <div class="form-field">
-<label>Módulo</label>
-<select name="module" id="supRuleModule">
-<option value="">Todos</option>
-</select>
-</div>            <div class="form-field">
-<label>Acción</label>
-<select name="action" id="supRuleAction">
-<option value="">Todas</option>
-</select>
-</div>            <div class="form-field">
-<label>Tipo Evento</label>
-<select name="event_type" id="supRuleEventType">
-<option value="">Todos</option>
-</select>
-</div>            <div class="form-field">
-<label>Severidad *</label>
-<select name="severity" required>
-<option value="info">Info</option>
-<option value="low">Baja</option>
-<option value="medium" selected>Media</option>
-<option value="high">Alta</option>
-<option value="critical">Crítica</option>
-</select>
-</div>          </div>          <div class="form-grid-2">            <div class="form-field">
-<label>Umbral *</label>
-<input type="number" name="threshold" required min="0" value="30" />
-</div>            <div class="form-field">
-<label>Ventana *</label>
-<select name="window" id="supRuleWindow">
-<option value="1 hour">1 hora</option>
-<option value="10 minutes">10 min</option>
-<option value="15 minutes">15 min</option>
-<option value="30 minutes">30 min</option>
-<option value="24 hours">24 horas</option>
-</select>
-</div>            <div class="form-field">
-<label>Cooldown (min) *</label>
-<input type="number" name="cooldown_minutes" required min="0" value="60" />
-</div>            <div class="form-field">
-<label>Umbral Sigma *</label>
-<input type="number" name="sigma_threshold" step="0.1" min="0.5" max="5" value="2.5" title="Desviaciones estándar para activar alerta" />
-</div>            <div class="form-field">
-<label>Percentil *</label>
-<input type="number" name="percentile_threshold" step="0.1" min="50" max="99.9" value="95" title="Percentil para activar alerta (ej: 95 = p95)" />
-</div>            <div class="form-field" style="margin-top:14px;">              <label class="pf-toggle" for="supRuleEnabled">
-<input type="checkbox" name="enabled" id="supRuleEnabled" checked />
-<span class="toggle-slider">
-</span>
-<span class="toggle-label">Habilitada</span>
-</label>            </div>          </div>          <div class="form-field">
-<label>Filtro JSON (opcional)</label>
-<textarea name="filter_json" id="supRuleFilterJson" rows="4" placeholder='{"field":"changed_fields","contains":"price_usd"}' style="font-family:monospace; font-size:11px;">
-</textarea>
-</div>          <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">            <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>            <button type="button" class="btn-action" id="supRuleSimulateBtn" style="background:rgba(59,130,246,0.15); color:#3B82F6; border:1px solid rgba(59,130,246,0.3);" data-action="simulateSupRule">
-<i class="fas fa-flask">
-</i> Simular</button>            <button type="submit" class="btn-luxury-action" id="supRuleSaveBtn">Guardar Regla</button>          </div>        </form>      </div>    </div>
+<section class="tab-module" id="tab-supervision">
+  <header class="tab-header">
+    <h2 style="font-family:var(--font-heading); font-size:24px; color:#fff; margin:0;">Centro de Supervisión</h2>
+    <p style="color:var(--text-muted); font-size:13px; margin:4px 0 0;">Control total del sistema: quién hizo qué, cuándo y dónde</p>
+  </header>
+
+  <!-- KPI STRIP -->
+  <div id="supKpiStrip" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin:18px 0 22px;">
+    <div class="sup-kpi"><div class="sup-kpi-label">Acciones hoy</div><div class="sup-kpi-num" id="supKpiToday" style="color:#1FC8C3;">—</div><div class="sup-kpi-sub" id="supKpiTodaySub"></div></div>
+    <div class="sup-kpi"><div class="sup-kpi-label">Equipo activo hoy</div><div class="sup-kpi-num" id="supKpiActive" style="color:#10B981;">—</div><div class="sup-kpi-sub" id="supKpiActiveSub"></div></div>
+    <div class="sup-kpi"><div class="sup-kpi-label">Errores (7 días)</div><div class="sup-kpi-num" id="supKpiErrors" style="color:#EF4444;">—</div><div class="sup-kpi-sub" id="supKpiErrorsSub"></div></div>
+    <div class="sup-kpi"><div class="sup-kpi-label">Último movimiento</div><div class="sup-kpi-num" id="supKpiLast" style="color:#fff; font-size:18px;">—</div><div class="sup-kpi-sub" id="supKpiLastSub"></div></div>
+  </div>
+
+  <!-- VIEW TABS -->
+  <div style="display:flex; gap:6px; margin-bottom:20px; border-bottom:1px solid var(--border-subtle); padding-bottom:6px; flex-wrap:wrap;">
+    <button type="button" class="sup-viewtab is-active" id="supTabTeam"><i class="fas fa-users"></i> Equipo</button>
+    <button type="button" class="sup-viewtab" id="supTabFeed"><i class="fas fa-stream"></i> Actividad Global</button>
+    <button type="button" class="sup-viewtab" id="supTabErrors"><i class="fas fa-bug"></i> Errores <span id="supErrorsBadge" style="display:none; background:var(--danger); color:#fff; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:4px;"></span></button>
+    <button type="button" class="sup-viewtab" id="supTabAlerts"><i class="fas fa-bell"></i> Alertas <span id="supAlertsBadge" style="display:none; background:var(--danger); color:#fff; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:4px;"></span></button>
+  </div>
+
+  <!-- ===== VISTA EQUIPO (default) ===== -->
+  <div id="supTeamBoard">
+    <div style="display:flex; gap:12px; align-items:center; margin-bottom:20px; flex-wrap:wrap;">
+      <select id="supRoleFilter" class="sup-filter">
+        <option value="">Todos los roles</option>
+        <option value="super_admin">Super Admin</option>
+        <option value="broker">Broker</option>
+        <option value="agente">Agente</option>
+      </select>
+      <button type="button" class="btn-luxury-action" id="supRefreshBtn" style="padding:8px 16px; font-size:13px;">
+        <i class="fas fa-arrows-rotate"></i> Actualizar
+      </button>
+      <div class="sup-toggle" id="supAutoRefreshToggle" role="switch" aria-checked="false" tabindex="0" title="Actualizar cada 60 segundos">
+        <div class="sup-toggle-track"><div class="sup-toggle-thumb"></div></div>
+        <span>Auto</span>
+      </div>
+      <div style="flex:1;"></div>
+      <button type="button" class="status-pill pending" id="supCopySummaryBtn" style="padding:8px 14px; font-size:12px;">
+        <i class="fas fa-clipboard"></i> Compartir hoy
+      </button>
+      <button type="button" class="status-pill pending" id="supExportBtn" style="padding:8px 14px; font-size:12px;">
+        <i class="fas fa-file-export"></i> Exportar equipo
+      </button>
+    </div>
+    <div id="supDeletesBanner" style="display:none; align-items:center; gap:12px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:12px; padding:12px 18px; margin-bottom:16px;"></div>
+    <div id="supInactiveBanner" style="display:none; align-items:center; gap:12px; background:rgba(250,204,21,0.06); border:1px solid rgba(250,204,21,0.18); border-radius:12px; padding:12px 18px; margin-bottom:16px;"></div>
+    <div id="supTeamGrid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px;">
+      <div style="color:var(--text-dim); text-align:center; padding:60px; grid-column:1/-1;">
+        <i class="fas fa-users" style="font-size:36px; margin-bottom:12px;"></i>
+        <div>Cargando equipo...</div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:14px; margin-top:22px;">
+      <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:16px; padding:18px 20px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+          <h3 style="font-family:var(--font-heading); font-size:15px; color:#fff; margin:0;">Rendimiento de la semana</h3>
+          <span style="font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.5px;">vs semana anterior</span>
+        </div>
+        <div id="supWeekComparison"><div style="color:var(--text-dim); font-size:12px;">Cargando...</div></div>
+      </div>
+      <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:16px; padding:18px 20px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+          <h3 style="font-family:var(--font-heading); font-size:15px; color:#fff; margin:0;">Registros más activos</h3>
+          <span style="font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.5px;">últimos 7 días</span>
+        </div>
+        <div id="supTopEntities"><div style="color:var(--text-dim); font-size:12px;">Cargando...</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== VISTA ACTIVIDAD GLOBAL ===== -->
+  <div id="supGlobalFeedView" style="display:none;">
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; align-items:center;">
+      <span style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.8px;">Eventos:</span>
+      <button type="button" class="sup-chip is-active" id="supFeedHumansOnly"><i class="fas fa-user"></i> Solo personas</button>
+      <span style="font-size:11px; color:var(--text-dim); margin:0 4px;">·</span>
+      <span style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.8px;">Filtros rápidos:</span>
+      <button type="button" class="sup-chip" id="supQuickAll"><i class="fas fa-list"></i> Todas</button>
+      <button type="button" class="sup-chip" id="supQuickDeletes"><i class="fas fa-trash"></i> Eliminaciones</button>
+      <button type="button" class="sup-chip" id="supQuickPrices"><i class="fas fa-dollar-sign"></i> Cambios de precio</button>
+      <button type="button" class="sup-chip" id="supQuickSensitive"><i class="fas fa-eye"></i> Cambios sensibles</button>
+      <button type="button" class="sup-chip" id="supQuickErrors"><i class="fas fa-exclamation-triangle"></i> Solo errores</button>
+    </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; align-items:center;">
+      <select id="supFeedUserFilter" class="sup-filter"><option value="">Todo el equipo</option></select>
+      <select id="supFeedModuleFilter" class="sup-filter">
+        <option value="">Todos los módulos</option>
+        <option value="properties">Propiedades</option>
+        <option value="crm">Leads / CRM</option>
+        <option value="tasaciones">Tasaciones</option>
+        <option value="portales">Mercado Libre</option>
+        <option value="agenda">Visitas / Agenda</option>
+        <option value="owners">Propietarios</option>
+        <option value="cms">Sitio Web</option>
+        <option value="brokers">Agentes</option>
+        <option value="users">Usuarios</option>
+        <option value="chat">Chat</option>
+        <option value="config">Configuración</option>
+        <option value="rela">RELA / ZonaProp</option>
+      </select>
+      <select id="supFeedActionFilter" class="sup-filter">
+        <option value="">Todas las acciones</option>
+        <option value="insert">Creaciones</option>
+        <option value="create">Creaciones (alt)</option>
+        <option value="update">Ediciones</option>
+        <option value="delete">Eliminaciones</option>
+        <option value="update_sensitive">Cambios sensibles</option>
+      </select>
+      <select id="supFeedStatusFilter" class="sup-filter">
+        <option value="">Todos los estados</option>
+        <option value="success">Exitosas</option>
+        <option value="error">Con error</option>
+      </select>
+      <input type="date" id="supFeedFrom" class="sup-filter" title="Desde">
+      <input type="date" id="supFeedTo" class="sup-filter" title="Hasta">
+      <input type="text" id="supFeedSearch" placeholder="Buscar por nombre de registro..." class="sup-filter" style="min-width:190px;">
+    </div>
+    <div style="display:flex; gap:10px; align-items:center; margin-bottom:16px;">
+      <span id="supFeedCount" style="font-size:12px; color:var(--text-dim);"></span>
+      <div style="flex:1;"></div>
+      <button type="button" class="btn-luxury-action" id="supFeedApplyBtn" style="padding:7px 16px; font-size:12px;">
+        <i class="fas fa-filter"></i> Aplicar filtros
+      </button>
+      <button type="button" class="status-pill pending" id="supFeedExportBtn" style="padding:8px 14px; font-size:12px;">
+        <i class="fas fa-file-export"></i> Exportar
+      </button>
+    </div>
+    <div id="supGlobalFeed" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:16px; overflow:hidden; min-height:200px;"></div>
+    <div style="display:flex; justify-content:center; margin-top:14px;">
+      <button type="button" class="btn-action" id="supFeedLoadMore" style="display:none; padding:10px 24px;">
+        <i class="fas fa-chevron-down"></i> Cargar más
+      </button>
+    </div>
+  </div>
+
+  <!-- ===== VISTA ERRORES ===== -->
+  <div id="supErrorsView" style="display:none;">
+    <div style="display:flex; gap:12px; align-items:center; margin-bottom:16px; flex-wrap:wrap;">
+      <span id="supErrorsCount" style="font-size:12px; color:var(--text-dim);"></span>
+      <div style="flex:1;"></div>
+      <button type="button" class="btn-luxury-action" id="supErrorsRefreshBtn" style="padding:7px 16px; font-size:12px;">
+        <i class="fas fa-arrows-rotate"></i> Actualizar
+      </button>
+    </div>
+    <div id="supErrorsList" style="display:flex; flex-direction:column; gap:10px;"></div>
+  </div>
+
+  <!-- ===== VISTA ALERTAS ===== -->
+  <div id="supAlertsView" style="display:none;">
+    <div style="display:flex; gap:12px; align-items:center; margin-bottom:16px; flex-wrap:wrap;">
+      <select id="supAlertStatusFilter" class="sup-filter">
+        <option value="open">Abiertas</option>
+        <option value="acknowledged">Reconocidas</option>
+        <option value="resolved">Resueltas</option>
+        <option value="">Todas</option>
+      </select>
+      <select id="supAlertSeverityFilter" class="sup-filter">
+        <option value="">Toda severidad</option>
+        <option value="critical">Críticas</option>
+        <option value="high">Altas</option>
+        <option value="medium">Medias</option>
+        <option value="low">Bajas</option>
+      </select>
+      <div style="flex:1;"></div>
+      <span id="supAlertsCount" style="font-size:12px; color:var(--text-dim);"></span>
+    </div>
+    <div id="supAlertsList" style="display:flex; flex-direction:column; gap:12px;"></div>
+  </div>
+
+  <!-- ===== VISTA DETALLE EMPLEADO ===== -->
+  <div id="supEmployeeDetail" style="display:none;">
+    <div style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap;">
+      <button type="button" class="btn-luxury-action" id="supBackToTeamBtn" style="padding:8px 18px; font-size:13px;">
+        <i class="fas fa-arrow-left"></i> Volver al equipo
+      </button>
+      <div style="flex:1;"></div>
+      <button type="button" class="status-pill pending" id="supExportUserActivityBtn" style="padding:8px 14px; font-size:12px;">
+        <i class="fas fa-file-export"></i> Exportar actividad
+      </button>
+    </div>
+    <div id="supEmployeeHeader" style="display:flex; gap:20px; align-items:center; background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:16px; padding:24px 28px; margin-bottom:16px;"></div>
+    <div id="supEmployeeStats" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:16px;"></div>
+    <div style="display:grid; grid-template-columns: 2fr 1fr; gap:14px; margin-bottom:20px;">
+      <div>
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.8px; margin-bottom:8px;">Actividad — últimos 7 días</div>
+        <div id="supEmployeeChart" class="sup-chart"></div>
+      </div>
+      <div>
+        <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.8px; margin-bottom:8px;">Horario de uso (14 días)</div>
+        <div id="supHourChart" class="sup-chart" style="grid-template-columns:repeat(6,1fr);"></div>
+      </div>
+    </div>
+    <div style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:center;">
+      <h3 style="font-family:var(--font-heading); font-size:18px; color:#fff; margin:0; flex:1;">Actividad reciente</h3>
+      <select id="supActivityModuleFilter" class="sup-filter" style="font-size:12px;">
+        <option value="">Todos los módulos</option>
+        <option value="properties">Propiedades</option>
+        <option value="crm">Leads / CRM</option>
+        <option value="tasaciones">Tasaciones</option>
+        <option value="portales">Mercado Libre</option>
+        <option value="agenda">Visitas</option>
+        <option value="owners">Propietarios</option>
+        <option value="cms">Sitio Web</option>
+        <option value="brokers">Agentes</option>
+        <option value="users">Usuarios</option>
+        <option value="chat">Chat</option>
+        <option value="config">Configuración</option>
+      </select>
+      <input type="text" id="supDetailSearch" class="sup-filter" placeholder="Buscar..." style="min-width:160px;">
+    </div>
+    <div id="supEmployeeActivity" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:16px; overflow:hidden; min-height:300px;"></div>
+    <div style="display:flex; justify-content:center; margin-top:14px;">
+      <button type="button" class="btn-action" id="supEmployeeLoadMore" style="display:none; padding:10px 24px;">
+        <i class="fas fa-chevron-down"></i> Cargar más
+      </button>
+    </div>
+  </div>
 </section>
 </div>
 <!-- /content-area -->
@@ -2022,6 +2182,36 @@
 <label>Cocheras</label>
 <input type="number" name="garage_spaces" placeholder="1" />
 </div>
+<div class="form-field">
+<label>Año de construcción</label>
+<input type="number" name="year_built" placeholder="2005" min="1800" max="2100" />
+</div>
+</div>
+<div class="form-grid-2">
+<div class="form-field">
+<label>N° de inscripción / matrícula catastral</label>
+<input type="text" name="inscription_number" placeholder="Ej: 12-345678-9" />
+</div>
+<div class="form-field">
+<label>Expensas / mantenimiento (mensual)</label>
+<input type="number" name="maintenance_fee" placeholder="0" step="1000" min="0" />
+</div>
+</div>
+<div class="form-grid-2" style="margin-top:8px;">
+<div class="form-field">
+<label class="pf-toggle" for="propPetsAllowed" title="Se aceptan mascotas">
+<input type="checkbox" name="pets_allowed" id="propPetsAllowed" />
+<span class="toggle-slider"></span>
+<span class="toggle-label">Acepta mascotas</span>
+</label>
+</div>
+<div class="form-field">
+<label class="pf-toggle" for="propFurnished" title="Se ofrece amoblado">
+<input type="checkbox" name="furnished" id="propFurnished" />
+<span class="toggle-slider"></span>
+<span class="toggle-label">Amoblado</span>
+</label>
+</div>
 </div>
 <div class="form-field">
 <label>Propietario</label>
@@ -2064,6 +2254,11 @@
 <div id="propertyDocsChecklist" style="min-height:100px; max-height:320px; overflow-y:auto;">
 <p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Guardá la propiedad para gestionar la documentación</p>
 </div>
+</div>
+<div id="propertyHistorySection" style="display:none; margin-top:22px; border-top:1px solid var(--border-subtle); padding-top:16px;">
+<h4 style="color:#fff; font-size:14px; font-weight:600; margin-bottom:4px;">Historial de cambios</h4>
+<p style="color:var(--text-dim); font-size:12px; margin-bottom:12px;">Últimas operaciones registradas sobre esta ficha</p>
+<div id="propertyHistoryList" style="min-height:40px; max-height:220px; overflow-y:auto;"></div>
 </div>
 <div id="propertyNotesSection" style="margin-top:22px; border-top:1px solid var(--border-subtle); padding-top:16px;">
 <h4 style="color:#fff; font-size:14px; font-weight:600; margin-bottom:4px;">Notas Internas</h4>
@@ -2208,26 +2403,8 @@
 </div>
 <div class="form-grid-2">
 <div class="form-field">
-<label>Día *</label>
-<select id="visitDateDay" required>
-</select>
-</div>
-<div class="form-field">
-<label>Mes *</label>
-<select id="visitDateMonth" required>
-<option value="1">Enero</option>
-<option value="2">Febrero</option>
-<option value="3">Marzo</option>
-<option value="4">Abril</option>
-<option value="5">Mayo</option>
-<option value="6">Junio</option>
-<option value="7">Julio</option>
-<option value="8">Agosto</option>
-<option value="9">Septiembre</option>
-<option value="10">Octubre</option>
-<option value="11">Noviembre</option>
-<option value="12">Diciembre</option>
-</select>
+<label>Fecha *</label>
+<input type="date" id="visitDateDay" required />
 </div>
 <div class="form-field">
 <label>Hora *</label>
@@ -2237,7 +2414,26 @@
 <div class="form-field">
 <label>Duración (min)</label>
 <input type="number" name="duration_minutes" min="15" max="480" value="60" step="15" />
+<div class="visit-duration-chips" id="visitDurationChips" style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap;">
+<button type="button" class="status-pill visit-dur-chip" data-min="30">30</button>
+<button type="button" class="status-pill visit-dur-chip" data-min="45">45</button>
+<button type="button" class="status-pill visit-dur-chip" data-min="60">60</button>
+<button type="button" class="status-pill visit-dur-chip" data-min="90">90</button>
+<button type="button" class="status-pill visit-dur-chip" data-min="120">2h</button>
 </div>
+</div>
+<div class="form-field">
+<label>Lead vinculado</label>
+<select name="lead_id" id="visitLeadSelectEl">
+<option value="">— Sin lead (visita espontánea) —</option>
+</select>
+<div id="visitLeadHistory" style="display:none; margin-top:8px; padding:10px 12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-input); border-radius:8px;"></div>
+</div>
+<div class="form-field" id="visitSlotsWrap" style="grid-column:1/-1; display:none;">
+<label>Disponibilidad del broker ese día</label>
+<div id="visitSlotsHint" style="font-size:12px; color:var(--text-dim); padding:8px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px;"></div>
+</div>
+<div id="visitConflictBox" style="grid-column:1/-1; display:none; padding:10px 12px; border:1px solid rgba(255,184,0,0.4); background:rgba(255,184,0,0.08); border-radius:8px; font-size:12.5px;"></div>
 </div>
 <div class="form-grid-2">
 <div class="form-field">
@@ -2275,7 +2471,9 @@
 <textarea name="notes" placeholder="Detalles de la visita...">
 </textarea>
 </div>
-<div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+<div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px; align-items:center;">
+<button type="button" class="btn-action" id="visitCopyLinkBtn" style="display:none;" title="Copiar link de confirmación para el cliente"><i class="fas fa-link"></i> Copiar link</button>
+<button type="button" class="btn-action" id="visitGCalBtn" title="Agregar a Google Calendar"><i class="fab fa-google"></i> GCal</button>
 <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
 <button type="submit" class="btn-luxury-action" id="visitSaveBtn">Confirmar Cita</button>
 </div>
@@ -2886,7 +3084,15 @@
 <i class="fas fa-exclamation-triangle">
 </i>Tu bloqueador de anuncios está impidiendo que el panel cargue correctamente.<strong>Desactivá las extensiones</strong> para este sitio o abrí en ventana incógnita.<a href="#" data-action="closeCdnWarning">Cerrar</a>
 </div>
+<<<<<<< HEAD
 <!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Bloqueador de anuncios detectado.</strong> Desactivá las extensiones para este sitio o abrí en ventana incógnita. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="assets/js/zod.umd.js"></script><script src="assets/js/utils.js?v=52"></script><script src="assets/js/config.js?v=56"></script><script src="assets/js/supabase-client.js?v=55"></script><script src="assets/js/cloudinary.js?v=57"></script><script src="assets/js/admin-crm-tasks.js"></script>
 <script src="assets/js/admin-crm.js?v=12"></script>
 <script src="assets/js/admin-app.js?v=291"></script></body>
 </html>
+=======
+<!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Bloqueador de anuncios detectado.</strong> Desactivá las extensiones para este sitio o abrí en ventana incógnita. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="assets/js/zod.umd.js"></script><script src="assets/js/utils.js?v=51"></script><script src="assets/js/config.js?v=55"></script><script src="assets/js/supabase-client.js?v=54"></script><script src="assets/js/cloudinary.js?v=56"></script><script src="assets/js/admin-crm-tasks.js?v=2"></script>
+<script src="assets/js/admin-crm.js?v=20"></script>
+<script src="assets/js/admin-app.js?v=312"></script>
+<script src="assets/js/admin-supervision.js?v=14"></script></body>
+</html>
+>>>>>>> e9def07 (feat: hardening modulos admin (props, CRM, agenda, propietarios, dashboard) + fix ML field_not_updatable)

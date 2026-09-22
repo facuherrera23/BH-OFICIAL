@@ -69,11 +69,17 @@
 
         // Fill details
         document.getElementById('detailClient').textContent = v.client_name || '—';
-        document.getElementById('detailDate').textContent = v.visit_date 
-          ? new Date(v.visit_date).toLocaleString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+        document.getElementById('detailDate').textContent = v.visit_date
+          ? new Date(v.visit_date).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
           : '—';
         document.getElementById('detailDuration').textContent = v.duration_minutes ? v.duration_minutes + ' min' : '60 min';
         document.getElementById('detailBroker').textContent = v.agents?.full_name || 'Por asignar';
+        if (v.property && v.property.title) {
+          const prow = document.getElementById('detailPropertyRow');
+          const pel = document.getElementById('detailProperty');
+          if (pel) pel.textContent = v.property.title + (v.property.zone ? ' · ' + v.property.zone : '') + (v.property.address ? ' (' + v.property.address + ')' : '');
+          if (prow) prow.style.display = '';
+        }
         document.getElementById('detailNotes').textContent = v.notes || '—';
         details.style.display = 'block';
 
@@ -106,12 +112,14 @@
 
         // Cancel action
         btnCancel.onclick = async () => {
+          const reason = prompt('Contanos por qué cancelás (opcional):');
+          if (reason === null) return;
           if (!confirm('¿Cancelar esta visita?')) return;
           btnCancel.disabled = true;
           btnCancel.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cancelando...';
           try {
             const { data, error } = await supabaseClient
-              .rpc('update_visit_status_by_token', { p_token: token, p_action: 'cancelar' });
+              .rpc('update_visit_status_by_token', { p_token: token, p_action: 'cancelar', p_reason: reason.trim() || null });
             if (error) throw error;
             if (!data?.ok) throw new Error(data?.error || 'No se pudo cancelar la visita');
             showToast('Visita cancelada', 'success');

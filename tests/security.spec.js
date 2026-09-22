@@ -15,8 +15,9 @@ test.describe('Seguridad — CSP y delegación (regresión guards)', () => {
     // Los 15 onclick estáticos se migraron a data-action: no debe quedar ninguno.
     expect((html.match(/onclick\s*=/g) || []).length).toBe(0);
     expect((html.match(/on(error|change|submit)\s*=/g) || []).length).toBe(0);
-    // 23 data-action (15 migrados + 8 quick-action chips).
-    expect((html.match(/data-action=/g) || []).length).toBeGreaterThanOrEqual(20);
+    // Supervisión migró a handlers por ID en admin-supervision.js (botones sin data-action).
+    // Quedan 14 data-action (los de la delegación original).
+    expect((html.match(/data-action=/g) || []).length).toBeGreaterThanOrEqual(14);
   });
 
   for (const pageFile of PAGES_NONCE) {

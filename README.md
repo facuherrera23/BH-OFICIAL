@@ -12,7 +12,7 @@ Vanilla JS puro (sin bundler, sin build, scripts IIFE + globals) sobre **Supabas
 |---|---|---|
 | Landing pública | `index.html`, `assets/js/landing-app.js`, `assets/css/landing.css` | Catálogo de propiedades publicadas (**paginado de a 9**), OG/SEO, formulario de contacto que alimenta el CRM, **rotación de teléfono/WhatsApp por visita** (2 líneas reales, sticky por visitante) |
 | Fichas públicas | `fichas/` + `scripts/generate-ficha.mjs` | **Páginas indexables** (title/meta/canonical/JSON-LD `RealEstateListing`) con OG para compartir por WhatsApp; regeneradas cada 30' por CI junto con `sitemap.xml` |
-| Panel admin (CRM) | `admin.html`, `assets/js/admin-app.js`, `assets/js/admin-crm.js`, `assets/js/admin-crm-tasks.js` | Propiedades, Leads, Agenda/Visitas, Propietarios y documentación, Tasaciones, Agentes, Chat Zernio, CMS del sitio |
+| Panel admin (CRM) | `admin.html`, `assets/js/admin-app.js`, `assets/js/admin-crm.js`, `assets/js/admin-crm-tasks.js` | Propiedades, Leads (scoring, papelera, plantillas WhatsApp, dedup), Agenda/Visitas, Propietarios (papelera, tokens portal revocables al eliminar, validación CUIT/CUIL, checklist), Tasaciones, Agentes, Chat Zernio, CMS del sitio |
 | Portal propietario | `portal-propietario.html`, `assets/js/pages/portal-propietario-page.js` | Login con token alfanumérico de 5 caracteres |
 | Tasación (interna) | `tasacion.html` | ACM comparativo de mercado (noindex, herramienta de agentes) |
 | Confirmación de visitas | `confirmar-visita.html` | Confirmación por token (noindex) |

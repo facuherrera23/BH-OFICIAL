@@ -12,13 +12,13 @@ Deno.serve(async (req: Request) => {
 
   try {
     const body = await req.json();
-    const { record } = body; // Supabase Realtime payload: {table, record, old_record}
+    const { record } = body; // trigger DB sobre properties: { record: fila properties }
 
-    if (!record || record.stage !== "cerrado") {
+    if (!record || !["vendido", "alquilado"].includes(record.status)) {
       return jsonResponse(200, { skipped: "not closed" }, req);
     }
 
-    const propertyId = record.property_id;
+    const propertyId = record.id;
     if (!propertyId) {
       return jsonResponse(200, { skipped: "no property" }, req);
     }
@@ -48,17 +48,17 @@ Deno.serve(async (req: Request) => {
     }
 
     const owner = property.owner_id ? await getOwner(supabase, property.owner_id) : null;
-    const broker = record.broker_id ? await getBroker(supabase, record.broker_id) : null;
+    const broker = record.agent_id ? await getBroker(supabase, record.agent_id) : null;
 
     if (!owner) {
       return jsonResponse(200, { skipped: "no owner" }, req);
     }
 
-    // Calcular comisión según tipo de operación
-    const isRental = property.property_type === "alquiler";
-    const priceUsd = isRental ? (property.price_usd || 0) / 12 : (property.price_usd || 0); // alquiler: mes
+    // Calcular comisión según el tipo de cierre (status de la propiedad)
+    const isRental = record.status === "alquilado";
+    const baseUsd = property.price_usd || 0; // alquiler: mensual; venta: total
     const commissionRate = isRental ? (owner.commission_rent || 4.0) : (owner.commission_sale || 3.0);
-    const commissionAmountUsd = Number((priceUsd * commissionRate / 100).toFixed(2));
+    const commissionAmountUsd = Number((baseUsd * commissionRate / 100).toFixed(2));
 
     // USD rate desde preferencias (app_settings.preferences.usd_rate)
     const { data: preferences } = await supabase

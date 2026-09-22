@@ -452,11 +452,31 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
           payload.notes = `[Interesado en: ${propLabel}${interestedProperty.property_code ? ' (Cod. ' + interestedProperty.property_code + ')' : ''}]\n` + payload.notes;
         }
 
-        const { error } = await window.supabaseClient
-          .from('leads')
-          .insert([payload]);
-
-        if (error) throw error;
+        const utm = new URLSearchParams(location.search);
+        const res = await fetch(window.BH_CONFIG.SUPABASE_URL + '/functions/v1/contact-submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            kind: 'contact',
+            name: payload.full_name,
+            email: payload.email,
+            phone: payload.phone,
+            message: payload.notes || 'Consulta desde landing page',
+            zone: payload.preferred_zone || undefined,
+            budget_usd: payload.budget_usd || undefined,
+            property_type: payload.preferred_type || undefined,
+            property_id: payload.property_id || undefined,
+            tipo_cliente: payload.tipo_cliente || undefined,
+            operation_type: payload.operation_type || undefined,
+            utm_source: utm.get('utm_source') || undefined,
+            utm_campaign: utm.get('utm_campaign') || undefined,
+            website: data.website || '',
+          }),
+        });
+        if (!res.ok) {
+          const out = await res.json().catch(() => ({}));
+          throw new Error(out.error || ('HTTP ' + res.status));
+        }
 
         // Limpiar contexto de propiedad tras enviar
         interestedProperty = null;
@@ -612,36 +632,6 @@ function invalidateRequestCache(pattern) {
       _requestCache.delete(key);
     }
   }
-}
-
-// Image lazy loading with IntersectionObserver
-function initLazyLoading() {
-  if (!('IntersectionObserver' in window)) return;
-
-  const imageObserver = new IntersectionObserver((entries, observer) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        const img = entry.target;
-        if (img.dataset.src) {
-          img.src = img.dataset.src;
-          img.removeAttribute('data-src');
-        }
-        if (img.dataset.srcset) {
-          img.srcset = img.dataset.srcset;
-          img.removeAttribute('data-srcset');
-        }
-        img.classList.add('loaded');
-        observer.unobserve(img);
-      }
-    });
-  }, {
-    rootMargin: '50px 0px',
-    threshold: 0.01
-  });
-
-  document.querySelectorAll('img[data-src]').forEach(img => {
-    imageObserver.observe(img);
-  });
 }
 
 // Virtual scrolling for large lists
@@ -1970,15 +1960,15 @@ function renderSocialLinks(social) {
       if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Suscribiendo...'; }
 
       try {
-        const { error } = await window.supabaseClient
-          .from('leads')
-          .insert([{
-            email: email,
-            full_name: 'Suscriptor Newsletter',
-            source: 'newsletter',
-            notes: 'Suscripción al newsletter desde la landing page',
-          }]);
-        if (error) throw error;
+        const res = await fetch(window.BH_CONFIG.SUPABASE_URL + '/functions/v1/contact-submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind: 'newsletter', email }),
+        });
+        if (!res.ok) {
+          const out = await res.json().catch(() => ({}));
+          throw new Error(out.error || ('HTTP ' + res.status));
+        }
         newsletterForm.innerHTML = '<p style="color:var(--accent); font-size:14px; font-weight:500; padding:12px 0;"><i class="fas fa-check-circle"></i> ¡Gracias por suscribirte!</p>';
       } catch (err) {
         logError('Newsletter error:', err);

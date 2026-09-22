@@ -155,7 +155,7 @@
       /* ── A1: Saludo y bienvenida personalizada ── */
       var name = owner.full_name || 'Propietario';
       var firstName = name.split(' ')[0] || name;
-      var waBroker = (d.broker && d.broker.phone) ? 'https://wa.me/549' + esc(d.broker.phone.replace(/\D/g,'')) + '?text=' + encodeURIComponent('Hola ' + (d.broker.full_name || '') + ', te escribo desde mi portal de propietario en BIENENHAUS.') : '';
+      var waBroker = (d.broker && d.broker.phone && portalWaNumber(d.broker.phone)) ? 'https://wa.me/' + portalWaNumber(d.broker.phone) + '?text=' + encodeURIComponent('Hola ' + (d.broker.full_name || '') + ', te escribo desde mi portal de propietario en BIENENHAUS.') : '';
 
       /* ── A2: Resumen de cartera ── */
       var nVenta = props.filter(function(p){ return p.status === 'venta'; }).length;
@@ -237,7 +237,8 @@
           ? '<img class="broker-photo" src="' + esc(safeImageUrl(b.photo_url)) + '" alt="' + esc(b.full_name) + '">'
           : '<div class="broker-photo-placeholder">' + esc((b.full_name || '?').charAt(0)) + '</div>';
         var actionsHtml = '<div class="broker-actions">';
-        if (b.phone) actionsHtml += '<a href="https://wa.me/' + esc(b.phone.replace(/\D/g,'')) + '" target="_blank" rel="noopener" title="WhatsApp" style="background:var(--green-dim);color:var(--green);border-color:rgba(52,211,153,0.2);"><i class="fab fa-whatsapp"></i></a>';
+        var bWa = b.phone && portalWaNumber(b.phone);
+        if (bWa) actionsHtml += '<a href="https://wa.me/' + esc(bWa) + '" target="_blank" rel="noopener" title="WhatsApp" style="background:var(--green-dim);color:var(--green);border-color:rgba(52,211,153,0.2);"><i class="fab fa-whatsapp"></i></a>';
         if (b.phone) actionsHtml += '<a href="tel:' + esc(b.phone) + '" title="Llamar"><i class="fas fa-phone"></i></a>';
         if (b.email) actionsHtml += '<a href="mailto:' + esc(b.email) + '" title="Email"><i class="fas fa-envelope"></i></a>';
         actionsHtml += '</div>';
@@ -376,9 +377,21 @@
       return '<span class="prop-status-badge ' + cls + '"><i class="fas ' + (sold ? 'fa-check-circle' : (p.is_published ? 'fa-circle' : 'fa-pen')) + '"></i> ' + esc(txt) + '</span>';
     }
     function fmtARS(v) { return v != null ? new Intl.NumberFormat('es-AR', { style:'currency', currency:'ARS', maximumFractionDigits:0 }).format(v) : ''; }
+    function portalWaNumber(phone) {
+      var d = String(phone || '').replace(/\D/g, '');
+      if (!d) return null;
+      if (d.indexOf('00') === 0) d = d.slice(2);
+      if (d.indexOf('549') === 0) d = d.slice(3);
+      else if (d.indexOf('54') === 0) d = d.slice(2);
+      if (d.indexOf('0') === 0) d = d.slice(1);
+      if (d.indexOf('9') === 0) d = d.slice(1);
+      var a3 = d.slice(0, 3), rest = a3 === '351' || a3 === '341' || a3 === '221' || d.slice(0, 2) === '11' ? d.slice(a3 === '11' ? 2 : 3) : d;
+      if (rest.indexOf('15') === 0) { d = d.slice(0, d.length - rest.length) + rest.slice(2); }
+      return d.length >= 8 && d.length <= 12 ? ('549' + d) : null;
+    }
     function ownerContactWa(owner) {
-      var ph = (owner && owner.phone || '').replace(/\D/g, '');
-      return ph ? 'https://wa.me/549' + esc(ph) + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS.') : '';
+      var n = portalWaNumber(owner && owner.phone);
+      return n ? 'https://wa.me/' + n + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS.') : '';
     }
 
     function renderPropiedades(d, props) {
@@ -773,9 +786,9 @@
             '<div><h4>' + esc(b.title) + '</h4><p>' + esc(b.desc) + '</p></div>' +
           '</div>';
         }).join('');
-        var phone = (owner.phone || '').replace(/\D/g, '');
+        var phone = portalWaNumber(owner.phone);
         var waSin = phone
-          ? '<a class="whatsapp-cta" href="https://wa.me/549' + esc(phone) + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS. Me interesa conocer la exclusividad.') + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Consultar por exclusividad</a>'
+          ? '<a class="whatsapp-cta" href="https://wa.me/' + esc(phone) + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS. Me interesa conocer la exclusividad.') + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Consultar por exclusividad</a>'
           : '';
         $('exclContent').innerHTML =
           '<div class="empty-msg">' +
@@ -906,16 +919,16 @@
       /* Renovación CTA si por vencer */
       var renewHtml = '';
       if (st.key === 'por_vencer') {
-        var rp = (owner.phone || '').replace(/\D/g, '');
+        var rp = portalWaNumber(owner.phone);
         renewHtml = rp
-          ? '<a class="whatsapp-cta excl-renew-cta" href="https://wa.me/549' + esc(rp) + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS. Mi exclusividad está por vencer y quiero conversar sobre renovarla.') + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Quiero renovar mi exclusividad</a>'
+          ? '<a class="whatsapp-cta excl-renew-cta" href="https://wa.me/' + esc(rp) + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS. Mi exclusividad está por vencer y quiero conversar sobre renovarla.') + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Quiero renovar mi exclusividad</a>'
           : '<div class="excl-renew-note">Tu exclusividad está por vencer. Contactá a tu asesor para renovarla.</div>';
       }
 
       /* WhatsApp CTA estándar */
-      var phone = (owner.phone || '').replace(/\D/g, '');
+      var phone = portalWaNumber(owner.phone);
       var waHtml = phone
-        ? '<a class="whatsapp-cta" href="https://wa.me/549' + esc(phone) + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS.') + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Consultar por WhatsApp</a>'
+        ? '<a class="whatsapp-cta" href="https://wa.me/' + esc(phone) + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS.') + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Consultar por WhatsApp</a>'
         : '';
 
       /* Timeline filtrado al período */

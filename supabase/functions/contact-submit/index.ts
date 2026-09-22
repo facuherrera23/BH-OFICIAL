@@ -1,173 +1,181 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// ============================================================
+// contact-submit — Único punto de entrada de leads públicos.
+// Reemplaza al insert anónimo directo a `leads` (política revocada
+// en la migración leads_crm_revamp_rls_scoring_notify).
+// Defensas: rate limit por IP (5/h), honeypot, validación estricta,
+// dedup por email o últimos 8 dígitos de teléfono (60 días).
+// La notificación a admins sale del trigger DB -> notify-new-lead.
+// ============================================================
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_ROLE_KEY = Deno.env.get("SERVICE_ROLE_KEY")!;
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { jsonResponse, optionsResponse } from '../_shared/http.ts';
+import { checkRateLimit } from '../_shared/rate-limit.ts';
 
-const ADMIN_EMAIL = "admin@bienenhaus.com";
-const FROM_EMAIL = "no-reply@bienenhaus.com.ar";
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY') ?? '';
+
+type TipoCliente = 'propietario' | 'comprador' | 'inquilino' | 'inversor';
+type OperationType = 'compra' | 'venta' | 'alquiler';
+type PropertyType = 'casa' | 'departamento' | 'terreno' | 'local' | 'oficina' | 'galpon' | 'quinta' | 'ph' | 'otro';
 
 interface ContactPayload {
-  name: string;
-  email: string;
+  kind?: 'contact' | 'newsletter';
+  name?: string;
+  email?: string;
   phone?: string;
-  subject: string;
-  message: string;
-  website?: string; // honeypot
+  whatsapp?: string;
+  message?: string;
+  zone?: string;
+  budget_usd?: number | string | null;
+  property_type?: string;
+  property_id?: string;
+  tipo_cliente?: string;
+  operation_type?: string;
+  utm_source?: string;
+  utm_campaign?: string;
+  website?: string; // honeypot: si viene con contenido, es un bot
 }
 
-function corsHeaders(origin: string | null) {
-  return {
-    "Access-Control-Allow-Origin": origin || "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Vary": "Origin",
-  };
+const TIPOS_CLIENTE: readonly TipoCliente[] = ['propietario', 'comprador', 'inquilino', 'inversor'];
+const OPERATIONS: readonly OperationType[] = ['compra', 'venta', 'alquiler'];
+const PROPERTY_TYPES: readonly PropertyType[] = ['casa', 'departamento', 'terreno', 'local', 'oficina', 'galpon', 'quinta', 'ph', 'otro'];
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_TEXT = 2000;
+
+function clip(s: string, max = MAX_TEXT): string {
+  return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ').trim().slice(0, max);
 }
 
-function getClientIP(req: Request): string {
-  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-         req.headers.get("x-real-ip") ||
-         "unknown";
+function inList<T extends string>(v: unknown, list: readonly T[]): T | null {
+  return typeof v === 'string' && (list as readonly string[]).includes(v) ? (v as T) : null;
 }
 
-async function checkRateLimit(supabase: any, ip: string): Promise<boolean> {
-  const now = new Date();
-  const windowStart = new Date(now.getTime() - 60 * 60 * 1000); // 1 hora
-
-  const { data, error } = await supabase
-    .from("rate_limit")
-    .select("count")
-    .eq("identifier", ip)
-    .eq("action", "contact_form")
-    .gte("window_start", windowStart.toISOString())
-    .maybeSingle();
-
-  if (error) {
-    console.error("Rate limit check error:", error);
-    return true; // fail open
-  }
-
-  if (data && data.count >= 5) {
-    return false; // rate limited
-  }
-
-  // Increment or insert
-  if (data) {
-    await supabase
-      .from("rate_limit")
-      .update({ count: data.count + 1 })
-      .eq("id", data.id);
-  } else {
-    await supabase
-      .from("rate_limit")
-      .insert({ identifier: ip, action: "contact_form", count: 1, window_start: now.toISOString() });
-  }
-  return true;
+function clientIp(req: Request): string {
+  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    req.headers.get('x-real-ip') ??
+    'unknown';
 }
 
-async function sendEmail(to: string, subject: string, html: string) {
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Resend error: ${err}`);
-  }
-  return res.json();
-}
+Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return optionsResponse(req);
+  if (req.method !== 'POST') return jsonResponse(405, { error: 'Método no permitido' }, req);
 
-serve(async (req) => {
-  const origin = req.headers.get("origin");
-  const headers = corsHeaders(origin);
-
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers });
-  }
-
-  if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405, headers });
-  }
-
-  const ip = getClientIP(req);
-  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-
-  // Rate limit
-  const allowed = await checkRateLimit(supabase, ip);
-  if (!allowed) {
-    return new Response(JSON.stringify({ error: "Demasiados intentos. Intente en 1 hora." }), { status: 429, headers });
+  const ip = clientIp(req);
+  const rl = await checkRateLimit('contact-submit', ip);
+  if (!rl.allowed) {
+    return jsonResponse(429, { error: 'Demasiados intentos. Probá más tarde.' }, req);
   }
 
   let payload: ContactPayload;
   try {
     payload = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: "JSON inválido" }), { status: 400, headers });
+    return jsonResponse(400, { error: 'JSON inválido' }, req);
   }
 
-  // Honeypot
-  if (payload.website && payload.website.trim() !== "") {
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers }); // silencioso
+  // Honeypot: responder éxito falso y no persistir nada
+  if (payload.website && payload.website.trim() !== '') {
+    return jsonResponse(200, { ok: true }, req);
   }
 
-  // Validación básica
-  if (!payload.name?.trim() || !payload.email?.trim() || !payload.message?.trim()) {
-    return new Response(JSON.stringify({ error: "Faltan campos requeridos" }), { status: 400, headers });
+  const name = clip(String(payload.name ?? ''), 150);
+  const email = clip(String(payload.email ?? ''), 200).toLowerCase();
+  const phone = clip(String(payload.phone ?? ''), 40);
+  const whatsapp = clip(String(payload.whatsapp ?? ''), 40);
+  const message = clip(String(payload.message ?? ''));
+
+  if (!email || !EMAIL_RE.test(email)) return jsonResponse(400, { error: 'Email inválido' }, req);
+  const isNewsletter = payload.kind === 'newsletter';
+  if (!isNewsletter) {
+    if (!name) return jsonResponse(400, { error: 'Falta el nombre' }, req);
+    if (!message) return jsonResponse(400, { error: 'Falta el mensaje' }, req);
   }
 
-  // Guardar lead en BD
-  const { error: leadError } = await supabase.from("leads").insert({
-    name: payload.name.trim(),
-    email: payload.email.trim(),
-    phone: payload.phone?.trim() || null,
-    subject: payload.subject.trim(),
-    message: payload.message.trim(),
-    source: "landing_contact",
-    status: "new",
-    metadata: { ip, user_agent: req.headers.get("user-agent") },
-  });
-  if (leadError) {
-    console.error("Lead insert error:", leadError);
-    return new Response(JSON.stringify({ error: "Error guardando consulta" }), { status: 500, headers });
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+
+  // --- Dedup: misma persona consultando de nuevo en 60 días ---
+  const dupFilters: string[] = [];
+  const digits = phone.replace(/\D/g, '');
+  const wdigits = whatsapp.replace(/\D/g, '');
+  if (digits.length >= 6) dupFilters.push(`phone.ilike.%${digits.slice(-8)}%`);
+  if (wdigits.length >= 6 && wdigits !== digits) dupFilters.push(`whatsapp.ilike.%${wdigits.slice(-8)}%`);
+  if (email) dupFilters.push(`email.ilike.${email}`);
+
+  if (dupFilters.length) {
+    const { data: dup } = await supabase
+      .from('leads')
+      .select('id')
+      .or(dupFilters.join(','))
+      .is('deleted_at', null)
+      .gte('created_at', new Date(Date.now() - 60 * 86400000).toISOString())
+      .limit(1)
+      .maybeSingle();
+    if (dup) {
+      if (!isNewsletter) {
+        await supabase.from('lead_activities').insert([{
+          lead_id: dup.id,
+          activity_type: 'note',
+          title: 'Nueva consulta desde la web (lead existente)',
+          description: message,
+        }]);
+      }
+      return jsonResponse(200, { ok: true, duplicate: true }, req);
+    }
   }
 
-  // Email a admin
-  const adminHtml = `
-    <h2>Nueva consulta desde la web</h2>
-    <p><strong>Nombre:</strong> ${payload.name}</p>
-    <p><strong>Email:</strong> ${payload.email}</p>
-    <p><strong>Teléfono:</strong> ${payload.phone || "—"}</p>
-    <p><strong>Asunto:</strong> ${payload.subject}</p>
-    <p><strong>Mensaje:</strong></p>
-    <p>${payload.message.replace(/\n/g, "<br>")}</p>
-    <hr>
-    <p><small>IP: ${ip}</small></p>
-  `;
-  try {
-    await sendEmail(ADMIN_EMAIL, `[BIENENHAUS] ${payload.subject}`, adminHtml);
-  } catch (e) {
-    console.error("Admin email error:", e);
+  if (isNewsletter) {
+    const { error: nlErr } = await supabase.from('leads').insert([{
+      full_name: 'Suscriptor Newsletter',
+      email,
+      source: 'newsletter',
+      stage: 'nuevo',
+      notes: 'Suscripción al newsletter desde la landing page',
+    }]);
+    if (nlErr) {
+      console.error('[contact-submit] newsletter insert error:', nlErr);
+      return jsonResponse(500, { error: 'No pudimos registrar tu suscripción. Probá de nuevo.' }, req);
+    }
+    return jsonResponse(200, { ok: true }, req);
   }
 
-  // Auto-reply al usuario
-  const userHtml = `
-    <h2>Gracias por contactarnos, ${payload.name}</h2>
-    <p>Recibimos tu consulta: <strong>${payload.subject}</strong></p>
-    <p>Te responderemos a la brevedad.</p>
-    <hr>
-    <p><small>BIENENHAUS PROPIEDADES</small></p>
-  `;
-  try {
-    await sendEmail(payload.email, `Confirmación: ${payload.subject}`, userHtml);
-  } catch (e) {
-    console.error("User email error:", e);
+  const budgetRaw = payload.budget_usd;
+  const budget = typeof budgetRaw === 'number'
+    ? budgetRaw
+    : parseFloat(String(budgetRaw ?? '').replace(/[^\d.]/g, ''));
+  if (budgetRaw != null && budgetRaw !== '' && (!isFinite(budget) || budget < 0)) {
+    return jsonResponse(400, { error: 'Presupuesto inválido' }, req);
   }
 
-  return new Response(JSON.stringify({ ok: true }), { status: 200, headers });
+  const propertyId = typeof payload.property_id === 'string' && UUID_RE.test(payload.property_id)
+    ? payload.property_id
+    : null;
+
+  const record = {
+    full_name: name,
+    email,
+    phone: phone || null,
+    whatsapp: whatsapp || null,
+    notes: message,
+    preferred_zone: clip(String(payload.zone ?? ''), 120) || null,
+    budget_usd: isFinite(budget) && budget > 0 ? budget : null,
+    preferred_type: inList(payload.property_type, PROPERTY_TYPES),
+    tipo_cliente: inList(payload.tipo_cliente, TIPOS_CLIENTE),
+    operation_type: inList(payload.operation_type, OPERATIONS),
+    property_id: propertyId,
+    source: 'landing_page',
+    stage: 'nuevo',
+    utm_source: clip(String(payload.utm_source ?? ''), 120) || null,
+    utm_campaign: clip(String(payload.utm_campaign ?? ''), 120) || null,
+  };
+
+  const { error } = await supabase.from('leads').insert([record]);
+  if (error) {
+    console.error('[contact-submit] insert error:', error);
+    return jsonResponse(500, { error: 'No pudimos registrar tu consulta. Probá de nuevo.' }, req);
+  }
+
+  return jsonResponse(200, { ok: true }, req);
 });

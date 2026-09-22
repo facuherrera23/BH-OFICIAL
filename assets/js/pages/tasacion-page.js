@@ -315,6 +315,7 @@ function recalcAll(){
   document.getElementById('v_cubiertaTotal').textContent = cubTotal? 'U$S '+cubTotal.toLocaleString('es-AR',{maximumFractionDigits:0}) : '—';
 
   const valorFinal = terrTotal + cubTotal;
+  _lastValorFinalUSD = valorFinal > 0 ? Math.round(valorFinal) : null;
   document.getElementById('v_valorFinal').textContent = 'U$S ' + valorFinal.toLocaleString('es-AR',{maximumFractionDigits:0});
 
   renderAnalisisComparativo();
@@ -428,18 +429,19 @@ async function saveToSupabase(finalize){
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
 
   try{
+    recalcAll();
     const formData = collectFormData();
     const title = formData.fields.f_direccion || formData.fields.f_barrio || 'Sin título';
     const status = finalize ? 'finalized' : 'draft';
 
     if(TASACION_ID){
       const { error } = await _supabase.from('tasaciones').update({
-        title, data: formData, status, updated_at: new Date().toISOString()
+        title, data: formData, status, valuation_usd: _lastValorFinalUSD, updated_at: new Date().toISOString()
       }).eq('id', TASACION_ID);
       if(error) throw error;
     } else {
       const { data, error } = await _supabase.from('tasaciones').insert({
-        title, data: formData, status
+        title, data: formData, status, valuation_usd: _lastValorFinalUSD
       }).select('id').single();
       if(error) throw error;
       if(data && data.id){
@@ -503,7 +505,9 @@ const footerLogoEl = document.querySelector('footer img');
 if (footerLogoEl) footerLogoEl.addEventListener('error', () => { footerLogoEl.style.display = 'none'; });
 
 let acChartInstance = null;
-function renderAnalisisComparativo(){
+let _acForPrint = false;
+function renderAnalisisComparativo(forPrint){
+  _acForPrint = forPrint === true;
   const tbody = document.getElementById('ac_tbody');
   if(!tbody) return;
   const dispersion = parseFloat(document.getElementById('ac_dispersion').value) || 0;
@@ -583,13 +587,15 @@ function renderAnalisisComparativo(){
         }
       },
       scales: {
-        x: { ticks:{color:'#b8b3aa'}, grid:{color:'#2a2a2a'}, title:{display:true, text:'U$S / m²', color:'#b8b3aa'} },
-        y: { ticks:{color:'#f5f5f4', font:{family:'Poppins'}}, grid:{color:'#2a2a2a'} }
+        x: { ticks:{color: _acForPrint ? '#444' : '#b8b3aa'}, grid:{color: _acForPrint ? '#ddd' : '#2a2a2a'}, title:{display:true, text:'U$S / m²', color: _acForPrint ? '#444' : '#b8b3aa'} },
+        y: { ticks:{color: _acForPrint ? '#222' : '#f5f5f4', font:{family:'Poppins'}}, grid:{color: _acForPrint ? '#ddd' : '#2a2a2a'} }
       }
     }
   });
 }
-document.getElementById('ac_dispersion').addEventListener('input', renderAnalisisComparativo);
+window.addEventListener('beforeprint', ()=>renderAnalisisComparativo(true));
+window.addEventListener('afterprint', ()=>renderAnalisisComparativo(false));
+document.getElementById('ac_dispersion').addEventListener('input', ()=>renderAnalisisComparativo());
 
 let photoDataUrl = null;
 function setPhoto(dataUrl){

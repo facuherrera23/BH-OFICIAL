@@ -26,8 +26,27 @@ const ENT_GT = '&' + 'gt;';
 const ENT_QUOT = '&' + 'quot;';
 const ENT_APOS = '&' + '#39;';
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+const ALLOWED_ORIGINS = [
+  'https://bienenhaus.com.ar',
+  'https://www.bienenhaus.com.ar',
+  'http://localhost:8788',
+  'http://127.0.0.1:8788',
+];
+
+function corsOrigin(req: Request): string {
+  const origin = req.headers.get('origin') ?? '';
+  return ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+}
+
+function json(body: unknown, status = 200, req?: Request): Response {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (req) {
+    headers['Access-Control-Allow-Origin'] = corsOrigin(req);
+    headers['Access-Control-Allow-Headers'] = 'authorization, content-type, x-client-info, apikey';
+    headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS';
+    headers['Vary'] = 'Origin';
+  }
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
 function esc(s: unknown): string {
@@ -158,18 +177,28 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204 });
-  if (req.method !== 'POST') return json({ error: 'Método no permitido' }, 405);
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': corsOrigin(req),
+        'Access-Control-Allow-Headers': 'authorization, content-type, x-client-info, apikey',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Vary': 'Origin',
+      },
+    });
+  }
+  if (req.method !== 'POST') return json({ error: 'Método no permitido' }, 405, req);
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
   const auth = req.headers.get('authorization') ?? '';
-  if (!auth.startsWith('Bearer ')) return json({ error: 'No autorizado' }, 401);
+  if (!auth.startsWith('Bearer ')) return json({ error: 'No autorizado' }, 401, req);
   const { data: userData } = await supabase.auth.getUser(auth.slice(7));
-  if (!userData.user) return json({ error: 'No autorizado' }, 401);
+  if (!userData.user) return json({ error: 'No autorizado' }, 401, req);
 
   const { property_id } = (await req.json().catch(() => ({}))) as { property_id?: string };
-  if (!property_id) return json({ error: 'Falta property_id' }, 400);
+  if (!property_id) return json({ error: 'Falta property_id' }, 400, req);
 
   const { data: p } = await supabase
     .from('properties')
@@ -177,9 +206,9 @@ Deno.serve(async (req: Request) => {
     .eq('id', property_id)
     .is('deleted_at', null)
     .maybeSingle();
-  if (!p) return json({ error: 'Propiedad no encontrada' }, 404);
-  if (!p.is_published) return json({ error: 'La propiedad no está publicada en el sitio' }, 400);
-  if (!p.property_code) return json({ error: 'La propiedad no tiene código' }, 400);
+  if (!p) return json({ error: 'Propiedad no encontrada' }, 404, req);
+  if (!p.is_published) return json({ error: 'La propiedad no está publicada en el sitio' }, 400, req);
+  if (!p.property_code) return json({ error: 'La propiedad no tiene código' }, 400, req);
 
   await ensureBucket(supabase);
 
@@ -190,8 +219,8 @@ Deno.serve(async (req: Request) => {
     upsert: true,
     cacheControl: '300',
   });
-  if (upErr) return json({ error: 'No se pudo subir la ficha: ' + upErr.message }, 500);
+  if (upErr) return json({ error: 'No se pudo subir la ficha: ' + upErr.message }, 500, req);
 
   const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  return json({ ok: true, url: pub.publicUrl, code: p.property_code });
+  return json({ ok: true, url: pub.publicUrl, code: p.property_code }, 200, req);
 });

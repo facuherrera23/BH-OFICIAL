@@ -137,3 +137,6 @@ Antes de decir "100% listo", hay que probar esto manualmente con acceso real al 
 2. **Esta semana:** bug de guardado del CMS (footer duplicado), bug de "Vacaciones" en Agentes, verificar que el deploy de Cloudflare funcione.
 3. **Antes de la entrega/venta:** paginación de Tasaciones, botones/badges rotos de Supervisión y Chat, exportar el schema completo de la base de datos, subir cobertura de tests de los módulos críticos.
 4. **Post-venta / mejora continua:** unificar CSP entre admin y landing, terminar el refactor de cache invalidation (P1-6), actualizar sitemap.
+
+
+Badge del sidebar — el ítem "Centro de Supervisión" del menú lateral ahora tiene su propio contador de alertas abiertas que se actualiza cada 2 minutos incluso sin entrar al módulo. Se ve desde cualquier sección.

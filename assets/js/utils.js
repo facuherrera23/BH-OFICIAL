@@ -107,6 +107,19 @@
     sanitizeRichText: sanitizeRichText
   };
 
+  // Activar CSS de fuentes cargadas con media="print" (no-render-blocking sin
+  // necesitar handlers inline, que la CSP del sitio no permite)
+  if (typeof document !== 'undefined') {
+    (function activatePrintMediaStyles() {
+      var links = document.querySelectorAll('link[rel="stylesheet"][media="print"]');
+      function activate(l) { l.media = 'all'; }
+      links.forEach(function(l) {
+        if (l.sheet) { activate(l); return; }
+        l.addEventListener('load', function() { activate(l); });
+      });
+    })();
+  }
+
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = global.BHUtils;
   }
