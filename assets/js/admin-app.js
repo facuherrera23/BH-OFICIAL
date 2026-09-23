@@ -1799,6 +1799,8 @@ function esc(s) {
     bar.classList.add('is-visible');
     const lbl = $('#propBulkCount');
     if (lbl) lbl.textContent = n + ' seleccionada' + (n !== 1 ? 's' : '');
+    const mlBtn = $('#propBulkPublishMl');
+    if (mlBtn) mlBtn.style.display = ml_connected ? '' : 'none';
   }
 
   function resetPropSelection() {
@@ -1818,6 +1820,18 @@ function esc(s) {
       const res = await window.supabaseClient.from('properties').update({ agent_id: agentId }).in('id', ids);
       if (res.error) { showToast('Error: ' + res.error.message, 'error'); return; }
       showToast('Broker asignado a ' + ids.length + ' propiedades', 'success');
+    } else if (action === 'publish_ml') {
+      if (!ml_connected) { showToast('Conectá tu cuenta de Mercado Libre primero', 'warning'); return; }
+      const bar = $('#propBulkPublishMl');
+      if (bar) { bar.disabled = true; bar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Publicando en ML…'; }
+      let ok = 0; const fails = [];
+      for (const id of ids) {
+        try { await mlApiCall('publish', { property_id: id }); ok++; }
+        catch (err) { fails.push(err.message); }
+      }
+      if (bar) { bar.disabled = false; bar.innerHTML = '<i class="fas fa-shopping-cart"></i> Publicar en ML'; }
+      showToast(`ML: ${ok} publicadas${fails.length ? ', ' + fails.length + ' con error' : ''}`, fails.length ? 'warning' : 'success');
+      await mlCheckStatus(true);
     } else {
       const publish = action === 'publish';
       const res = await window.supabaseClient.from('properties').update({ is_published: publish }).in('id', ids);
@@ -1908,7 +1922,7 @@ function esc(s) {
       });
     }
 
-    [['propBulkPublish', 'publish'], ['propBulkUnpublish', 'unpublish'], ['propBulkAssign', 'assign_agent']].forEach(([id, act]) => {
+    [['propBulkPublish', 'publish'], ['propBulkUnpublish', 'unpublish'], ['propBulkAssign', 'assign_agent'], ['propBulkPublishMl', 'publish_ml']].forEach(([id, act]) => {
       const b = $(`#${id}`);
       if (b && !b.dataset.bound) {
         b.dataset.bound = '1';
@@ -6878,6 +6892,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     const settingsMap = {};
     (settingsRes.data || []).forEach(s => { settingsMap[s.portal_name] = s; });
 
+    const canManagePortals = ['super_admin', 'broker'].includes(currentProfile?.role);
     container.innerHTML = PORTALS.map((p, i) => {
       const db = settingsMap[p.name] || {};
       const isActive = db.is_active || false;
@@ -6891,6 +6906,10 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
           : ml_configured
             ? `<button class="btn-action" style="font-size:11px; padding:6px 12px; background:rgba(255,230,0,0.15); color:#FFE600; border:1px solid rgba(255,230,0,0.3);" onclick="window.adminApp.mlConnect()"><i class="fas fa-link"></i> Conectar ML</button>`
             : '';
+        const activeListings = ml_connected ? ml_listings.filter(l => l.status === 'active').length : 0;
+        const listingsHtml = ml_connected
+          ? `<p style="color:var(--text-dim); font-size:11px; margin-top:2px;">${activeListings} aviso${activeListings !== 1 ? 's' : ''} activo${activeListings !== 1 ? 's' : ''} en ML</p>`
+          : '';
         const userInfoHtml = ml_connected && ml_user
           ? `<p style="color:var(--text-muted); font-size:11px; margin-top:6px;"><i class="fas fa-user" style="margin-right:4px;"></i>${esc(ml_user.ml_nickname || ml_user.ml_email || '')}</p>`
           : '';
@@ -6920,12 +6939,14 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
           <span style="font-size:12px; color:${statusColor}; font-weight:600;">${statusText}</span>
         </div>
         ${userInfoHtml}
-        <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-top:12px;">
+        ${listingsHtml}
+        <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-top:12px; ${canManagePortals ? '' : 'opacity:.5; pointer-events:none;'}">
           ${mlBtnHtml}
           ${!ml_configured ? `<button class="btn-action" title="Configurar credenciales" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlToggleConfig()"><i class="fas fa-cog"></i></button>` : ''}
           ${ml_connected ? `<button class="btn-action" title="Importar desde ML" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlImportFromML()"><i class="fas fa-file-import"></i></button>` : ''}
         </div>
-        ${configPanelHtml}
+        ${canManagePortals ? configPanelHtml : ''}
+        ${canManagePortals ? '' : '<p style="font-size:11px; color:var(--text-dim); margin-top:10px;">Solo lectura para tu rol</p>'}
       </div>`;
       }
 
@@ -6936,12 +6957,13 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
         </div>
         <h3 style="color:#fff; font-size:16px; font-weight:700; margin-bottom:4px;">${p.name}</h3>
         <p style="color:var(--text-dim); font-size:12px; margin-bottom:14px;">${count} inmuebles publicables</p>
-        <div style="display:flex; align-items:center; justify-content:center; gap:10px;">
+        <div style="display:flex; align-items:center; justify-content:center; gap:10px; ${canManagePortals ? '' : 'opacity:.5; pointer-events:none;'}">
           <label class="toggle-switch${isActive ? ' is-active' : ''}" onclick="this.classList.toggle('is-active'); window.adminApp.togglePortal('${p.name}', this.classList.contains('is-active'))">
             <input type="checkbox" ${isActive ? 'checked' : ''} style="opacity:0; width:0; height:0; position:absolute;" />
           </label>
-          <button class="btn-action" title="Configurar API" onclick="window.adminApp.openPortalConfig(${i})"><i class="fas fa-cog"></i></button>
+          <button class="btn-action" title="${canManagePortals ? 'Configurar API' : 'Solo super_admin o broker'}" onclick="window.adminApp.openPortalConfig(${i})"><i class="fas fa-cog"></i></button>
         </div>
+        ${canManagePortals ? '' : '<p style="font-size:11px; color:var(--text-dim); margin-top:10px;">Solo lectura para tu rol</p>'}
       </div>`;
     }).join('');
 
@@ -7200,6 +7222,7 @@ try {
       ml_user = result.user || null;
       ml_listings = Array.isArray(result.listings) ? result.listings : [];
       updatePortalsBadge();
+      updatePropBulkBar();
     } catch (err) {
       _mlStatusFetchedAt = 0;
       console.warn('[ML] Status check failed:', err.message);
@@ -7416,14 +7439,24 @@ try {
   async function relaApiCall(action, body = {}) {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (!session) throw new Error('No hay sesión activa');
-    const res = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/rela-proxy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body: JSON.stringify({ action, ...body }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || `Error ${res.status}`);
-    return json;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ML_API_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/rela-proxy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action, ...body }),
+        signal: controller.signal,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || `Error ${res.status}`);
+      return json;
+    } catch (err) {
+      if (err.name === 'AbortError') throw new Error('Tiempo de espera agotado al contactar RELA');
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   window.adminApp.relaPropertyAction = async function (propertyId, action) {
@@ -7452,6 +7485,7 @@ try {
   async function loadRelaPanel() {
     const el = $('#relaPortalPanel');
     if (!el || !window.supabaseClient) return;
+    const canManage = ['super_admin', 'broker'].includes(currentProfile?.role);
     let status = null;
     let events = [];
     try {
@@ -7479,7 +7513,7 @@ try {
               <div style="font-size:12px; color:var(--text-dim);">${esc(status?.environment || 'sandbox')} · inmobiliaria: ${esc(status?.codigo_inmobiliaria || 'sin configurar')}</div>
             </div>
           </div>
-          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;${canManage ? '' : ' opacity:.5; pointer-events:none;'}" title="${canManage ? '' : 'Solo super_admin o broker'}">
             ${status?.dry_run ? '<span class="nav-badge" style="background:rgba(255,184,0,0.15); color:var(--warning); font-size:11px;"><i class="fas fa-flask"></i> DRY-RUN activo</span>' : ''}
             <button class="btn-action" onclick="window.adminApp.relaSyncCatalogs()"><i class="fas fa-rotate"></i> Catálogos</button>
             <button class="btn-action" onclick="window.adminApp.relaReconcile()"><i class="fas fa-arrows-rotate"></i> Reconciliar</button>
@@ -7522,6 +7556,7 @@ try {
   };
 
   window.adminApp.relaSyncCatalogs = async function () {
+    if (!['super_admin', 'broker'].includes(currentProfile?.role)) { showToast('Solo super_admin o broker pueden sincronizar RELA', 'error'); return; }
     try {
       showToast('Sincronizando catálogos RELA (ubicaciones, tipos, planes)…', 'info');
       const res = await relaApiCall('catalogs_sync');
@@ -7533,6 +7568,7 @@ try {
   };
 
   window.adminApp.relaReconcile = async function () {
+    if (!['super_admin', 'broker'].includes(currentProfile?.role)) { showToast('Solo super_admin o broker pueden reconciliar RELA', 'error'); return; }
     if (!confirm('¿Reconciliar estados contra RELA? Consulta el estado real de cada aviso online.')) return;
     try {
       showToast('Reconciliando con RELA…', 'info');
