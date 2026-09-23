@@ -4201,7 +4201,8 @@ window.adminApp.editVisit = async function (id) {
     formulario: 'form',
     navbar: 'navbar',
     footer: 'footer',
-    seo: 'seo'
+    seo: 'seo',
+    nosotros: 'nosotros'
   };
 
   async function loadCMS() {
@@ -4235,7 +4236,29 @@ window.adminApp.editVisit = async function (id) {
     form_fields: ['cmsFormFields', [{ key: 'name', label: 'Nombre del campo (id)', placeholder: 'phone' }, { key: 'label', label: 'Etiqueta', placeholder: 'Teléfono' }, { key: 'type', label: 'Tipo', placeholder: 'tel' }]],
     footer_nav_links: ['cmsFooterNavLinks', [{ key: 'label', label: 'Etiqueta', placeholder: 'Propiedades' }, { key: 'url', label: 'URL / Ancla', placeholder: '#propiedades' }]],
     footer_service_links: ['cmsFooterServiceLinks', [{ key: 'label', label: 'Etiqueta', placeholder: 'Ventas' }, { key: 'url', label: 'URL / Ancla', placeholder: '#servicios' }]],
+    nosotros_valores: ['cmsNosotrosValores', [{ key: 'icon', label: 'Icono (clase FA)', placeholder: 'fas fa-scale-balanced' }, { key: 'title', label: 'Título', placeholder: 'Honestidad y Transparencia' }, { key: 'desc', label: 'Descripción', placeholder: 'Hablar siempre con la verdad...' }]],
   };
+
+  function cmsPopulateNested() {
+    for (const [key, [containerId, schema]] of Object.entries(CMS_NESTED_SCHEMAS)) {
+      const container = document.getElementById(containerId);
+      if (!container) continue;
+      container.innerHTML = '';
+      const SECTION_KEYS = {
+        services_items: 'services',
+        proceso_pasos: 'process',
+        navbar_items: 'navbar',
+        navbar_mobile_items: 'navbar',
+        form_options: 'form',
+        form_fields: 'form',
+        footer_nav_links: 'footer',
+        footer_service_links: 'footer',
+        nosotros_valores: 'nosotros',
+      };
+      const list = (cmsData[SECTION_KEYS[key]]?.content || {})[key];
+      if (Array.isArray(list)) list.forEach(v => cmsAddListItem(containerId, schema, v));
+    }
+  }
 
   function cmsPopulateNested() {
     for (const [key, [containerId, schema]] of Object.entries(CMS_NESTED_SCHEMAS)) {
@@ -4372,6 +4395,11 @@ window.adminApp.editVisit = async function (id) {
     { key: 'label', label: 'Etiqueta', placeholder: 'Ventas' },
     { key: 'url', label: 'URL / Ancla', placeholder: '#servicios' },
   ]));
+  on($('#cmsAddValorBtn'), 'click', () => cmsAddListItem('cmsNosotrosValores', [
+    { key: 'icon', label: 'Icono (clase FA)', placeholder: 'fas fa-scale-balanced' },
+    { key: 'title', label: 'Título', placeholder: 'Honestidad y Transparencia' },
+    { key: 'desc', label: 'Descripción', placeholder: 'Hablar siempre con la verdad...' },
+  ]));
 
   const CMS_CHAR_LIMITS = { meta_title: 60, meta_description: 160, og_title: 60, og_description: 200, description: 500 };
   function cmsCharCounterInit() {
@@ -4446,6 +4474,7 @@ window.adminApp.editVisit = async function (id) {
         form_fields: cmsItemsPack('cmsFormFields', ['name', 'label', 'type']),
         footer_nav_links: cmsItemsPack('cmsFooterNavLinks', ['label', 'url']),
         footer_service_links: cmsItemsPack('cmsFooterServiceLinks', ['label', 'url']),
+        nosotros_valores: cmsItemsPack('cmsNosotrosValores', ['icon', 'title', 'desc']),
       };
       const NESTED_TO_SECTION = {
         servicios_items: 'services',
@@ -4456,6 +4485,7 @@ window.adminApp.editVisit = async function (id) {
         form_fields: 'form',
         footer_nav_links: 'footer',
         footer_service_links: 'footer',
+        nosotros_valores: 'nosotros',
       };
       for (const [k, items] of Object.entries(nested)) {
         if (!items.length) continue;

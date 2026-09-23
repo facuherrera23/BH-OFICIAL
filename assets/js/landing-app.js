@@ -1638,6 +1638,36 @@ function renderSocialLinks(social) {
         if (c.cta_url) setAttr('.team-cta', 'href', c.cta_url);
         break;
 
+      case 'nosotros':
+        if (c.badge) setText('#nosotros .services-label', c.badge);
+        setHTML('#nosotros .services-title', c.title);
+        setText('#nosotros .services-desc', c.description);
+        if (c.mision_title) setText('#nosotros .mvv-card:nth-child(1) .mvv-kicker', c.mision_title);
+        if (c.mision_icon) {
+          const i = document.querySelector('#nosotros .mvv-card:nth-child(1) .mvv-kicker i');
+          if (i) i.className = c.mision_icon;
+        }
+        setText('#nosotros .mvv-card:nth-child(1) .mvv-text', c.mision_text);
+        if (c.vision_title) setText('#nosotros .mvv-card:nth-child(2) .mvv-kicker', c.vision_title);
+        if (c.vision_icon) {
+          const i = document.querySelector('#nosotros .mvv-card:nth-child(2) .mvv-kicker i');
+          if (i) i.className = c.vision_icon;
+        }
+        setText('#nosotros .mvv-card:nth-child(2) .mvv-text', c.vision_text);
+        if (c.valores_title) setText('#nosotros .mvv-values-title', c.valores_title);
+        if (c.nosotros_valores && Array.isArray(c.nosotros_valores) && c.nosotros_valores.length) {
+          const wrap = document.querySelector('#nosotros .mvv-values');
+          if (wrap) {
+            wrap.innerHTML = c.nosotros_valores.map(v =>
+              `<div class="mvv-value" data-animate><div class="mvv-value-icon"><i class="${esc(v.icon || 'fas fa-star')}" aria-hidden="true"></i></div><h4>${esc(v.title || '')}</h4><p>${esc(v.desc || '')}</p></div>`
+            ).join('');
+          }
+        }
+        if (c.market_label) setText('#nosotros .mvv-market-label', c.market_label);
+        const marketText = document.querySelector('#nosotros .mvv-market p');
+        if (c.market_text && marketText) marketText.textContent = c.market_text;
+        break;
+
       case 'process':
         setHTML('.process-title', c.title);
         if (c.badge) setText('.process-label', c.badge);
