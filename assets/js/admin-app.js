@@ -4835,10 +4835,21 @@ window.adminApp.editVisit = async function (id) {
   function renderCfgStatus() {
     const row = $('#cfgStatusRow');
     if (!row || !window.supabaseClient) return;
+    // Chips honestos: solo marcan verde lo verificado en esta sesión
+    let zernioChip = statusChip('Zernio', false, 'sin verificar');
+    try {
+      const probe = JSON.parse(sessionStorage.getItem('cfgZernioLastProbe') || 'null');
+      if (probe && Date.now() - probe.at < 30 * 60 * 1000) {
+        zernioChip = probe.ok
+          ? statusChip('Zernio', true, `OK hace ${Math.floor((Date.now() - probe.at) / 60000)}min (${probe.ms}ms)`)
+          : statusChip('Zernio', false, `falló ${new Date(probe.at).toLocaleTimeString('es-AR')}`);
+      }
+    } catch (_) {}
     row.innerHTML = statusChip('Supabase', true, 'conectado')
       + statusChip('Cloudinary', !!window.BH_Cloudinary, window.BH_Cloudinary ? 'listo' : 'no disponible')
-      + statusChip('Brevo SMTP', true, 'límite 30 envíos/hora')
-      + statusChip('Mercado Libre', !!ml_connected, ml_configured ? 'credenciales OK' : 'sin configurar');
+      + statusChip('Brevo SMTP', false, 'no verificado en esta sesión')
+      + statusChip('Mercado Libre', !!ml_connected, ml_configured ? 'credenciales OK' : 'sin configurar')
+      + zernioChip;
   }
 
   function renderCfgSession() {
