@@ -1685,6 +1685,36 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
 }
 .toggle-switch.is-active::after { transform: translateX(20px); }
 
+/* Toggle accesible (botón real, no label+checkbox superpuestos) */
+.portal-toggle {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-btn);
+    cursor: pointer;
+    transition: background 0.3s;
+    flex-shrink: 0;
+}
+.portal-toggle.is-on { background: var(--accent); }
+.portal-toggle:disabled { opacity: 0.5; cursor: not-allowed; }
+.portal-toggle-knob {
+    display: block;
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--text-main);
+    transition: transform 0.3s var(--ease-spring);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+}
+.portal-toggle.is-on .portal-toggle-knob { transform: translateX(20px); }
+
 /* ================================================================
    16. PIPELINE CRM (LEADS)
    ================================================================ */

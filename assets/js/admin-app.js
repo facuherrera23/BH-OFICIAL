@@ -6906,7 +6906,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
         const statusText = ml_connected ? 'Conectado' : ml_configured ? 'Configurado' : 'No configurado';
         const statusIcon = ml_connected ? 'fas fa-circle-check' : ml_configured ? 'fas fa-circle-half-stroke' : 'fas fa-circle-xmark';
         const mlBtnHtml = ml_connected
-          ? `<button class="btn-action danger" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlDisconnect()"><i class="fas fa-link-slash"></i> Desconectar</button>`
+          ? `<button class="btn-action danger" style="font-size:11px; padding:6px 12px; white-space:nowrap;" onclick="window.adminApp.mlDisconnect()"><i class="fas fa-link-slash"></i> Desconectar</button>`
           : ml_configured
             ? `<button class="btn-action" style="font-size:11px; padding:6px 12px; background:rgba(255,230,0,0.15); color:#FFE600; border:1px solid rgba(255,230,0,0.3);" onclick="window.adminApp.mlConnect()"><i class="fas fa-link"></i> Conectar ML</button>`
             : '';
@@ -6944,7 +6944,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
         </div>
         ${userInfoHtml}
         ${listingsHtml}
-        <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin-top:12px; ${canManagePortals ? '' : 'opacity:.5; pointer-events:none;'}">
+        <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-top:12px; flex-wrap:wrap; ${canManagePortals ? '' : 'opacity:.5; pointer-events:none;'}">
           ${mlBtnHtml}
           ${!ml_configured ? `<button class="btn-action" title="Configurar credenciales" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlToggleConfig()"><i class="fas fa-cog"></i></button>` : ''}
           ${ml_connected ? `<button class="btn-action" title="Importar desde ML" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlImportFromML()"><i class="fas fa-file-import"></i></button>` : ''}
@@ -6962,9 +6962,9 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
         <h3 style="color:#fff; font-size:16px; font-weight:700; margin-bottom:4px;">${p.name}</h3>
         <p style="color:var(--text-dim); font-size:12px; margin-bottom:14px;">${count} inmuebles publicables</p>
         <div style="display:flex; align-items:center; justify-content:center; gap:10px; ${canManagePortals ? '' : 'opacity:.5; pointer-events:none;'}">
-          <label class="toggle-switch${isActive ? ' is-active' : ''}" onclick="this.classList.toggle('is-active'); window.adminApp.togglePortal('${p.name}', this.classList.contains('is-active'))">
-            <input type="checkbox" ${isActive ? 'checked' : ''} style="opacity:0; width:0; height:0; position:absolute;" />
-          </label>
+          <button type="button" role="switch" aria-checked="${isActive}" data-portal-toggle="${esc(p.name)}" class="portal-toggle${isActive ? ' is-on' : ''}" ${canManagePortals ? '' : 'disabled title="Solo super_admin o broker"'}>
+            <span class="portal-toggle-knob"></span>
+          </button>
           <button class="btn-action" title="${canManagePortals ? 'Configurar API' : 'Solo super_admin o broker'}" onclick="window.adminApp.openPortalConfig(${i})"><i class="fas fa-cog"></i></button>
         </div>
         ${canManagePortals ? '' : '<p style="font-size:11px; color:var(--text-dim); margin-top:10px;">Solo lectura para tu rol</p>'}
@@ -7005,17 +7005,33 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
   }
 
   window.adminApp.togglePortal = async function (portalName, isActive) {
+    const btn = document.querySelector(`[data-portal-toggle="${portalName}"]`);
+    if (!btn || btn.dataset.busy === '1') return;
+    btn.dataset.busy = '1';
     try {
       const { error } = await window.supabaseClient
         .from('portal_settings')
         .upsert({ portal_name: portalName, is_active: isActive }, { onConflict: 'portal_name' });
       if (error) throw error;
+      btn.classList.toggle('is-on', isActive);
+      btn.setAttribute('aria-checked', String(isActive));
       showToast(`${portalName} ${isActive ? 'activado' : 'desactivado'}`, 'success');
     } catch (err) {
       showToast('Error al actualizar portal: ' + err.message, 'error');
-      loadPortals();
+    } finally {
+      delete btn.dataset.busy;
     }
   };
+
+  const portalsContainerEl = $('#portalsContainer');
+  if (portalsContainerEl && !portalsContainerEl.dataset.toggleBound) {
+    portalsContainerEl.dataset.toggleBound = '1';
+    portalsContainerEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-portal-toggle]');
+      if (!btn || btn.disabled) return;
+      window.adminApp.togglePortal(btn.dataset.portalToggle, !btn.classList.contains('is-on'));
+    });
+  }
 
   /* Portal config field definitions per portal type */
   const PORTAL_CONFIG_FIELDS = {
@@ -7518,10 +7534,10 @@ try {
             </div>
           </div>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;${canManage ? '' : ' opacity:.5; pointer-events:none;'}" title="${canManage ? '' : 'Solo super_admin o broker'}">
-            ${status?.dry_run ? '<span class="nav-badge" style="background:rgba(255,184,0,0.15); color:var(--warning); font-size:11px;"><i class="fas fa-flask"></i> DRY-RUN activo</span>' : ''}
-            <button class="btn-action" onclick="window.adminApp.relaSyncCatalogs()"><i class="fas fa-rotate"></i> Catálogos</button>
-            <button class="btn-action" onclick="window.adminApp.relaReconcile()"><i class="fas fa-arrows-rotate"></i> Reconciliar</button>
-            <button class="btn-action" onclick="window.adminApp.openRelaConfig()"><i class="fas fa-cog"></i> Configurar</button>
+            ${status?.dry_run ? '<span class="nav-badge" style="background:rgba(255,184,0,0.15); color:var(--warning); font-size:11px; flex-shrink:0; white-space:nowrap;"><i class="fas fa-flask"></i> DRY-RUN activo</span>' : ''}
+            <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" onclick="window.adminApp.relaSyncCatalogs()"><i class="fas fa-rotate"></i> Catálogos</button>
+            <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" onclick="window.adminApp.relaReconcile()"><i class="fas fa-arrows-rotate"></i> Reconciliar</button>
+            <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" onclick="window.adminApp.openRelaConfig()"><i class="fas fa-cog"></i> Configurar</button>
           </div>
         </div>
         <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-top:16px;">
