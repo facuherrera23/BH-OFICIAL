@@ -4153,6 +4153,26 @@ window.adminApp.editVisit = async function (id) {
      9. CMS EDITOR
      ------------------------------------------------ */
   let cmsData = {};
+  let _cmsDirty = false;
+  const _cmsDirtyFields = new Set();
+  function cmsMarkDirty(key, value) {
+    _cmsDirty = true;
+    if (value !== undefined && String(value).trim() !== '') _cmsDirtyFields.add(key);
+    else _cmsDirtyFields.delete(key);
+    cmsUpdateDirtyUI();
+  }
+  function cmsUpdateDirtyUI() {
+    const btn = $('#cmsSaveBtn');
+    if (!btn) return;
+    const n = _cmsDirtyFields.size;
+    if (_cmsDirty && n > 0) {
+      btn.classList.add('has-changes');
+      btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar (' + n + ')';
+    } else {
+      btn.classList.remove('has-changes');
+      btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar Cambios Web';
+    }
+  }
 
   const CMS_FIELD_MAP = {
     hero_line1:    { section: 'hero', path: 'title' },
@@ -4199,12 +4219,15 @@ window.adminApp.editVisit = async function (id) {
       });
 
       populateCMSFields();
+      cmsLastSavedInfo();
     } catch (err) {
       logError('CMS error:', err);
     }
   }
 
   function populateCMSFields() {
+    _cmsDirty = false;
+    _cmsDirtyFields.clear();
     $$('.cms-field[data-key]').forEach(input => {
       const key = input.dataset.key;
       const mapping = CMS_FIELD_MAP[key];
@@ -4223,6 +4246,7 @@ window.adminApp.editVisit = async function (id) {
         }
       }
     });
+    cmsUpdateDirtyUI();
     if (heroBgHidden?.value && heroBgPreview) {
       heroBgPreview.innerHTML = '<img src="' + esc(heroBgHidden.value) + '" alt="Hero background" />';
     }
@@ -4238,7 +4262,34 @@ window.adminApp.editVisit = async function (id) {
     });
   });
 
+  $$('.cms-field[data-key]').forEach(f => {
+    const watch = () => cmsMarkDirty(f.dataset.key, f.value);
+    f.addEventListener('input', watch);
+    f.addEventListener('change', watch);
+  });
+  window.addEventListener('beforeunload', (e) => {
+    if (_cmsDirty && _cmsDirtyFields.size > 0) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+
+  function cmsLastSavedInfo() {
+    const el = $('#cmsLastSaved');
+    if (!el) return;
+    const stamps = Object.values(cmsData).map(s => s?.updated_at).filter(Boolean);
+    if (!stamps.length) { el.textContent = ''; return; }
+    const latest = new Date(Math.max(...stamps.map(t => new Date(t).getTime())));
+    el.textContent = 'Último guardado: ' + latest.toLocaleString('es-AR');
+  }
+
+  on($('#cmsPreviewBtn'), 'click', () => { window.open('/', '_blank', 'noopener'); });
+
   on($('#cmsSaveBtn'), 'click', async () => {
+    if (!_cmsDirty || _cmsDirtyFields.size === 0) {
+      showToast('No hay cambios para guardar', 'info');
+      return;
+    }
     const btn = $('#cmsSaveBtn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
 
@@ -4247,6 +4298,7 @@ window.adminApp.editVisit = async function (id) {
       const updatesBySection = {};
 
       fields.forEach(field => {
+        if (!_cmsDirtyFields.has(field.dataset.key)) return;
         const key = field.dataset.key;
         const mapping = CMS_FIELD_MAP[key];
         if (mapping) {
@@ -4288,7 +4340,10 @@ window.adminApp.editVisit = async function (id) {
         }
       }));
       const savedCount = sectionEntries.length;
-
+      _cmsDirty = false;
+      _cmsDirtyFields.clear();
+      cmsUpdateDirtyUI();
+      cmsLastSavedInfo();
       showToast(`${savedCount} secciones guardadas correctamente`, 'success');
     } catch (err) {
       showToast('Error al guardar: ' + err.message, 'error');
