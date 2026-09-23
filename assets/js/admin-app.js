@@ -4422,6 +4422,21 @@ window.adminApp.editVisit = async function (id) {
       const fields = $$('.cms-field[data-key]');
       const updatesBySection = {};
 
+      const urlFields = ['og_url', 'og_image', 'twitter_image', 'hero_video_url', 'cta_url', 'instagram', 'facebook', 'linkedin', 'youtube', 'video_url'];
+      const requiredFields = ['title', 'meta_title', 'meta_description'];
+      const errors = [];
+      fields.forEach(f => {
+        const k = f.dataset.key;
+        if (!_cmsDirtyFields.has(k)) return;
+        if (requiredFields.includes(k) && !String(f.value).trim()) errors.push(`"${k}" está vacío pero es requerido`);
+        if (urlFields.includes(k) && f.value && !/^(https?:\/\/|#|\/)/.test(f.value)) errors.push(`"${k}" no es una URL válida`);
+      });
+      if (errors.length) {
+        showToast('Revisá antes de guardar: ' + errors.slice(0, 3).join(' | '), 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar Cambios Web'; }
+        return;
+      }
+
       const nested = {
         servicios_items: cmsItemsPack('cmsServicesItems', ['icon', 'title', 'desc']),
         proceso_pasos: cmsItemsPack('cmsProcessSteps', ['num', 'title', 'desc']),
