@@ -8651,6 +8651,7 @@ window.exportAnomaliesCSV = async function() {
     if (_chatRealtimeChannel) { try { _chatRealtimeChannel.unsubscribe(); } catch {} _chatRealtimeChannel = null; }
     _chatCurrentConv = null;
     _pendingSendTempId = null;
+    _chatConversationsCache = [];
   };
   document.body.dataset.bhBeforeLoadChatRedes = 'true';
 
@@ -9336,6 +9337,10 @@ on(chip, 'click', () => {
 
     async function markReadCurrent() {
       if (!_chatCurrentConv) return;
+      const list = _chatConversationsCache || [];
+      const conv = list.find(c => c.id === _chatCurrentConv.id);
+      const unread = conv?.unread_count || 0;
+      if (unread === 0) { showToast('Sin mensajes sin leer', 'info'); return; }
       await markRead(_chatCurrentConv.id);
     }
 
@@ -9529,12 +9534,15 @@ function setupCoreRealtime() {
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'zernio_messages' }, payload => {
           const m = payload.new;
           const isIncoming = m.direction === 'in';
+          const now = Date.now();
+          const toastOk = now - _lastIncomingToastAt > 3000; // throttle
+          if (toastOk) _lastIncomingToastAt = now;
           if (!_chatCurrentConv || m.conversation_id !== _chatCurrentConv.id) {
             loadConversations(); // actualizar badge
-            if (isIncoming) showToast('Nuevo mensaje entrante', 'info');
+            if (isIncoming && toastOk) showToast('Nuevo mensaje entrante', 'info');
             return;
           }
-          if (isIncoming) showToast('Nuevo mensaje de ' + (_chatCurrentConv.contact_name || 'contacto'), 'info');
+          if (isIncoming && toastOk) showToast('Nuevo mensaje de ' + (_chatCurrentConv.contact_name || 'contacto'), 'info');
           // Si es el eco del mensaje que acabamos de enviar de forma optimista,
           // sacamos la burbuja temporal y dejamos que se agregue la real (con ticks reales).
           if (m.direction === 'out' && _pendingSendTempId) {
