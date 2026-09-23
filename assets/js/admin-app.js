@@ -6881,6 +6881,8 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     mlCheckStatus(false).catch(() => {});
     updatePortalsBadge();
 
+    const canManagePortals = ['super_admin', 'broker'].includes(currentProfile?.role);
+
     /* Get published property count + portal settings from DB */
     const [propsRes, settingsRes] = await Promise.all([
       window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('is_published', true).is('deleted_at', null),
@@ -6895,7 +6897,6 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     const settingsMap = {};
     (settingsRes.data || []).forEach(s => { settingsMap[s.portal_name] = s; });
 
-    const canManagePortals = ['super_admin', 'broker'].includes(currentProfile?.role);
     container.innerHTML = PORTALS.map((p, i) => {
       const db = settingsMap[p.name] || {};
       const isActive = db.is_active || false;
