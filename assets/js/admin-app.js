@@ -6825,6 +6825,22 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     showToast(`Usuarios exportados (${rows.length})`, 'success');
   });
 
+  let _usersSearchTimer = null;
+  const usersSearchEl = $('#usersSearchInput');
+  if (usersSearchEl && !usersSearchEl.dataset.bound) {
+    usersSearchEl.dataset.bound = '1';
+    usersSearchEl.addEventListener('input', () => {
+      clearTimeout(_usersSearchTimer);
+      _usersSearchTimer = setTimeout(() => {
+        const q = usersSearchEl.value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+        $$('#usersTableBody tr').forEach(tr => {
+          const txt = (tr.textContent || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+          tr.style.display = !q || txt.includes(q) ? '' : 'none';
+        });
+      }, 200);
+    });
+  }
+
   on($('#btnNewUser'), 'click', () => {
     $('#userForm')?.reset();
     const passBox = $('#userTempPassBox');
@@ -6977,14 +6993,15 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
 
     const nextActive = row.is_active === false;
     const label = row.full_name || row.email || 'este usuario';
-    if (
-      !window.confirm(
-        nextActive
-          ? `¿Reactivar el acceso de ${label}?`
-          : `¿Desactivar el acceso de ${label}? No podrá volver a iniciar sesión.`,
-      )
-    ) {
-      return;
+    if (!nextActive) {
+      let orphanNote = '';
+      try {
+        const { count } = await window.supabaseClient.from('leads').select('id', { count: 'exact', head: true }).eq('assigned_to', userId).is('deleted_at', null);
+        if (count) orphanNote = ` Tiene ${count} lead${count !== 1 ? 's' : ''} asignado${count !== 1 ? 's' : ''} que quedarán sin atención.`;
+      } catch (_) {}
+      if (!window.confirm(`¿Desactivar el acceso de ${label}? No podrá volver a iniciar sesión.${orphanNote}`)) return;
+    } else {
+      if (!window.confirm(`¿Reactivar el acceso de ${label}?`)) return;
     }
 
     try {
