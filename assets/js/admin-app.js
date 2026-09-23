@@ -6779,6 +6779,30 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
   }
 
   on($('#userTempPass'), 'click', function () { this.select(); });
+  on($('#userTempPassCopy'), 'click', async function () {
+    const input = $('#userTempPass');
+    if (!input || !input.value) return;
+    try {
+      await navigator.clipboard.writeText(input.value);
+      showToast('Contraseña copiada al portapapeles', 'success');
+    } catch {
+      input.select();
+      document.execCommand('copy');
+      showToast('Contraseña copiada', 'success');
+    }
+  });
+
+  on($('#btnExportUsers'), 'click', () => {
+    if (!usersCache.length) { showToast('No hay usuarios para exportar', 'warning'); return; }
+    const headers = ['ID', 'Nombre', 'Email', 'Teléfono', 'Rol', 'Activo', 'Creado'];
+    const rows = usersCache.map(u => [
+      u.id, u.full_name || '', u.email || '', u.phone || '',
+      USER_ROLE_LABELS[u.role] || u.role || '', u.is_active === false ? 'No' : 'Sí',
+      u.created_at ? new Date(u.created_at).toISOString().slice(0, 10) : ''
+    ]);
+    downloadCSV(`usuarios-${new Date().toISOString().slice(0, 10)}.csv`, rows, headers);
+    showToast(`Usuarios exportados (${rows.length})`, 'success');
+  });
 
   on($('#btnNewUser'), 'click', () => {
     $('#userForm')?.reset();
@@ -6837,6 +6861,11 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     if (next === previous) return;
 
     if (previous === 'super_admin' && !window.confirm(`¿Quitar el rol Super Admin a este usuario?`)) {
+      select.value = previous;
+      return;
+    }
+    const ROLE_RANK = { agente: 1, broker: 2, super_admin: 3 };
+    if ((ROLE_RANK[next] || 0) < (ROLE_RANK[previous] || 0) && !window.confirm(`¿Degradar a este usuario de ${USER_ROLE_LABELS[previous] || previous} a ${USER_ROLE_LABELS[next] || next}?`)) {
       select.value = previous;
       return;
     }
@@ -6954,11 +6983,26 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
 
     const fd = new FormData(form);
     const userId = String(fd.get('userId') || '');
-    const fullName = String(fd.get('full_name') || '').trim();
+    const fullName = String(fd.get('full_name') || '').trim().replace(/\s+/g, ' ');
     const email = String(fd.get('email') || '').trim().toLowerCase();
     const phone = String(fd.get('phone') || '').trim();
     const row = usersCache.find((u) => u.id === userId);
     if (!userId || !row) return;
+
+    if (!fullName || fullName.length < 2) {
+      showToast('El nombre completo es obligatorio (mín. 2 caracteres)', 'error');
+      return;
+    }
+    const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (email && !EMAIL_RX.test(email)) {
+      showToast('Email inválido', 'error');
+      return;
+    }
+    const dup = usersCache.find(u => u.id !== userId && String(u.email || '').toLowerCase() === email);
+    if (dup) {
+      showToast('Otro usuario ya usa ese email', 'error');
+      return;
+    }
 
     const isSelf = userId === currentProfile.id;
     const isAdmin = canManageUsers();
@@ -6968,11 +7012,6 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
       showToast('Solo podés editar tu propio usuario.', 'error');
       return;
     }
-    if (!fullName) {
-      showToast('El nombre completo es obligatorio', 'error');
-      return;
-    }
-
     const emailChanged = !!email && email !== String(row.email || '').toLowerCase();
 
     btn.disabled = true;

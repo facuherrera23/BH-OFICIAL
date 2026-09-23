@@ -1584,7 +1584,10 @@
 <h2 class="panel-title">Usuarios del Sistema</h2>
 <p style="color:var(--text-muted); font-size:12.5px;">Roles y credenciales de acceso administrativo.</p>
 </div>
+<div style="display:flex; gap:10px;">
+<button class="btn-luxury-action" id="btnExportUsers" title="Exportar lista de usuarios a CSV" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);"><i class="fas fa-download"></i> CSV</button>
 <button class="btn-luxury-action" id="btnNewUser">+ Invitar Usuario</button>
+</div>
 </div>
 <div class="table-responsive">
 <table class="luxury-table">
@@ -2915,7 +2918,10 @@
 </div>
 <div class="form-field" id="userTempPassBox" style="display:none;">
 <label>Contraseña Temporal (se muestra una sola vez)</label>
-<input type="text" id="userTempPass" readonly />
+<div style="display:flex; gap:8px; align-items:center;">
+<input type="text" id="userTempPass" readonly style="flex:1;" />
+<button type="button" id="userTempPassCopy" class="btn-action" title="Copiar contraseña" style="padding:8px 12px; white-space:nowrap;"><i class="fas fa-copy"></i> Copiar</button>
+</div>
 </div>
 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
 <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
@@ -3163,6 +3169,6 @@
 </div>
 <!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Bloqueador de anuncios detectado.</strong> Desactivá las extensiones para este sitio o abrí en ventana incógnita. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="assets/js/zod.umd.js"></script><script src="assets/js/utils.js?v=51"></script><script src="assets/js/config.js?v=55"></script><script src="assets/js/supabase-client.js?v=54"></script><script src="assets/js/cloudinary.js?v=56"></script><script src="assets/js/admin-crm-tasks.js?v=2"></script>
 <script src="assets/js/admin-crm.js?v=20"></script>
-<script src="assets/js/admin-app.js?v=312"></script>
+<script src="assets/js/admin-app.js?v=313"></script>
 <script src="assets/js/admin-supervision.js?v=14"></script></body>
 </html>
