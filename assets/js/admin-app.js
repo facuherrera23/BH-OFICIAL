@@ -4725,7 +4725,7 @@ window.adminApp.editVisit = async function (id) {
     try {
       const [{ data: rows, error }, prefRes, zernioRes] = await Promise.all([
         client.from('site_content').select('id, section_key, content').in('section_key', ['contact', 'footer', 'social']),
-        client.from('app_settings').select('key, value'),
+        client.from('app_settings').select('key, value, updated_at'),
         client.from('zernio_config').select('value').eq('key', 'api_key').maybeSingle()
       ]);
       if (error) throw error;
@@ -4733,6 +4733,12 @@ window.adminApp.editVisit = async function (id) {
         const prefs = prefRes.data.find(r => r.key === 'preferences');
         const rateInput = $('#cfg_usd_rate');
         if (prefs?.value && typeof prefs.value.usd_rate === 'number' && rateInput) rateInput.value = prefs.value.usd_rate;
+        const hint = $('#cfgUsdRateHint');
+        if (hint && prefs?.updated_at) {
+          const daysOld = Math.floor((Date.now() - new Date(prefs.updated_at).getTime()) / 86400000);
+          hint.textContent = daysOld > 7 ? `⚠ Cotización cargada hace ${daysOld} días — conviene actualizarla` : `Actualizada hace ${daysOld} día${daysOld === 1 ? '' : 's'}`;
+          hint.style.color = daysOld > 7 ? 'var(--warning)' : 'var(--text-dim)';
+        }
       }
       if (zernioRes.data?.value) {
         const val = zernioRes.data.value;
