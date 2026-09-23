@@ -19,6 +19,26 @@ const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
 type Json = Record<string, unknown>;
 
+const CORS_ALLOWED_ORIGINS = [
+  'https://bienenhaus.com.ar',
+  'https://www.bienenhaus.com.ar',
+  'https://facuherrera23.github.io',
+  'http://localhost:3000',
+  'http://localhost:8788',
+  'http://127.0.0.1:8788',
+];
+
+function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin') ?? '';
+  const base: Record<string, string> = {
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Vary': 'Origin',
+  };
+  if (origin && CORS_ALLOWED_ORIGINS.includes(origin)) base['Access-Control-Allow-Origin'] = origin;
+  return base;
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
@@ -258,7 +278,7 @@ function makeClient(supabase: ReturnType<typeof createClient>, cfgRow: Record<st
 // ---------------- Handler ----------------
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204 });
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(req) });
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
   const correlationId = crypto.randomUUID();
