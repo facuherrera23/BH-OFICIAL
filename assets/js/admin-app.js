@@ -2075,6 +2075,12 @@ function esc(s) {
         tipo_cliente: validated.tipo_cliente,
         operation_type: validated.operation_type,
       };
+      const nextFollowRaw = String(formData.get('next_followup_at') || '').trim();
+      if (nextFollowRaw) {
+        const d = new Date(nextFollowRaw);
+        if (isNaN(d.getTime())) { showToast('La fecha de próximo contacto es inválida', 'error'); _submittingLead = false; restoreBtn(btn); return; }
+        data.next_followup_at = d.toISOString();
+      }
 
 
       // ── ANTI-DUPLICADO: sólo si NO estamos editando
@@ -2205,6 +2211,16 @@ function esc(s) {
       setF('source', lead.source || 'manual');
       setF('assigned_to', lead.assigned_to || '');
       setF('property_id', lead.property_id || '');
+      const nextFollowInput = form.elements.next_followup_at;
+      if (nextFollowInput) {
+        if (lead.next_followup_at) {
+          const d = new Date(lead.next_followup_at);
+          const pad = n => String(n).padStart(2, '0');
+          nextFollowInput.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        } else {
+          nextFollowInput.value = '';
+        }
+      }
       openModal('leadModal');
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
