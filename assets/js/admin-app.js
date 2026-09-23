@@ -8756,6 +8756,14 @@ on(chip, 'click', () => {
         }
       });
 
+      if (composerTextarea && !composerTextarea.dataset.autosizeBound) {
+        composerTextarea.dataset.autosizeBound = '1';
+        composerTextarea.addEventListener('input', () => {
+          composerTextarea.style.height = 'auto';
+          composerTextarea.style.height = Math.min(composerTextarea.scrollHeight, 120) + 'px';
+        });
+      }
+
       sendBtn?.addEventListener('click', sendMessage);
       markReadBtn?.addEventListener('click', markReadCurrent);
 
@@ -8899,7 +8907,7 @@ on(chip, 'click', () => {
         .select('*, account:zernio_accounts(platform, username)')
         .eq('id', convId)
         .single();
-      if (error || !data) return;
+      if (error || !data) { showToast('No se pudo abrir la conversación', 'error'); return; }
 
       _chatCurrentConv = data;
 
@@ -8967,6 +8975,7 @@ on(chip, 'click', () => {
           const file = attachInput.files?.[0];
           if (!file) return;
           if (file.size > 10 * 1024 * 1024) { showToast('Archivo máximo 10MB', 'error'); attachInput.value = ''; return; }
+          if (attachPreview?.dataset.url) URL.revokeObjectURL(attachPreview.dataset.url);
           const url = URL.createObjectURL(file);
           if (attachPreview) {
             const ext = (file.name.split('.').pop() || '').toLowerCase();
@@ -9172,7 +9181,7 @@ on(chip, 'click', () => {
           const time = m.occurred_at ? new Date(m.occurred_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '';
           const ticks = getTicks(m.status);
           return `
-            <div class="chat-bubble ${isOut ? 'out' : 'in'}" style="
+            <div class="chat-bubble ${isOut ? 'out' : 'in'}" data-msg-id="${esc(m.id)}" style="
               display:flex; flex-direction:column; max-width:75%; ${isOut ? 'align-self:flex-end; margin-left:auto;' : 'align-self:flex-start; margin-right:auto;'}
             ">
               <div style="background:${m.direction === 'out' ? 'var(--accent)' : 'rgba(255,255,255,0.05)'}; color:#fff; padding:10px 14px; border-radius:${m.direction === 'out' ? '18px 18px 4px 18px' : '18px 18px 18px 4px'}; max-width:100%; word-wrap:break-word;">
@@ -9219,7 +9228,7 @@ on(chip, 'click', () => {
           url: dataUrl,
           type: file.type.startsWith('image') ? 'image' : file.type.startsWith('video') ? 'video' : file.type.startsWith('audio') ? 'audio' : 'file',
         };
-        attachPreview.style.display = 'none';
+        if (attachPreview) { attachPreview.style.display = 'none'; if (attachPreview.dataset.url) { URL.revokeObjectURL(attachPreview.dataset.url); delete attachPreview.dataset.url; } }
         attachInput.value = '';
       }
 
@@ -9332,11 +9341,12 @@ on(chip, 'click', () => {
     async function markRead(convId) {
       try {
         const { data: { session } } = await window.supabaseClient.auth.getSession();
-        await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/zernio-proxy`, {
+        const res = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/zernio-proxy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
           body: JSON.stringify({ action: 'mark_read', conversationId: convId })
         });
+        if (!res.ok) { logWarn('mark_read HTTP ' + res.status); }
         await window.supabaseClient.from('zernio_conversations').update({ unread_count: 0 }).eq('id', convId);
         loadConversations();
       } catch (err) {
@@ -9531,8 +9541,8 @@ function setupCoreRealtime() {
             if (tempEl) tempEl.remove();
             _pendingSendTempId = null;
           }
-          // Evitar duplicados si el mensaje ya está renderizado
-          if (messagesEl.querySelector(`[data-temp-id="${m.id}"]`)) return;
+          // Evitar duplicados si el mensaje ya está renderizado (temp o definitivo)
+          if (messagesEl.querySelector(`[data-temp-id="${m.id}"]`) || messagesEl.querySelector(`[data-msg-id="${m.id}"]`)) return;
           appendMessage(m);
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'zernio_messages' }, payload => {
