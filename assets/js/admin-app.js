@@ -6864,11 +6864,15 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     if (!container) return;
     if (!window.supabaseClient) return;
 
+    updatePortalsBadge();
+
     /* Get published property count + portal settings from DB */
     const [propsRes, settingsRes] = await Promise.all([
-      window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('is_published', true),
+      window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('is_published', true).is('deleted_at', null),
       window.supabaseClient.from('portal_settings').select('portal_name, is_active'),
     ]);
+    if (propsRes.error) logWarn('portals: error contando publicados: ' + propsRes.error.message);
+    if (settingsRes.error) logWarn('portals: error leyendo portal_settings: ' + settingsRes.error.message);
 
     const count = propsRes.count || 0;
     const settingsMap = {};
@@ -6942,6 +6946,36 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     }).join('');
 
     loadRelaPanel();
+    loadSyncHistory();
+  }
+
+  async function loadSyncHistory() {
+    const tbody = $('#syncLogsTableBody');
+    if (!tbody || !window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('ml_sync_history')
+        .select('operation, status, created_at, queue_id, error')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      if (!data || !data.length) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:30px; color:var(--text-dim);">Sin sincronizaciones recientes</td></tr>';
+        return;
+      }
+      const opLabels = { publish: 'Publicación', update: 'Actualización', delete: 'Eliminación' };
+      tbody.innerHTML = data.map(row => {
+        const ok = row.status === 'success';
+        return `<tr>
+          <td style="font-size:12px;">${new Date(row.created_at).toLocaleString('es-AR')}</td>
+          <td><span class="nav-badge" style="background:rgba(255,230,0,0.12); color:#FFE600; font-size:10px;">Mercado Libre</span></td>
+          <td style="font-size:12px;">${esc(opLabels[row.operation] || row.operation)}${row.queue_id ? ' #' + row.queue_id : ''}</td>
+          <td><span class="nav-badge" style="background:${ok ? 'rgba(0,200,120,0.12)' : 'rgba(239,68,68,0.12)'}; color:${ok ? 'var(--success)' : 'var(--danger)'}; font-size:10px;"${row.error ? ` title="${esc(row.error)}"` : ''}>${ok ? 'OK' : 'Falló'}</span></td>
+        </tr>`;
+      }).join('');
+    } catch (err) {
+      logWarn('sync history: ' + err.message);
+    }
   }
 
   window.adminApp.togglePortal = async function (portalName, isActive) {
@@ -7068,9 +7102,20 @@ try {
     }
   });
 
-  /* Sync all button */
-  on($('#syncAllBtn'), 'click', () => {
-    showToast('Sincronización iniciada — próximamente', 'info');
+  /* Sync all: refresca estado ML, conteo de propiedades e historial */
+  on($('#syncAllBtn'), 'click', async function () {
+    this.disabled = true;
+    this.innerHTML = '<i class="fas fa-rotate fa-spin"></i> Sincronizando...';
+    try {
+      await mlCheckStatus(true);
+      await loadPortals();
+      showToast('Estado de portales sincronizado', 'success');
+    } catch (err) {
+      showToast('Error al sincronizar: ' + err.message, 'error');
+    } finally {
+      this.disabled = false;
+      this.innerHTML = '<i class="fas fa-arrows-rotate"></i> Sincronizar Todo';
+    }
   });
 
   /* ------------------------------------------------
@@ -7125,7 +7170,7 @@ try {
         signal: controller.signal,
       });
 
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || `Error ML API (${res.status})`);
       return json;
     } catch (err) {
@@ -7136,19 +7181,33 @@ try {
     }
   }
 
-  async function mlCheckStatus() {
+  function updatePortalsBadge() {
+    const el = document.getElementById('sideBadgePortales');
+    if (!el) return;
+    el.textContent = ml_connected ? ' On' : ml_configured ? ' Parcial' : ' Off';
+    el.style.color = ml_connected ? 'var(--success)' : ml_configured ? '#FFE600' : 'var(--text-dim)';
+  }
+
+  let _mlStatusFetchedAt = 0;
+  const ML_STATUS_TTL_MS = 60_000;
+  async function mlCheckStatus(force = false) {
+    if (!force && _mlStatusFetchedAt && (Date.now() - _mlStatusFetchedAt) < ML_STATUS_TTL_MS) return;
     try {
       const result = await mlApiCall('portal-status');
+      _mlStatusFetchedAt = Date.now();
       ml_connected = !!result.connected;
       ml_configured = !!result.configured;
       ml_user = result.user || null;
       ml_listings = Array.isArray(result.listings) ? result.listings : [];
+      updatePortalsBadge();
     } catch (err) {
+      _mlStatusFetchedAt = 0;
       console.warn('[ML] Status check failed:', err.message);
       ml_connected = false;
       ml_configured = false;
       ml_user = null;
       ml_listings = [];
+      updatePortalsBadge();
     }
   }
 
@@ -7188,12 +7247,14 @@ try {
       const top = (screen.height - height) / 2;
       const popup = window.open(authUrl, 'ml_oauth',
         `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`);
+      if (!popup) throw new Error('El navegador bloqueó la ventana emergente. Permití popups para este sitio y reintentá.');
 
       /* Listen for postMessage from ml-oauth Edge Function */
       const ML_MSG_ORIGIN = new URL(window.BH_CONFIG.SUPABASE_URL).origin;
       const handler = async (event) => {
         if (event.origin !== ML_MSG_ORIGIN) return;
         if (event.data?.type === 'ML_AUTH_SUCCESS') {
+          _mlStatusFetchedAt = 0;
           window.removeEventListener('message', handler);
           if (popup && !popup.closed) popup.close();
           showToast('¡Cuenta de Mercado Libre conectada exitosamente!', 'success');
@@ -7289,6 +7350,7 @@ try {
 
   /* Update a property listing on Mercado Libre */
   window.adminApp.mlUpdateProperty = async function (propertyId, listingId) {
+    if (!ml_connected) { showToast('Conectá tu cuenta de Mercado Libre primero', 'warning'); return; }
     if (!(await showConfirmDialog({
       title: 'Actualizar en Mercado Libre',
       message: 'Se actualizará la publicación de esta propiedad en Mercado Libre. ¿Continuar?',
@@ -7308,6 +7370,7 @@ try {
 
   /* Remove a property listing from Mercado Libre */
   window.adminApp.mlRemoveProperty = async function (listingId, propertyId) {
+    if (!ml_connected) { showToast('Conectá tu cuenta de Mercado Libre primero', 'warning'); return; }
     if (!(await showConfirmDialog({
       title: 'Eliminar de Mercado Libre',
       message: 'La publicación de esta propiedad se eliminará de Mercado Libre. ¿Continuar?',
