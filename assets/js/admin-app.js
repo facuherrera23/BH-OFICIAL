@@ -4754,6 +4754,7 @@ window.adminApp.editVisit = async function (id) {
       applyCfgGuard();
       renderCfgStatus();
       renderCfgSession();
+      renderCfgCompleteness();
     } catch (err) {
       logError('Config error:', err);
       showToast('Error al cargar configuración: ' + err.message, 'error');
@@ -4856,6 +4857,19 @@ window.adminApp.editVisit = async function (id) {
     const info = $('#cfgSessionInfo');
     if (!info) return;
     info.innerHTML = '<strong style="color:#fff;">' + esc(currentUser?.email || '—') + '</strong> · rol: ' + esc(currentProfile?.role || '—');
+  }
+
+  function renderCfgCompleteness() {
+    const banner = $('#cfgCompletenessBanner');
+    if (!banner) return;
+    const missing = [];
+    if (!($('#cfg_zernio_api_key')?.value || '').trim()) missing.push('API key de Zernio (chat redes)');
+    if (!($('#cfg_usd_rate')?.value || '').trim()) missing.push('Cotización USD/ARS');
+    if (!window.BH_CONFIG?.CLOUDINARY_CLOUD_NAME) missing.push('Cloudinary (subida de imágenes)');
+    if (!ml_configured) missing.push('Credenciales Mercado Libre (Portales)');
+    if (!missing.length) { banner.style.display = 'none'; return; }
+    banner.style.display = 'block';
+    banner.innerHTML = '<i class="fas fa-triangle-exclamation" style="color:var(--warning); margin-right:8px;"></i><strong>Configuración incompleta:</strong> ' + missing.map(esc).join(' · ');
   }
 
   /* Zernio Config UI helpers */
