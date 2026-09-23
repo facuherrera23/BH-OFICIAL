@@ -4873,6 +4873,7 @@ window.adminApp.editVisit = async function (id) {
     statusEl.style.color = 'var(--text-muted)';
     try {
       const session = await window.supabaseClient.auth.getSession();
+      const t0 = performance.now();
       const res = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/zernio-proxy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.data.session?.access_token}` },
@@ -4880,11 +4881,14 @@ window.adminApp.editVisit = async function (id) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error en respuesta');
-      statusEl.textContent = '? Conectado · ' + data.count + ' cuenta(s) sincronizada(s)';
+      const ms = Math.round(performance.now() - t0);
+      statusEl.textContent = `Conectado · ${data.count} cuenta(s) · ${ms}ms · ${new Date().toLocaleTimeString('es-AR')}`;
       statusEl.style.color = 'var(--success)';
+      sessionStorage.setItem('cfgZernioLastProbe', JSON.stringify({ ok: true, at: Date.now(), ms, count: data.count }));
     } catch (err) {
-      statusEl.textContent = '? ' + err.message;
+      statusEl.textContent = '✗ ' + err.message;
       statusEl.style.color = 'var(--danger)';
+      sessionStorage.setItem('cfgZernioLastProbe', JSON.stringify({ ok: false, at: Date.now(), error: err.message }));
     } finally {
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-plug"></i> Probar Conexión Zernio';
