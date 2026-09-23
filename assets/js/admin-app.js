@@ -8814,9 +8814,10 @@ on(chip, 'click', () => {
 
       // Filtrar
       if (_chatSearchTerm) {
+        const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+        const q = norm(_chatSearchTerm);
         conversations = conversations.filter(c =>
-          (c.contact_name || '').toLowerCase().includes(_chatSearchTerm) ||
-          (c.contact_handle || '').toLowerCase().includes(_chatSearchTerm)
+          norm(c.contact_name).includes(q) || norm(c.contact_handle).includes(q)
         );
       }
       if (_chatPlatformFilter !== 'all') {
@@ -8994,10 +8995,13 @@ on(chip, 'click', () => {
         };
       }
 
-      // Marcar leído
       if (data.unread_count > 0) {
         await markRead(convId);
         data.unread_count = 0;
+        const cached = (_chatConversationsCache || []).find(c => c.id === convId);
+        if (cached) cached.unread_count = 0;
+        _chatUnreadTotal = (_chatConversationsCache || []).reduce((sum, c) => sum + (c.unread_count || 0), 0);
+        updateSidebarChatBadge();
       }
 
       try {
