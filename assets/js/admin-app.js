@@ -8763,6 +8763,9 @@ on(chip, 'click', () => {
         composerTextarea.addEventListener('input', () => {
           composerTextarea.style.height = 'auto';
           composerTextarea.style.height = Math.min(composerTextarea.scrollHeight, 120) + 'px';
+          try {
+            if (_chatCurrentConv?.id) sessionStorage.setItem('chatDraft:' + _chatCurrentConv.id, composerTextarea.value);
+          } catch (_) {}
         });
       }
 
@@ -8996,6 +8999,11 @@ on(chip, 'click', () => {
         await markRead(convId);
         data.unread_count = 0;
       }
+
+      try {
+        const draft = sessionStorage.getItem('chatDraft:' + convId) || '';
+        if (composerTextarea) { composerTextarea.value = draft; composerTextarea.style.height = 'auto'; }
+      } catch (_) {}
 
       // Cargar mensajes
       await loadMessages(convId);
@@ -9232,6 +9240,7 @@ on(chip, 'click', () => {
         };
         if (attachPreview) { attachPreview.style.display = 'none'; if (attachPreview.dataset.url) { URL.revokeObjectURL(attachPreview.dataset.url); delete attachPreview.dataset.url; } }
         attachInput.value = '';
+        try { if (_chatCurrentConv?.id) sessionStorage.removeItem('chatDraft:' + _chatCurrentConv.id); } catch (_) {}
       }
 
       composerTextarea.value = '';
