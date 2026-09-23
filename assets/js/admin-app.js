@@ -4219,9 +4219,33 @@ window.adminApp.editVisit = async function (id) {
       });
 
       populateCMSFields();
+      cmsPopulateNested();
       cmsLastSavedInfo();
     } catch (err) {
       logError('CMS error:', err);
+    }
+  }
+
+  const CMS_NESTED_SCHEMAS = {
+    services_items: ['cmsServicesItems', [{ key: 'icon', label: 'Icono (clase FA)', placeholder: 'fas fa-home' }, { key: 'title', label: 'Título', placeholder: 'Venta' }, { key: 'desc', label: 'Descripción', placeholder: 'Estrategia personalizada...' }]],
+    proceso_pasos: ['cmsProcessSteps', [{ key: 'num', label: 'Número', placeholder: '01' }, { key: 'title', label: 'Título', placeholder: 'Tasación' }, { key: 'desc', label: 'Descripción', placeholder: 'Analizamos tu propiedad...' }]],
+    navbar_items: ['cmsNavbarItems', [{ key: 'label', label: 'Etiqueta', placeholder: 'Inicio' }, { key: 'url', label: 'URL / Ancla', placeholder: '#hero' }]],
+    navbar_mobile_items: ['cmsNavbarMobileItems', [{ key: 'label', label: 'Etiqueta', placeholder: 'Inicio' }, { key: 'url', label: 'URL / Ancla', placeholder: '#hero' }]],
+    form_options: ['cmsFormOptions', [{ key: 'value', label: 'Valor', placeholder: 'comprar' }, { key: 'label', label: 'Etiqueta', placeholder: 'Quiero comprar' }]],
+    form_fields: ['cmsFormFields', [{ key: 'name', label: 'Nombre del campo (id)', placeholder: 'phone' }, { key: 'label', label: 'Etiqueta', placeholder: 'Teléfono' }, { key: 'type', label: 'Tipo', placeholder: 'tel' }]],
+    footer_nav_links: ['cmsFooterNavLinks', [{ key: 'label', label: 'Etiqueta', placeholder: 'Propiedades' }, { key: 'url', label: 'URL / Ancla', placeholder: '#propiedades' }]],
+    footer_service_links: ['cmsFooterServiceLinks', [{ key: 'label', label: 'Etiqueta', placeholder: 'Ventas' }, { key: 'url', label: 'URL / Ancla', placeholder: '#servicios' }]],
+  };
+
+  function cmsPopulateNested() {
+    for (const [key, [containerId, schema]] of Object.entries(CMS_NESTED_SCHEMAS)) {
+      const container = document.getElementById(containerId);
+      if (!container) continue;
+      container.innerHTML = '';
+      for (const sec of Object.values(cmsData)) {
+        const list = sec?.content?.[key];
+        if (Array.isArray(list)) list.forEach(v => cmsAddListItem(containerId, schema, v));
+      }
     }
   }
 
@@ -4285,6 +4309,107 @@ window.adminApp.editVisit = async function (id) {
 
   on($('#cmsPreviewBtn'), 'click', () => { window.open('/', '_blank', 'noopener'); });
 
+  function cmsAddListItem(containerId, fields, values = {}) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'cms-field';
+    wrap.style.cssText = 'padding:12px; background:rgba(255,255,255,0.03); border-radius:8px; margin-bottom:12px; position:relative;';
+    wrap.innerHTML = fields.map(f =>
+      `<div style="margin-bottom:8px;"><label style="font-size:11px; color:var(--text-dim);">${f.label}</label><input type="text" data-subkey="${f.key}" value="${esc(values[f.key] ?? '')}" placeholder="${f.placeholder || ''}" style="width:100%; padding:8px 10px; background:rgba(255,255,255,0.04); border:1px solid var(--border-input); border-radius:6px; color:#fff; font-size:12px;" /></div>`
+    ).join('') + `<button type="button" class="grupo-item-remove" style="position:absolute; top:6px; right:6px; background:none; border:none; color:var(--danger); cursor:pointer;"><i class="fas fa-trash"></i></button>`;
+    wrap.querySelector('.grupo-item-remove')?.addEventListener('click', () => { wrap.remove(); cmsMarkDirty(containerId, 'x'); });
+    wrap.querySelectorAll('input').forEach(i => i.addEventListener('input', () => cmsMarkDirty(containerId, 'x')));
+    container.appendChild(wrap);
+    if (!Object.keys(values).length) cmsMarkDirty(containerId, 'x');
+  }
+
+  function cmsItemsPack(containerId, subkeys) {
+    const container = document.getElementById(containerId);
+    if (!container) return [];
+    return [...container.querySelectorAll('.cms-field')].map(wrap => {
+      const obj = {};
+      wrap.querySelectorAll('[data-subkey]').forEach(i => {
+        const k = i.dataset.subkey;
+        if (subkeys.includes(k)) obj[k] = i.value.trim();
+      });
+      return Object.keys(obj).length ? obj : null;
+    }).filter(Boolean);
+  }
+
+  on($('#cmsAddServiceBtn'), 'click', () => cmsAddListItem('cmsServicesItems', [
+    { key: 'icon', label: 'Icono (clase FA)', placeholder: 'fas fa-home' },
+    { key: 'title', label: 'Título', placeholder: 'Venta' },
+    { key: 'desc', label: 'Descripción', placeholder: 'Estrategia personalizada...' },
+  ]));
+  on($('#cmsAddProcessStepBtn'), 'click', () => cmsAddListItem('cmsProcessSteps', [
+    { key: 'num', label: 'Número', placeholder: '01' },
+    { key: 'title', label: 'Título', placeholder: 'Tasación' },
+    { key: 'desc', label: 'Descripción', placeholder: 'Analizamos tu propiedad...' },
+  ]));
+  on($('#cmsAddNavbarItemBtn'), 'click', () => cmsAddListItem('cmsNavbarItems', [
+    { key: 'label', label: 'Etiqueta', placeholder: 'Inicio' },
+    { key: 'url', label: 'URL / Ancla', placeholder: '#hero' },
+  ]));
+  on($('#cmsAddNavbarMobileItemBtn'), 'click', () => cmsAddListItem('cmsNavbarMobileItems', [
+    { key: 'label', label: 'Etiqueta', placeholder: 'Inicio' },
+    { key: 'url', label: 'URL / Ancla', placeholder: '#hero' },
+  ]));
+  on($('#cmsAddFormOptionBtn'), 'click', () => cmsAddListItem('cmsFormOptions', [
+    { key: 'value', label: 'Valor', placeholder: 'comprar' },
+    { key: 'label', label: 'Etiqueta', placeholder: 'Quiero comprar' },
+  ]));
+  on($('#cmsAddFormFieldBtn'), 'click', () => cmsAddListItem('cmsFormFields', [
+    { key: 'name', label: 'Nombre del campo (id)', placeholder: 'phone' },
+    { key: 'label', label: 'Etiqueta', placeholder: 'Teléfono' },
+    { key: 'type', label: 'Tipo', placeholder: 'tel' },
+  ]));
+  on($('#cmsAddFooterNavLinkBtn'), 'click', () => cmsAddListItem('cmsFooterNavLinks', [
+    { key: 'label', label: 'Etiqueta', placeholder: 'Propiedades' },
+    { key: 'url', label: 'URL / Ancla', placeholder: '#propiedades' },
+  ]));
+  on($('#cmsAddFooterServiceLinkBtn'), 'click', () => cmsAddListItem('cmsFooterServiceLinks', [
+    { key: 'label', label: 'Etiqueta', placeholder: 'Ventas' },
+    { key: 'url', label: 'URL / Ancla', placeholder: '#servicios' },
+  ]));
+
+  const CMS_CHAR_LIMITS = { meta_title: 60, meta_description: 160, og_title: 60, og_description: 200, description: 500 };
+  function cmsCharCounterInit() {
+    $$('.cms-field[data-key]').forEach(f => {
+      if (f.dataset.counterBound) return;
+      f.dataset.counterBound = '1';
+      const limit = CMS_CHAR_LIMITS[f.dataset.key];
+      if (!limit) return;
+      const counter = document.createElement('small');
+      counter.style.cssText = 'display:block; margin-top:4px; font-size:10px; color:var(--text-dim);';
+      counter.textContent = '0/' + limit;
+      f.parentElement.appendChild(counter);
+      const upd = () => {
+        counter.textContent = (f.value?f.value.length:0) + '/' + limit;
+        counter.style.color = (f.value?.length||0) > limit ? 'var(--danger)' : 'var(--text-dim)';
+      };
+      f.addEventListener('input', upd);
+      upd();
+    });
+  }
+  cmsCharCounterInit();
+
+  $$('.cms-field[data-key]').forEach(f => {
+    if (f.dataset.undoBound) return;
+    f.dataset.undoBound = '1';
+    f.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        const prev = f.dataset.prevValue;
+        if (prev !== undefined && prev !== f.value) {
+          f.value = prev;
+          cmsMarkDirty(f.dataset.key, f.value);
+          e.preventDefault();
+        }
+      }
+    });
+    f.addEventListener('input', () => { f.dataset.prevValue = f.value; });
+  });
+
   on($('#cmsSaveBtn'), 'click', async () => {
     if (!_cmsDirty || _cmsDirtyFields.size === 0) {
       showToast('No hay cambios para guardar', 'info');
@@ -4296,6 +4421,33 @@ window.adminApp.editVisit = async function (id) {
     try {
       const fields = $$('.cms-field[data-key]');
       const updatesBySection = {};
+
+      const nested = {
+        servicios_items: cmsItemsPack('cmsServicesItems', ['icon', 'title', 'desc']),
+        proceso_pasos: cmsItemsPack('cmsProcessSteps', ['num', 'title', 'desc']),
+        navbar_items: cmsItemsPack('cmsNavbarItems', ['label', 'url']),
+        navbar_mobile_items: cmsItemsPack('cmsNavbarMobileItems', ['label', 'url']),
+        form_options: cmsItemsPack('cmsFormOptions', ['value', 'label']),
+        form_fields: cmsItemsPack('cmsFormFields', ['name', 'label', 'type']),
+        footer_nav_links: cmsItemsPack('cmsFooterNavLinks', ['label', 'url']),
+        footer_service_links: cmsItemsPack('cmsFooterServiceLinks', ['label', 'url']),
+      };
+      const NESTED_TO_SECTION = {
+        servicios_items: 'services',
+        proceso_pasos: 'process',
+        navbar_items: 'navbar',
+        navbar_mobile_items: 'navbar',
+        form_options: 'form',
+        form_fields: 'form',
+        footer_nav_links: 'footer',
+        footer_service_links: 'footer',
+      };
+      for (const [k, items] of Object.entries(nested)) {
+        if (!items.length) continue;
+        const section = NESTED_TO_SECTION[k];
+        if (!updatesBySection[section]) updatesBySection[section] = {};
+        updatesBySection[section][k] = items;
+      }
 
       fields.forEach(field => {
         if (!_cmsDirtyFields.has(field.dataset.key)) return;
