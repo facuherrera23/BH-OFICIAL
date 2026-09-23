@@ -280,6 +280,19 @@ function makeClient(supabase: ReturnType<typeof createClient>, cfgRow: Record<st
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(req) });
 
+  let res: Response;
+  try {
+    res = await handleRequest(req);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Error interno';
+    res = json({ ok: false, error: message }, 500);
+  }
+  const headers = { ...Object.fromEntries(res.headers), ...corsHeaders(req) };
+  return new Response(res.body, { status: res.status, headers });
+});
+
+async function handleRequest(req: Request): Promise<Response> {
+
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
   const correlationId = crypto.randomUUID();
 
@@ -534,5 +547,5 @@ Deno.serve(async (req: Request) => {
     const status = err instanceof RelaError && err.status ? err.status : 500;
     return json({ ok: false, error: (err as Error).message, correlationId }, status >= 400 && status < 600 ? status : 500);
   }
-});
+}
 
