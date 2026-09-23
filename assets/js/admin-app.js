@@ -6884,11 +6884,15 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     const canManagePortals = ['super_admin', 'broker'].includes(currentProfile?.role);
 
     /* Get published property count + portal settings from DB */
-    const [propsRes, settingsRes] = await Promise.all([
+    const [propsRes, settingsRes, mlConnRes, mlQuestionsRes] = await Promise.all([
       window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('is_published', true).is('deleted_at', null),
       canManagePortals
         ? window.supabaseClient.from('portal_settings').select('*')
         : window.supabaseClient.from('portal_settings').select('portal_name, is_active'),
+      window.supabaseClient.from('ml_connection').select('token_expires_at, nickname').limit(1).maybeSingle().then(r => r).catch(() => ({ data: null })),
+      ml_connected
+        ? window.supabaseClient.from('ml_questions').select('id', { count: 'exact', head: true }).eq('status', 'UNANSWERED').then(r => r).catch(() => ({ count: null }))
+        : Promise.resolve({ count: null }),
     ]);
     if (propsRes.error) logWarn('portals: error contando publicados: ' + propsRes.error.message);
     if (settingsRes.error) logWarn('portals: error leyendo portal_settings: ' + settingsRes.error.message);
@@ -6905,6 +6909,10 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
         const statusColor = ml_connected ? 'var(--success)' : ml_configured ? '#FFE600' : 'var(--text-dim)';
         const statusText = ml_connected ? 'Conectado' : ml_configured ? 'Configurado' : 'No configurado';
         const statusIcon = ml_connected ? 'fas fa-circle-check' : ml_configured ? 'fas fa-circle-half-stroke' : 'fas fa-circle-xmark';
+        const pendingQuestions = ml_connected ? (mlQuestionsRes.count ?? 0) : 0;
+        const questionsHtml = ml_connected
+          ? `<p style="font-size:11px; color:${pendingQuestions > 0 ? 'var(--warning)' : 'var(--text-dim)'}; margin-top:4px;">${pendingQuestions > 0 ? '⚠ ' : ''}${pendingQuestions} pregunta${pendingQuestions !== 1 ? 's' : ''} sin responder</p>`
+          : '';
         const mlBtnHtml = ml_connected
           ? `<button class="btn-action danger" style="font-size:11px; padding:6px 12px; white-space:nowrap;" onclick="window.adminApp.mlDisconnect()"><i class="fas fa-link-slash"></i> Desconectar</button>`
           : ml_configured
@@ -6913,6 +6921,15 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
         const activeListings = ml_connected ? ml_listings.filter(l => l.status === 'active').length : 0;
         const listingsHtml = ml_connected
           ? `<p style="color:var(--text-dim); font-size:11px; margin-top:2px;">${activeListings} aviso${activeListings !== 1 ? 's' : ''} activo${activeListings !== 1 ? 's' : ''} en ML</p>`
+          : '';
+        const mlTokenExpiry = mlConnRes?.data?.token_expires_at ? new Date(mlConnRes.data.token_expires_at) : null;
+        const expiryHtml = ml_connected && mlTokenExpiry
+          ? (() => {
+              const daysLeft = Math.floor((mlTokenExpiry.getTime() - Date.now()) / 86400000);
+              if (daysLeft < 0) return '<p style="font-size:11px; color:var(--danger); margin-top:6px;">⚠ Token ML vencido — reconectá</p>';
+              if (daysLeft < 7) return `<p style="font-size:11px; color:var(--warning); margin-top:6px;">⚠ Token ML vence en ${daysLeft}d</p>`;
+              return `<p style="font-size:10px; color:var(--text-dim); margin-top:6px;">Token ML OK (${daysLeft}d)</p>`;
+            })()
           : '';
         const userInfoHtml = ml_connected && ml_user
           ? `<p style="color:var(--text-muted); font-size:11px; margin-top:6px;"><i class="fas fa-user" style="margin-right:4px;"></i>${esc(ml_user.ml_nickname || ml_user.ml_email || '')}</p>`
@@ -6944,6 +6961,8 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
         </div>
         ${userInfoHtml}
         ${listingsHtml}
+        ${questionsHtml}
+        ${expiryHtml}
         <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-top:12px; flex-wrap:wrap; ${canManagePortals ? '' : 'opacity:.5; pointer-events:none;'}">
           ${mlBtnHtml}
           ${!ml_configured ? `<button class="btn-action" title="Configurar credenciales" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlToggleConfig()"><i class="fas fa-cog"></i></button>` : ''}
@@ -6954,43 +6973,139 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
       </div>`;
       }
 
+      const backendAvailable = ['Mercado Libre', 'ZonaProp'].includes(p.name);
+      const isZona = p.name === 'ZonaProp';
+      const zonaLinkHtml = isZona
+        ? '<p style="font-size:11px; color:var(--text-dim); margin-top:10px;">Se gestiona desde el panel RELA de abajo</p>'
+        : '';
+      const ghostBadge = !backendAvailable
+        ? '<span class="nav-badge" style="background:rgba(255,255,255,0.05); color:var(--text-dim); font-size:10px; margin-bottom:8px; display:inline-block;">Sin integración automática (próximamente)</span>'
+        : '';
       return `
-      <div class="glass-panel portal-card" style="padding:24px; text-align:center;">
+      <div class="glass-panel portal-card" style="padding:24px; text-align:center;${backendAvailable ? '' : ' opacity:.75;'}">
         <div style="width:56px; height:56px; border-radius:16px; background:${p.color}20; display:flex; align-items:center; justify-content:center; margin:0 auto 14px;">
           <i class="${p.icon}" style="font-size:24px; color:${p.color};"></i>
         </div>
         <h3 style="color:#fff; font-size:16px; font-weight:700; margin-bottom:4px;">${p.name}</h3>
+        ${ghostBadge}
         <p style="color:var(--text-dim); font-size:12px; margin-bottom:14px;">${count} inmuebles publicables</p>
-        <div style="display:flex; align-items:center; justify-content:center; gap:10px; ${canManagePortals ? '' : 'opacity:.5; pointer-events:none;'}">
-          <button type="button" role="switch" aria-checked="${isActive}" data-portal-toggle="${esc(p.name)}" class="portal-toggle${isActive ? ' is-on' : ''}" ${canManagePortals ? '' : 'disabled title="Solo super_admin o broker"'}>
+        <div style="display:flex; align-items:center; justify-content:center; gap:10px; ${canManagePortals && backendAvailable ? '' : 'opacity:.5; pointer-events:none;'}">
+          <button type="button" role="switch" aria-checked="${isActive}" data-portal-toggle="${esc(p.name)}" class="portal-toggle${isActive ? ' is-on' : ''}" ${canManagePortals && backendAvailable ? '' : 'disabled title="' + (backendAvailable ? 'Solo super_admin o broker' : 'Sin integración todavía') + '"'}>
             <span class="portal-toggle-knob"></span>
           </button>
           <button class="btn-action" title="${canManagePortals ? 'Configurar API' : 'Solo super_admin o broker'}" onclick="window.adminApp.openPortalConfig(${i})"><i class="fas fa-cog"></i></button>
         </div>
+        ${zonaLinkHtml}
         ${canManagePortals ? '' : '<p style="font-size:11px; color:var(--text-dim); margin-top:10px;">Solo lectura para tu rol</p>'}
       </div>`;
     }).join('');
 
     loadRelaPanel();
     loadSyncHistory();
+    loadMlQuestionsPanel();
+  }
+
+  async function loadMlQuestionsPanel() {
+    const el = $('#mlQuestionsList');
+    if (!el || !window.supabaseClient) return;
+    if (!ml_connected) {
+      el.innerHTML = '<p style="color:var(--text-dim); font-size:12px;">Conectá Mercado Libre para ver preguntas de clientes.</p>';
+      return;
+    }
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('ml_questions')
+        .select('id, question_id, ml_item_id, question_text, from_user_nickname, date_created, status, answer_text')
+        .order('date_created', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      if (!data || !data.length) {
+        el.innerHTML = '<p style="color:var(--text-dim); font-size:12px;">Sin preguntas registradas todavía.</p>';
+        return;
+      }
+      el.innerHTML = data.map(q => `
+        <div style="padding:12px 14px; border:1px solid var(--border-subtle); border-radius:10px; background:rgba(255,255,255,0.02);">
+          <div style="display:flex; justify-content:space-between; gap:10px; font-size:12px; color:var(--text-dim); margin-bottom:6px;">
+            <span>${esc(q.ml_item_id || '')} · ${esc(q.from_user_nickname || 'anónimo')}</span>
+            <span>${q.date_created ? new Date(q.date_created).toLocaleString('es-AR') : '—'}</span>
+          </div>
+          <div style="color:#fff; font-size:13px; margin-bottom:8px;">${esc(q.question_text || '')}</div>
+          ${q.status === 'ANSWERED'
+            ? `<div style="font-size:12px; color:var(--success);"><i class="fas fa-check"></i> ${esc(q.answer_text || 'Respondida')}</div>`
+            : `<div style="margin-top:10px; display:flex; gap:8px;">
+                 <input type="text" data-ml-answer-input="${q.id}" placeholder="Escribir respuesta..." style="flex:1; padding:8px 12px; background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; color:#fff; font-size:12px;" />
+                 <button class="btn-action" data-ml-answer="${q.question_id || q.id}" style="padding:8px 14px; font-size:11px; white-space:nowrap;"><i class="fas fa-paper-plane"></i> Responder</button>
+               </div>`}
+        </div>
+      `).join('');
+      el.querySelectorAll('[data-ml-answer]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const input = btn.previousElementSibling;
+          const text = input?.value?.trim();
+          if (!text) { showToast('Escribí la respuesta primero', 'warning'); return; }
+          btn.disabled = true;
+          btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+          try {
+            await mlApiCall('answer-question', { question_id: btn.dataset.mlAnswer, text });
+            showToast('Respuesta enviada a ML', 'success');
+            loadMlQuestionsPanel();
+          }
+          catch (err) { showToast('Error: ' + err.message, 'error'); btn.disabled = false; btn.innerHTML = '<i class="fas fa-paper-plane"></i> Responder'; }
+        });
+      });
+    } catch (err) {
+      logWarn('ml questions: ' + err.message);
+      el.innerHTML = '<p style="color:var(--text-dim); font-size:12px;">No se pudieron cargar las preguntas.</p>';
+    }
   }
 
   async function loadSyncHistory() {
     const tbody = $('#syncLogsTableBody');
     if (!tbody || !window.supabaseClient) return;
     try {
-      const { data, error } = await window.supabaseClient
-        .from('ml_sync_history')
-        .select('operation, status, created_at, queue_id, error')
-        .order('created_at', { ascending: false })
-        .limit(10);
-      if (error) throw error;
-      if (!data || !data.length) {
+      const [histRes, queueRes, relaRes] = await Promise.all([
+        window.supabaseClient
+          .from('ml_sync_history')
+          .select('operation, status, created_at, queue_id, error')
+          .order('created_at', { ascending: false })
+          .limit(10),
+        window.supabaseClient
+          .from('ml_sync_queue')
+          .select('id, property_id, operation, status, next_attempt_at, attempts, max_attempts, last_error, created_at')
+          .in('status', ['pending', 'processing', 'failed'])
+          .order('created_at', { ascending: false })
+          .limit(10),
+        window.supabaseClient
+          .from('rela_webhook_events')
+          .select('id, tipo_evento, referencia, processed, process_error, received_at')
+          .order('received_at', { ascending: false })
+          .limit(10)
+          .then(r => r).catch(() => ({ data: null })),
+      ]);
+      if (histRes.error) throw histRes.error;
+      const data = histRes.data || [];
+      const queue = queueRes.data || [];
+
+      const opLabels = { publish: 'Publicación', update: 'Actualización', delete: 'Eliminación' };
+      const queueHtml = queue.map(row => `<tr>
+        <td style="font-size:12px;">${new Date(row.created_at).toLocaleString('es-AR')}</td>
+        <td><span class="nav-badge" style="background:rgba(255,230,0,0.12); color:#FFE600; font-size:10px;">Mercado Libre</span></td>
+        <td style="font-size:12px;">${esc(opLabels[row.operation] || row.operation)} en cola (#${row.id})${row.attempts ? ` · intento ${row.attempts}/${row.max_attempts}` : ''}</td>
+        <td><span class="nav-badge" style="background:${row.status === 'failed' ? 'rgba(239,68,68,0.12)' : 'rgba(255,184,0,0.12)'}; color:${row.status === 'failed' ? 'var(--danger)' : 'var(--warning)'}; font-size:10px;"${row.last_error ? ` title="${esc(row.last_error)}"` : ''}>${row.status === 'failed' ? 'Falló' : row.status === 'processing' ? 'Procesando' : 'En cola'}</span></td>
+      </tr>`).join('');
+
+      const relaRows = (relaRes?.data || []).map(ev => `<tr>
+        <td style="font-size:12px;">${new Date(ev.received_at).toLocaleString('es-AR')}</td>
+        <td><span class="nav-badge" style="background:rgba(59,130,246,0.12); color:#3B82F6; font-size:10px;">RELA / ZonaProp</span></td>
+        <td style="font-size:12px;">${esc(ev.tipo_evento)}${ev.referencia ? ' · ' + esc(ev.referencia) : ''}</td>
+        <td><span class="nav-badge" style="background:${ev.processed ? 'rgba(0,200,120,0.12)' : 'rgba(255,184,0,0.12)'}; color:${ev.processed ? 'var(--success)' : 'var(--warning)'}; font-size:10px;"${ev.process_error ? ` title="${esc(ev.process_error)}"` : ''}>${ev.processed ? 'OK' : 'Pendiente'}</span></td>
+      </tr>`);
+
+      if (!data.length && !queue.length && !relaRows.length) {
         tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:30px; color:var(--text-dim);">Sin sincronizaciones recientes</td></tr>';
         return;
       }
-      const opLabels = { publish: 'Publicación', update: 'Actualización', delete: 'Eliminación' };
-      tbody.innerHTML = data.map(row => {
+      tbody.innerHTML = queueHtml + relaRows.join('') + data.map(row => {
         const ok = row.status === 'success';
         return `<tr>
           <td style="font-size:12px;">${new Date(row.created_at).toLocaleString('es-AR')}</td>
@@ -7098,10 +7213,16 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
         .single();
 
       if (data) {
-        Object.keys(data).forEach(key => {
-          if (key !== 'portal_name' && key !== 'is_active' && key !== 'id') {
-            const input = $(`#portalField_${key}`);
-            if (input) input.value = data[key] || '';
+        const fields = PORTAL_CONFIG_FIELDS[portal.name] || [];
+        fields.forEach(f => {
+          const input = $(`#portalField_${f.name}`);
+          if (!input) return;
+          if (f.type === 'password') {
+            const stored = data[f.name];
+            input.value = '';
+            input.placeholder = stored ? '•••••••• (guardado — escribí para reemplazar)' : 'Sin configurar';
+          } else {
+            input.value = data[f.name] || '';
           }
         });
       }
@@ -7125,7 +7246,11 @@ try {
       const upsertData = { portal_name: portal.name };
       fields.forEach(f => {
         const input = $(`#portalField_${f.name}`);
-        if (input) upsertData[f.name] = input.value?.trim() || '';
+        if (!input) return;
+        const val = input.value?.trim() || '';
+        // Campos sensibles vacíos = no tocar el valor guardado (evita pisar con "")
+        if (f.type === 'password' && val === '') return;
+        upsertData[f.name] = val;
       });
 
       await mutate('portal_settings', async () => {
@@ -7144,14 +7269,29 @@ try {
     }
   });
 
-  /* Sync all: refresca estado ML, conteo de propiedades e historial */
   on($('#syncAllBtn'), 'click', async function () {
     this.disabled = true;
     this.innerHTML = '<i class="fas fa-rotate fa-spin"></i> Sincronizando...';
+    const resultados = [];
     try {
       await mlCheckStatus(true);
+      resultados.push(ml_connected ? 'ML conectado' : 'ML no configurado');
+
+      const { data: relaCfg } = await window.supabaseClient
+        .from('rela_config').select('codigo_inmobiliaria').eq('id', true).maybeSingle();
+      if (relaCfg?.codigo_inmobiliaria) {
+        try {
+          const res = await relaApiCall('reconcile');
+          resultados.push(`RELA: ${(res.reconciled || []).length} avisos reconciliados`);
+        } catch (err) {
+          resultados.push('RELA reconcile falló: ' + err.message);
+        }
+      } else {
+        resultados.push('RELA sin configurar');
+      }
+
       await loadPortals();
-      showToast('Estado de portales sincronizado', 'success');
+      showToast(resultados.join(' · '), 'success');
     } catch (err) {
       showToast('Error al sincronizar: ' + err.message, 'error');
     } finally {
