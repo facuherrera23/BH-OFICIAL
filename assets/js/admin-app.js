@@ -8645,6 +8645,7 @@ window.exportAnomaliesCSV = async function() {
   let _chatUnreadTotal = 0;
   let _pendingSendTempId = null;
   let _chatListenersBound = false;
+  let _lastIncomingToastAt = 0;
 
   window.__chatTeardown = function () {
     if (_chatRealtimeChannel) { try { _chatRealtimeChannel.unsubscribe(); } catch {} _chatRealtimeChannel = null; }
