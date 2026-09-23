@@ -9244,8 +9244,8 @@ on(chip, 'click', () => {
         };
         if (attachPreview) { attachPreview.style.display = 'none'; if (attachPreview.dataset.url) { URL.revokeObjectURL(attachPreview.dataset.url); delete attachPreview.dataset.url; } }
         attachInput.value = '';
-        try { if (_chatCurrentConv?.id) sessionStorage.removeItem('chatDraft:' + _chatCurrentConv.id); } catch (_) {}
       }
+      try { if (_chatCurrentConv?.id) sessionStorage.removeItem('chatDraft:' + _chatCurrentConv.id); } catch (_) {}
 
       composerTextarea.value = '';
       composerTextarea.style.height = 'auto';
