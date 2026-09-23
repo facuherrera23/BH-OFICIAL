@@ -6878,12 +6878,15 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     if (!container) return;
     if (!window.supabaseClient) return;
 
+    mlCheckStatus(false).catch(() => {});
     updatePortalsBadge();
 
     /* Get published property count + portal settings from DB */
     const [propsRes, settingsRes] = await Promise.all([
       window.supabaseClient.from('properties').select('*', { count: 'exact', head: true }).eq('is_published', true).is('deleted_at', null),
-      window.supabaseClient.from('portal_settings').select('portal_name, is_active'),
+      canManagePortals
+        ? window.supabaseClient.from('portal_settings').select('*')
+        : window.supabaseClient.from('portal_settings').select('portal_name, is_active'),
     ]);
     if (propsRes.error) logWarn('portals: error contando publicados: ' + propsRes.error.message);
     if (settingsRes.error) logWarn('portals: error leyendo portal_settings: ' + settingsRes.error.message);
@@ -7677,6 +7680,7 @@ try {
       showToast('Guardando credenciales de Mercado Libre...', 'info');
       await mlConfigSave(appId, secret);
       ml_configured = true;
+      updatePortalsBadge();
       showToast('Credenciales guardadas. Ahora podés conectar tu cuenta.', 'success');
       loadPortals();
     } catch (err) {
