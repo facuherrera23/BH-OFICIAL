@@ -940,28 +940,20 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
     '</div>' +
     '<div class="crm-side-body">' +
       contactSectionHtml(lead, (props && props[0]) || null) +
-      sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, buildUnifiedTimeline(activities, visits, tasks)) +
-      '<div class="crm-quickadd">' +
-        '<input type="text" class="crm-field-input" id="crmQuickTask" placeholder="Tarea rápida: “Llamar mañana 10:00”, Enter para crear…">' +
-        '<button class="btn-action" id="crmQuickTaskBtn" title="Crear tarea rápida"><i class="fas fa-bolt"></i></button>' +
+      '<div class="crm-modal-tabs">' +
+        '<button type="button" class="crm-tab-btn is-active" data-crm-tab="data">Datos Principales</button>' +
+        '<button type="button" class="crm-tab-btn" data-crm-tab="tasks">Tareas</button>' +
+        '<button type="button" class="crm-tab-btn" data-crm-tab="props">Propiedades</button>' +
+        '<button type="button" class="crm-tab-btn" data-crm-tab="historial">Timeline</button>' +
+        '<button type="button" class="crm-tab-btn" data-crm-tab="notas">Notas</button>' +
       '</div>' +
-      '<div class="crm-qa-row">' +
-        '<div class="crm-qa-btn-wrap">' +
-          '<button class="crm-qa-btn" id="crmQaTaskBtn" aria-label="Follow up"><i class="fas fa-clock"></i><span class="crm-qa-tip">Follow up</span></button>' +
-          '<div class="crm-qa-submenu" id="crmQaTaskMenu">' +
-            '<button class="crm-qa-menu-item" data-action="logCall"><i class="fas fa-phone"></i> Llamada</button>' +
-            '<button class="crm-qa-menu-item" data-action="addNoteInline"><i class="fas fa-sticky-note"></i> Nota</button>' +
-          '</div>' +
-        '</div>' +
-        '<button class="crm-qa-btn" data-action="scheduleVisit" aria-label="Agendar visita"><i class="fas fa-calendar-check"></i><span class="crm-qa-tip">Visita</span></button>' +
-        '<button class="crm-qa-btn crm-qa-btn--danger" data-action="markLost" aria-label="Marcar como perdido"><i class="fas fa-ban"></i><span class="crm-qa-tip">Perdido</span></button>' +
-      '</div>' +
-      '<div id="crmQuickActionPanel"></div>' +
+      sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, buildUnifiedTimeline(activities, visits, tasks), tasks) +
       '<div class="crm-side-save"><button class="btn-luxury-action" id="crmSideSaveBtn" style="width:100%;">Guardar cambios</button></div>' +
     '</div>' +
     '</div>';
   panel.dataset.leadId = lead.id;
   panel.querySelector('.crm-side-close').addEventListener('click', closeDetailPanel);
+  bindSideTabs(panel);
   panel.querySelectorAll('[data-action="removeProp"]').forEach(function (b) {
     b.addEventListener('click', function () { unlinkProperty(lead.id, this.dataset.propId, panel); });
   });
@@ -973,7 +965,7 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
   bindAgendaActions(panel, lead.id);
   bindTlTaskActions(panel, lead.id);
   if (activities.length === TIMELINE_PAGE) {
-    var tl = panel.querySelector('.crm-timeline');
+    var tl = panel.querySelector('#crmTab-historial .crm-timeline');
     if (tl) {
       var moreBtn = document.createElement('button');
       moreBtn.type = 'button';
@@ -996,49 +988,90 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
   }
 }
 
-function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, timelineHtml) {
+function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, timelineHtml, tasks) {
   return '' +
-    '<div class="crm-side-section"><h4 class="crm-side-section-title">Informacion</h4>' +
-      '<div class="crm-side-fields">' +
-        sideField('Nombre', 'crmDtlName', 'text', lead.full_name) +
-        sideField('Email', 'crmDtlEmail', 'email', lead.email) +
-        '<div class="crm-side-field-row">' +
-          sideField('Telefono', 'crmDtlPhone', 'text', lead.phone) +
-          sideField('WhatsApp', 'crmDtlWhatsapp', 'text', lead.whatsapp) +
+    '<div class="crm-tab-content" id="crmTab-data">' +
+      '<div class="crm-side-section">' +
+        '<div class="crm-side-fields">' +
+          sideField('Nombre', 'crmDtlName', 'text', lead.full_name) +
+          sideField('Email', 'crmDtlEmail', 'email', lead.email) +
+          '<div class="crm-side-field-row">' +
+            sideField('Telefono', 'crmDtlPhone', 'text', lead.phone) +
+            sideField('WhatsApp', 'crmDtlWhatsapp', 'text', lead.whatsapp) +
+          '</div>' +
+          '<div class="crm-side-field-row">' +
+            '<div class="crm-side-field"><span class="crm-side-field-label">Contacto preferido</span>' +
+              '<select class="crm-field-input crm-field-input--select" id="crmDtlPrefContact">' +
+              '<option value="">&#8212;</option>' +
+              '<option value="phone"' + (lead.preferred_contact_method === 'phone' ? ' selected' : '') + '>Telefono</option>' +
+              '<option value="whatsapp"' + (lead.preferred_contact_method === 'whatsapp' ? ' selected' : '') + '>WhatsApp</option>' +
+              '<option value="email"' + (lead.preferred_contact_method === 'email' ? ' selected' : '') + '>Email</option></select></div>' +
+            '<div class="crm-side-field"><span class="crm-side-field-label">Origen</span><select class="crm-field-input crm-field-input--select" id="crmDtlOrigin">' + oopts + '</select></div>' +
+          '</div>' +
+          '<div class="crm-side-field-row">' +
+            '<div class="crm-side-field"><span class="crm-side-field-label">Tipo cliente</span><select class="crm-field-input crm-field-input--select" id="crmDtlTipoCliente"><option value="">&#8212;</option>' + tcOpts + '</select></div>' +
+            '<div class="crm-side-field"><span class="crm-side-field-label">Tipo operacion</span><select class="crm-field-input crm-field-input--select" id="crmDtlTipoOp"><option value="">&#8212;</option>' + tpOpts + '</select></div>' +
+          '</div>' +
+          '<div class="crm-side-field-row">' +
+            '<div class="crm-side-field"><span class="crm-side-field-label">Agente</span><select class="crm-field-input crm-field-input--select" id="crmDtlAgent"><option value="">Sin agente</option>' + aopts + '</select></div>' +
+            '<div class="crm-side-field"><span class="crm-side-field-label">Estado</span><select class="crm-field-input crm-field-input--select" id="crmDtlStatus">' + sopts + '</select></div>' +
+          '</div>' +
+          '<div class="crm-side-field"><span class="crm-side-field-label">Próximo contacto</span><input class="crm-field-input" id="crmDtlNextFollow" type="datetime-local" value="' + (function(){ if (!lead.next_followup_at) return ''; var d = new Date(lead.next_followup_at); var pad = n => String(n).padStart(2,'0'); return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()); })() + '"></div>' +
+          '<div class="crm-side-field-row">' +
+            sideField('Presupuesto USD', 'crmDtlBudget', 'number', lead.budget_usd) +
+            sideField('Valor estimado (USD)', 'crmDtlEstValue', 'number', lead.estimated_value) +
+          '</div>' +
+        '</div></div>' +
+    '</div>' +
+    '<div class="crm-tab-content" id="crmTab-tasks" style="display:none;">' +
+      '<div class="crm-quickadd crm-quickadd--card">' +
+        '<input type="text" class="crm-field-input" id="crmQuickTask" placeholder="Tarea rápida: “Llamar mañana 10:00”, Enter para crear…">' +
+        '<button class="btn-luxury-action" id="crmQuickTaskBtn" title="Crear tarea rápida"><i class="fas fa-plus"></i></button>' +
+      '</div>' +
+      '<div class="crm-qa-row crm-qa-row--chips">' +
+        '<div class="crm-qa-btn-wrap">' +
+          '<button class="crm-qa-btn" id="crmQaTaskBtn" type="button" aria-label="Follow up"><i class="fas fa-clock"></i><span class="crm-qa-tip">Follow up</span></button>' +
+          '<div class="crm-qa-submenu" id="crmQaTaskMenu">' +
+            '<button class="crm-qa-menu-item" data-action="logCall"><i class="fas fa-phone"></i> Llamada</button>' +
+            '<button class="crm-qa-menu-item" data-action="addNoteInline"><i class="fas fa-sticky-note"></i> Nota</button>' +
+          '</div>' +
         '</div>' +
-        '<div class="crm-side-field"><span class="crm-side-field-label">Contacto preferido</span>' +
-          '<select class="crm-field-input crm-field-input--select" id="crmDtlPrefContact">' +
-          '<option value="">&#8212;</option>' +
-          '<option value="phone"' + (lead.preferred_contact_method === 'phone' ? ' selected' : '') + '>Telefono</option>' +
-          '<option value="whatsapp"' + (lead.preferred_contact_method === 'whatsapp' ? ' selected' : '') + '>WhatsApp</option>' +
-          '<option value="email"' + (lead.preferred_contact_method === 'email' ? ' selected' : '') + '>Email</option></select></div>' +
-        '<div class="crm-side-field-row">' +
-          '<div class="crm-side-field"><span class="crm-side-field-label">Origen</span><select class="crm-field-input crm-field-input--select" id="crmDtlOrigin">' + oopts + '</select></div>' +
-          '<div class="crm-side-field"><span class="crm-side-field-label">Tipo cliente</span><select class="crm-field-input crm-field-input--select" id="crmDtlTipoCliente"><option value="">&#8212;</option>' + tcOpts + '</select></div></div>' +
-        '<div class="crm-side-field-row">' +
-          '<div class="crm-side-field"><span class="crm-side-field-label">Tipo operacion</span><select class="crm-field-input crm-field-input--select" id="crmDtlTipoOp"><option value="">&#8212;</option>' + tpOpts + '</select></div>' +
-          '<div class="crm-side-field"><span class="crm-side-field-label">Agente</span><select class="crm-field-input crm-field-input--select" id="crmDtlAgent"><option value="">Sin agente</option>' + aopts + '</select></div></div>' +
-        '<div class="crm-side-field"><span class="crm-side-field-label">Estado</span><select class="crm-field-input crm-field-input--select" id="crmDtlStatus">' + sopts + '</select></div>' +
-        '<div class="crm-side-field"><span class="crm-side-field-label">Próximo contacto</span><input class="crm-field-input" id="crmDtlNextFollow" type="datetime-local" value="' + (function(){ if (!lead.next_followup_at) return ''; var d = new Date(lead.next_followup_at); var pad = n => String(n).padStart(2,'0'); return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()); })() + '"></div>' +
-      '</div></div>' +
-    '<div class="crm-side-section"><h4 class="crm-side-section-title">Propiedades relacionadas</h4>' +
-      '<div class="crm-side-fields"><div id="crmDtlPropsWrap">' + ph +
-        '<div class="crm-prop-add">' +
-          '<input class="crm-field-input" id="crmDtlPropSearch" placeholder="Buscar propiedad por titulo...">' +
-          '<button class="btn-action" id="crmDtlAddProp"><i class="fas fa-plus"></i></button></div>' +
-        '</div></div></div>' +
-    '<div class="crm-side-section"><h4 class="crm-side-section-title">Presupuesto</h4>' +
-      '<div class="crm-side-fields">' +
-        sideField('USD', 'crmDtlBudget', 'number', lead.budget_usd) +
-        sideField('Valor estimado (USD)', 'crmDtlEstValue', 'number', lead.estimated_value) +
-      '</div></div>' +
-    
-    '<div class="crm-side-section"><h4 class="crm-side-section-title">Historial</h4>' +
-      '<div class="crm-timeline">' + (timelineHtml || buildTimelineHTML([])) + '</div></div>' +
-    '<div class="crm-side-section"><h4 class="crm-side-section-title">Notas</h4>' +
-      '<div class="crm-side-fields">' +
-        '<textarea class="crm-field-input" id="crmDtlNotes" rows="3">' + esc(lead.notes || '') + '</textarea>' +
-      '</div></div>';
+        '<button class="crm-qa-btn" data-action="scheduleVisit" type="button" aria-label="Agendar visita"><i class="fas fa-calendar-check"></i><span class="crm-qa-tip">Visita</span></button>' +
+        '<button class="crm-qa-btn crm-qa-btn--danger" data-action="markLost" type="button" aria-label="Marcar como perdido"><i class="fas fa-ban"></i><span class="crm-qa-tip">Perdido</span></button>' +
+      '</div>' +
+      '<div id="crmQuickActionPanel"></div>' +
+      '<div class="crm-side-section"><h4 class="crm-side-section-title">Tareas</h4><div class="crm-timeline crm-timeline--cards">' + (tasks.length ? buildUnifiedTimeline([], [], tasks) : '<div class="crm-tasks-empty"><i class="fas fa-list-check"></i><span>Sin tareas. Creá una con el campo de arriba.</span></div>') + '</div></div>' +
+    '</div>' +
+    '<div class="crm-tab-content" id="crmTab-props" style="display:none;">' +
+      '<div class="crm-side-section">' +
+        '<div class="crm-side-fields"><div id="crmDtlPropsWrap">' + ph +
+          '<div class="crm-prop-add">' +
+            '<input class="crm-field-input" id="crmDtlPropSearch" placeholder="Buscar propiedad por titulo...">' +
+            '<button class="btn-action" id="crmDtlAddProp"><i class="fas fa-plus"></i></button></div>' +
+          '</div></div></div>' +
+    '</div>' +
+    '<div class="crm-tab-content" id="crmTab-historial" style="display:none;">' +
+      '<div class="crm-side-section">' +
+        '<div class="crm-timeline">' + (timelineHtml || buildTimelineHTML([])) + '</div></div>' +
+    '</div>' +
+    '<div class="crm-tab-content" id="crmTab-notas" style="display:none;">' +
+      '<div class="crm-side-section">' +
+        '<div class="crm-side-fields">' +
+          '<textarea class="crm-field-input" id="crmDtlNotes" rows="5">' + esc(lead.notes || '') + '</textarea>' +
+        '</div></div>' +
+    '</div>';
+}
+function bindSideTabs(panel) {
+  panel.querySelectorAll('.crm-tab-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var tab = this.dataset.crmTab;
+      panel.querySelectorAll('.crm-tab-btn').forEach(function (b) { b.classList.remove('is-active'); });
+      this.classList.add('is-active');
+      panel.querySelectorAll('.crm-tab-content').forEach(function (c) { c.style.display = 'none'; });
+      var target = panel.querySelector('#crmTab-' + tab);
+      if (target) target.style.display = 'block';
+    });
+  });
 }
 function sideField(label, id, type, val) {
   var v = (val !== null && val !== undefined) ? String(val) : '';
@@ -1280,11 +1313,18 @@ function bindQuickActions(lead, panel) {
       }
       p.innerHTML = '<div class="crm-quick-panel">' +
         '<span class="crm-quick-panel-label">' + d.label + '</span>' +
-        (d.hasDate ? '<input class="crm-field-input" id="crmQaDate" type="datetime-local">' : '') +
-        '<textarea class="crm-field-input" id="crmQaText" rows="2" placeholder="' + d.placeholder + '"></textarea>' +
+        (d.hasDate ?
+          '<div class="crm-quick-field">' +
+            '<label class="crm-quick-field-label" for="crmQaDate"><i class="fas fa-calendar"></i> Fecha y hora</label>' +
+            '<input class="crm-field-input" id="crmQaDate" type="datetime-local">' +
+          '</div>' : '') +
+        '<div class="crm-quick-field">' +
+          '<label class="crm-quick-field-label" for="crmQaText"><i class="fas fa-note-sticky"></i> ' + d.placeholder.replace(/\.\.\.$/, ' (opcional)') + '</label>' +
+          '<textarea class="crm-field-input" id="crmQaText" rows="2" placeholder="' + d.placeholder + '"></textarea>' +
+        '</div>' +
         '<div class="crm-quick-panel-actions">' +
-          '<button class="btn-luxury-action" id="crmQaSave">Guardar</button>' +
-          '<button class="btn-action" id="crmQaCancel">Cancelar</button>' +
+          '<button class="crm-quick-btn-cancel" id="crmQaCancel" type="button">Cancelar</button>' +
+          '<button class="btn-luxury-action" id="crmQaSave" type="button">Guardar</button>' +
         '</div></div>';
       p.querySelector('#crmQaCancel').addEventListener('click', function () { p.innerHTML = ''; });
       p.querySelector('#crmQaSave').addEventListener('click', async function () {
