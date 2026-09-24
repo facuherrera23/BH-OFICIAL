@@ -21,3 +21,6 @@ playwright-report/
 # Archivos de trabajo que NO deben publicarse en el sitio
 *.docx
 chat-attach-final.png
+
+# Capturas de verificación locales en la raíz
+/*.png
