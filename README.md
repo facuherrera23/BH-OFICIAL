@@ -1,8 +1,8 @@
-<div align="center">
+﻿
 
-# 🏠 BIENENHAUS PROPIEDADES
+# ðŸ  BIENENHAUS PROPIEDADES
 
-**Landing pública + CRM inmobiliario completo para una inmobiliaria premium de Buenos Aires**
+**Landing pÃºblica + CRM inmobiliario completo para una inmobiliaria premium de Buenos Aires**
 
 ![Vanilla JS](https://img.shields.io/badge/Frontend-Vanilla%20JS-F7DF1E?logo=javascript&logoColor=black)
 ![Supabase](https://img.shields.io/badge/Backend-Supabase-3ECF8E?logo=supabase&logoColor=white)
@@ -11,151 +11,151 @@
 ![Playwright](https://img.shields.io/badge/E2E-Playwright-2EAD33?logo=playwright&logoColor=white)
 ![Build](https://img.shields.io/badge/build%20step-none-lightgrey)
 
-🌐 **Sitio:** https://bienenhaus.com.ar
+ðŸŒ **Sitio:** https://bienenhaus.com.ar
 
 </div>
 
 ---
 
-## 📑 Índice
+## ðŸ“‘ Ãndice
 
-1. [Descripción y alcance](#-descripción-y-alcance)
+1. [DescripciÃ³n y alcance](#-descripciÃ³n-y-alcance)
 2. [Funcionalidades del sistema](#-funcionalidades-del-sistema)
-3. [Stack tecnológico](#-stack-tecnológico)
+3. [Stack tecnolÃ³gico](#-stack-tecnolÃ³gico)
 4. [Arquitectura](#-arquitectura)
-5. [Páginas y URLs](#-páginas-y-urls)
+5. [PÃ¡ginas y URLs](#-pÃ¡ginas-y-urls)
 6. [Estructura del proyecto](#-estructura-del-proyecto)
-7. [Instalación y puesta en marcha](#-instalación-y-puesta-en-marcha)
+7. [InstalaciÃ³n y puesta en marcha](#-instalaciÃ³n-y-puesta-en-marcha)
 8. [Base de datos](#-base-de-datos)
 9. [Roles y permisos](#-roles-y-permisos)
 10. [Seguridad](#-seguridad)
-11. [Panel administrativo (14 módulos)](#-panel-administrativo-14-módulos)
-12. [Landing pública](#-landing-pública)
+11. [Panel administrativo (14 mÃ³dulos)](#-panel-administrativo-14-mÃ³dulos)
+12. [Landing pÃºblica](#-landing-pÃºblica)
 13. [Portal del Propietario](#-portal-del-propietario)
-14. [Confirmación de visitas](#-confirmación-de-visitas)
+14. [ConfirmaciÃ³n de visitas](#-confirmaciÃ³n-de-visitas)
 15. [Tasaciones (ACM)](#-tasaciones-acm)
 16. [Comisiones y liquidaciones](#-comisiones-y-liquidaciones)
-17. [Integración Mercado Libre](#-integración-mercado-libre)
+17. [IntegraciÃ³n Mercado Libre](#-integraciÃ³n-mercado-libre)
 18. [Chat omnicanal (Zernio)](#-chat-omnicanal-zernio)
-19. [Centro de Supervisión](#-centro-de-supervisión)
+19. [Centro de SupervisiÃ³n](#-centro-de-supervisiÃ³n)
 20. [Edge Functions](#-edge-functions)
 21. [Migraciones](#-migraciones)
 22. [Flujos end-to-end](#-flujos-end-to-end)
-23. [Patrones técnicos](#-patrones-técnicos)
+23. [Patrones tÃ©cnicos](#-patrones-tÃ©cnicos)
 24. [Deploy](#-deploy)
 25. [Testing y CI](#-testing-y-ci)
 26. [Convenciones de desarrollo](#-convenciones-de-desarrollo)
-27. [Deudas técnicas y roadmap](#-deudas-técnicas-y-roadmap)
+27. [Deudas tÃ©cnicas y roadmap](#-deudas-tÃ©cnicas-y-roadmap)
 28. [ADRs](#-adrs-architecture-decision-records)
-29. [Documentación complementaria](#-documentación-complementaria)
+29. [DocumentaciÃ³n complementaria](#-documentaciÃ³n-complementaria)
 30. [Changelog](#-changelog)
 
 ---
 
-## 📌 Descripción y alcance
+## ðŸ“Œ DescripciÃ³n y alcance
 
 **BIENENHAUS PROPIEDADES** es un sistema web integral para una inmobiliaria. Combina en un solo repositorio:
 
-| Componente | Descripción |
+| Componente | DescripciÃ³n |
 |---|---|
-| **Landing pública** | Sitio comercial con catálogo dinámico de propiedades, servicios, equipo, proceso, estadísticas y formulario de contacto que genera leads. |
-| **Panel administrativo / CRM** | SPA de 14 módulos para gestionar propiedades, leads, visitas, propietarios, agentes, tasaciones, comisiones, portales, chat y supervisión. |
-| **Portal del Propietario** | Acceso por token (sin login) donde el dueño ve sus propiedades, documentos, comisiones y liquidaciones. |
-| **Confirmación de visita** | Página pública por token para que el cliente confirme o cancele una visita. |
-| **Herramienta de tasación (ACM)** | Análisis Comparativo de Mercado con comparables, mapa, coeficientes y gráficos. |
-| **Integraciones** | Mercado Libre (publicación y sync), Zernio (WhatsApp/Instagram/Facebook/Web), Cloudinary (imágenes), Brevo (emails). |
+| **Landing pÃºblica** | Sitio comercial con catÃ¡logo dinÃ¡mico de propiedades, servicios, equipo, proceso, estadÃ­sticas y formulario de contacto que genera leads. |
+| **Panel administrativo / CRM** | SPA de 14 mÃ³dulos para gestionar propiedades, leads, visitas, propietarios, agentes, tasaciones, comisiones, portales, chat y supervisiÃ³n. |
+| **Portal del Propietario** | Acceso por token (sin login) donde el dueÃ±o ve sus propiedades, documentos, comisiones y liquidaciones. |
+| **ConfirmaciÃ³n de visita** | PÃ¡gina pÃºblica por token para que el cliente confirme o cancele una visita. |
+| **Herramienta de tasaciÃ³n (ACM)** | AnÃ¡lisis Comparativo de Mercado con comparables, mapa, coeficientes y grÃ¡ficos. |
+| **Integraciones** | Mercado Libre (publicaciÃ³n y sync), Zernio (WhatsApp/Instagram/Facebook/Web), Cloudinary (imÃ¡genes), Brevo (emails). |
 
 ### Alcance funcional
 
-- ✅ Gestión completa del ciclo comercial: **captación → tasación → publicación → lead → visita → cierre → comisión**.
-- ✅ Multi-rol (`super_admin`, `broker`, `agente`) con seguridad a nivel de fila (RLS).
-- ✅ CMS integrado: el contenido del landing se edita desde el panel sin tocar código.
-- ✅ Publicación y sincronización bidireccional con Mercado Libre.
-- ✅ Inbox unificado de mensajería (WhatsApp, Instagram, Facebook, Web).
-- ✅ Auditoría, detección de anomalías y scoring de riesgo por usuario.
-- ✅ Sin build step: se despliega como sitio estático.
+- âœ… GestiÃ³n completa del ciclo comercial: **captaciÃ³n â†’ tasaciÃ³n â†’ publicaciÃ³n â†’ lead â†’ visita â†’ cierre â†’ comisiÃ³n**.
+- âœ… Multi-rol (`super_admin`, `broker`, `agente`) con seguridad a nivel de fila (RLS).
+- âœ… CMS integrado: el contenido del landing se edita desde el panel sin tocar cÃ³digo.
+- âœ… PublicaciÃ³n y sincronizaciÃ³n bidireccional con Mercado Libre.
+- âœ… Inbox unificado de mensajerÃ­a (WhatsApp, Instagram, Facebook, Web).
+- âœ… AuditorÃ­a, detecciÃ³n de anomalÃ­as y scoring de riesgo por usuario.
+- âœ… Sin build step: se despliega como sitio estÃ¡tico.
 
 ### Fuera de alcance (actual)
 
-- ❌ Envío saliente de mensajes por Zernio (pendiente de API key real; la recepción sí funciona).
-- ❌ Notificaciones push reales (Web Push/VAPID, requiere Service Worker).
-- ❌ Uso del `usd_rate` en las tarjetas del catálogo del landing.
+- âŒ EnvÃ­o saliente de mensajes por Zernio (pendiente de API key real; la recepciÃ³n sÃ­ funciona).
+- âŒ Notificaciones push reales (Web Push/VAPID, requiere Service Worker).
+- âŒ Uso del `usd_rate` en las tarjetas del catÃ¡logo del landing.
 
 ---
 
-## ⚙️ Funcionalidades del sistema
+## âš™ï¸ Funcionalidades del sistema
 
-### 🌐 Público (sin login)
-- Catálogo dinámico con filtros server-side (tipo, zona, precio, dormitorios), orden, paginación y *virtual scroller*.
-- Galería de imágenes por propiedad.
-- Formulario de contacto → inserta un `lead` (origen `landing_page` / `newsletter`).
-- Botón flotante de WhatsApp.
+### ðŸŒ PÃºblico (sin login)
+- CatÃ¡logo dinÃ¡mico con filtros server-side (tipo, zona, precio, dormitorios), orden, paginaciÃ³n y *virtual scroller*.
+- GalerÃ­a de imÃ¡genes por propiedad.
+- Formulario de contacto â†’ inserta un `lead` (origen `landing_page` / `newsletter`).
+- BotÃ³n flotante de WhatsApp.
 - SEO: meta tags, Open Graph, `schema.org/RealEstateAgent`, `sitemap.xml`, `robots.txt`.
 - Confirmar / cancelar visita por token.
 - Portal del propietario por token.
 
-### 🔐 Administración
-| Área | Funciones |
+### ðŸ” AdministraciÃ³n
+| Ãrea | Funciones |
 |---|---|
-| **Dashboard** | KPIs (volumen venta USD, volumen alquiler ARS, propiedades activas, leads, visitas), gráficos y acciones rápidas. |
-| **Propiedades** | CRUD, borradores, reordenamiento, soft-delete, publicación a ML, paginación server-side, validación Zod, precios ARS/USD, superficie cubierta/terreno. |
-| **Leads & CRM** | Pipeline Kanban, tags, scoring, exportación CSV, agendado directo de visitas. |
+| **Dashboard** | KPIs (volumen venta USD, volumen alquiler ARS, propiedades activas, leads, visitas), grÃ¡ficos y acciones rÃ¡pidas. |
+| **Propiedades** | CRUD, borradores, reordenamiento, soft-delete, publicaciÃ³n a ML, paginaciÃ³n server-side, validaciÃ³n Zod, precios ARS/USD, superficie cubierta/terreno. |
+| **Leads & CRM** | Pipeline Kanban, tags, scoring, exportaciÃ³n CSV, agendado directo de visitas. |
 | **Agenda** | Calendario mensual + tabla, check-in/check-out, export CSV/ICS, recordatorios. |
 | **Tasaciones** | ACM embebido en iframe + listado de tasaciones. |
-| **Propietarios** | Expedientes, documentos con vencimiento/verificación, timeline, export CSV/PDF, link de portal. |
-| **Sitio Web (CMS)** | 11 sub-tabs: Hero, Catálogo, Servicios, Equipo, Stats, Proceso, Contacto, Formulario, Navbar, Footer, SEO. |
-| **Portales & APIs** | OAuth ML, configuración por portal, sync, dead-letter, importación desde ML. |
-| **Agentes & Brokers** | CRUD, matrícula, comisiones de venta/alquiler, soft-delete, vínculo con `profiles`. |
+| **Propietarios** | Expedientes, documentos con vencimiento/verificaciÃ³n, timeline, export CSV/PDF, link de portal. |
+| **Sitio Web (CMS)** | 11 sub-tabs: Hero, CatÃ¡logo, Servicios, Equipo, Stats, Proceso, Contacto, Formulario, Navbar, Footer, SEO. |
+| **Portales & APIs** | OAuth ML, configuraciÃ³n por portal, sync, dead-letter, importaciÃ³n desde ML. |
+| **Agentes & Brokers** | CRUD, matrÃ­cula, comisiones de venta/alquiler, soft-delete, vÃ­nculo con `profiles`. |
 | **Chat Redes** | Inbox unificado, crear lead, agendar visita, asignar broker. |
 | **Ficha HTML** | Generador de fichas visuales por propiedad (compartir, PDF, HTML autocontenido). |
-| **Usuarios & Permisos** | Alta, edición, roles y cambio de contraseña vía Edge Function. |
-| **Configuración** | Identidad corporativa, contacto, redes, tipo de cambio USD, estado de integraciones. |
-| **Supervisión** | Reglas, alertas, anomalías, ranking de riesgo, métricas ML. |
+| **Usuarios & Permisos** | Alta, ediciÃ³n, roles y cambio de contraseÃ±a vÃ­a Edge Function. |
+| **ConfiguraciÃ³n** | Identidad corporativa, contacto, redes, tipo de cambio USD, estado de integraciones. |
+| **SupervisiÃ³n** | Reglas, alertas, anomalÃ­as, ranking de riesgo, mÃ©tricas ML. |
 
-### 🛠️ Transversales
-- Búsqueda global (`Ctrl+K`) con navegación por teclado.
+### ðŸ› ï¸ Transversales
+- BÃºsqueda global (`Ctrl+K`) con navegaciÃ³n por teclado.
 - Notificaciones con badges por tab y contador en favicon.
 - Realtime multi-tab en tablas core.
-- Auditoría de escrituras y acciones sensibles.
+- AuditorÃ­a de escrituras y acciones sensibles.
 - Rate limiting en Edge Functions.
 
 ---
 
-## 🧰 Stack tecnológico
+## ðŸ§° Stack tecnolÃ³gico
 
-| Capa | Tecnología |
+| Capa | TecnologÃ­a |
 |---|---|
-| **Frontend** | Vanilla JS (scripts clásicos con IIFE y globals `window.*`, **sin ES Modules ni bundler**), CSS custom properties, Font Awesome 6.5.1, Zod 3 (solo admin) |
-| **Backend** | Supabase: PostgreSQL + Auth (email/contraseña) + Row Level Security + Realtime + Edge Functions (Deno) |
-| **Imágenes** | Cloudinary (uploads firmados server-side, `f_auto,q_auto`, WebP) |
+| **Frontend** | Vanilla JS (scripts clÃ¡sicos con IIFE y globals `window.*`, **sin ES Modules ni bundler**), CSS custom properties, Font Awesome 6.5.1, Zod 3 (solo admin) |
+| **Backend** | Supabase: PostgreSQL + Auth (email/contraseÃ±a) + Row Level Security + Realtime + Edge Functions (Deno) |
+| **ImÃ¡genes** | Cloudinary (uploads firmados server-side, `f_auto,q_auto`, WebP) |
 | **Portales** | Mercado Libre (OAuth 2.0, cron sync, webhooks, auto-reply) |
-| **Mapas y gráficos** | Leaflet 1.9.4 + Chart.js 4.4.0 (CDN, en `tasacion.html`) |
-| **Email** | Brevo (SMTP) para resúmenes de supervisión |
+| **Mapas y grÃ¡ficos** | Leaflet 1.9.4 + Chart.js 4.4.0 (CDN, en `tasacion.html`) |
+| **Email** | Brevo (SMTP) para resÃºmenes de supervisiÃ³n |
 | **Chat** | Zernio (WhatsApp, Instagram, Facebook, Web) |
-| **Deploy** | Cloudflare Pages (estático) + Supabase Edge Functions |
+| **Deploy** | Cloudflare Pages (estÃ¡tico) + Supabase Edge Functions |
 | **Testing** | Playwright (E2E) + `node --check` |
 | **CI/CD** | GitHub Actions |
 
 ---
 
-## 🏗️ Arquitectura
+## ðŸ—ï¸ Arquitectura
 
 ### Principios
 
-1. **Vanilla JS sin build step**: deploy directo de estáticos, cache busters `?v=N`.
-2. **Supabase como backend único**: Auth, DB, Realtime y Edge Functions.
+1. **Vanilla JS sin build step**: deploy directo de estÃ¡ticos, cache busters `?v=N`.
+2. **Supabase como backend Ãºnico**: Auth, DB, Realtime y Edge Functions.
 3. **RLS como seguridad principal**: todas las tablas tienen RLS; el frontend nunca ve secretos.
 4. **Realtime para reactividad**: `setupCoreRealtime` suscribe las tablas core.
-5. **Configuración centralizada**: `app_settings` + `site_content` como fuente de verdad.
+5. **ConfiguraciÃ³n centralizada**: `app_settings` + `site_content` como fuente de verdad.
 6. **Secretos solo en Edge Functions**: tokens ML/Zernio, Cloudinary, Brevo y service role nunca llegan al navegador.
 7. **IDs de responsable unificados**: `properties.agent_id`, `leads.assigned_to`, `visits.agent_id` y `zernio_conversations.broker_id` apuntan a `agents.id`.
-8. **Auditoría y supervisión integradas**.
+8. **AuditorÃ­a y supervisiÃ³n integradas**.
 
 ### Diagrama de arquitectura
 
 ```mermaid
 flowchart LR
-    subgraph Cliente["Navegador (estático)"]
+    subgraph Cliente["Navegador (estÃ¡tico)"]
         L[index.html<br/>Landing]
         A[admin.html<br/>Panel CRM]
         T[tasacion.html<br/>ACM]
@@ -197,11 +197,11 @@ flowchart LR
     CRON --> DB
 ```
 
-### Grafo de módulos
+### Grafo de mÃ³dulos
 
 ```mermaid
 graph TD
-    Config[Configuración] -->|USD rate, branding| Todos
+    Config[ConfiguraciÃ³n] -->|USD rate, branding| Todos
     Usuarios[Usuarios y Permisos] -->|Roles| Todos
     Agentes <-->|agent_id| Propiedades
     Agentes <-->|assigned_to| CRM
@@ -228,81 +228,81 @@ graph TD
     Propietarios -->|token| PortalPropietario[Portal Propietario]
     Propietarios -->|comisiones| Comisiones
     CMS[Sitio Web CMS] -->|contenido| Landing
-    Supervision[Supervisión] -->|audita| Todos
+    Supervision[SupervisiÃ³n] -->|audita| Todos
 ```
 
 ### Entidades compartidas
 
-| Entidad | Tabla | Módulos que la usan |
+| Entidad | Tabla | MÃ³dulos que la usan |
 |---|---|---|
 | Usuario/Perfil | `profiles` | Todos |
 | Broker | `agents` | Propiedades, CRM, Agenda, Chat, Comisiones |
 | Propiedad | `properties` | Propiedades, CRM, Agenda, Portales, Tasaciones, Portal Propietario |
 | Lead | `leads` | CRM, Agenda, Chat, Landing |
 | Visita | `visits` | Agenda, CRM, Confirmar Visita |
-| Conversación | `zernio_conversations` | Chat, CRM |
+| ConversaciÃ³n | `zernio_conversations` | Chat, CRM |
 | Propietario | `owners` | Propietarios, Portal, Comisiones |
-| Tasación | `tasaciones` | Tasaciones, Portal |
-| Comisión | `commissions` / `commission_liquidations` | Comisiones, Portal |
-| Publicación ML | `ml_listings` | Portales, Propiedades |
+| TasaciÃ³n | `tasaciones` | Tasaciones, Portal |
+| ComisiÃ³n | `commissions` / `commission_liquidations` | Comisiones, Portal |
+| PublicaciÃ³n ML | `ml_listings` | Portales, Propiedades |
 | Config/Contenido | `app_settings`, `site_content` | Config, CMS, Landing |
 
 ---
 
-## 🔗 Páginas y URLs
+## ðŸ”— PÃ¡ginas y URLs
 
-| Archivo | URL / Acceso | Propósito |
+| Archivo | URL / Acceso | PropÃ³sito |
 |---|---|---|
-| `index.html` | https://bienenhaus.com.ar | Landing: hero, catálogo, servicios, equipo, proceso, stats, contacto |
+| `index.html` | https://bienenhaus.com.ar | Landing: hero, catÃ¡logo, servicios, equipo, proceso, stats, contacto |
 | `admin.html` | `/admin.html` | Panel administrativo SPA (14 tabs, hash routing) |
 | `tasacion.html` | `/tasacion.html?id=<uuid>` | ACM; se abre embebido en iframe desde `tab-tasaciones` |
 | `portal-propietario.html` | `/portal-propietario.html?token=<uuid>` | Portal del propietario por token |
-| `confirmar-visita.html` | `/confirmar-visita.html?token=<uuid>` | Confirmación/cancelación de visita |
+| `confirmar-visita.html` | `/confirmar-visita.html?token=<uuid>` | ConfirmaciÃ³n/cancelaciÃ³n de visita |
 
 ---
 
-## 📁 Estructura del proyecto
+## ðŸ“ Estructura del proyecto
 
 ```
 BH-OFICIAL/
-├── index.html                    # Landing pública
-├── admin.html                    # Panel administrativo (SPA por tabs)
-├── tasacion.html                 # ACM de tasación (autónomo, embebible)
-├── portal-propietario.html       # Portal del propietario (token)
-├── confirmar-visita.html         # Confirmación de visita (token)
-├── CNAME                         # Dominio custom (Cloudflare Pages)
-├── favicon.ico · robots.txt · sitemap.xml · .nojekyll
-├── deno-stubs.d.ts               # Tipos auxiliares para Edge Functions
-├── playwright.config.js          # Configuración E2E
-├── package.json · package-lock.json
-│
-├── assets/
-│   ├── css/
-│   │   ├── landing.css           # Design system del landing
-│   │   └── admin.css             # Estilos del panel (incluye calendario)
-│   ├── js/
-│   │   ├── config.js             # window.BH_CONFIG (Supabase URL + anon key)
-│   │   ├── supabase-client.js    # Init de window.supabaseClient
-│   │   ├── utils.js              # BHUtils: esc, escAttr, safeUrl, safeImageUrl, safeCssUrl
-│   │   ├── cloudinary.js         # Upload firmado (window.BH_Cloudinary)
-│   │   ├── zod.umd.js            # Zod 3 (solo admin)
-│   │   ├── landing-app.js        # Catálogo, filtros, CMS, contacto → leads
-│   │   └── admin-app.js          # Panel completo (~14k líneas)
-│   ├── images/                   # favicon, hero-bg.webp, pwa-512x512.png
-│   └── img/                      # logo-bh.png
-│
-├── supabase/
-│   ├── functions/                # Edge Functions (Deno) + _shared/
-│   └── migrations/               # Migraciones SQL versionadas
-│
-├── tests/                        # Suite E2E Playwright
-├── scripts/                      # Scripts auxiliares
-├── fichas/                       # Fichas HTML de propiedades
-├── docs/integrations/            # Documentación de integraciones
-├── .well-known/                  # Archivos de verificación de dominio
-├── .github/workflows/            # CI (deploy.yml)
-│
-└── *.md                          # AUDITORIA_MODULOS, AUDIT_FINDINGS, AUDIT_INVENTORY,
+â”œâ”€â”€ index.html                    # Landing pÃºblica
+â”œâ”€â”€ admin.html                    # Panel administrativo (SPA por tabs)
+â”œâ”€â”€ tasacion.html                 # ACM de tasaciÃ³n (autÃ³nomo, embebible)
+â”œâ”€â”€ portal-propietario.html       # Portal del propietario (token)
+â”œâ”€â”€ confirmar-visita.html         # ConfirmaciÃ³n de visita (token)
+â”œâ”€â”€ CNAME                         # Dominio custom (Cloudflare Pages)
+â”œâ”€â”€ favicon.ico Â· robots.txt Â· sitemap.xml Â· .nojekyll
+â”œâ”€â”€ deno-stubs.d.ts               # Tipos auxiliares para Edge Functions
+â”œâ”€â”€ playwright.config.js          # ConfiguraciÃ³n E2E
+â”œâ”€â”€ package.json Â· package-lock.json
+â”‚
+â”œâ”€â”€ assets/
+â”‚   â”œâ”€â”€ css/
+â”‚   â”‚   â”œâ”€â”€ landing.css           # Design system del landing
+â”‚   â”‚   â””â”€â”€ admin.css             # Estilos del panel (incluye calendario)
+â”‚   â”œâ”€â”€ js/
+â”‚   â”‚   â”œâ”€â”€ config.js             # window.BH_CONFIG (Supabase URL + anon key)
+â”‚   â”‚   â”œâ”€â”€ supabase-client.js    # Init de window.supabaseClient
+â”‚   â”‚   â”œâ”€â”€ utils.js              # BHUtils: esc, escAttr, safeUrl, safeImageUrl, safeCssUrl
+â”‚   â”‚   â”œâ”€â”€ cloudinary.js         # Upload firmado (window.BH_Cloudinary)
+â”‚   â”‚   â”œâ”€â”€ zod.umd.js            # Zod 3 (solo admin)
+â”‚   â”‚   â”œâ”€â”€ landing-app.js        # CatÃ¡logo, filtros, CMS, contacto â†’ leads
+â”‚   â”‚   â””â”€â”€ admin-app.js          # Panel completo (~14k lÃ­neas)
+â”‚   â”œâ”€â”€ images/                   # favicon, hero-bg.webp, pwa-512x512.png
+â”‚   â””â”€â”€ img/                      # logo-bh.png
+â”‚
+â”œâ”€â”€ supabase/
+â”‚   â”œâ”€â”€ functions/                # Edge Functions (Deno) + _shared/
+â”‚   â””â”€â”€ migrations/               # Migraciones SQL versionadas
+â”‚
+â”œâ”€â”€ tests/                        # Suite E2E Playwright
+â”œâ”€â”€ scripts/                      # Scripts auxiliares
+â”œâ”€â”€ fichas/                       # Fichas HTML de propiedades
+â”œâ”€â”€ docs/integrations/            # DocumentaciÃ³n de integraciones
+â”œâ”€â”€ .well-known/                  # Archivos de verificaciÃ³n de dominio
+â”œâ”€â”€ .github/workflows/            # CI (deploy.yml)
+â”‚
+â””â”€â”€ *.md                          # AUDITORIA_MODULOS, AUDIT_FINDINGS, AUDIT_INVENTORY,
                                   # CLOUDFLARE_SETUP, CONECTAR_ZERNIO_CHAT,
                                   # REMEDIATION_PLAN, XSS_REVIEW
 ```
@@ -311,12 +311,12 @@ BH-OFICIAL/
 
 ---
 
-## 🚀 Instalación y puesta en marcha
+## ðŸš€ InstalaciÃ³n y puesta en marcha
 
 ### Requisitos
 
-- Cualquier servidor estático (Python, `npx serve`, etc.)
-- Node.js ≥ 18 (solo para lint y tests)
+- Cualquier servidor estÃ¡tico (Python, `npx serve`, etc.)
+- Node.js â‰¥ 18 (solo para lint y tests)
 - [Supabase CLI](https://supabase.com/docs/guides/cli) (solo para migraciones y Edge Functions)
 
 ### Local
@@ -326,12 +326,12 @@ BH-OFICIAL/
 git clone https://github.com/facuherrera23/BH-OFICIAL.git
 cd BH-OFICIAL
 
-# 2. Servir estáticamente (no hay build)
+# 2. Servir estÃ¡ticamente (no hay build)
 python -m http.server 8788
 
 # 3. Abrir
-#   Landing → http://localhost:8788/index.html
-#   Admin   → http://localhost:8788/admin.html
+#   Landing â†’ http://localhost:8788/index.html
+#   Admin   â†’ http://localhost:8788/admin.html
 ```
 
 ### Herramientas de desarrollo (opcional)
@@ -343,20 +343,20 @@ npm run lint                       # node --check de admin-app.js y landing-app.
 npm test                           # suite E2E
 ```
 
-### Configuración del frontend
+### ConfiguraciÃ³n del frontend
 
 `assets/js/config.js`:
 
 ```js
 window.BH_CONFIG = {
   SUPABASE_URL: 'https://<tu-proyecto>.supabase.co',
-  SUPABASE_ANON_KEY: '<anon-key>'   // clave pública por diseño: la seguridad la da RLS
+  SUPABASE_ANON_KEY: '<anon-key>'   // clave pÃºblica por diseÃ±o: la seguridad la da RLS
 };
 ```
 
 - `supabase-client.js` crea `window.supabaseClient` con el CDN `@supabase/supabase-js@2`. Sin CDN o sin `BH_CONFIG`, loguea el error y **no** expone el cliente (*fail-closed*).
 - `utils.js` expone `window.BHUtils` (solo helpers de seguridad/URL) y se carga **antes** que `landing-app.js` / `admin-app.js`.
-- `cloudinary.js` expone `window.BH_Cloudinary = { uploadImage, uploadImages }` (firma vía Edge Function `cloudinary-sign`).
+- `cloudinary.js` expone `window.BH_Cloudinary = { uploadImage, uploadImages }` (firma vÃ­a Edge Function `cloudinary-sign`).
 
 ### Usuarios
 
@@ -367,23 +367,23 @@ Los usuarios se crean desde el propio panel (**Usuarios & Permisos**) mediante l
 | Variable | Uso |
 |---|---|
 | `SUPABASE_SERVICE_ROLE_KEY` | Operaciones privilegiadas |
-| `CRYPTO_SECRET` | Derivación PBKDF2 para AES-256-GCM (tokens ML) |
+| `CRYPTO_SECRET` | DerivaciÃ³n PBKDF2 para AES-256-GCM (tokens ML) |
 | Credenciales Cloudinary | Firma de uploads |
 | Credenciales Mercado Libre | OAuth y API |
 | API key + webhook secret Zernio | Guardados en `zernio_config` |
-| Credenciales Brevo | Envío de digest |
+| Credenciales Brevo | EnvÃ­o de digest |
 
 > Nunca se commitean: se cargan con `supabase secrets set`.
 
 ---
 
-## 🗄️ Base de datos
+## ðŸ—„ï¸ Base de datos
 
-PostgreSQL gestionado por Supabase. **37 tablas en el esquema `public`, todas con RLS activada** (verificado contra producción el 2026-08-28).
+PostgreSQL gestionado por Supabase. **37 tablas en el esquema `public`, todas con RLS activada** (verificado contra producciÃ³n el 2026-08-28).
 
-### Diagrama entidad-relación (núcleo de negocio)
+### Diagrama entidad-relaciÃ³n (nÃºcleo de negocio)
 
-> Se muestran las relaciones y los campos documentados en el proyecto. Los campos completos están en `supabase/migrations/`.
+> Se muestran las relaciones y los campos documentados en el proyecto. Los campos completos estÃ¡n en `supabase/migrations/`.
 
 ```mermaid
 erDiagram
@@ -400,8 +400,8 @@ erDiagram
     OWNERS ||--o{ OWNER_TIMELINE_ENTRIES : "eventos"
 
     PROPERTIES ||--o{ VISITS : "property_id"
-    PROPERTIES ||--o| ML_LISTINGS : "publicación"
-    PROPERTIES ||--o{ TASACIONES : "valoración"
+    PROPERTIES ||--o| ML_LISTINGS : "publicaciÃ³n"
+    PROPERTIES ||--o{ TASACIONES : "valoraciÃ³n"
     PROPERTIES ||--o{ COMMISSIONS : "cierre"
 
     LEADS ||--o{ VISITS : "lead_id"
@@ -437,7 +437,7 @@ erDiagram
     OWNERS {
         uuid id PK
         text dni_cuit
-        jsonb documents "expiración y verificación"
+        jsonb documents "expiraciÃ³n y verificaciÃ³n"
     }
     LEADS {
         uuid id PK
@@ -475,78 +475,78 @@ erDiagram
 
 ### Tablas por dominio
 
-#### 🏢 Núcleo de negocio
+#### ðŸ¢ NÃºcleo de negocio
 
-| Tabla | Descripción |
+| Tabla | DescripciÃ³n |
 |---|---|
-| `properties` | Propiedades (draft/publicada/vendida/alquilada/pausada), imágenes JSONB, `agent_id`, `owner_id`, `portal_settings`, `price_ars` generada |
-| `agents` | Asesores/brokers: matrícula, `commission_sale`/`commission_rent`, `profile_id`, soft-delete `deleted_at` |
-| `owners` | Propietarios: DNI/CUIT, documentos JSONB (vencimiento y verificación) |
+| `properties` | Propiedades (draft/publicada/vendida/alquilada/pausada), imÃ¡genes JSONB, `agent_id`, `owner_id`, `portal_settings`, `price_ars` generada |
+| `agents` | Asesores/brokers: matrÃ­cula, `commission_sale`/`commission_rent`, `profile_id`, soft-delete `deleted_at` |
+| `owners` | Propietarios: DNI/CUIT, documentos JSONB (vencimiento y verificaciÃ³n) |
 | `leads` | Pipeline CRM: `source`, `stage`, `tags`, `score`, `assigned_to` |
 | `visits` | Visitas: estados, `agent_id`, `confirmation_token`, check-in/out |
-| `tasaciones` | ACM: `data` JSONB, valoración USD/ARS, estado borrador/en_revision/entregada/vencida |
+| `tasaciones` | ACM: `data` JSONB, valoraciÃ³n USD/ARS, estado borrador/en_revision/entregada/vencida |
 | `commissions` | Comisiones por cierre (pendiente/liquidada/pagada) |
 | `commission_liquidations` | Liquidaciones mensuales |
 | `commission_payments` | Pagos registrados |
 | `ml_listings` | Publicaciones Mercado Libre (sync, dedup) |
-| `property_sequences` | Secuencia de códigos de propiedad (solo `service_role`) |
+| `property_sequences` | Secuencia de cÃ³digos de propiedad (solo `service_role`) |
 
-#### 🎨 CMS y configuración
+#### ðŸŽ¨ CMS y configuraciÃ³n
 
-| Tabla | Descripción |
+| Tabla | DescripciÃ³n |
 |---|---|
-| `site_content` | Contenido por sección del landing: hero, services, team, process, stats, contact, footer, social |
+| `site_content` | Contenido por secciÃ³n del landing: hero, services, team, process, stats, contact, footer, social |
 | `portal_settings` | CMS en vivo del landing (hero, servicios, stats, testimonios). Lectura solo autenticada |
 | `app_settings` | Ajustes globales key/value JSONB: `preferences` (incl. `usd_rate`), `features`, `integrations` |
 | `profiles` | Perfiles vinculados a `auth.users` con campo `role` |
 
-#### 💬 Chat Zernio
+#### ðŸ’¬ Chat Zernio
 
-| Tabla | Descripción |
+| Tabla | DescripciÃ³n |
 |---|---|
-| `zernio_config` | Secretos del módulo (API key, webhook secret). RLS sin policies: solo `service_role` |
+| `zernio_config` | Secretos del mÃ³dulo (API key, webhook secret). RLS sin policies: solo `service_role` |
 | `zernio_accounts` | Espejo de cuentas sociales conectadas |
 | `zernio_conversations` | Hilos DM unificados (IG/FB/WA/Web); `broker_id` auto-asignado por trigger |
-| `zernio_messages` | Mensajes; escritura solo vía Edge Functions |
-| `zernio_webhook_events` | Deduplicación de eventos (`payload.id` único) |
+| `zernio_messages` | Mensajes; escritura solo vÃ­a Edge Functions |
+| `zernio_webhook_events` | DeduplicaciÃ³n de eventos (`payload.id` Ãºnico) |
 
-#### 🛡️ Supervisión y auditoría
+#### ðŸ›¡ï¸ SupervisiÃ³n y auditorÃ­a
 
-| Tabla | Descripción |
+| Tabla | DescripciÃ³n |
 |---|---|
-| `audit_log` | Registro de auditoría de escrituras y acciones sensibles (con cadena de integridad) |
-| `supervision_rules` | Reglas configurables de detección (solo `super_admin`) |
+| `audit_log` | Registro de auditorÃ­a de escrituras y acciones sensibles (con cadena de integridad) |
+| `supervision_rules` | Reglas configurables de detecciÃ³n (solo `super_admin`) |
 | `supervision_alerts` | Alertas operativas generadas por reglas |
-| `supervision_baselines` | Baselines estadísticos |
-| `supervision_anomalies` | Anomalías detectadas (ML/estadística) |
-| `supervision_anomaly_config` | Configuración del detector |
+| `supervision_baselines` | Baselines estadÃ­sticos |
+| `supervision_anomalies` | AnomalÃ­as detectadas (ML/estadÃ­stica) |
+| `supervision_anomaly_config` | ConfiguraciÃ³n del detector |
 | `user_risk_scores` | Score de riesgo por usuario, con factores explicables |
 | `user_sessions` | Sesiones registradas |
-| `api_key_audit` | Auditoría de uso de API keys |
-| `usage_events` | Métricas de uso (append-only) |
-| `ml_model_metrics` | Métricas del modelo (precision, recall, F1) |
+| `api_key_audit` | AuditorÃ­a de uso de API keys |
+| `usage_events` | MÃ©tricas de uso (append-only) |
+| `ml_model_metrics` | MÃ©tricas del modelo (precision, recall, F1) |
 | `ml_predictions_log` | Log de predicciones |
 | `rate_limit_logs` | Sliding window del rate limiter |
 | `notification_preferences` | Preferencias por usuario (email/push/slack) |
 
-#### 📂 Portal del Propietario y documentos
+#### ðŸ“‚ Portal del Propietario y documentos
 
-| Tabla | Descripción |
+| Tabla | DescripciÃ³n |
 |---|---|
-| `owner_portal_tokens` | Tokens de acceso al portal (validación + expiración) |
-| `document_requirements` | Requisitos documentales por tipo de operación |
+| `owner_portal_tokens` | Tokens de acceso al portal (validaciÃ³n + expiraciÃ³n) |
+| `document_requirements` | Requisitos documentales por tipo de operaciÃ³n |
 | `owner_timeline_entries` | Timeline de comunicaciones y eventos |
 
-### Triggers y lógica en base de datos
+### Triggers y lÃ³gica en base de datos
 
-| Trigger / Función | Efecto |
+| Trigger / FunciÃ³n | Efecto |
 |---|---|
-| `guard_profiles_self_update` | Impide la auto-elevación de rol |
-| `trg_visits_sync_lead_stage` | Crear visita → lead pasa a `visita` |
-| `trg_visits_lead_cancel_revert` | Cancelar visita → lead vuelve a `contactado` |
-| `trg_visits_lead_completed_auto` | Completar visita → sugiere `oferta` |
+| `guard_profiles_self_update` | Impide la auto-elevaciÃ³n de rol |
+| `trg_visits_sync_lead_stage` | Crear visita â†’ lead pasa a `visita` |
+| `trg_visits_lead_cancel_revert` | Cancelar visita â†’ lead vuelve a `contactado` |
+| `trg_visits_lead_completed_auto` | Completar visita â†’ sugiere `oferta` |
 | Triggers `BEFORE INSERT` en chat | Auto-asignan `broker_id` |
-| `set_property_code` / `generate_property_code` | Código secuencial de propiedad |
+| `set_property_code` / `generate_property_code` | CÃ³digo secuencial de propiedad |
 | `get_sidebar_badge_counts` (RPC, SECURITY DEFINER) | Contadores del sidebar respetando RLS |
 | `count_pending_visits_for_lead`, `is_super_admin` | Helpers de negocio y permisos |
 
@@ -554,54 +554,54 @@ erDiagram
 
 `ml_model_performance`, `daily_user_activity`, `daily_module_activity`, `open_alerts_by_user`, `my_assigned_alerts`, `purge_audit_log`, `supervision_anomalies_recent`, `current_user_risk_scores`.
 
-### Políticas RLS destacadas
+### PolÃ­ticas RLS destacadas
 
-| Tabla | Política |
+| Tabla | PolÃ­tica |
 |---|---|
-| `properties` | Lectura pública de las publicadas (`TO public`); escritura autenticada |
-| `leads` | `INSERT` anónimo solo con `source IN ('landing_page','newsletter')` |
-| `visits` | `SELECT/UPDATE` anónimo por `confirmation_token`; resto vía JOIN `agents.profile_id = auth.uid()` |
+| `properties` | Lectura pÃºblica de las publicadas (`TO public`); escritura autenticada |
+| `leads` | `INSERT` anÃ³nimo solo con `source IN ('landing_page','newsletter')` |
+| `visits` | `SELECT/UPDATE` anÃ³nimo por `confirmation_token`; resto vÃ­a JOIN `agents.profile_id = auth.uid()` |
 | `owners` | `SELECT` super_admin/broker; `INSERT/UPDATE/DELETE` solo super_admin |
-| `tasaciones` | Solo `authenticated` y `service_role` (sin acceso anónimo) |
+| `tasaciones` | Solo `authenticated` y `service_role` (sin acceso anÃ³nimo) |
 | `portal_settings` | Lectura solo autenticada (sin fuga de secretos) |
 | `zernio_config`, `property_sequences` | Sin policies: solo `service_role` (intencional) |
-| `supervision_rules` | Gestión exclusiva de `super_admin` |
+| `supervision_rules` | GestiÃ³n exclusiva de `super_admin` |
 
 ---
 
-## 👥 Roles y permisos
+## ðŸ‘¥ Roles y permisos
 
 El permiso se resuelve con `profiles.role` (enum `user_role`):
 
 | Rol | Alcance |
 |---|---|
-| `super_admin` | Acceso total, gestión de usuarios, ajustes sensibles y supervisión |
-| `broker` | Gestión operativa completa y sus asignaciones (`agents.profile_id = auth.uid()`) |
+| `super_admin` | Acceso total, gestiÃ³n de usuarios, ajustes sensibles y supervisiÃ³n |
+| `broker` | GestiÃ³n operativa completa y sus asignaciones (`agents.profile_id = auth.uid()`) |
 | `agente` | Solo sus propias asignaciones |
 
 **Chat:** `super_admin` ve todo; `broker` solo las conversaciones donde `broker_id` corresponde a su agente.
 
 ---
 
-## 🔒 Seguridad
+## ðŸ”’ Seguridad
 
-- **RLS en las 37 tablas**; lectura pública solo donde corresponde.
-- **Hardening de funciones**: `search_path` fijo, `REVOKE ALL` a `PUBLIC` y `anon` en 44 funciones, con `GRANT` explícitos.
+- **RLS en las 37 tablas**; lectura pÃºblica solo donde corresponde.
+- **Hardening de funciones**: `search_path` fijo, `REVOKE ALL` a `PUBLIC` y `anon` en 44 funciones, con `GRANT` explÃ­citos.
 - **XSS**: `esc()` obligatorio antes de todo `innerHTML`; `safeUrl` / `safeImageUrl` / `safeCssUrl` para atributos. Ver `XSS_REVIEW.md`.
-- **CSP** verificada por tests en las 5 páginas.
-- **Autenticación por token** en portal y confirmación de visita.
-- **Sesión cruzada por iframe**: `postMessage` con `targetOrigin` explícito y verificación de `event.origin`.
-- **Edge Functions**: `verify_jwt` según función, chequeo de rol vía service role y rate limiting.
+- **CSP** verificada por tests en las 5 pÃ¡ginas.
+- **AutenticaciÃ³n por token** en portal y confirmaciÃ³n de visita.
+- **SesiÃ³n cruzada por iframe**: `postMessage` con `targetOrigin` explÃ­cito y verificaciÃ³n de `event.origin`.
+- **Edge Functions**: `verify_jwt` segÃºn funciÃ³n, chequeo de rol vÃ­a service role y rate limiting.
 - **Secretos**: solo en Edge Functions (`Deno.env.get`), tokens ML cifrados con AES-256-GCM.
-- **Auditoría**: `audit_log` con cadena de integridad + `api_key_audit`.
+- **AuditorÃ­a**: `audit_log` con cadena de integridad + `api_key_audit`.
 
 ---
 
-## 🖥️ Panel administrativo (14 módulos)
+## ðŸ–¥ï¸ Panel administrativo (14 mÃ³dulos)
 
-SPA con hash routing (`#tab-dashboard`) y sidebar en 4 categorías: **Principal**, **Gestión & CRM**, **Red & Difusión** y **Sistema**.
+SPA con hash routing (`#tab-dashboard`) y sidebar en 4 categorÃ­as: **Principal**, **GestiÃ³n & CRM**, **Red & DifusiÃ³n** y **Sistema**.
 
-| # | Módulo | Tab ID |
+| # | MÃ³dulo | Tab ID |
 |---|---|---|
 | 1 | Dashboard | `tab-dashboard` |
 | 2 | Propiedades | `tab-propiedades` |
@@ -615,12 +615,12 @@ SPA con hash routing (`#tab-dashboard`) y sidebar en 4 categorías: **Principal*
 | 10 | Chat Redes | `tab-chat-redes` |
 | 11 | Ficha HTML | `tab-ficha-html` |
 | 12 | Usuarios & Permisos | `tab-usuarios` |
-| 13 | Configuración | `tab-configuracion` |
-| 14 | Centro de Supervisión | `tab-supervision` |
+| 13 | ConfiguraciÃ³n | `tab-configuracion` |
+| 14 | Centro de SupervisiÃ³n | `tab-supervision` |
 
 ### API global `window.adminApp`
 
-Expone los handlers al HTML (39 métodos):
+Expone los handlers al HTML (39 mÃ©todos):
 
 - **Entidades:** `edit*` / `delete*` para propiedades, leads, propietarios, visitas y agentes.
 - **Propietarios:** `exportOwnersCSV`, `exportOwnersPDF`, `generateOwnerPortalLink`, `deleteOwnerDoc`, `deleteTimelineEntry`.
@@ -628,59 +628,59 @@ Expone los handlers al HTML (39 métodos):
 - **Comisiones:** `markCommissionPaid`, `markLiquidationPaid`, `deletePayment`, `viewCommissionLiquidation`, `viewLiquidationPDF`.
 - **Portales/ML:** `mlConnect`, `mlDisconnect`, `mlSaveCredentials`, `mlPublishProperty`, `mlRemoveProperty`, `mlUpdateProperty`, `mlToggleConfig`, `mlImportFromML`, `togglePortal`, `openPortalConfig`.
 - **Chat:** `openChatConversation`.
-- **Supervisión:** `loadSupervision`, `loadAnomaliesTable`.
+- **SupervisiÃ³n:** `loadSupervision`, `loadAnomaliesTable`.
 
-### Navegación y estado
+### NavegaciÃ³n y estado
 
 - Tabs con hash routing y persistencia en `localStorage`.
-- Búsqueda global `Ctrl+K` con resaltado.
+- BÃºsqueda global `Ctrl+K` con resaltado.
 - Panel de notificaciones, badges en tabs y contador en favicon.
-- Badges del sidebar en vivo vía RPC `get_sidebar_badge_counts`.
+- Badges del sidebar en vivo vÃ­a RPC `get_sidebar_badge_counts`.
 
-### 🧩 Módulo Sitio Web (CMS)
+### ðŸ§© MÃ³dulo Sitio Web (CMS)
 
-11 sub-tabs (Hero, Catálogo, Servicios, Equipo, Stats, Proceso, Contacto, Formulario, Navbar, Footer, SEO). Guarda en `site_content` y `portal_settings`; el landing re-renderiza con `applySectionContent()` y caché invalidable (`invalidateCmsCache`, `getCachedCMS`).
+11 sub-tabs (Hero, CatÃ¡logo, Servicios, Equipo, Stats, Proceso, Contacto, Formulario, Navbar, Footer, SEO). Guarda en `site_content` y `portal_settings`; el landing re-renderiza con `applySectionContent()` y cachÃ© invalidable (`invalidateCmsCache`, `getCachedCMS`).
 
-### 🧩 Módulo Ficha HTML
+### ðŸ§© MÃ³dulo Ficha HTML
 
 - Layout de dos columnas: formulario + preview 1:1 (responsive 1200/1024/680px).
 - Autocompletado desde el CRM (debounce 250 ms) y drag & drop de fotos.
 - Tres exportaciones: `navigator.share`, `window.print` (PDF) y HTML autocontenido descargable.
 
-### 🧩 Módulo Configuración
+### ðŸ§© MÃ³dulo ConfiguraciÃ³n
 
-| Sección | Destino |
+| SecciÃ³n | Destino |
 |---|---|
-| Identidad corporativa | `site_content.footer` (razón social, matrícula, CUIT) |
-| Contacto digital | `site_content.contact` (WhatsApp, email, teléfono, dirección, horario) |
-| Redes sociales | `site_content.social` (URL vacía = icono oculto) |
+| Identidad corporativa | `site_content.footer` (razÃ³n social, matrÃ­cula, CUIT) |
+| Contacto digital | `site_content.contact` (WhatsApp, email, telÃ©fono, direcciÃ³n, horario) |
+| Redes sociales | `site_content.social` (URL vacÃ­a = icono oculto) |
 | Preferencias | `app_settings.preferences.usd_rate` |
 | Sistema e integraciones | Chips de estado: Supabase, Cloudinary, ML, Zernio |
-| Sesión activa | Usuario, rol y cierre de sesión |
+| SesiÃ³n activa | Usuario, rol y cierre de sesiÃ³n |
 
 El guardado valida, hace *deep merge* (preserva claves no editadas) y hace UPDATE/INSERT. Sin `super_admin`, los campos quedan deshabilitados.
 
 ---
 
-## 🌍 Landing pública
+## ðŸŒ Landing pÃºblica
 
 Consume `site_content` y `portal_settings` desde `landing-app.js`.
 
-- Catálogo dinámico con filtros server-side, orden, paginación y virtual scroller.
-- Galería con thumbnails y navegación.
-- Formulario de contacto → `leads`, con pills de interés y validación.
+- CatÃ¡logo dinÃ¡mico con filtros server-side, orden, paginaciÃ³n y virtual scroller.
+- GalerÃ­a con thumbnails y navegaciÃ³n.
+- Formulario de contacto â†’ `leads`, con pills de interÃ©s y validaciÃ³n.
 - Secciones de stats, equipo, servicios y proceso desde el CMS.
-- Imágenes con Cloudinary (`f_auto,q_auto`) y lazy loading.
-- Mobile-first con menú móvil y botón flotante de WhatsApp.
+- ImÃ¡genes con Cloudinary (`f_auto,q_auto`) y lazy loading.
+- Mobile-first con menÃº mÃ³vil y botÃ³n flotante de WhatsApp.
 - SEO completo (meta, Open Graph, `schema.org`, sitemap, robots).
 
 ---
 
-## 🏡 Portal del Propietario
+## ðŸ¡ Portal del Propietario
 
-`portal-propietario.html?token=<uuid>` — acceso **sin login**.
+`portal-propietario.html?token=<uuid>` â€” acceso **sin login**.
 
-- Valida token y expiración (`owner_portal_tokens`); muestra error si es inválido.
+- Valida token y expiraciÃ³n (`owner_portal_tokens`); muestra error si es invÃ¡lido.
 - Lista las propiedades del propietario.
 - Muestra documentos (`document_requirements` + `owners.documents`).
 - Muestra comisiones y liquidaciones (pendiente / liquidada / pagada).
@@ -688,11 +688,11 @@ Consume `site_content` y `portal_settings` desde `landing-app.js`.
 
 ---
 
-## ✅ Confirmación de visitas
+## âœ… ConfirmaciÃ³n de visitas
 
 `confirmar-visita.html?token=<uuid>` usa `visits.confirmation_token`.
 
-| Acción | Resultado |
+| AcciÃ³n | Resultado |
 |---|---|
 | **Confirmar** | `status = 'confirmada'`, `confirmed_at = now()` |
 | **Cancelar** | `status = 'cancelada'`, `cancel_reason = 'Cancelado por cliente'` |
@@ -701,140 +701,140 @@ Muestra cliente, fecha/hora y estado visual (pendiente / confirmada / completada
 
 ---
 
-## 📐 Tasaciones (ACM)
+## ðŸ“ Tasaciones (ACM)
 
-`tasacion.html` es una herramienta autónoma de Análisis Comparativo de Mercado:
+`tasacion.html` es una herramienta autÃ³noma de AnÃ¡lisis Comparativo de Mercado:
 
-- **Comparables**: alta manual, extracción por URL, carga y renovación de fotos.
-- **Mapa** (Leaflet) con búsqueda por dirección (geocoding).
-- **Características** (ambientes, uso de terreno) y **coeficientes** (condiciones, depreciación) con recálculo en vivo.
-- **Gráficos** (Chart.js) de análisis comparativo.
-- **Guardado** en `tasaciones` (`data` JSONB + estado + valoración USD/ARS).
-- **Sesión** recibida del admin vía `postMessage`; notifica con `tasaciones-finalized` y `tasaciones-back`.
+- **Comparables**: alta manual, extracciÃ³n por URL, carga y renovaciÃ³n de fotos.
+- **Mapa** (Leaflet) con bÃºsqueda por direcciÃ³n (geocoding).
+- **CaracterÃ­sticas** (ambientes, uso de terreno) y **coeficientes** (condiciones, depreciaciÃ³n) con recÃ¡lculo en vivo.
+- **GrÃ¡ficos** (Chart.js) de anÃ¡lisis comparativo.
+- **Guardado** en `tasaciones` (`data` JSONB + estado + valoraciÃ³n USD/ARS).
+- **SesiÃ³n** recibida del admin vÃ­a `postMessage`; notifica con `tasaciones-finalized` y `tasaciones-back`.
 
 ---
 
-## 💰 Comisiones y liquidaciones
+## ðŸ’° Comisiones y liquidaciones
 
 - Tablas: `commissions`, `commission_liquidations` (mensual), `commission_payments`.
-- Edge Functions: `trigger_commission_on_close` (crea la comisión al cerrar la propiedad) y `monthly_commission_liquidation` (cierre mensual).
+- Edge Functions: `trigger_commission_on_close` (crea la comisiÃ³n al cerrar la propiedad) y `monthly_commission_liquidation` (cierre mensual).
 - Porcentajes por agente: `commission_sale` y `commission_rent`.
-- Admin: marcar como pagada, liquidar, ver PDF de liquidación, eliminar pagos, filtrar por broker/estado.
+- Admin: marcar como pagada, liquidar, ver PDF de liquidaciÃ³n, eliminar pagos, filtrar por broker/estado.
 - El Portal del Propietario muestra el estado.
 
 ---
 
-## 🛒 Integración Mercado Libre
+## ðŸ›’ IntegraciÃ³n Mercado Libre
 
-1. **Conexión OAuth 2.0** → `mlConnect` (tab Portales).
-2. **Publicación** → `mlPublishProperty` con validación de campos y fotos.
-3. **Sincronización** → Edge Function `ml-sync` (cron, lotes de 50): precio, stock y estado, en ambas direcciones.
-4. **Auto-reply** → plantillas por tipo de pregunta con variables.
-5. **Webhook** → firmado y con deduplicación; *dead-letter queue* visible.
-6. **Importación inversa** → `mlImportFromML` trae publicaciones que existen en ML pero no en el CRM.
+1. **ConexiÃ³n OAuth 2.0** â†’ `mlConnect` (tab Portales).
+2. **PublicaciÃ³n** â†’ `mlPublishProperty` con validaciÃ³n de campos y fotos.
+3. **SincronizaciÃ³n** â†’ Edge Function `ml-sync` (cron, lotes de 50): precio, stock y estado, en ambas direcciones.
+4. **Auto-reply** â†’ plantillas por tipo de pregunta con variables.
+5. **Webhook** â†’ firmado y con deduplicaciÃ³n; *dead-letter queue* visible.
+6. **ImportaciÃ³n inversa** â†’ `mlImportFromML` trae publicaciones que existen en ML pero no en el CRM.
 
 Los tokens se guardan cifrados (AES-256-GCM) y nunca llegan al frontend.
 
 ---
 
-## 💬 Chat omnicanal (Zernio)
+## ðŸ’¬ Chat omnicanal (Zernio)
 
-**Estado:** recepción validada en producción (HMAC, dedup, persistencia, auditoría). El envío saliente espera una API key real.
+**Estado:** recepciÃ³n validada en producciÃ³n (HMAC, dedup, persistencia, auditorÃ­a). El envÃ­o saliente espera una API key real.
 
-| Componente | Ubicación | Estado |
+| Componente | UbicaciÃ³n | Estado |
 |---|---|---|
-| Webhook receptor | `supabase/functions/zernio-webhook` | ✅ `verify_jwt` OFF |
-| Proxy API | `supabase/functions/zernio-proxy` | ✅ `verify_jwt` ON |
-| Test de webhook | `supabase/functions/zernio-webhook-test` | ✅ |
-| Frontend | tab Chat Redes (`admin-app.js`) | ✅ `super_admin` y `broker` |
-| Base de datos | 5 tablas `zernio_*` | ✅ RLS + triggers |
-| Guía | `CONECTAR_ZERNIO_CHAT.md` | ✅ |
+| Webhook receptor | `supabase/functions/zernio-webhook` | âœ… `verify_jwt` OFF |
+| Proxy API | `supabase/functions/zernio-proxy` | âœ… `verify_jwt` ON |
+| Test de webhook | `supabase/functions/zernio-webhook-test` | âœ… |
+| Frontend | tab Chat Redes (`admin-app.js`) | âœ… `super_admin` y `broker` |
+| Base de datos | 5 tablas `zernio_*` | âœ… RLS + triggers |
+| GuÃ­a | `CONECTAR_ZERNIO_CHAT.md` | âœ… |
 
-**Acciones del inbox:** ver contexto lateral (propiedad/lead/visitas), crear lead, agendar visita, asignar broker, marcar leído y enviar mensaje.
+**Acciones del inbox:** ver contexto lateral (propiedad/lead/visitas), crear lead, agendar visita, asignar broker, marcar leÃ­do y enviar mensaje.
 
 ---
 
-## 🛡️ Centro de Supervisión
+## ðŸ›¡ï¸ Centro de SupervisiÃ³n
 
 - **Reglas configurables** ejecutadas con `pg_cron` (solo `super_admin`).
-- **Alertas** con severidad y asignación.
-- **Anomalías** estadísticas/ML (`supervision-ml-anomaly` + baselines).
+- **Alertas** con severidad y asignaciÃ³n.
+- **AnomalÃ­as** estadÃ­sticas/ML (`supervision-ml-anomaly` + baselines).
 - **Risk scoring** por usuario con factores explicables.
-- **Notificaciones** push/email y **digest diario** vía Brevo.
-- **API de consulta** (`supervision-api`, límite 60 req/min).
-- **Métricas ML** y de uso.
-- **Retención y purga** (`purge_policy`).
+- **Notificaciones** push/email y **digest diario** vÃ­a Brevo.
+- **API de consulta** (`supervision-api`, lÃ­mite 60 req/min).
+- **MÃ©tricas ML** y de uso.
+- **RetenciÃ³n y purga** (`purge_policy`).
 
 ---
 
-## ⚡ Edge Functions
+## âš¡ Edge Functions
 
 ### Helpers compartidos (`_shared/`)
 
-| Archivo | Propósito |
+| Archivo | PropÃ³sito |
 |---|---|
 | `auth.ts` | `requireAdmin` / `isAdmin`: valida Bearer JWT + rol |
-| `cors.ts` · `http.ts` | Headers CORS, `jsonResponse`, `optionsResponse`, allowlist de origins |
+| `cors.ts` Â· `http.ts` | Headers CORS, `jsonResponse`, `optionsResponse`, allowlist de origins |
 | `crypto.ts` | AES-256-GCM (clave PBKDF2 derivada de `CRYPTO_SECRET`) |
-| `ml.ts` · `ml.schemas.ts` | Cliente API Mercado Libre + schemas Zod |
+| `ml.ts` Â· `ml.schemas.ts` | Cliente API Mercado Libre + schemas Zod |
 | `rate-limit.ts` | Sliding window log en `rate_limit_logs` |
 | `audit.ts` | `auditEvent`, `auditSensitiveAction`, `trackToolUsage`, `auditError` |
 
 ### Funciones versionadas en el repo
 
-| Función | JWT | Propósito |
+| FunciÃ³n | JWT | PropÃ³sito |
 |---|---|---|
 | `cloudinary-sign` | ON + admin | Firma uploads con allowlist de carpetas |
 | `manage-users` | ON + super_admin | `invite`, `create-direct`, `set-role`, `update-user`, `update-self` |
 | `ml-sync` | cron | Sync con Mercado Libre |
 | `cron_exclusivity_renewals` | cron | Avisos de exclusividades por vencer |
-| `monthly_commission_liquidation` | cron | Liquidación mensual |
-| `trigger_commission_on_close` | evento | Crea comisión al cerrar |
-| `supervision-api` | ON | Consultas del Centro de Supervisión |
+| `monthly_commission_liquidation` | cron | LiquidaciÃ³n mensual |
+| `trigger_commission_on_close` | evento | Crea comisiÃ³n al cerrar |
+| `supervision-api` | ON | Consultas del Centro de SupervisiÃ³n |
 | `supervision-digest` | cron | Resumen diario por Brevo |
-| `supervision-ml-anomaly` | ON | Detección de anomalías |
-| `supervision-notifications` | ON | Push/email de alertas críticas |
+| `supervision-ml-anomaly` | ON | DetecciÃ³n de anomalÃ­as |
+| `supervision-notifications` | ON | Push/email de alertas crÃ­ticas |
 | `supervision-notify` | cron | Dispara notificaciones |
 | `zernio-proxy` | ON | `send_message`, `mark_read`, `list_accounts`, `backfill_*` |
 | `zernio-webhook` | OFF | Recibe webhooks (HMAC, dedup, persistencia) |
-| `zernio-webhook-test` | OFF | Test de configuración |
+| `zernio-webhook-test` | OFF | Test de configuraciÃ³n |
 
-### Desplegadas en producción sin fuente en el repo
+### Desplegadas en producciÃ³n sin fuente en el repo
 
 `ml-oauth`, `ml-callback`, `ml-auth`, `ml-api`, `ml-config`, `ml-categories`, `ml-listing-types`, `ml-metrics`, `ml-answer-question`, `ml-bulk-enqueue`, `ml-revoke-tokens`, `ml-import-listings`, `ml-sync-import`, `ml-webhook`.
 
-> Las funciones huérfanas `qr-checkin`, `visits-process-reminders`, `admin-user-invite`, `audit-log`, `contact-submit`, `chat-ai`, `chat-upload`, `convert-image` y `process-retention-policies` se eliminaron de producción el 2026-08-30.
+> Las funciones huÃ©rfanas `qr-checkin`, `visits-process-reminders`, `admin-user-invite`, `audit-log`, `contact-submit`, `chat-ai`, `chat-upload`, `convert-image` y `process-retention-policies` se eliminaron de producciÃ³n el 2026-08-30.
 
 ---
 
-## 🧬 Migraciones
+## ðŸ§¬ Migraciones
 
-`supabase/migrations/` (orden cronológico):
+`supabase/migrations/` (orden cronolÃ³gico):
 
-| Migración | Contenido |
+| MigraciÃ³n | Contenido |
 |---|---|
-| `20260824000001_audit_system_foundation` | Base de auditoría (`audit_log`, usuarios, sesiones) |
+| `20260824000001_audit_system_foundation` | Base de auditorÃ­a (`audit_log`, usuarios, sesiones) |
 | `20260824000002_supervision_rules_defaults` | Reglas por defecto |
 | `20260824000003_pg_cron_supervision_rules` | Cron de reglas |
 | `20260824000004_risk_scoring_system` | `user_risk_scores` |
 | `20260824000005_audit_integrity_chain` | Cadena de integridad del log |
-| `20260824000006_notification_preferences` | Preferencias de notificación |
-| `20260824000007_ml_metrics_dashboard` | Métricas ML |
-| `20260824000008_supervision_repair` | Ajustes de supervisión |
-| `20260824000009_supervision_alert_assignment` | Asignación de alertas |
-| `20260824000010_supervision_notify_integration` | Integración de notificaciones |
-| `20260824000011_purge_policy` | Retención y purga |
+| `20260824000006_notification_preferences` | Preferencias de notificaciÃ³n |
+| `20260824000007_ml_metrics_dashboard` | MÃ©tricas ML |
+| `20260824000008_supervision_repair` | Ajustes de supervisiÃ³n |
+| `20260824000009_supervision_alert_assignment` | AsignaciÃ³n de alertas |
+| `20260824000010_supervision_notify_integration` | IntegraciÃ³n de notificaciones |
+| `20260824000011_purge_policy` | RetenciÃ³n y purga |
 | `20260824000012_supervision_digest` | Digest diario |
-| `20260824000013_supervision_anomaly_detection` (+ part1/part2) | Detección de anomalías |
-| `20260824000016_api_key_audit_sessions` | Auditoría de API keys y sesiones |
-| `20260826_propietarios_100pct` | Módulo propietarios completo |
+| `20260824000013_supervision_anomaly_detection` (+ part1/part2) | DetecciÃ³n de anomalÃ­as |
+| `20260824000016_api_key_audit_sessions` | AuditorÃ­a de API keys y sesiones |
+| `20260826_propietarios_100pct` | MÃ³dulo propietarios completo |
 | `20260826000001_cms_complete_landing` | CMS del landing |
 | `20260827_chat_broker_access` | Acceso de brokers al chat |
 | `20260827_fix_visits_rls` | Fix RLS de visitas |
-| `20260827_unify_agent_ids` | Unificación de IDs → `agents.id` |
+| `20260827_unify_agent_ids` | UnificaciÃ³n de IDs â†’ `agents.id` |
 | `20260827_zernio_chat_completo` | Schema Zernio completo |
 | `20260828_fix_owners_rls` | RLS de owners |
-| `20260830_fix_properties_public_read` | Lectura pública de propiedades |
+| `20260830_fix_properties_public_read` | Lectura pÃºblica de propiedades |
 | `20260901000001_fix_p0_security_and_functional` | Hardening P0 (RLS, REVOKEs, vistas, policies anon) |
 
 ```bash
@@ -844,9 +844,9 @@ supabase db push            # aplicar pendientes
 
 ---
 
-## 🔄 Flujos end-to-end
+## ðŸ”„ Flujos end-to-end
 
-### 1. Lead → Visita → Cierre
+### 1. Lead â†’ Visita â†’ Cierre
 
 ```mermaid
 flowchart LR
@@ -855,59 +855,59 @@ flowchart LR
     C --> D[Visita agendada<br/>+ confirmation_token]
     D --> E[Cliente confirma<br/>confirmar-visita.html]
     E --> F[Check-in / Check-out]
-    F --> G[Completada<br/>lead → oferta]
+    F --> G[Completada<br/>lead â†’ oferta]
     G --> H[Cierre:<br/>vendida / alquilada]
-    H --> I[Comisión<br/>automática]
+    H --> I[ComisiÃ³n<br/>automÃ¡tica]
 ```
 
-### 2. Publicación en Mercado Libre
+### 2. PublicaciÃ³n en Mercado Libre
 
 ```
-Propiedad → mlPublishProperty → validación → ml-sync (cron) → API ML
-   → ml_listings → sync bidireccional (precio / stock / estado)
-   → Webhook ML → preguntas → notificación al broker
-   → Importación inversa: mlImportFromML
+Propiedad â†’ mlPublishProperty â†’ validaciÃ³n â†’ ml-sync (cron) â†’ API ML
+   â†’ ml_listings â†’ sync bidireccional (precio / stock / estado)
+   â†’ Webhook ML â†’ preguntas â†’ notificaciÃ³n al broker
+   â†’ ImportaciÃ³n inversa: mlImportFromML
 ```
 
-### 3. Tasación → Captación
+### 3. TasaciÃ³n â†’ CaptaciÃ³n
 
 ```
-tab-tasaciones → iframe tasacion.html?id= → ACM (comparables, mapa, coeficientes)
-   → guardar en tasaciones → finalizar → postMessage al admin
-   → Lead de captación → visita → contrato → propiedad publicada
+tab-tasaciones â†’ iframe tasacion.html?id= â†’ ACM (comparables, mapa, coeficientes)
+   â†’ guardar en tasaciones â†’ finalizar â†’ postMessage al admin
+   â†’ Lead de captaciÃ³n â†’ visita â†’ contrato â†’ propiedad publicada
 ```
 
 ### 4. Chat omnicanal
 
 ```
-WhatsApp / IG / FB / Web → zernio-webhook (HMAC + dedup)
-   → conversación + mensaje → Realtime → Inbox unificado
-   → crear lead · agendar visita · asignar broker
+WhatsApp / IG / FB / Web â†’ zernio-webhook (HMAC + dedup)
+   â†’ conversaciÃ³n + mensaje â†’ Realtime â†’ Inbox unificado
+   â†’ crear lead Â· agendar visita Â· asignar broker
 ```
 
 ### 5. Portal del Propietario
 
 ```
-Admin: Propietarios → generateOwnerPortalLink → owner_portal_tokens
-   → Propietario abre ?token= → propiedades, documentos, comisiones
-   → Token vencido o inválido → mensaje de error
+Admin: Propietarios â†’ generateOwnerPortalLink â†’ owner_portal_tokens
+   â†’ Propietario abre ?token= â†’ propiedades, documentos, comisiones
+   â†’ Token vencido o invÃ¡lido â†’ mensaje de error
 ```
 
-### 6. Supervisión
+### 6. SupervisiÃ³n
 
 ```
-pg_cron → supervision_rules + baselines + ml-anomaly → alertas / anomalías
-   → supervision-notify → supervision-notifications (push/email)
-   → supervision-digest (Brevo) → tab Supervisión / supervision-api
+pg_cron â†’ supervision_rules + baselines + ml-anomaly â†’ alertas / anomalÃ­as
+   â†’ supervision-notify â†’ supervision-notifications (push/email)
+   â†’ supervision-digest (Brevo) â†’ tab SupervisiÃ³n / supervision-api
 ```
 
 ---
 
-## 🧱 Patrones técnicos
+## ðŸ§± Patrones tÃ©cnicos
 
 ### `mutate(table, fn)`
 
-Wrapper de escrituras: ejecuta la mutación, invalida la caché de búsqueda y emite un evento de cambio.
+Wrapper de escrituras: ejecuta la mutaciÃ³n, invalida la cachÃ© de bÃºsqueda y emite un evento de cambio.
 
 ```js
 await mutate('properties', () =>
@@ -917,13 +917,13 @@ await mutate('properties', () =>
 
 ### Realtime
 
-`setupCoreRealtime` suscribe `properties`, `leads`, `visits`, `agents`, `owners`, `tasaciones`, `commissions` y las tablas de Zernio para mantener varias pestañas sincronizadas sin polling.
+`setupCoreRealtime` suscribe `properties`, `leads`, `visits`, `agents`, `owners`, `tasaciones`, `commissions` y las tablas de Zernio para mantener varias pestaÃ±as sincronizadas sin polling.
 
 ### Helpers de seguridad (`window.BHUtils`)
 
 `esc`, `escAttr`, `safeUrl` (http/https/mailto/tel/relativos), `safeImageUrl`, `safeCssUrl`.
 
-### Validación con Zod
+### ValidaciÃ³n con Zod
 
 Solo en el admin, para formularios (ej. Agente con `commission_sale` / `commission_rent`).
 
@@ -933,7 +933,7 @@ Solo en el admin, para formularios (ej. Agente con `commission_sale` / `commissi
 |---|---|
 | Tipo de cambio USD | `app_settings.preferences.usd_rate` |
 | Roles | `profiles.role` + RLS |
-| Responsable | `agent_id` / `assigned_to` / `broker_id` → `agents.id` |
+| Responsable | `agent_id` / `assigned_to` / `broker_id` â†’ `agents.id` |
 | Estados de propiedad | `properties.status` |
 | Pipeline | `leads.stage` |
 | Estado de visita | `visits.status` |
@@ -941,17 +941,17 @@ Solo en el admin, para formularios (ej. Agente con `commission_sale` / `commissi
 
 ---
 
-## 🌥️ Deploy
+## ðŸŒ¥ï¸ Deploy
 
 ### Cloudflare Pages
 
 | Ajuste | Valor |
 |---|---|
-| Build command | *(vacío)* |
+| Build command | *(vacÃ­o)* |
 | Output directory | `/` |
-| Dominio | `CNAME` → `bienenhaus.com.ar` |
+| Dominio | `CNAME` â†’ `bienenhaus.com.ar` |
 
-Guía detallada: [`CLOUDFLARE_SETUP.md`](CLOUDFLARE_SETUP.md).
+GuÃ­a detallada: [`CLOUDFLARE_SETUP.md`](CLOUDFLARE_SETUP.md).
 
 ### Cache busters
 
@@ -966,111 +966,111 @@ supabase functions deploy <slug> --no-verify-jwt  # webhooks y cron
 
 ---
 
-## 🧪 Testing y CI
+## ðŸ§ª Testing y CI
 
 ```bash
 npm run lint    # node --check sobre admin-app.js y landing-app.js
 npm test        # Playwright (19 tests)
 ```
 
-La suite E2E corre **en modo lectura** contra producción (RLS protege las escrituras) y cubre:
+La suite E2E corre **en modo lectura** contra producciÃ³n (RLS protege las escrituras) y cubre:
 
-- Catálogo con propiedades publicadas y búsqueda.
+- CatÃ¡logo con propiedades publicadas y bÃºsqueda.
 - Presencia del formulario de contacto.
-- CSP de las 5 páginas.
-- Regresión de delegación `data-action`.
+- CSP de las 5 pÃ¡ginas.
+- RegresiÃ³n de delegaciÃ³n `data-action`.
 - Smoke de tasaciones, portal y confirmar-visita.
-- Admin (login, tabs, sesión persistente): **solo** con `BH_TEST_ADMIN_EMAIL` y `BH_TEST_ADMIN_PASSWORD`.
+- Admin (login, tabs, sesiÃ³n persistente): **solo** con `BH_TEST_ADMIN_EMAIL` y `BH_TEST_ADMIN_PASSWORD`.
 
 **CI** (`.github/workflows/deploy.yml`): `node --check` + `npm test` con Chromium headless. `html-validate` corre como informativo.
 
 ---
 
-## 📏 Convenciones de desarrollo
+## ðŸ“ Convenciones de desarrollo
 
-- Scripts clásicos IIFE + globals (`BH_CONFIG`, `supabaseClient`, `BHUtils`, `BH_Cloudinary`, `adminApp`); sin ES Modules ni bundler.
+- Scripts clÃ¡sicos IIFE + globals (`BH_CONFIG`, `supabaseClient`, `BHUtils`, `BH_Cloudinary`, `adminApp`); sin ES Modules ni bundler.
 - **Siempre** `esc()` antes de `innerHTML`; `safeUrl` / `safeImageUrl` en `href` / `src`.
 - `async/await` con `try/catch` en cada llamada a Supabase o Edge Functions.
 - Escrituras del admin con `mutate()` en lugar de `.insert/.update/.delete` directos.
 - Suscripciones Realtime centralizadas en `setupCoreRealtime`.
 - Subir el cache buster tras tocar JS/CSS.
 - Ejecutar `npm run lint` antes de cada commit.
-- Secretos únicamente en Edge Functions.
+- Secretos Ãºnicamente en Edge Functions.
 
 ---
 
-## 🧾 Deudas técnicas y roadmap
+## ðŸ§¾ Deudas tÃ©cnicas y roadmap
 
-| Ítem | Impacto | Estado |
+| Ãtem | Impacto | Estado |
 |---|---|---|
-| Edge Functions desplegadas sin fuente en el repo (ML OAuth/API, etc.) | Mantenibilidad / drift | Pendiente: sincronizar el código |
+| Edge Functions desplegadas sin fuente en el repo (ML OAuth/API, etc.) | Mantenibilidad / drift | Pendiente: sincronizar el cÃ³digo |
 | Cambios de `admin-app.js` sin commitear (`loadAnomaliesTable`, `supNewRuleBtn`) | Entrega | Commitear y subir cache buster |
 | Commit `ed9c75c` sin pushear | Repo desincronizado | `git push` |
-| Leaked Password Protection (Supabase Auth) | Seguridad | Activar en Dashboard → Auth (manual) |
-| Zernio sin API key para envíos | Funcionalidad parcial | Falta credencial |
+| Leaked Password Protection (Supabase Auth) | Seguridad | Activar en Dashboard â†’ Auth (manual) |
+| Zernio sin API key para envÃ­os | Funcionalidad parcial | Falta credencial |
 | `usd_rate` sin uso en tarjetas del landing | Feature | Conectar `fmtARS` cuando se necesite |
 | Notificaciones push reales (Web Push / VAPID) | Futuro | Service Worker pendiente |
 | Advisor: `rls_enabled_no_policy` en `property_sequences` y `zernio_config` | Info | Intencional (solo `service_role`) |
 | Advisor: `pg_net` en `public` | Info | Requerida por Edge Functions |
-| `admin-app.js` de ~14k líneas | Mantenibilidad | Candidato a dividirse por módulo |
+| `admin-app.js` de ~14k lÃ­neas | Mantenibilidad | Candidato a dividirse por mÃ³dulo |
 
 ---
 
-## 📚 ADRs (Architecture Decision Records)
+## ðŸ“š ADRs (Architecture Decision Records)
 
-| ADR | Decisión | Razón |
+| ADR | DecisiÃ³n | RazÃ³n |
 |---|---|---|
-| 001 | Vanilla JS + scripts clásicos IIFE | Deploy simple, sin build |
-| 002 | Supabase como backend único | RLS nativo, DX unificada |
-| 003 | `agent_id` en todas las entidades (→ `agents.id`) | Trazabilidad, comisiones, permisos |
+| 001 | Vanilla JS + scripts clÃ¡sicos IIFE | Deploy simple, sin build |
+| 002 | Supabase como backend Ãºnico | RLS nativo, DX unificada |
+| 003 | `agent_id` en todas las entidades (â†’ `agents.id`) | Trazabilidad, comisiones, permisos |
 | 004 | `source` + `tags` en leads | Flexibilidad de origen |
-| 005 | Realtime centralizado | UI instantánea multi-tab |
-| 006 | Config en `app_settings` + `site_content` | Fuente única de USD, branding y flags |
+| 005 | Realtime centralizado | UI instantÃ¡nea multi-tab |
+| 006 | Config en `app_settings` + `site_content` | Fuente Ãºnica de USD, branding y flags |
 | 007 | Edge Functions para secretos | Nada sensible en el frontend |
 | 008 | Chat Zernio opcional (feature flag) | No bloquea releases |
-| 009 | Soft delete en `properties` y `agents` | Auditoría y recuperación |
+| 009 | Soft delete en `properties` y `agents` | AuditorÃ­a y recuperaciÃ³n |
 | 010 | `price_ars` como columna generada | Consistencia ARS/USD |
-| 011 | `confirmation_token` único en `visits` | Confirmación sin login |
+| 011 | `confirmation_token` Ãºnico en `visits` | ConfirmaciÃ³n sin login |
 | 012 | Idempotency keys en webhooks | Procesamiento exactly-once |
-| 013 | Cache busters `?v=N` | Control total de caché |
-| 014 | Wrapper `mutate()` | Invalida caché y mantiene Realtime consistente |
-| 015 | Zod (UMD) solo en admin | Validación runtime de formularios |
-| 016 | Portal/Visita por token URL | Acceso público sin credenciales |
+| 013 | Cache busters `?v=N` | Control total de cachÃ© |
+| 014 | Wrapper `mutate()` | Invalida cachÃ© y mantiene Realtime consistente |
+| 015 | Zod (UMD) solo en admin | ValidaciÃ³n runtime de formularios |
+| 016 | Portal/Visita por token URL | Acceso pÃºblico sin credenciales |
 
 ---
 
-## 📖 Documentación complementaria
+## ðŸ“– DocumentaciÃ³n complementaria
 
 | Documento | Contenido |
 |---|---|
-| [`AUDITORIA_MODULOS.md`](AUDITORIA_MODULOS.md) | Auditoría módulo a módulo (P0/P1/P2) |
-| [`AUDIT_FINDINGS.md`](AUDIT_FINDINGS.md) · [`AUDIT_INVENTORY.md`](AUDIT_INVENTORY.md) | Hallazgos e inventario de auditoría |
-| [`REMEDIATION_PLAN.md`](REMEDIATION_PLAN.md) | Plan de remediación |
-| [`XSS_REVIEW.md`](XSS_REVIEW.md) | Revisión de superficie XSS |
-| [`CLOUDFLARE_SETUP.md`](CLOUDFLARE_SETUP.md) | Configuración de Cloudflare Pages |
-| [`CONECTAR_ZERNIO_CHAT.md`](CONECTAR_ZERNIO_CHAT.md) | Activación del chat Zernio |
-| `docs/integrations/` | Documentación de integraciones |
+| [`AUDITORIA_MODULOS.md`](AUDITORIA_MODULOS.md) | AuditorÃ­a mÃ³dulo a mÃ³dulo (P0/P1/P2) |
+| [`AUDIT_FINDINGS.md`](AUDIT_FINDINGS.md) Â· [`AUDIT_INVENTORY.md`](AUDIT_INVENTORY.md) | Hallazgos e inventario de auditorÃ­a |
+| [`REMEDIATION_PLAN.md`](REMEDIATION_PLAN.md) | Plan de remediaciÃ³n |
+| [`XSS_REVIEW.md`](XSS_REVIEW.md) | RevisiÃ³n de superficie XSS |
+| [`CLOUDFLARE_SETUP.md`](CLOUDFLARE_SETUP.md) | ConfiguraciÃ³n de Cloudflare Pages |
+| [`CONECTAR_ZERNIO_CHAT.md`](CONECTAR_ZERNIO_CHAT.md) | ActivaciÃ³n del chat Zernio |
+| `docs/integrations/` | DocumentaciÃ³n de integraciones |
 
 ---
 
-## 📝 Changelog
+## ðŸ“ Changelog
 
-| Fecha | Versión | Cambios |
+| Fecha | VersiÃ³n | Cambios |
 |---|---|---|
-| 2026-09-01 | — | Migración `20260901000001`: hardening P0 aplicado a producción |
-| 2026-08-30 | — | Suite E2E Playwright; fix RLS `properties_public_read`; RLS de `tasaciones`; REVOKE en 44 funciones; 8 vistas `security_invoker`; policies anon para `leads` y `visits`; `portal_settings` sin fuga de secretos; 9 Edge Functions huérfanas eliminadas; `acorn` removido |
-| 2026-08-28 | — | Limpieza de repo y documentación |
-| 2026-08-27 | v2.3.0 | Chat Zernio 100 %; auditoría P0/P1/P2; unificación de IDs de agente; Realtime en tablas core; `mutate()`; split de comisiones venta/alquiler |
-| 2026-08-26 | — | Módulo Propietarios y CMS completo |
+| 2026-09-01 | â€” | MigraciÃ³n `20260901000001`: hardening P0 aplicado a producciÃ³n |
+| 2026-08-30 | â€” | Suite E2E Playwright; fix RLS `properties_public_read`; RLS de `tasaciones`; REVOKE en 44 funciones; 8 vistas `security_invoker`; policies anon para `leads` y `visits`; `portal_settings` sin fuga de secretos; 9 Edge Functions huÃ©rfanas eliminadas; `acorn` removido |
+| 2026-08-28 | â€” | Limpieza de repo y documentaciÃ³n |
+| 2026-08-27 | v2.3.0 | Chat Zernio 100 %; auditorÃ­a P0/P1/P2; unificaciÃ³n de IDs de agente; Realtime en tablas core; `mutate()`; split de comisiones venta/alquiler |
+| 2026-08-26 | â€” | MÃ³dulo Propietarios y CMS completo |
 | 2026-08-25 | v2.2.0 | Fixes visuales del landing, CMS consolidado en un solo tab |
-| 2026-08-24 | v2.1.0 | Ficha HTML + Centro de Supervisión + paquete de migraciones de auditoría |
+| 2026-08-24 | v2.1.0 | Ficha HTML + Centro de SupervisiÃ³n + paquete de migraciones de auditorÃ­a |
 
 ---
 
 <div align="center">
 
-**BIENENHAUS PROPIEDADES** · Mantenedor: [@facuherrera23](https://github.com/facuherrera23)
+**BIENENHAUS PROPIEDADES** Â· Mantenedor: [@facuherrera23](https://github.com/facuherrera23)
 
 *Documento vivo: actualizar con cada release.*
 
-</div>
+
