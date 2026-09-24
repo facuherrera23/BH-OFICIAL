@@ -184,6 +184,7 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
     </div>
   </main>
   <footer>Bienenhaus Propiedades · CPI 1834 · <a href="${SITE_URL}/" rel="noopener">bienenhaus.com.ar</a></footer>
+  <script src="../assets/js/analytics.js" defer></script>
 </body>
 </html>`;
 }
