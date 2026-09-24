@@ -200,9 +200,6 @@ function fmtTaskTimeLeft(iso) {
   if (diff < 24 * 3600000) return { text: 'Vence hoy · ' + human, soon: true };
   return { text: 'Vence en ' + human, soon: false };
 }
-function openOwnerTasksList(tasks) {
-  return (tasks || []).filter(function (tk) { return tk.status !== 'completada' && tk.status !== 'cancelada'; });
-}
 function ownerAgentNames(o) {
   var ps = _ownerProps[o.id] || [];
   var agentIds = new Set();
@@ -404,12 +401,12 @@ function renderOwnerList(c) {
         '<th class="crm-th-sort" data-sort="prox">Próx. tarea' + sortArrow('prox') + '</th><th></th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>' + buildPagination();
   c.querySelectorAll('.crm-row').forEach(function (r) {
-    r.addEventListener('click', function () { openOwnerPanel(this.dataset.id); });
+    r.addEventListener('click', function () { if (window.adminApp && window.adminApp.editOwner) window.adminApp.editOwner(this.dataset.id, 'tasks'); });
   });
-c.querySelectorAll('[data-action="viewOwner"],[data-action="addOwnerNote"]').forEach(function (b) {
+  c.querySelectorAll('[data-action="viewOwner"],[data-action="addOwnerNote"]').forEach(function (b) {
     b.addEventListener('click', function (e) {
       e.stopPropagation();
-      openOwnerPanel(this.dataset.id);
+      window.adminApp.editOwner(this.dataset.id, 'tasks');
     });
   });
   c.querySelectorAll('[data-action="genOwnerToken"]').forEach(function (b) {
@@ -433,7 +430,7 @@ c.querySelectorAll('[data-action="viewOwner"],[data-action="addOwnerNote"]').for
   c.querySelectorAll('[data-action="viewOwnerTasks"]').forEach(function (b) {
     b.addEventListener('click', function (e) {
       e.stopPropagation();
-      openOwnerPanel(this.dataset.id);
+      if (window.adminApp && window.adminApp.editOwner) window.adminApp.editOwner(this.dataset.id, 'tasks');
     });
   });
   c.querySelectorAll('th[data-sort]').forEach(function (th) {
@@ -1481,126 +1478,6 @@ function _syncHeader() {
   }
 }
 
-/* -- Panel lateral de propietario -- */
-function openOwnerPanel(ownerId) {
-  _selectedLeadId = null;
-  var panel = $id('crmSidePanel');
-  if (!panel) return;
-  if (panel.parentNode !== document.body) document.body.appendChild(panel);
-  panel.innerHTML = '<div class="modal-box modal-box--xl crm-side-modal"><div class="crm-side-header"><h3>Cargando...</h3></div><div class="crm-side-body"></div></div>';
-  bindSideOverlayClose(panel);
-  panel.classList.add('open');
-  Promise.all([
-    db().from('owners').select('*').eq('id', ownerId).single(),
-    db().from('owner_tasks').select('*').eq('owner_id', ownerId).order('due_date', { ascending: true }),
-    db().from('properties').select('id, title, status, price_usd, image_urls').eq('owner_id', ownerId).order('title')
-  ]).then(function (res) {
-    var owner = res[0].data;
-    var tasks = res[1].data || [];
-    var props = res[2].data || [];
-    if (!owner) throw new Error('Propietario no encontrado');
-    panel.innerHTML =
-      '<div class="modal-box modal-box--xl crm-side-modal">' +
-      '<div class="crm-side-header">' +
-        '<div class="crm-side-header-info"><span class="crm-status-dot crm-status-dot--propietario"></span><h3 class="crm-side-title">' + esc(owner.full_name) + '</h3></div>' +
-        '<button class="crm-side-close" aria-label="Cerrar"><i class="fas fa-times"></i></button>' +
-      '</div>' +
-      '<div class="crm-side-body">' +
-        // info
-        '<div class="crm-side-section"><h4 class="crm-side-section-title">Información</h4>' +
-          '<div class="crm-side-fields">' +
-            '<div class="crm-side-field"><span class="crm-side-field-label">Contacto preferido</span><div class="crm-side-field-value">' + esc(owner.preferred_contact || '—') + '</div></div>' +
-            '<div class="crm-side-field"><span class="crm-side-field-label">Email</span><div class="crm-side-field-value">' + esc(owner.email || '—') + '</div></div>' +
-            '<div class="crm-side-field"><span class="crm-side-field-label">Teléfono</span><div class="crm-side-field-value">' + esc(owner.phone || '—') + '</div></div>' +
-            '<div class="crm-side-field"><span class="crm-side-field-label">DNI/CUIT</span><div class="crm-side-field-value">' + esc(owner.dni_cuit || '—') + '</div></div>' +
-            '<div class="crm-side-field"><span class="crm-side-field-label">Dirección</span><div class="crm-side-field-value">' + esc(owner.address || '—') + '</div></div>' +
-            '<div class="crm-side-field"><span class="crm-side-field-label">Exclusividad</span><div class="crm-side-field-value">' + (owner.exclusive ?
-              (owner.exclusive_start ? 'Desde ' + fmtDate(owner.exclusive_start) : '') + (owner.exclusive_end ? ' hasta ' + fmtDate(owner.exclusive_end) : '') :
-              'No exclusivo') + '</div></div>' +
-          '</div></div>' +
-        // propiedades
-        '<div class="crm-side-section"><h4 class="crm-side-section-title">Propiedades (' + props.length + ')</h4>' +
-          '<div class="crm-side-fields">' +
-            (props.length
-              ? props.map(function (p) { return '<div class="crm-prop-item"><span>' + esc(p.title || 'Sin título') + '</span><span style="margin-left:8px;color:var(--text-dim);font-size:11px;text-transform:uppercase;"><' + (p.status || 'sm') + '></span></div>'; }).join('')
-              : '<div class="crm-side-field-value">Sin propiedades asignadas</div>') +
-          '</div></div>' +
-// tareas
-        '<div class="crm-side-section"><h4 class="crm-side-section-title">Tareas pendientes (' + openOwnerTasksList(tasks).length + ')</h4>' +
-          '<div class="crm-side-fields">' +
-            (openOwnerTasksList(tasks).length
-              ? openOwnerTasksList(tasks).map(function (tk) {
-                  return '<div class="crm-prop-item" style="flex-direction:column;align-items:flex-start;gap:4px;">' +
-                    '<strong style="font-size:13px;color:#fff;">' + esc(tk.type || 'Tarea') + '</strong>' +
-                    '<div style="font-size:12px;color:var(--text-secondary);">' + esc(tk.description || '') + '</div>' +
-                    '<div style="font-size:11px;color:var(--text-dim);">' + (tk.due_date ? fmtDateTime(tk.due_date) : 'sin fecha') + ' · ' + esc(tk.priority) + '</div>' +
-                    '<button class="btn-action" style="margin-top:6px;font-size:11px;" data-action="completeOwnerTask" data-task-id="' + tk.id + '"><i class="fas fa-check"></i> Completar</button>' +
-                  '</div>';
-                }).join('')
-              : '<div class="crm-timeline-empty">Sin tareas pendientes.</div>') +
-          '</div></div>' +
-        // nueva tarea
-        '<div class="crm-side-section"><h4 class="crm-side-section-title">Nueva tarea</h4>' +
-          '<div class="crm-side-fields">' +
-            '<input class="crm-field-input" id="crmOwnerTaskTitle" placeholder="Título *">' +
-            '<textarea class="crm-field-input" id="crmOwnerTaskDesc" rows="2" placeholder="Descripción (opcional)"></textarea>' +
-            '<input class="crm-field-input" type="datetime-local" id="crmOwnerTaskDue">' +
-            '<select class="crm-field-input" id="crmOwnerTaskPriority">' +
-              '<option value="baja">Baja</option>' +
-              '<option value="media" selected>Media</option>' +
-              '<option value="alta">Alta</option>' +
-              '<option value="urgente">Urgente</option>' +
-            '</select>' +
-            '<button class="btn-luxury-action" id="crmOwnerTaskSave" style="width:100%;margin-top:4px;">+ Agregar tarea</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>' +
-      '</div>';
-    panel.querySelector('.crm-side-close').addEventListener('click', closeDetailPanel);
-    panel.querySelectorAll('[data-action="completeOwnerTask"]').forEach(function (b) {
-      b.addEventListener('click', async function (e) {
-        e.stopPropagation();
-        var taskId = this.dataset.taskId;
-        try {
-          var rr = await db().from('owner_tasks').update({ status: 'completada' }).eq('id', taskId);
-          if (rr.error) throw rr.error;
-          toast('Tarea completada.', 'success');
-          closeDetailPanel();
-          openOwnerPanel(ownerId);
-        } catch (err) { toast('Error: ' + err.message, 'error'); }
-      });
-    });
-    var saveBtn = panel.querySelector('#crmOwnerTaskSave');
-    if (saveBtn) saveBtn.addEventListener('click', async function () {
-      var title = (panel.querySelector('#crmOwnerTaskTitle') || {}).value || '';
-      var desc = (panel.querySelector('#crmOwnerTaskDesc') || {}).value || '';
-      var due = (panel.querySelector('#crmOwnerTaskDue') || {}).value || '';
-      var prio = (panel.querySelector('#crmOwnerTaskPriority') || {}).value || 'media';
-      if (!title.trim()) { toast('El título es obligatorio.', 'error'); return; }
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Guardando...';
-      try {
-var rr = await db().from('owner_tasks').insert([{
-          owner_id: ownerId,
-          type: title.trim(),
-          description: desc.trim() || ' ',
-          due_date: due || new Date().toISOString(),
-          priority: prio,
-          status: 'pendiente'
-        }]);
-        if (rr.error) throw rr.error;
-        toast('Tarea agregada.', 'success');
-        saveBtn.disabled = false;
-        saveBtn.textContent = '+ Agregar tarea';
-        openOwnerPanel(ownerId);
-      } catch (err) {
-        toast('Error: ' + err.message, 'error');
-        saveBtn.disabled = false;
-        saveBtn.textContent = '+ Agregar tarea';
-      }
-    });
-  }).catch(function (e) { toast('Error: ' + e.message, 'error'); closeDetailPanel(); });
-}
 
 /* ctypes */
 

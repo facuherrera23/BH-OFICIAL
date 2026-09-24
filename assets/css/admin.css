@@ -2301,6 +2301,32 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
 .modal-box--wide { max-width: 1200px; padding: 32px 36px; }
 .modal-box--xl   { max-width: 1600px; padding: 32px 40px; }
 
+/* Expediente de propietario: todas las pestañas entran sin scroll en 92vh */
+#ownerModal .modal-box { max-height: 92vh; }
+#ownerTab-data .form-grid-2 { gap: 12px 22px; margin-bottom: 12px; }
+#ownerTab-data .form-field { margin-bottom: 0; }
+#ownerTab-data .form-field label { margin-bottom: 5px; }
+#ownerTab-data .form-field input,
+#ownerTab-data .form-field select,
+#ownerTab-data .form-field textarea { padding: 10px 14px; border-radius: 10px; }
+#ownerTab-data .form-field textarea { min-height: 52px; }
+#ownerTab-tasks .form-field { margin-bottom: 0; }
+#ownerTab-tasks .form-field label { margin-bottom: 4px; }
+#ownerTab-tasks .form-field input,
+#ownerTab-tasks .form-field select,
+#ownerTab-tasks .form-field textarea { padding: 8px 12px; border-radius: 9px; }
+#ownerTab-tasks #ownerTaskAddBtn { padding: 8px 16px; }
+#ownerTab-contract .form-grid-2 { gap: 12px 22px; margin-bottom: 12px; }
+#ownerTab-contract .form-field { margin-bottom: 0; }
+#ownerTab-contract .form-field label { margin-bottom: 5px; }
+#ownerTab-contract .form-field input,
+#ownerTab-contract .form-field select,
+#ownerTab-contract .form-field textarea { padding: 10px 14px; border-radius: 10px; min-height: 0; }
+#ownerTab-contract textarea[name="commission_split"] { min-height: 46px; }
+#ownerTab-contract textarea[name="contract_notes"] { min-height: 46px; }
+#ownerModal h4 { margin-bottom: 8px; }
+#ownerTab-tasks .owner-tasks-form ~ #ownerTasksList .btn-icon { width: 28px; height: 28px; }
+
 /* Diálogo de confirmación contextual (reemplaza confirm() nativo) */
 .confirm-box {
     max-width: 440px;
@@ -2327,6 +2353,28 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
     border-color: rgba(255, 71, 87, 0.35);
     color: var(--danger);
     box-shadow: 0 0 30px rgba(255, 71, 87, 0.18);
+}
+
+/* Input contextual (nota de cierre de tareas) */
+#inputPromptModal textarea {
+    width: 100%;
+    margin: 6px 0 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-input);
+    border-radius: 12px;
+    padding: 12px 14px;
+    color: #fff;
+    font-size: 13px;
+    font-family: inherit;
+    min-height: 84px;
+    resize: vertical;
+    text-align: left;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+#inputPromptModal textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--glow-soft);
 }
 .confirm-title {
     font-family: var(--font-heading);

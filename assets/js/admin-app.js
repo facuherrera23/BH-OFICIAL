@@ -5417,8 +5417,8 @@ closeModal('ownerModal');
     }
   });
 
-  /* Edit owner */
-  window.adminApp.editOwner = async function (id) {
+  /* Edit owner. Opción: initialTab (data/tasks/props/tasaciones/timeline/contract) */
+  window.adminApp.editOwner = async function (id, initialTab) {
     try {
       const { data, error } = await window.supabaseClient.from('owners').select('*').eq('id', id).single();
       if (error) throw error;
@@ -5474,12 +5474,15 @@ closeModal('ownerModal');
 
       openModal('ownerModal');
 
+      if (initialTab) {
+        const tabBtn = document.querySelector('#ownerModal .owner-tab-btn[data-owner-tab="' + initialTab + '"]');
+        if (tabBtn) tabBtn.click();
+      }
+
       /* Load tab data in background */
-      loadOwnerDocuments(id);
       loadOwnerProperties(id);
       loadOwnerTasaciones(id);
       loadOwnerTimeline(id);
-      loadOwnerChecklist(id);
 
       loadOwnerTasks(id);
 
@@ -5703,35 +5706,41 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     try {
       const { data, error } = await window.supabaseClient
         .from('owner_tasks')
-        .select('id, type, description, due_date, status, priority, assigned_to, agent:agents!assigned_to(full_name)')
+        .select('id, type, description, due_date, status, priority, assigned_to, result_notes, agent:agents!assigned_to(full_name)')
         .eq('owner_id', ownerId)
         .order('due_date', { ascending: true });
 
       if (error) throw error;
 
       if (!data || !data.length) {
-        list.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Sin tareas registradas</p>';
+        list.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:14px;">Sin tareas registradas</p>';
         return;
       }
+
+      data.sort((a, b) => {
+        const done = t => ['completada', 'cancelada'].includes(t.status) ? 1 : 0;
+        return done(a) - done(b) || new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+      });
 
       list.innerHTML = data.map(t => {
         const isOverdue = ['pendiente', 'en_progreso'].includes(t.status) && new Date(t.due_date).getTime() < Date.now();
         const isDone = ['completada', 'cancelada'].includes(t.status);
         const priorityColor = t.priority === 'alta' ? 'var(--danger)' : t.priority === 'media' ? 'var(--warning)' : 'var(--accent)';
         return `
-          <div style="display:flex; align-items:flex-start; gap:12px; padding:12px 14px; margin-bottom:8px; background:rgba(255,255,255,0.02); border:1px solid ${isOverdue ? 'var(--danger)' : 'var(--border-subtle)'}; border-radius:10px; ${isDone ? 'opacity:0.55;' : ''}">
+          <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; margin-bottom:6px; background:rgba(255,255,255,0.02); border:1px solid ${isOverdue ? 'var(--danger)' : 'var(--border-subtle)'}; border-radius:9px; ${isDone ? 'opacity:0.55;' : ''}">
             <div style="flex:1; min-width:0;">
               <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                <span style="color:#fff; font-size:13px; font-weight:600; ${isDone ? 'text-decoration:line-through;' : ''}">${esc(t.description)}</span>
-                ${isOverdue ? '<span style="font-size:10px; font-weight:700; color:var(--danger); background:var(--danger-bg); border-radius:999px; padding:2px 8px;">VENCIDA</span>' : ''}
+                <span style="color:#fff; font-size:12.5px; font-weight:600; ${isDone ? 'text-decoration:line-through;' : ''}">${esc(t.description)}</span>
+                ${isOverdue ? '<span style="font-size:10px; font-weight:700; color:var(--danger); background:var(--danger-bg); border-radius:999px; padding:1px 7px;">VENCIDA</span>' : ''}
               </div>
-              <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:4px; font-size:11px; color:var(--text-dim);">
+              <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:2px; font-size:11px; color:var(--text-dim);">
                 <span>${esc(OWNER_TASK_TYPE_LABEL[t.type] || t.type)}</span>
                 <span style="color:${priorityColor}; font-weight:600;">${esc(OWNER_TASK_PRIORITY_LABEL[t.priority] || t.priority)}</span>
                 <span>Vence: ${fmtTaskDate(t.due_date)}</span>
                 ${t.agent?.full_name ? `<span>→ ${esc(t.agent.full_name)}</span>` : ''}
                 <span style="color:${isDone ? 'var(--success)' : 'var(--text-dim)'};">${esc(OWNER_TASK_STATUS_LABEL[t.status] || t.status)}</span>
               </div>
+              ${t.result_notes ? `<div style="margin-top:5px; font-size:11.5px; line-height:1.4; color:var(--text-secondary); background:rgba(31,200,195,0.06); border-left:2px solid var(--accent); border-radius:0 6px 6px 0; padding:4px 9px;"><i class="fas fa-note-sticky" style="margin-right:6px; color:var(--accent); font-size:10px;"></i>${esc(t.result_notes)}</div>` : ''}
             </div>
             ${!isDone ? `
             <div style="display:flex; gap:6px; flex-shrink:0;">
@@ -5810,7 +5819,14 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
 
   window.adminApp.completeOwnerTask = async function (taskId) {
     if (!window.supabaseClient) return;
-    const resultNotes = prompt('Nota de cierre (opcional):', '');
+    const resultNotes = await showInputPrompt({
+      title: 'Completar tarea',
+      message: 'Nota de cierre (opcional):',
+      icon: 'fas fa-check',
+      placeholder: 'Ej: El propietario confirmó que envía la documentación...',
+      confirmText: 'Completar'
+    });
+    if (resultNotes === null) return;
 
     try {
       const task = await mutate('owner_tasks', async () => {
@@ -5846,7 +5862,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
 
   window.adminApp.cancelOwnerTask = async function (taskId) {
     if (!window.supabaseClient) return;
-    if (!confirm('¿Cancelar esta tarea?')) return;
+    if (!(await showConfirmDialog({ title: 'Cancelar tarea', message: '¿Cancelar esta tarea?', icon: 'fas fa-ban', confirmText: 'Sí, cancelar', danger: true }))) return;
 
     try {
       await mutate('owner_tasks', () =>
@@ -5862,7 +5878,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
 
   window.adminApp.deleteOwnerTask = async function (taskId) {
     if (!window.supabaseClient) return;
-    if (!confirm('¿Eliminar esta tarea? Esta acción no se puede deshacer.')) return;
+    if (!(await showConfirmDialog({ title: 'Eliminar tarea', message: '¿Eliminar esta tarea? Esta acción no se puede deshacer.', icon: 'fas fa-trash', confirmText: 'Eliminar', danger: true }))) return;
 
     try {
       await mutate('owner_tasks', () =>
@@ -8638,6 +8654,74 @@ try {
   }
 
   window.showConfirmDialog = showConfirmDialog;
+
+  function showInputPrompt({ title, message = '', icon = 'fas fa-pen', placeholder = '', confirmText = 'Aceptar', cancelText = 'Cancelar' }) {
+
+    return new Promise(resolve => {
+
+      const modal = $('#inputPromptModal');
+
+      const textEl = $('#inputPromptText');
+
+      const okBtn = $('#inputPromptOk');
+
+      const cancelBtn = $('#inputPromptCancel');
+
+      if (!modal || !textEl || !okBtn || !cancelBtn) { resolve(window.prompt(message || title, '')); return; }
+
+      $('#inputPromptIcon').className = icon;
+
+      $('#inputPromptTitle').textContent = title;
+
+      const msgEl = $('#inputPromptMsg');
+
+      msgEl.textContent = message;
+
+      msgEl.style.display = message ? '' : 'none';
+
+      textEl.value = '';
+
+      textEl.placeholder = placeholder;
+
+      okBtn.textContent = confirmText;
+
+      cancelBtn.textContent = cancelText;
+
+      openModal('inputPromptModal');
+
+      const done = (val) => {
+
+        closeModal('inputPromptModal');
+
+        okBtn.removeEventListener('click', onOk);
+
+        cancelBtn.removeEventListener('click', onCancel);
+
+        document.removeEventListener('keydown', onKey, true);
+
+        resolve(val);
+
+      };
+
+      const onOk = () => done(textEl.value.trim());
+
+      const onCancel = () => done(null);
+
+      const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); done(null); } };
+
+      okBtn.addEventListener('click', onOk);
+
+      cancelBtn.addEventListener('click', onCancel);
+
+      document.addEventListener('keydown', onKey, true);
+
+      setTimeout(() => textEl.focus(), 60);
+
+    });
+
+  }
+
+  window.showInputPrompt = showInputPrompt;
 
   /* Close on backdrop click */
   $$('.admin-modal').forEach(overlay => {
