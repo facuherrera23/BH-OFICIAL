@@ -1022,6 +1022,7 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, timelineHtm
           '<div class="crm-side-field"><span class="crm-side-field-label">Tipo operacion</span><select class="crm-field-input crm-field-input--select" id="crmDtlTipoOp"><option value="">&#8212;</option>' + tpOpts + '</select></div>' +
           '<div class="crm-side-field"><span class="crm-side-field-label">Agente</span><select class="crm-field-input crm-field-input--select" id="crmDtlAgent"><option value="">Sin agente</option>' + aopts + '</select></div></div>' +
         '<div class="crm-side-field"><span class="crm-side-field-label">Estado</span><select class="crm-field-input crm-field-input--select" id="crmDtlStatus">' + sopts + '</select></div>' +
+        '<div class="crm-side-field"><span class="crm-side-field-label">Próximo contacto</span><input class="crm-field-input" id="crmDtlNextFollow" type="datetime-local" value="' + (function(){ if (!lead.next_followup_at) return ''; var d = new Date(lead.next_followup_at); var pad = n => String(n).padStart(2,'0'); return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()); })() + '"></div>' +
       '</div></div>' +
     '<div class="crm-side-section"><h4 class="crm-side-section-title">Propiedades relacionadas</h4>' +
       '<div class="crm-side-fields"><div id="crmDtlPropsWrap">' + ph +
@@ -1068,6 +1069,14 @@ function bindSideSave(lead, panel) {
   var originalStage = lead.stage || 'nuevo';
   btn.addEventListener('click', async function () {
     var d = collectSideForm(panel);
+    var nf = panel.querySelector('#crmDtlNextFollow');
+    if (nf && nf.value) {
+      var dt = new Date(nf.value);
+      if (isNaN(dt.getTime())) { toast('Fecha de próximo contacto inválida', 'error'); return; }
+      d.next_followup_at = dt.toISOString();
+    } else if (nf && !nf.value) {
+      d.next_followup_at = null;
+    }
     if (!d.full_name) { toast('El nombre es obligatorio.', 'error'); return; }
     // teléfono informado pero whatsapp vacío -> copiar (se puede editar después)
     if (d.phone && !d.whatsapp) d.whatsapp = d.phone;
@@ -1129,7 +1138,11 @@ function collectSideForm(panel) {
     assigned_to: v('crmDtlAgent') || null,
     budget_usd: n('crmDtlBudget'),
     estimated_value: n('crmDtlEstValue'),
-    notes: v('crmDtlNotes')
+    notes: v('crmDtlNotes'),
+    next_followup_at: (function () {
+      var el = panel.querySelector('#crmDtlNextFollow');
+      return (el && el.value) ? new Date(el.value).toISOString() : null;
+    })()
   };
 }
 
