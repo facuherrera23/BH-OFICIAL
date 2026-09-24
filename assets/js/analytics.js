@@ -10,8 +10,8 @@
 (function () {
   'use strict';
 
-  var GA_MEASUREMENT_ID = '';   // Ej: 'G-1A2B3C4D5E'
-  var CLARITY_PROJECT_ID = '';  // Ej: 'abcd1234ef'
+  var GA_MEASUREMENT_ID = 'G-5HHCPBXXMD';
+  var CLARITY_PROJECT_ID = 'yn3lt5joju';
 
   if (GA_MEASUREMENT_ID) {
     window.dataLayer = window.dataLayer || [];

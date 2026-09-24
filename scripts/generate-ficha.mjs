@@ -77,6 +77,13 @@ function buildHtml(p) {
     '@type': 'RealEstateListing',
     name: p.title,
     url: fichaUrl,
+    provider: {
+      '@type': 'RealEstateAgent',
+      '@id': 'https://bienenhaus.com.ar/#organization',
+      name: 'Bienenhaus Propiedades',
+      url: 'https://bienenhaus.com.ar/',
+      telephone: '+54-9-3516-37-9651',
+    },
     ...(metaDescription ? { description: buildMetaDescription(p.description) } : {}),
     ...(rawZone ? {
       address: { '@type': 'PostalAddress', addressLocality: rawZone, addressRegion: 'Córdoba', addressCountry: 'AR' },
