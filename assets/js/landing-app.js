@@ -1003,6 +1003,7 @@ function renderSocialLinks(social) {
       populateZoneOptions();
       renderCatalogPage(allProperties);
       updateResultsCount(allProperties.length);
+      loadSoldCarousel();
     } catch (err) {
       logError('Error loading properties:', err);
       showServiceBanner();
@@ -1230,6 +1231,37 @@ function renderSocialLinks(social) {
 
     renderProperties(filtered);
     return filtered;
+  }
+
+  async function loadSoldCarousel() {
+    const section = document.getElementById('vendidas');
+    const track = document.getElementById('soldCarouselTrack');
+    if (!section || !track || !window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('properties')
+        .select('id, title, zone, image_urls, is_vendida')
+        .eq('is_vendida', true)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      const sold = (data || []).filter(p => p.image_urls && p.image_urls.length);
+      if (!sold.length) { section.style.display = 'none'; return; }
+      section.style.display = '';
+      const safe = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const base = sold.map(p => {
+        const title = safe(p.title || 'Propiedad');
+        const zone = p.zone ? safe(p.zone) : '';
+        return '<div class="sold-card"><img src="' + String(p.image_urls[0] || '').replace(/"/g, '%22') + '" alt="' + title + '" loading="lazy" referrerpolicy="no-referrer" />' +
+          '<span class="sold-card-tag">Vendida</span>' +
+          '<div class="sold-card-info">' + title + (zone ? '<span>' + zone + '</span>' : '') + '</div></div>';
+      }).join('');
+      const copies = sold.length < 6 ? Math.ceil(12 / sold.length) : 2;
+      track.innerHTML = base.repeat(copies);
+      track.style.setProperty('--sold-duration', Math.max(20, copies * sold.length * 4) + 's');
+    } catch (err) {
+      logError('sold carousel:', err);
+      section.style.display = 'none';
+    }
   }
 
   function renderCatalogPage(filtered) {

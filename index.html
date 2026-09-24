@@ -22,7 +22,10 @@
   <meta name="twitter:title" content="Bienenhaus Propiedades | Inmobiliaria en Córdoba">
   <meta name="twitter:description" content="Departamentos, casas y ph en las zonas más exclusivas de Córdoba. Tasaciones y asesoramiento personalizado.">
   <meta name="twitter:image" content="https://bienenhaus.com.ar/og-image.jpg">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://*.supabase.co https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://*.cloudinary.com https://images.unsplash.com https://*.supabase.co https://res.cloudinary.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co https://static.cloudflareinsights.com https://api.cloudflareinsights.com https://cdn.jsdelivr.net; frame-src 'self' https://www.youtube.com https://player.vimeo.com;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://*.supabase.co https://static.cloudflareinsights.com https://www.googletagmanager.com https://www.clarity.ms; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://*.cloudinary.com https://images.unsplash.com https://*.supabase.co https://res.cloudinary.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co https://static.cloudflareinsights.com https://api.cloudflareinsights.com https://cdn.jsdelivr.net https://www.google-analytics.com https://*.analytics.google.com https://stats.g.doubleclick.net https://www.clarity.ms https://c.bing.com; frame-src 'self' https://www.youtube.com https://player.vimeo.com;" />
+  <!-- Google Search Console: cuando tengas el token de verificación, descomenta esta línea y pegá tu código
+  <meta name="google-site-verification" content="PEGA-ACA-EL-CODIGO" />
+  -->
   <link rel="canonical" href="https://bienenhaus.com.ar/">
   <script type="application/ld+json">
   {
@@ -67,7 +70,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" media="print">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></noscript>
   <link rel="preload" as="image" href="https://res.cloudinary.com/jpyigjrh/image/upload/w_1920,f_auto,q_auto:good/v1787342486/bienenhaus/hero/vw5avqpsqxgyohazfvir.jpg" fetchpriority="high">
-  <link rel="stylesheet" href="assets/css/landing.css?v=61">
+  <link rel="stylesheet" href="assets/css/landing.css?v=62">
 </head>
 <body class="is-loading">
 
@@ -328,6 +331,19 @@
         </div>
 
         <div class="catalog-pagination" id="catalogPagination" hidden></div>
+      </div>
+    </section>
+
+    <!-- Carrusel de propiedades vendidas -->
+    <section class="sold-carousel-section" id="vendidas" data-animate>
+      <div class="container">
+        <div class="sold-carousel-header">
+          <span class="services-label">Operaciones cerradas</span>
+          <h2 class="services-title">Recién <span class="highlight">vendidas</span></h2>
+        </div>
+      </div>
+      <div class="sold-carousel" id="soldCarousel">
+        <div class="sold-carousel-track" id="soldCarouselTrack"></div>
       </div>
     </section>
 
@@ -873,6 +889,7 @@
 <script src="assets/js/config.js?v=58"></script>
 <script src="assets/js/supabase-client.js?v=56"></script>
 <script src="assets/js/cloudinary.js?v=59"></script>
-<script src="assets/js/landing-app.js?v=64"></script>
+<script src="assets/js/analytics.js?v=1" defer></script>
+<script src="assets/js/landing-app.js?v=67"></script>
 </body>
 </html>
