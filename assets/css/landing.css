@@ -1,5 +1,5 @@
 ﻿/* ============================================================
-   BIENENHAUS PROPIEDADES â€” Landing Page Styles
+   BIENENHAUS PROPIEDADES — Landing Page Styles
    ============================================================ */
 
 /* --- Variables --- */
@@ -374,7 +374,7 @@ section[id], main[id], footer[id] { scroll-margin-top: var(--navbar-height); }
   50% { transform: translate(-50%, 8px); }
 }
 
-/* --- CatÃ¡logo / Properties --- */
+/* --- Catálogo / Properties --- */
 .catalog { padding: 130px 0 100px; position: relative; }
 .catalog-header {
   display: grid; grid-template-columns: 1fr auto; gap: 40px;
@@ -602,7 +602,7 @@ section[id], main[id], footer[id] { scroll-margin-top: var(--navbar-height); }
 }
 .team-social .social-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-/* --- EstadÃ­sticas --- */
+/* --- Estadísticas --- */
 .stats-premium { padding: 120px 0; background: var(--bg-secondary); position: relative; }
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; margin: 50px 0; }
 .stat-card {
