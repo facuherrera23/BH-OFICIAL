@@ -630,7 +630,7 @@ async function runJob(
                 attributes,
                 location: { address_line: property.address },
             };
-            const normalizedType = propertyType.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+            const normalizedType = propertyType.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
             const operationKey = property.listing_type === 'alquiler' ? 'alquiler' : 'venta';
             const categoryId =
                 ML_CATEGORY_MAP[normalizedType]?.[operationKey] ?? defaults.category_id;
@@ -998,7 +998,7 @@ Deno.serve(async (req) => {
                         status: 'success',
                     };
                 } else if (outcome.rateLimited) {
-                    // F0.3: 429 â†’ cooldown global + liberar el job SIN consumir el intento ya incrementado por el claim
+                    // F0.3: 429 → cooldown global + liberar el job SIN consumir el intento ya incrementado por el claim
                     await setMlCooldown(supabase, conn.id, 'ML rate limit (429)', ML_COOLDOWN_MS);
                     await supabase
                         .from('ml_sync_queue')

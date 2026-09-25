@@ -198,7 +198,7 @@ function buildItemPayload(property: PropertyRow, defaults: MlDefaults): MlItemPa
         quinta: { venta: 'MLA50551', alquiler: 'MLA50549' },
         campo: { venta: 'MLA6413', alquiler: 'MLA6414' },
     };
-    const normalizedType = propertyType.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const normalizedType = propertyType.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     const operationKey = property.listing_type === 'alquiler' ? 'alquiler' : 'venta';
     const categoryId =
         ML_CATEGORY_MAP[normalizedType]?.[operationKey] ??
@@ -447,7 +447,7 @@ Deno.serve(async (req) => {
     try {
         body = await req.json();
     } catch {
-        return respond(400, { error: 'JSON invÃ¡lido' });
+        return respond(400, { error: 'JSON inválido' });
     }
 
     const action = typeof body.action === 'string' ? body.action : '';
@@ -486,7 +486,7 @@ Deno.serve(async (req) => {
     try {
         if (action === 'create') {
             if (property.price === null || property.price <= 0) {
-                return respond(400, { error: 'La propiedad debe tener un precio vÃ¡lido' });
+                return respond(400, { error: 'La propiedad debe tener un precio válido' });
             }
             const defaults = await fetchDefaults();
             if (!defaults.category_id || !defaults.listing_type_id) {
@@ -498,7 +498,7 @@ Deno.serve(async (req) => {
             const mlImageUrls = await prepareImagesForML(accessToken, property.images);
             if (mlImageUrls.length === 0) {
                 return respond(400, {
-                    error: 'Mercado Libre requiere al menos una imagen vÃ¡lida. SubÃ­ fotos a la propiedad.',
+                    error: 'Mercado Libre requiere al menos una imagen válida. Subí fotos a la propiedad.',
                 });
             }
 
@@ -547,7 +547,7 @@ Deno.serve(async (req) => {
             }
             if (!mlItemId) {
                 return respond(400, {
-                    error: 'La propiedad no tiene publicaciÃ³n en Mercado Libre',
+                    error: 'La propiedad no tiene publicación en Mercado Libre',
                 });
             }
 
@@ -626,7 +626,7 @@ Deno.serve(async (req) => {
             });
         }
 
-        return respond(400, { error: 'AcciÃ³n invÃ¡lida' });
+        return respond(400, { error: 'Acción inválida' });
     } catch (err) {
         const message = (err as Error).message;
         const is429 = message.includes('429') || message.toLowerCase().includes('rate limit');
