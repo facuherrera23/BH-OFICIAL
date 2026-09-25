@@ -789,18 +789,19 @@ function esc(s) {
 /* Load data */
     const loaders = {
       'tab-dashboard': loadDashboard,
-      'tab-propiedades': loadProperties,
       'tab-leads': loadCRM,
-      'tab-agenda': loadAgenda,
-      'tab-tasaciones': loadTasaciones,
-      'tab-sitio-web': loadCMS,
       'tab-chat-redes': loadChatRedes,
-      'tab-agentes': loadAgents,
-      'tab-propietarios': loadOwners,
-      'tab-usuarios': loadUsers,
-      'tab-portales': loadPortals,
-      'tab-ficha-html': loadFichaHtml,
-      'tab-supervision': loadSupervision,
+      /* módulos extraídos a assets/js/admin-*.js (modularización): registran su loader en window.__BH al cargar */
+      'tab-propiedades': () => window.__BH.loadProperties?.(),
+      'tab-agenda': () => window.__BH.loadAgenda?.(),
+      'tab-tasaciones': () => window.__BH.loadTasaciones?.(),
+      'tab-sitio-web': () => window.__BH.loadCMS?.(),
+      'tab-agentes': () => window.__BH.loadAgents?.(),
+      'tab-propietarios': () => window.__BH.loadOwners?.(),
+      'tab-usuarios': () => window.__BH.loadUsers?.(),
+      'tab-portales': () => window.__BH.loadPortals?.(),
+      'tab-ficha-html': () => window.__BH.loadFichaHtml?.(),
+      'tab-supervision': () => window.__BH.loadSupervision?.(),
     };
     if (loaders[section]) loaders[section]();
 
@@ -12497,6 +12498,41 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
   $('#fichaDownloadBtn')?.addEventListener('click', fichaDownloadHtml);
 
   /* ------------------------------------------------
+     NÚCLEO COMPARTIDO PARA MÓDULOS (modularización)
+     Los módulos admin-<nombre>.js son IIFEs que se cargan
+     después de este archivo y leen helpers de window.__BH
+     (destructurados al inicio) y el estado compartido vía
+     accessors globales (bare reads/assignments resueltos
+     por defineProperty: lectura/escritura en vivo).
+     ------------------------------------------------ */
+  window.__BH = Object.assign(window.__BH || {}, {
+    $, $$, on, offAll, esc, logError, logWarn,
+    formatDateWithTZ, formatDateTimeWithTZ, getSupTimezone, setSupTimezone,
+    showToast, openModal, closeModal, showConfirmDialog, showInputPrompt,
+    downloadCSV, mutate, z, zodBaseType, validateForm,
+    setBtnLoading, restoreBtn, uploadToCloudinary, computeLeadScore,
+    loadAgentSelect, loadPropertySelect, refreshOwnerSelect,
+    updateSidebarBadges, invalidateSearchCache, navigateTo,
+    updateAgendaBadge, sendBrowserNotification, requestNotificationPermission,
+    formatPrice, formatNumber, checkPasswordPwned, getAuthedClient,
+  });
+  const __bhAccessor = (name, get, set) => Object.defineProperty(window, name, { get, set, configurable: true });
+  __bhAccessor('currentUser', () => currentUser, v => { currentUser = v; });
+  __bhAccessor('currentProfile', () => currentProfile, v => { currentProfile = v; });
+  __bhAccessor('currentSection', () => currentSection, v => { currentSection = v; });
+  __bhAccessor('editingPropertyId', () => editingPropertyId, v => { editingPropertyId = v; });
+  __bhAccessor('editingOwnerId', () => editingOwnerId, v => { editingOwnerId = v; });
+  __bhAccessor('editingAgentId', () => editingAgentId, v => { editingAgentId = v; });
+  __bhAccessor('editingLeadId', () => editingLeadId, v => { editingLeadId = v; });
+  __bhAccessor('editingVisitId', () => editingVisitId, v => { editingVisitId = v; });
+  __bhAccessor('_ownerFormSourcePropertyModal', () => _ownerFormSourcePropertyModal, v => { _ownerFormSourcePropertyModal = v; });
+  __bhAccessor('_createdOwnerId', () => _createdOwnerId, v => { _createdOwnerId = v; });
+  __bhAccessor('ml_connected', () => ml_connected, v => { ml_connected = v; });
+  __bhAccessor('ml_user', () => ml_user, v => { ml_user = v; });
+  __bhAccessor('ml_listings', () => ml_listings, v => { ml_listings = v; });
+  __bhAccessor('ml_configured', () => ml_configured, v => { ml_configured = v; });
+
+  /* ------------------------------------------------
      18. UTILITY
      ------------------------------------------------ */
   function formatPrice(price, currency) {
@@ -12527,7 +12563,7 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
         if (mlStatus === 'connected') {
           showToast('¡Cuenta de Mercado Libre conectada exitosamente!', 'success');
           ml_connected = true;
-          setTimeout(async () => { await mlCheckStatus(); loadPortals(); navigateTo('tab-portales'); }, 100);
+          setTimeout(async () => { await window.__BH.mlCheckStatus?.(); window.__BH.loadPortals?.(); navigateTo('tab-portales'); }, 100);
         } else if (mlStatus === 'error') {
           const msg = hashParams.get('message') || 'Error desconocido';
           showToast('Error al conectar con Mercado Libre: ' + decodeURIComponent(msg), 'error');
@@ -12541,8 +12577,8 @@ setInterval(function(){el.classList.add("is-fading");setTimeout(function(){i=(i+
     })();
 
     // Deferred initialization - runs after DOM is ready
-    const _origLoadProperties = loadProperties;
-    loadProperties = function () { invalidateSearchCache(); return _origLoadProperties.apply(this, arguments); };
+    const _origLoadProperties = window.__BH.loadProperties;
+    window.__BH.loadProperties = function () { invalidateSearchCache(); return _origLoadProperties.apply(this, arguments); };
 
     let _gsDebounceTimer = null;
     $('#globalSearchInput')?.addEventListener('input', (e) => {
