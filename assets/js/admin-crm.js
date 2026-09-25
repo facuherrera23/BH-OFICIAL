@@ -1020,14 +1020,14 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks
     '</div>' +
     '<div class="crm-tab-content" id="crmTab-tasks" style="display:none;">' +
       '<div class="crm-task-form">' +
+        '<div class="crm-task-chips" id="ltfActionChips">' +
+          '<button type="button" class="crm-task-chip is-active" data-lta="contact"><i class="fas fa-phone-volume"></i> Follow up</button>' +
+          '<button type="button" class="crm-task-chip" data-lta="visit"><i class="fas fa-house-user"></i> Visita</button>' +
+          '<button type="button" class="crm-task-chip" data-lta="note"><i class="fas fa-note-sticky"></i> Nota</button>' +
+          '<button type="button" class="crm-task-chip crm-task-chip--danger" data-lta="lost"><i class="fas fa-ban"></i> Perdido</button>' +
+        '</div>' +
+        '<input type="hidden" id="leadTaskAction" value="contact">' +
         '<div class="crm-side-field-row">' +
-          '<div class="crm-side-field"><span class="crm-side-field-label">Acción</span>' +
-            '<select class="crm-field-input crm-field-input--select" id="leadTaskAction">' +
-              '<option value="contact" selected>Contacto / Follow up</option>' +
-              '<option value="visit">Visita</option>' +
-              '<option value="note">Nota interna</option>' +
-              '<option value="lost">Marcar perdido</option>' +
-            '</select></div>' +
           '<div class="crm-side-field" id="ltfContactType"><span class="crm-side-field-label">Tipo de contacto</span>' +
             '<select class="crm-field-input crm-field-input--select" id="leadTaskContactType">' +
               '<option value="telefono">Teléfono</option>' +
@@ -1745,6 +1745,16 @@ function bindLeadTaskForm(panel, lead) {
     refreshRemind();
   }
   actionSel.addEventListener('change', applyAction);
+  var chipWrap = panel.querySelector('#ltfActionChips');
+  if (chipWrap) {
+    chipWrap.addEventListener('click', function (ev) {
+      var chip = ev.target && ev.target.closest ? ev.target.closest('.crm-task-chip') : null;
+      if (!chip) return;
+      chipWrap.querySelectorAll('.crm-task-chip').forEach(function (c) { c.classList.toggle('is-active', c === chip); });
+      actionSel.value = chip.dataset.lta || 'contact';
+      applyAction();
+    });
+  }
   if (dueInput) dueInput.addEventListener('change', function () { refreshPrio(); refreshRemind(); });
   if (dueInput) dueInput.addEventListener('input', function () { refreshPrio(); refreshRemind(); });
   applyAction();
