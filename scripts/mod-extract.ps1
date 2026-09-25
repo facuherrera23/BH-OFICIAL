@@ -38,6 +38,7 @@ $coreLines = New-Object System.Collections.Generic.List[string]
 for ($i = 1; $i -le $lines.Count; $i++) { if (-not $removed.ContainsKey($i)) { $coreLines.Add($lines[$i - 1]) } }
 $coreText = ($coreLines -join "`n")
 $blockText = ($taken -join "`n")
+if ($blockText -match 'N.CLEO COMPARTIDO|__bhAccessor\(') { throw "El bloque contiene la costura (__BH) - rango mal cortado" }
 
 $coreDecls = New-Object System.Collections.Generic.HashSet[string]
 foreach ($m in [regex]::Matches($coreText, '(?m)^  (?:async function|function|const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)')) { [void]$coreDecls.Add($m.Groups[1].Value) }
