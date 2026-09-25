@@ -5,7 +5,8 @@ param(
   [string[]] $Needs = @(),
   [string[]] $Exports = @(),
   [Parameter(Mandatory)] [string] $ExpectStart,
-  [switch] $DryRun
+  [switch] $DryRun,
+  [switch] $Append
 )
 $ErrorActionPreference = 'Stop'
 $root = 'C:\Users\facuh\OneDrive\Escritorio\Mis Proyectos\Landing Page\BH-OFICIAL'
@@ -60,6 +61,38 @@ Write-Output ("[{0}] deps NO cubiertas: {1}" -f $Module, ($missing -join ', '))
 Write-Output ("[{0}] refs inversas (modulo -> core): {1}" -f $Module, ($rev -join ', '))
 
 if ($DryRun) { Write-Output "DRY RUN sin escritura; lineas a mover: $($taken.Count)"; return }
+
+if ($Append) {
+  $modulePath = Join-Path $root ('assets\js\admin-' + $Module + '.js')
+  $mraw = [System.IO.File]::ReadAllText($modulePath, [System.Text.Encoding]::UTF8)
+  $mlines = [System.Collections.Generic.List[string]]::new(($mraw -split "`r?`n", -1))
+  $closeIdx = -1
+  for ($i = $mlines.Count - 1; $i -ge 0; $i--) { if ($mlines[$i].Trim() -eq '})();') { $closeIdx = $i; break } }
+  if ($closeIdx -lt 0) { throw "No se encontro cierre })(); en $modulePath" }
+  $mlines.RemoveAt($closeIdx)
+  $mlines.Add('')
+  foreach ($l in $taken) { $mlines.Add($l) }
+  $mlines.Add('})();')
+  $mlines.Add('')
+  [System.IO.File]::WriteAllText($modulePath, ($mlines -join $sep), (New-Object System.Text.UTF8Encoding($false)))
+  $marker = '  /* Extraido a assets/js/admin-' + $Module + '.js (modularizacion) */'
+  $newCore = New-Object System.Collections.Generic.List[string]
+  $markerWritten = $false
+  for ($i = 1; $i -le $lines.Count; $i++) {
+    if ($removed.ContainsKey($i)) {
+      if (-not $markerWritten -and $i -eq $Ranges[0]) { $newCore.Add($marker); $markerWritten = $true }
+      continue
+    }
+    $newCore.Add($lines[$i - 1])
+  }
+  [System.IO.File]::WriteAllText($app, ($newCore -join $sep), (New-Object System.Text.UTF8Encoding($false)))
+  node --check $app | Out-Null
+  if ($LASTEXITCODE) { throw "node --check admin-app.js FALLO tras append $Module" }
+  node --check $modulePath | Out-Null
+  if ($LASTEXITCODE) { throw "node --check admin-$Module.js FALLO tras append" }
+  Write-Output ("OK append {0}: movidas {1} lineas; core quedo en {2}" -f $Module, $taken.Count, $newCore.Count)
+  return
+}
 
 $hdr = New-Object System.Collections.Generic.List[string]
 $hdr.Add('/* ============================================================')
