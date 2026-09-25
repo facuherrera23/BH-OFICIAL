@@ -1858,6 +1858,12 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
 
 
   window.__BH.loadOwners = loadOwners;
+  window.__BH.loadPropertyDocs = loadPropertyDocs;
+  window.__BH.loadPropertyNotes = loadPropertyNotes;
+  window.__BH.loadPropertyHistory = loadPropertyHistory;
+  if (!Object.prototype.hasOwnProperty.call(window, 'loadPropertyDocs')) Object.defineProperty(window, 'loadPropertyDocs', { get: () => loadPropertyDocs, configurable: true });
+  if (!Object.prototype.hasOwnProperty.call(window, 'loadPropertyNotes')) Object.defineProperty(window, 'loadPropertyNotes', { get: () => loadPropertyNotes, configurable: true });
+  if (!Object.prototype.hasOwnProperty.call(window, 'loadPropertyHistory')) Object.defineProperty(window, 'loadPropertyHistory', { get: () => loadPropertyHistory, configurable: true });
   if (!Object.prototype.hasOwnProperty.call(window, 'loadOwners')) Object.defineProperty(window, 'loadOwners', { get: () => loadOwners, configurable: true });
   window.__BH.loadOwnerTasks = loadOwnerTasks;
   if (!Object.prototype.hasOwnProperty.call(window, 'loadOwnerTasks')) Object.defineProperty(window, 'loadOwnerTasks', { get: () => loadOwnerTasks, configurable: true });

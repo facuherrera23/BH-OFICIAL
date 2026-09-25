@@ -1661,6 +1661,8 @@ window.adminApp.editVisit = async function (id) {
   $('#btnExportCSV')?.addEventListener('click', window.adminApp.exportVisitsCSV);
 
 
+  window.__BH.buildTasacionRowHtml = buildTasacionRowHtml;
+  if (!Object.prototype.hasOwnProperty.call(window, 'buildTasacionRowHtml')) Object.defineProperty(window, 'buildTasacionRowHtml', { get: () => buildTasacionRowHtml, configurable: true });
   window.__BH.loadAgenda = loadAgenda;
   if (!Object.prototype.hasOwnProperty.call(window, 'loadAgenda')) Object.defineProperty(window, 'loadAgenda', { get: () => loadAgenda, set: (v) => { loadAgenda = v; }, configurable: true });
   window.__BH.upsertVisitRow = upsertVisitRow;

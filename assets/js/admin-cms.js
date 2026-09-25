@@ -482,7 +482,7 @@
 
       populateCMSFieldsWithDefaults();
 
-      invalidateRequestCache('site_content');
+      if (typeof invalidateRequestCache === 'function') invalidateRequestCache('site_content');
 
       showToast('? CMS reiniciado a valores de fábrica', 'success');
     } catch (err) {
