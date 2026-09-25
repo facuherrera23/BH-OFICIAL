@@ -1407,7 +1407,7 @@ function renderSocialLinks(social) {
             ${(m.specialties || []).map(s => `<span class="team-pill">${esc(s)}</span>`).join('')}
           </div>
           <div class="team-social">
-            ${m.phone ? `<a href="tel:${escAttr(String(m.phone))}" class="social-btn" aria-label="Telefono"><i class="fas fa-phone"></i></a>` : ''}
+            ${m.phone ? `<a href="tel:${escAttr(String(m.phone))}" class="social-btn" aria-label="Teléfono"><i class="fas fa-phone"></i></a>` : ''}
             ${m.email ? `<a href="mailto:${escAttr(String(m.email))}" class="social-btn" aria-label="Email"><i class="fas fa-envelope"></i></a>` : ''}
           </div>
         </div>
