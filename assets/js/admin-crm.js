@@ -923,7 +923,6 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
   var aopts = _agents.map(function (a) { return '<option value="' + a.id + '"' + (lead.assigned_to === a.id ? ' selected' : '') + '>' + esc(a.full_name) + '</option>'; }).join('');
   var oopts = ORIGINS.map(function (o) { return '<option value="' + o + '"' + (lead.source === o ? ' selected' : '') + '>' + (ORIGIN_LABELS[o] || o) + '</option>'; }).join('');
   var tcOpts = TIPO_CLIENTE_OPTS.map(function (t) { return '<option value="' + t + '"' + (lead.tipo_cliente === t ? ' selected' : '') + '>' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>'; }).join('');
-  var tpOpts = OPERATION_OPTS.map(function (t) { return '<option value="' + t + '"' + (lead.operation_type === t ? ' selected' : '') + '>' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>'; }).join('');
 
   var ph = !props || !props.length
     ? '<div class="crm-side-field-value">Sin propiedades vinculadas</div>'
@@ -944,10 +943,8 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
         '<button type="button" class="crm-tab-btn is-active" data-crm-tab="data">Datos Principales</button>' +
         '<button type="button" class="crm-tab-btn" data-crm-tab="tasks">Tareas</button>' +
         '<button type="button" class="crm-tab-btn" data-crm-tab="props">Propiedades</button>' +
-        '<button type="button" class="crm-tab-btn" data-crm-tab="historial">Timeline</button>' +
-        '<button type="button" class="crm-tab-btn" data-crm-tab="notas">Notas</button>' +
       '</div>' +
-      sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, buildUnifiedTimeline(activities, visits, tasks), tasks) +
+      sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, buildUnifiedTimeline(activities, visits, []), tasks) +
       '<div class="crm-side-save"><button class="btn-luxury-action" id="crmSideSaveBtn" style="width:100%;">Guardar cambios</button></div>' +
     '</div>' +
     '</div>';
@@ -965,7 +962,7 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
   bindAgendaActions(panel, lead.id);
   bindTlTaskActions(panel, lead.id);
   if (activities.length === TIMELINE_PAGE) {
-    var tl = panel.querySelector('#crmTab-historial .crm-timeline');
+    var tl = panel.querySelector('#crmTab-tasks .crm-timeline--historial');
     if (tl) {
       var moreBtn = document.createElement('button');
       moreBtn.type = 'button';
@@ -977,7 +974,7 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
         var extra = await getLeadActivities(lead.id, activities.length);
         if (extra.length) {
           activities = activities.concat(extra);
-          tl.innerHTML = buildUnifiedTimeline(activities, visits, tasks);
+          tl.innerHTML = buildUnifiedTimeline(activities, visits, []);
           bindTlTaskActions(panel, lead.id);
         }
         if (extra.length < TIMELINE_PAGE) moreBtn.remove();
@@ -988,13 +985,15 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
   }
 }
 
-function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, timelineHtml, tasks) {
+function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks) {
   return '' +
     '<div class="crm-tab-content" id="crmTab-data">' +
       '<div class="crm-side-section">' +
         '<div class="crm-side-fields">' +
-          sideField('Nombre', 'crmDtlName', 'text', lead.full_name) +
-          sideField('Email', 'crmDtlEmail', 'email', lead.email) +
+          '<div class="crm-side-field-row">' +
+            sideField('Nombre', 'crmDtlName', 'text', lead.full_name) +
+            sideField('Email', 'crmDtlEmail', 'email', lead.email) +
+          '</div>' +
           '<div class="crm-side-field-row">' +
             sideField('Telefono', 'crmDtlPhone', 'text', lead.phone) +
             sideField('WhatsApp', 'crmDtlWhatsapp', 'text', lead.whatsapp) +
@@ -1010,7 +1009,6 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, timelineHtm
           '</div>' +
           '<div class="crm-side-field-row">' +
             '<div class="crm-side-field"><span class="crm-side-field-label">Tipo cliente</span><select class="crm-field-input crm-field-input--select" id="crmDtlTipoCliente"><option value="">&#8212;</option>' + tcOpts + '</select></div>' +
-            '<div class="crm-side-field"><span class="crm-side-field-label">Tipo operacion</span><select class="crm-field-input crm-field-input--select" id="crmDtlTipoOp"><option value="">&#8212;</option>' + tpOpts + '</select></div>' +
           '</div>' +
           '<div class="crm-side-field-row">' +
             '<div class="crm-side-field"><span class="crm-side-field-label">Agente</span><select class="crm-field-input crm-field-input--select" id="crmDtlAgent"><option value="">Sin agente</option>' + aopts + '</select></div>' +
@@ -1022,6 +1020,9 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, timelineHtm
             sideField('Valor estimado (USD)', 'crmDtlEstValue', 'number', lead.estimated_value) +
           '</div>' +
         '</div></div>' +
+      '<div class="crm-side-section"><h4 class="crm-side-section-title">Notas</h4>' +
+        '<div class="crm-side-fields"><textarea class="crm-field-input" id="crmDtlNotes" rows="4" placeholder="Notas internas del lead...">' + esc(lead.notes || '') + '</textarea></div>' +
+      '</div>' +
     '</div>' +
     '<div class="crm-tab-content" id="crmTab-tasks" style="display:none;">' +
       '<div class="crm-quickadd crm-quickadd--card">' +
@@ -1041,6 +1042,7 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, timelineHtm
       '</div>' +
       '<div id="crmQuickActionPanel"></div>' +
       '<div class="crm-side-section"><h4 class="crm-side-section-title">Tareas</h4><div class="crm-timeline crm-timeline--cards">' + (tasks.length ? buildUnifiedTimeline([], [], tasks) : '<div class="crm-tasks-empty"><i class="fas fa-list-check"></i><span>Sin tareas. Creá una con el campo de arriba.</span></div>') + '</div></div>' +
+      '<div class="crm-side-section"><h4 class="crm-side-section-title">Historial</h4><div class="crm-timeline crm-timeline--historial">' + (timelineHtml || buildTimelineHTML([])) + '</div></div>' +
     '</div>' +
     '<div class="crm-tab-content" id="crmTab-props" style="display:none;">' +
       '<div class="crm-side-section">' +
@@ -1049,16 +1051,6 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, tpOpts, ph, timelineHtm
             '<input class="crm-field-input" id="crmDtlPropSearch" placeholder="Buscar propiedad por titulo...">' +
             '<button class="btn-action" id="crmDtlAddProp"><i class="fas fa-plus"></i></button></div>' +
           '</div></div></div>' +
-    '</div>' +
-    '<div class="crm-tab-content" id="crmTab-historial" style="display:none;">' +
-      '<div class="crm-side-section">' +
-        '<div class="crm-timeline">' + (timelineHtml || buildTimelineHTML([])) + '</div></div>' +
-    '</div>' +
-    '<div class="crm-tab-content" id="crmTab-notas" style="display:none;">' +
-      '<div class="crm-side-section">' +
-        '<div class="crm-side-fields">' +
-          '<textarea class="crm-field-input" id="crmDtlNotes" rows="5">' + esc(lead.notes || '') + '</textarea>' +
-        '</div></div>' +
     '</div>';
 }
 function bindSideTabs(panel) {
@@ -1164,7 +1156,6 @@ function collectSideForm(panel) {
     stage: v('crmDtlStatus'),
     source: v('crmDtlOrigin'),
     tipo_cliente: v('crmDtlTipoCliente'),
-    operation_type: v('crmDtlTipoOp'),
     assigned_to: v('crmDtlAgent') || null,
     budget_usd: n('crmDtlBudget'),
     estimated_value: n('crmDtlEstValue'),
