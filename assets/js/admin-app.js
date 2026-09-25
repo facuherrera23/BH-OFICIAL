@@ -5297,7 +5297,7 @@ ${(() => { const t = nextTaskByOwner[o.id]; if (!t) return '<div style="font-siz
     const title = $('#ownerModalTitle');
     if (title) title.textContent = 'Expediente de Propietario';
 
-    loadAgentSelect($('#ownerTaskAgentSelect'));
+    refreshOwnerTaskPrioAuto();
 openModal('ownerModal');
 
   });
@@ -5486,11 +5486,7 @@ closeModal('ownerModal');
 
       loadOwnerTasks(id);
 
-
-
-      const agentSelect = $('#ownerTaskAgentSelect');
-
-      if (agentSelect) loadAgentSelect(agentSelect);
+      refreshOwnerTaskPrioAuto();
     } catch (err) {
       showToast('Error al cargar propietario', 'error');
     }
@@ -5678,6 +5674,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
   /* Owner Tasks — CRM de seguimiento */
 
   const OWNER_TASK_TYPE_LABEL = { contact: 'Contacto', document: 'Documento', commission: 'Comisión', alert: 'Alerta', note: 'Nota' };
+  const OWNER_TASK_CONTACT_LABEL = { telefono: 'Teléfono', whatsapp: 'WhatsApp', email: 'Mail' };
   const OWNER_TASK_PRIORITY_LABEL = { baja: 'Baja', media: 'Media', alta: 'Alta' };
   const OWNER_TASK_STATUS_LABEL = { pendiente: 'Pendiente', en_progreso: 'En progreso', completada: 'Completada', cancelada: 'Cancelada' };
 
@@ -5706,7 +5703,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     try {
       const { data, error } = await window.supabaseClient
         .from('owner_tasks')
-        .select('id, type, description, due_date, status, priority, assigned_to, result_notes, agent:agents!assigned_to(full_name)')
+        .select('id, type, contact_type, description, due_date, status, priority, assigned_to, result_notes, agent:agents!assigned_to(full_name)')
         .eq('owner_id', ownerId)
         .order('due_date', { ascending: true });
 
@@ -5735,6 +5732,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
               </div>
               <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:2px; font-size:11px; color:var(--text-dim);">
                 <span>${esc(OWNER_TASK_TYPE_LABEL[t.type] || t.type)}</span>
+                ${t.contact_type ? `<span>${esc(OWNER_TASK_CONTACT_LABEL[t.contact_type] || t.contact_type)}</span>` : ''}
                 <span style="color:${priorityColor}; font-weight:600;">${esc(OWNER_TASK_PRIORITY_LABEL[t.priority] || t.priority)}</span>
                 <span>Vence: ${fmtTaskDate(t.due_date)}</span>
                 ${t.agent?.full_name ? `<span>→ ${esc(t.agent.full_name)}</span>` : ''}
@@ -5756,16 +5754,75 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     }
   }
 
+  /* Prioridad automática + recordatorio ligado para tareas de propietario.
+     Mismo criterio que el panel del lead: urgente ≤24 h, alta ≤72 h, media ≤7 días, baja >7 días.
+     El recordatorio solo ofrece opciones que entran dentro del tiempo restante. */
+  function refreshOwnerTaskPrioAuto() {
+    const dueInput = $('#ownerTaskDueDate');
+    const prioInput = $('#ownerTaskPriority');
+    const prioBadge = $('#ownerTaskPrioBadge');
+    const prioText = $('#ownerTaskPrioText');
+    const remSel = $('#ownerTaskRemind');
+    const remHint = $('#ownerTaskRemindHint');
+    const PRIO_META = {
+      urgente: { text: 'Urgente (menos de 24 h)', cls: 'is-urgente' },
+      alta: { text: 'Alta (menos de 3 días)', cls: 'is-alta' },
+      media: { text: 'Media (menos de 7 días)', cls: 'is-media' },
+      baja: { text: 'Baja (más de 7 días)', cls: 'is-baja' }
+    };
+    let h = null;
+    if (dueInput && dueInput.value) {
+      const t = new Date(dueInput.value).getTime();
+      if (!isNaN(t)) h = (t - Date.now()) / 3600000;
+    }
+    const key = h == null ? null : (h <= 24 ? 'urgente' : h <= 72 ? 'alta' : h <= 168 ? 'media' : 'baja');
+    if (prioInput) prioInput.value = key || 'media';
+    if (prioBadge) {
+      prioBadge.classList.remove('is-urgente', 'is-alta', 'is-media', 'is-baja');
+      if (!key) {
+        if (prioText) prioText.textContent = 'Se asigna según la fecha límite';
+      } else {
+        prioBadge.classList.add(PRIO_META[key].cls);
+        if (prioText) prioText.textContent = PRIO_META[key].text;
+      }
+    }
+    if (remSel) {
+      const limitMin = h == null ? Infinity : Math.max(0, h * 60);
+      let firstOk = null;
+      Array.prototype.forEach.call(remSel.options, function (o) {
+        const ok = parseInt(o.value, 10) <= limitMin;
+        o.disabled = !ok;
+        if (ok && firstOk == null) firstOk = o.value;
+        if (ok) remSel.value = o.value; // quedarse con la opción más grande que todavía entra
+      });
+      if (!firstOk) {
+        Array.prototype.forEach.call(remSel.options, function (o) { o.disabled = false; });
+        remSel.value = '30';
+      }
+    }
+    if (remHint) {
+      const msg = h != null && h <= 0 ? 'La fecha ya venció: elegí una fecha futura.' : '';
+      remHint.textContent = msg;
+      remHint.style.display = msg ? '' : 'none';
+    }
+  }
+  (function bindOwnerTaskPrio() {
+    const dueInput = $('#ownerTaskDueDate');
+    if (!dueInput) return;
+    dueInput.addEventListener('change', refreshOwnerTaskPrioAuto);
+    dueInput.addEventListener('input', refreshOwnerTaskPrioAuto);
+  })();
+
   window.adminApp.createOwnerTask = async function () {
     if (!editingOwnerId) return showToast('Primero guarde el propietario', 'warning');
     if (!window.supabaseClient) return;
 
     const description = $('#ownerTaskDescription')?.value?.trim();
     const dueDateLocal = $('#ownerTaskDueDate')?.value;
-    const type = $('#ownerTaskType')?.value || 'contact';
+    const type = 'contact';
+    const contactType = $('#ownerTaskContactType')?.value || null;
     const priority = $('#ownerTaskPriority')?.value || 'media';
     const remindBefore = parseInt($('#ownerTaskRemind')?.value, 10) || 1440;
-    const assignedTo = $('#ownerTaskAgentSelect')?.value || null;
 
     if (!description) return showToast('Ingresá una descripción', 'warning');
     if (!dueDateLocal) return showToast('Ingresá la fecha límite', 'warning');
@@ -5794,10 +5851,10 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
           owner_id: editingOwnerId,
           description,
           type,
+          contact_type: contactType,
           priority,
           due_date: new Date(dueDateLocal).toISOString(),
           remind_before_minutes: remindBefore,
-          assigned_to: assignedTo,
           created_by: currentUser?.id || null
         }])
       );
@@ -5806,9 +5863,8 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
 
       $('#ownerTaskDescription').value = '';
       $('#ownerTaskDueDate').value = '';
-      $('#ownerTaskType').value = 'contact';
-      $('#ownerTaskPriority').value = 'media';
-      $('#ownerTaskRemind').value = '1440';
+      $('#ownerTaskContactType').value = 'whatsapp';
+      refreshOwnerTaskPrioAuto();
 
       showToast('Tarea creada', 'success');
       loadOwnerTasks(editingOwnerId);
@@ -6484,39 +6540,212 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     if (!el) return;
     if (!window.supabaseClient) return;
     try {
-      const { data, error } = await window.supabaseClient
-        .from('tasaciones')
-        .select('id, type, status, valuation_usd, created_at, expires_at, property_id')
+      const { data: ownProps } = await window.supabaseClient
+        .from('properties')
+        .select('id, property_code, title')
         .eq('owner_id', ownerId)
+        .is('deleted_at', null);
+      const ownPropIds = new Set((ownProps || []).map(p => p.id));
+      let q = window.supabaseClient
+        .from('tasaciones')
+        .select('id, type, status, valuation_usd, created_at, expires_at, property_id, owner_id, title')
         .order('created_at', { ascending: false });
+      q = ownPropIds.size
+        ? q.or(`owner_id.eq.${ownerId},property_id.in.(${[...ownPropIds].join(',')})`)
+        : q.eq('owner_id', ownerId);
+      const { data, error } = await q;
       if (error) throw error;
-      /* tasaciones no tiene FK a properties: lookup separado */
-      const propIds = [...new Set((data || []).map(t => t.property_id).filter(Boolean))];
-      let propMap = {};
-      if (propIds.length) {
-        const { data: props } = await window.supabaseClient
+      const propMap = {};
+      (ownProps || []).forEach(p => { propMap[p.id] = p; });
+      const foreignPropIds = [...new Set((data || []).map(t => t.property_id).filter(id => id && !propMap[id]))];
+      if (foreignPropIds.length) {
+        const { data: fprops } = await window.supabaseClient
           .from('properties')
           .select('id, property_code, title')
-          .in('id', propIds);
-        (props || []).forEach(p => { propMap[p.id] = p; });
+          .in('id', foreignPropIds);
+        (fprops || []).forEach(p => { propMap[p.id] = p; });
       }
-      const rows = (data || []).map(t => ({ ...t, properties: propMap[t.property_id] || null }));
+      const rows = (data || []).map(t => ({ ...t, properties: propMap[t.property_id] || null, _direct: t.owner_id === ownerId }));
       if (!rows.length) {
         el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:20px;">Sin tasaciones registradas</p>';
         return;
       }
-      el.innerHTML = rows.map(t => `
+      el.innerHTML = rows.map(t => {
+        const originBadge = t._direct
+          ? '<span style="font-size:10px; font-weight:700; color:var(--accent); background:rgba(31,200,195,0.12); border-radius:999px; padding:1px 8px; margin-left:6px;">Directa</span>'
+          : '<span style="font-size:10px; font-weight:700; color:var(--warning); background:rgba(255,184,0,0.12); border-radius:999px; padding:1px 8px; margin-left:6px;" title="Vinculada porque la propiedad es de este propietario">Por propiedad</span>';
+        const unlinkBtn = t._direct
+          ? `<button class="btn-action" title="Desvincular del propietario" onclick="window.adminApp.unlinkTasacion('${ownerId}', '${t.id}')"><i class="fas fa-link-slash"></i></button>`
+          : '';
+        return `
         <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:8px; font-size:13px;">
           <div>
-            <div style="font-weight:500; color:#fff;">${esc(t.type)} · ${esc(t.properties?.title || t.properties?.property_code || 'Propiedad')}</div>
+            <div style="font-weight:500; color:#fff;">${esc(t.type)} · ${esc(t.properties?.title || t.properties?.property_code || t.title || 'Propiedad')}${originBadge}</div>
             <div style="font-size:11px; color:var(--text-dim);">USD ${t.valuation_usd ? formatNumber(t.valuation_usd) : '—'} · ${esc(t.status)} · ${t.created_at ? new Date(t.created_at).toLocaleDateString('es-AR') : ''}${t.expires_at ? ' · Vence: ' + new Date(t.expires_at).toLocaleDateString('es-AR') : ''}</div>
           </div>
-          <button class="btn-action" title="Ver Tasación" onclick="window.adminApp.editTasacion?.('${t.id}')"><i class="fas fa-external-link-alt"></i></button>
-        </div>
-      `).join('');
+          <div style="display:flex; gap:6px;">
+            ${unlinkBtn}
+            <button class="btn-action" title="Ver Tasación" onclick="window.adminApp.editTasacion?.('${t.id}')"><i class="fas fa-external-link-alt"></i></button>
+          </div>
+        </div>`;
+      }).join('');
     } catch (err) {
       logError('loadOwnerTasaciones error:', err);
       el.innerHTML = '<p style="color:var(--danger); font-size:12px; text-align:center; padding:20px;">Error cargando tasaciones</p>';
+    }
+  }
+
+  window.adminApp.editTasacion = function (id) {
+    closeModal('ownerModal');
+    navigateTo('tab-tasaciones');
+    showTasacionEditor(id, '');
+  };
+
+  window.adminApp.unlinkTasacion = async function (ownerId, tasacionId) {
+    if (!confirm('¿Desvincular esta tasación del propietario? La tasación no se borra; si tiene propiedad de este propietario seguirá apareciendo "Por propiedad".')) return;
+    try {
+      const { error } = await window.supabaseClient.from('tasaciones').update({ owner_id: null }).eq('id', tasacionId);
+      if (error) throw error;
+      showToast('Tasación desvinculada', 'success');
+      loadOwnerTasaciones(ownerId);
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  };
+
+  let _tasacionOwnerCtx = null;
+  window.adminApp.createTasacionForOwner = async function (ownerId) {
+    const propSelect = $('#tasaProperty');
+    const ownerSelect = $('#tasaOwner');
+    if (!propSelect || !ownerSelect || !window.supabaseClient) return;
+    _tasacionOwnerCtx = ownerId || null;
+    try {
+      const [propsRes, ownerRes] = await Promise.all([
+        window.supabaseClient.from('properties').select('id, property_code, title').eq('owner_id', ownerId).is('deleted_at', null).order('property_code'),
+        window.supabaseClient.from('owners').select('id, full_name').eq('id', ownerId).single()
+      ]);
+      propSelect.innerHTML = '<option value="">Sin vincular</option>' +
+        (propsRes.data || []).map(p => '<option value="' + esc(p.id) + '">' + esc(p.property_code || '') + ' - ' + esc(p.title || '') + '</option>').join('');
+      const o = ownerRes.data;
+      ownerSelect.innerHTML = o
+        ? '<option value="' + esc(o.id) + '">' + esc(o.full_name || '') + '</option>'
+        : '<option value="">Sin propietario</option>';
+      ownerSelect.disabled = !!o;
+      _tasacionOwnerCtx = o ? o.id : null;
+    } catch (err) {
+      showToast('No se pudieron cargar los datos: ' + err.message, 'error');
+      return;
+    }
+    openModal('newTasacionModal');
+  };
+
+  on($('#ownerTasaNewBtn'), 'click', () => {
+    if (!editingOwnerId) return showToast('Primero guarde el propietario', 'warning');
+    window.adminApp.createTasacionForOwner(editingOwnerId);
+  });
+  on($('#ownerTasaLinkBtn'), 'click', () => {
+    if (!editingOwnerId) return showToast('Primero guarde el propietario', 'warning');
+    openLinkTasacionModal(editingOwnerId);
+  });
+
+  let _linkTasacionOwnerId = null;
+  function openLinkTasacionModal(ownerId) {
+    _linkTasacionOwnerId = ownerId;
+    const search = $('#linkTasacionSearch');
+    const includeLinked = $('#linkTasacionIncludeLinked');
+    if (search && !search.dataset.bound) {
+      search.dataset.bound = '1';
+      let debounce;
+      search.addEventListener('input', () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => loadTasacionLinkCandidates(_linkTasacionOwnerId), 300);
+      });
+      includeLinked?.addEventListener('change', () => loadTasacionLinkCandidates(_linkTasacionOwnerId));
+    }
+    if (search) search.value = '';
+    if (includeLinked) includeLinked.checked = false;
+    openModal('linkTasacionModal');
+    loadTasacionLinkCandidates(ownerId);
+  }
+
+  async function loadTasacionLinkCandidates(ownerId) {
+    const box = $('#linkTasacionResults');
+    if (!box || !window.supabaseClient) return;
+    const search = ($('#linkTasacionSearch')?.value || '').trim();
+    const includeLinked = !!$('#linkTasacionIncludeLinked')?.checked;
+    box.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:16px;">Buscando...</p>';
+    try {
+      const { data: ownProps } = await window.supabaseClient
+        .from('properties')
+        .select('id, property_code, title')
+        .eq('owner_id', ownerId)
+        .is('deleted_at', null);
+      const ownPropIds = new Set((ownProps || []).map(p => p.id));
+      let q = window.supabaseClient
+        .from('tasaciones')
+        .select('id, title, type, status, valuation_usd, created_at, owner_id, property_id')
+        .order('created_at', { ascending: false })
+        .limit(30);
+      q = includeLinked ? q.neq('owner_id', ownerId) : q.is('owner_id', null);
+      if (search) q = q.ilike('title', '%' + search.replace(/[%_]/g, ' ') + '%');
+      const { data, error } = await q;
+      if (error) throw error;
+      const rows = (data || []).filter(t => t.owner_id !== ownerId);
+      rows.sort((a, b) => Number(b.property_id && ownPropIds.has(b.property_id)) - Number(a.property_id && ownPropIds.has(a.property_id)));
+      if (!rows.length) {
+        box.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:16px;">Sin tasaciones disponibles para vincular.</p>';
+        return;
+      }
+      const propIds = [...new Set(rows.map(t => t.property_id).filter(Boolean))];
+      let propMap = {};
+      if (propIds.length) {
+        const { data: props } = await window.supabaseClient.from('properties').select('id, property_code, title, owner_id').in('id', propIds);
+        (props || []).forEach(p => { propMap[p.id] = p; });
+      }
+      const ownerIds = [...new Set(rows.map(t => t.owner_id).filter(Boolean))];
+      let ownerMap = {};
+      if (ownerIds.length) {
+        const { data: owners } = await window.supabaseClient.from('owners').select('id, full_name').in('id', ownerIds);
+        (owners || []).forEach(o => { ownerMap[o.id] = o; });
+      }
+      box.innerHTML = rows.map(t => {
+        const detected = t.property_id && ownPropIds.has(t.property_id);
+        const reassigned = !!t.owner_id;
+        const p = t.property_id ? propMap[t.property_id] : null;
+        const badges = [];
+        if (detected) badges.push('<span style="font-size:10px; font-weight:700; color:var(--accent); background:rgba(31,200,195,0.12); border-radius:999px; padding:1px 8px; margin-left:6px;">Detectada por propiedad</span>');
+        if (reassigned) badges.push('<span style="font-size:10px; font-weight:700; color:var(--warning); background:rgba(255,184,0,0.12); border-radius:999px; padding:1px 8px; margin-left:6px;" title="Actualmente vinculada a ' + esc(ownerMap[t.owner_id]?.full_name || 'otro propietario') + '">Se reasignará</span>');
+        return '<button type="button" data-link-tasacion="' + esc(t.id) + '" style="display:block; width:100%; text-align:left; padding:10px 12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:8px; cursor:pointer; color:#fff;">' +
+          '<div style="font-weight:500; font-size:12.5px;">' + esc(t.title || t.type || 'Tasación') + badges.join('') + '</div>' +
+          '<div style="font-size:11px; color:var(--text-dim);">' + esc(t.status) + (p ? ' · ' + esc(p.property_code || p.title || '') : '') + (t.created_at ? ' · ' + new Date(t.created_at).toLocaleDateString('es-AR') : '') + '</div>' +
+          '</button>';
+      }).join('');
+      box.querySelectorAll('[data-link-tasacion]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const t = rows.find(x => x.id === btn.dataset.linkTasacion);
+          if (t) linkTasacionToOwner(ownerId, t, propMap);
+        });
+      });
+    } catch (err) {
+      box.innerHTML = '<p style="color:var(--danger); font-size:12px; text-align:center; padding:16px;">Error: ' + esc(err.message) + '</p>';
+    }
+  }
+
+  async function linkTasacionToOwner(ownerId, t, propMap) {
+    const prop = t.property_id ? (propMap || {})[t.property_id] : null;
+    if (prop && prop.owner_id && prop.owner_id !== ownerId) {
+      if (!confirm('La propiedad "' + (prop.title || prop.property_code || '') + '" pertenece a otro propietario. ¿Vincular la tasación igualmente?')) return;
+    } else if (t.owner_id && t.owner_id !== ownerId) {
+      if (!confirm('Esta tasación ya está vinculada a otro propietario. ¿Reasignarla?')) return;
+    }
+    try {
+      const { error } = await window.supabaseClient.from('tasaciones').update({ owner_id: ownerId }).eq('id', t.id);
+      if (error) throw error;
+      showToast('Tasación vinculada', 'success');
+      closeModal('linkTasacionModal');
+      loadOwnerTasaciones(ownerId);
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
     }
   }
 
@@ -6659,7 +6888,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
         o.commission_rent || '',
         (o.notes || '').replace(/\n/g, ' ')
       ].map(c => '"' + String(c).replace(/"/g, '""') + '"').join(','));
-      const csv = [headers.join(','), ...rows].join('\n');
+      const csv = '\uFEFF' + [headers.join(','), ...rows].join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -6713,17 +6942,20 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
             h1 { color: #1a1a2e; border-bottom: 2px solid #1fc8c3; padding-bottom: 8px; }
             @media print { body { padding: 0; } }
           </style>
-        </head><body>
+        </head><body onload="setTimeout(function(){ window.print(); }, 300)">
           <h1>Reporte de Propietarios — ${new Date().toLocaleDateString('es-AR')}</h1>
           ${content}
         </body></html>
       `;
-      const w = window.open('', '_blank', 'noopener');
-      w.document.write(html);
-      w.document.close();
-      w.focus();
-      setTimeout(() => w.print(), 300);
-      showToast('PDF generado (imprimir/guardar)', 'success');
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, '_blank', 'noopener');
+      if (!w) {
+        showToast('El navegador bloqueó la ventana emergente. Permití las ventanas emergentes para generar el PDF.', 'warning');
+      } else {
+        showToast('PDF generado (imprimir/guardar)', 'success');
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (err) {
       showToast('Error generando PDF: ' + err.message, 'error');
     }
@@ -8517,6 +8749,8 @@ try {
     const propSelect = $('#tasaProperty');
     const ownerSelect = $('#tasaOwner');
     if (!propSelect || !ownerSelect) return;
+    _tasacionOwnerCtx = null;
+    ownerSelect.disabled = false;
       try {
         const [propsRes, ownersRes] = await Promise.all([
           window.supabaseClient.from('properties').select('id, property_code, title').is('deleted_at', null).order('property_code'),
@@ -8543,7 +8777,26 @@ try {
     if (!userId) { showToast('No hay sesión activa', 'error'); return; }
     const type = $('#tasaType')?.value || 'venta';
     const propertyId = $('#tasaProperty')?.value || null;
-    const ownerId = $('#tasaOwner')?.value || null;
+    let ownerId = $('#tasaOwner')?.value || null;
+    if (_tasacionOwnerCtx) ownerId = _tasacionOwnerCtx;
+    if (propertyId) {
+      try {
+        const { data: propRow } = await window.supabaseClient.from('properties').select('title, property_code, owner_id').eq('id', propertyId).single();
+        const propOwnerId = propRow?.owner_id || null;
+        if (propOwnerId && !ownerId) {
+          ownerId = propOwnerId;
+        } else if (propOwnerId && ownerId && propOwnerId !== ownerId) {
+          const ok = await showConfirmDialog({
+            title: 'Conflicto de propietario',
+            message: 'La propiedad "' + (propRow.title || propRow.property_code || '') + '" pertenece a otro propietario que el elegido. ¿Crear la tasación de todos modos?',
+            icon: 'fas fa-triangle-exclamation',
+            confirmText: 'Crear igualmente',
+            danger: true
+          });
+          if (!ok) return;
+        }
+      } catch (_) { /* si falla el lookup, se crea sin validación extra */ }
+    }
     const title = type.charAt(0).toUpperCase() + type.slice(1) + (propertyId ? ' — ' + ($('#tasaProperty')?.selectedOptions?.[0]?.textContent || '') : '');
     try {
       const payload = { title: title, status: 'draft', type: type, created_by: userId };
@@ -8560,6 +8813,10 @@ try {
         newTasacionId = data.id;
       });
       closeModal('newTasacionModal');
+      if (_tasacionOwnerCtx) {
+        closeModal('ownerModal');
+        navigateTo('tab-tasaciones');
+      }
       showTasacionEditor(newTasacionId, title);
       updateSidebarBadges();
     } catch (err) {
