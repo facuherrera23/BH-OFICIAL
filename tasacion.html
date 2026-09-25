@@ -254,11 +254,9 @@
   @media print{
     .action-bar, .toast, .add-btn, .remove{display:none !important;}
     .comp-block[data-included="false"]{display:none !important;}
-    .print-group{break-inside:avoid; page-break-inside:avoid;}
-    #printGroupPropiedad{break-before:page; page-break-before:always;}
-    #printGroupBarrio{break-before:page; page-break-before:always;}
+    /* Flujo natural: sin saltos forzados; las hojas se llenan solas y los bloques no se cortan a la mitad */
+    #printGroupPropiedad, #printGroupBarrio, #sectionAnalisisComparativo{break-before:auto; page-break-before:auto;}
     .comp-block{break-inside:avoid; page-break-inside:avoid;}
-    #sectionAnalisisComparativo{break-before:page; page-break-before:always; break-inside:avoid; page-break-inside:avoid;}
     .accordion-arrow{display:none !important;}
     section.card.collapsed .accordion-body{display:block !important;}
     section.card.collapsed h2{border-bottom-color:#ccc !important;}
