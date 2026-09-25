@@ -12,12 +12,12 @@ var LEAD_STATUSES = ['nuevo','contactado','calificado','visita_agendada','visita
 var STATUS_LABELS = {
   nuevo: 'Nuevo', contactado: 'Contactado', calificado: 'Calificado',
   visita_agendada: 'Visita agendada', visita_realizada: 'Visita realizada',
-  negociacion: 'Negociacion', cerrado_ganado: 'Ganado', cerrado_perdido: 'Perdido',
-  visita: 'Visita agendada', oferta: 'Negociacion', cerrado: 'Ganado', perdido: 'Perdido'
+  negociacion: 'Negociación', cerrado_ganado: 'Ganado', cerrado_perdido: 'Perdido',
+  visita: 'Visita agendada', oferta: 'Negociación', cerrado: 'Ganado', perdido: 'Perdido'
 };
 var LEGACY_STAGE_MAP = { visita: 'visita_agendada', oferta: 'negociacion', cerrado: 'cerrado_ganado', perdido: 'cerrado_perdido' };
 var ORIGINS = ['landing_page','newsletter','manual','landing','ml','chat','referido','tasacion','walkin','contacto','propiedad','whatsapp','web'];
-var ORIGIN_LABELS = { manual:'Manual', landing:'Landing', landing_page:'Landing', newsletter:'Newsletter', ml:'Mercado Libre', chat:'Chat', referido:'Referido', tasacion:'Tasacion', walkin:'Walk-in', contacto:'Contacto', propiedad:'Propiedad', whatsapp:'WhatsApp', web:'Web' };
+var ORIGIN_LABELS = { manual:'Manual', landing:'Landing', landing_page:'Landing', newsletter:'Newsletter', ml:'Mercado Libre', chat:'Chat', referido:'Referido', tasacion:'Tasación', walkin:'Walk-in', contacto:'Contacto', propiedad:'Propiedad', whatsapp:'WhatsApp', web:'Web' };
 var TIPO_CLIENTE_OPTS = ['propietario','comprador','inversor','inquilino'];
 var OPERATION_OPTS = ['compra','venta','alquiler'];
 
@@ -944,7 +944,7 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
         '<button type="button" class="crm-tab-btn" data-crm-tab="tasks">Tareas</button>' +
         '<button type="button" class="crm-tab-btn" data-crm-tab="props">Propiedades</button>' +
       '</div>' +
-      sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, buildUnifiedTimeline(activities, visits, []), tasks) +
+      sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, buildUnifiedTimeline(activities, visits, []), tasks, props) +
       '<div class="crm-side-save"><button class="btn-luxury-action" id="crmSideSaveBtn" style="width:100%;">Guardar cambios</button></div>' +
     '</div>' +
     '</div>';
@@ -955,10 +955,9 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
     b.addEventListener('click', function () { unlinkProperty(lead.id, this.dataset.propId, panel); });
   });
   bindSideSave(lead, panel);
-  bindQuickActions(lead, panel); bindPropSearch(panel, lead.id);
+  bindPropSearch(panel, lead.id);
   bindContactActions(panel, lead, (props && props[0]) || null);
-  bindQaMenu(panel);
-  bindQuickTask(panel, lead.id);
+  bindLeadTaskForm(panel, lead);
   bindAgendaActions(panel, lead.id);
   bindTlTaskActions(panel, lead.id);
   if (activities.length === TIMELINE_PAGE) {
@@ -985,7 +984,10 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
   }
 }
 
-function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks) {
+function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks, props) {
+  var propOpts = (props || []).map(function (p) {
+    return '<option value="' + p.property_id + '">' + esc(p.property_title || 'Propiedad') + '</option>';
+  }).join('');
   return '' +
     '<div class="crm-tab-content" id="crmTab-data">' +
       '<div class="crm-side-section">' +
@@ -995,29 +997,21 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks
             sideField('Email', 'crmDtlEmail', 'email', lead.email) +
           '</div>' +
           '<div class="crm-side-field-row">' +
-            sideField('Telefono', 'crmDtlPhone', 'text', lead.phone) +
-            sideField('WhatsApp', 'crmDtlWhatsapp', 'text', lead.whatsapp) +
-          '</div>' +
-          '<div class="crm-side-field-row">' +
+            sideField('Teléfono / WhatsApp', 'crmDtlPhone', 'text', lead.whatsapp || lead.phone) +
             '<div class="crm-side-field"><span class="crm-side-field-label">Contacto preferido</span>' +
               '<select class="crm-field-input crm-field-input--select" id="crmDtlPrefContact">' +
               '<option value="">&#8212;</option>' +
-              '<option value="phone"' + (lead.preferred_contact_method === 'phone' ? ' selected' : '') + '>Telefono</option>' +
-              '<option value="whatsapp"' + (lead.preferred_contact_method === 'whatsapp' ? ' selected' : '') + '>WhatsApp</option>' +
+              '<option value="phone"' + (lead.preferred_contact_method === 'phone' ? ' selected' : '') + '>Teléfono</option>' +
+              '<option value="whatsapp"' + (lead.preferred_contact_method === 'whatsapp' || (!lead.preferred_contact_method && lead.whatsapp) ? ' selected' : '') + '>WhatsApp</option>' +
               '<option value="email"' + (lead.preferred_contact_method === 'email' ? ' selected' : '') + '>Email</option></select></div>' +
-            '<div class="crm-side-field"><span class="crm-side-field-label">Origen</span><select class="crm-field-input crm-field-input--select" id="crmDtlOrigin">' + oopts + '</select></div>' +
           '</div>' +
           '<div class="crm-side-field-row">' +
+            '<div class="crm-side-field"><span class="crm-side-field-label">Origen</span><select class="crm-field-input crm-field-input--select" id="crmDtlOrigin">' + oopts + '</select></div>' +
             '<div class="crm-side-field"><span class="crm-side-field-label">Tipo cliente</span><select class="crm-field-input crm-field-input--select" id="crmDtlTipoCliente"><option value="">&#8212;</option>' + tcOpts + '</select></div>' +
           '</div>' +
           '<div class="crm-side-field-row">' +
             '<div class="crm-side-field"><span class="crm-side-field-label">Agente</span><select class="crm-field-input crm-field-input--select" id="crmDtlAgent"><option value="">Sin agente</option>' + aopts + '</select></div>' +
             '<div class="crm-side-field"><span class="crm-side-field-label">Estado</span><select class="crm-field-input crm-field-input--select" id="crmDtlStatus">' + sopts + '</select></div>' +
-          '</div>' +
-          '<div class="crm-side-field"><span class="crm-side-field-label">Próximo contacto</span><input class="crm-field-input" id="crmDtlNextFollow" type="datetime-local" value="' + (function(){ if (!lead.next_followup_at) return ''; var d = new Date(lead.next_followup_at); var pad = n => String(n).padStart(2,'0'); return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()); })() + '"></div>' +
-          '<div class="crm-side-field-row">' +
-            sideField('Presupuesto USD', 'crmDtlBudget', 'number', lead.budget_usd) +
-            sideField('Valor estimado (USD)', 'crmDtlEstValue', 'number', lead.estimated_value) +
           '</div>' +
         '</div></div>' +
       '<div class="crm-side-section"><h4 class="crm-side-section-title">Notas</h4>' +
@@ -1025,22 +1019,50 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks
       '</div>' +
     '</div>' +
     '<div class="crm-tab-content" id="crmTab-tasks" style="display:none;">' +
-      '<div class="crm-quickadd crm-quickadd--card">' +
-        '<input type="text" class="crm-field-input" id="crmQuickTask" placeholder="Tarea rápida: “Llamar mañana 10:00”, Enter para crear…">' +
-        '<button class="btn-luxury-action" id="crmQuickTaskBtn" title="Crear tarea rápida"><i class="fas fa-plus"></i></button>' +
-      '</div>' +
-      '<div class="crm-qa-row crm-qa-row--chips">' +
-        '<div class="crm-qa-btn-wrap">' +
-          '<button class="crm-qa-btn" id="crmQaTaskBtn" type="button" aria-label="Follow up"><i class="fas fa-clock"></i><span class="crm-qa-tip">Follow up</span></button>' +
-          '<div class="crm-qa-submenu" id="crmQaTaskMenu">' +
-            '<button class="crm-qa-menu-item" data-action="logCall"><i class="fas fa-phone"></i> Llamada</button>' +
-            '<button class="crm-qa-menu-item" data-action="addNoteInline"><i class="fas fa-sticky-note"></i> Nota</button>' +
+      '<div class="crm-task-form">' +
+        '<div class="crm-side-field-row">' +
+          '<div class="crm-side-field"><span class="crm-side-field-label">Acción</span>' +
+            '<select class="crm-field-input crm-field-input--select" id="leadTaskAction">' +
+              '<option value="contact" selected>Contacto / Follow up</option>' +
+              '<option value="visit">Visita</option>' +
+              '<option value="note">Nota interna</option>' +
+              '<option value="lost">Marcar perdido</option>' +
+            '</select></div>' +
+          '<div class="crm-side-field" id="ltfContactType"><span class="crm-side-field-label">Tipo de contacto</span>' +
+            '<select class="crm-field-input crm-field-input--select" id="leadTaskContactType">' +
+              '<option value="telefono">Teléfono</option>' +
+              '<option value="whatsapp" selected>WhatsApp</option>' +
+              '<option value="email">Mail</option>' +
+            '</select></div>' +
+          '<div class="crm-side-field" id="ltfPropWrap" style="display:none;"><span class="crm-side-field-label">Propiedad *</span>' +
+            '<select class="crm-field-input crm-field-input--select" id="leadTaskProp">' + propOpts + '</select></div>' +
+        '</div>' +
+        '<div class="crm-side-field" style="margin-bottom:10px;">' +
+          '<span class="crm-side-field-label" id="leadTaskDescLabel">Descripción de la tarea *</span>' +
+          '<textarea class="crm-field-input" id="leadTaskDesc" rows="2" placeholder="Ej: Llamar al cliente para confirmar interés…"></textarea></div>' +
+        '<div class="crm-side-field-row" id="ltfDuePrioRow">' +
+          '<div class="crm-side-field" id="ltfDueWrap"><span class="crm-side-field-label" id="leadTaskDueLabel">Fecha límite *</span><input class="crm-field-input" id="leadTaskDue" type="datetime-local"></div>' +
+          '<div class="crm-side-field" id="ltfPrioWrap"><span class="crm-side-field-label">Prioridad</span>' +
+            '<div class="crm-prio-auto" id="leadTaskPrioBadge"><i class="fas fa-gauge"></i> <span id="leadTaskPrioText">Se asigna según la fecha límite</span></div>' +
+            '<input type="hidden" id="leadTaskPriority" value="media">' +
           '</div>' +
         '</div>' +
-        '<button class="crm-qa-btn" data-action="scheduleVisit" type="button" aria-label="Agendar visita"><i class="fas fa-calendar-check"></i><span class="crm-qa-tip">Visita</span></button>' +
-        '<button class="crm-qa-btn crm-qa-btn--danger" data-action="markLost" type="button" aria-label="Marcar como perdido"><i class="fas fa-ban"></i><span class="crm-qa-tip">Perdido</span></button>' +
+        '<div class="crm-side-field-row">' +
+          '<div class="crm-side-field" id="ltfRemWrap"><span class="crm-side-field-label">Recordatorio (antes de vencer)</span>' +
+            '<select class="crm-field-input crm-field-input--select" id="leadTaskRemind">' +
+              '<option value="30">30 min</option>' +
+              '<option value="60">1 hora</option>' +
+              '<option value="180">3 horas</option>' +
+              '<option value="1440" selected>1 día</option>' +
+              '<option value="2880">2 días</option>' +
+              '<option value="4320">3 días</option>' +
+            '</select>' +
+            '<span class="crm-field-hint" id="leadTaskRemindHint" style="display:none;"></span></div>' +
+        '</div>' +
+        '<div style="display:flex; justify-content:flex-end; margin-top:10px;">' +
+          '<button type="button" class="btn-luxury-action" id="leadTaskAddBtn"><i class="fas fa-plus"></i> <span id="leadTaskAddLabel">Agregar Tarea</span></button>' +
+        '</div>' +
       '</div>' +
-      '<div id="crmQuickActionPanel"></div>' +
       '<div class="crm-side-section"><h4 class="crm-side-section-title">Tareas</h4><div class="crm-timeline crm-timeline--cards">' + (tasks.length ? buildUnifiedTimeline([], [], tasks) : '<div class="crm-tasks-empty"><i class="fas fa-list-check"></i><span>Sin tareas. Creá una con el campo de arriba.</span></div>') + '</div></div>' +
       '<div class="crm-side-section"><h4 class="crm-side-section-title">Historial</h4><div class="crm-timeline crm-timeline--historial">' + (timelineHtml || buildTimelineHTML([])) + '</div></div>' +
     '</div>' +
@@ -1048,7 +1070,7 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks
       '<div class="crm-side-section">' +
         '<div class="crm-side-fields"><div id="crmDtlPropsWrap">' + ph +
           '<div class="crm-prop-add">' +
-            '<input class="crm-field-input" id="crmDtlPropSearch" placeholder="Buscar propiedad por titulo...">' +
+            '<input class="crm-field-input" id="crmDtlPropSearch" placeholder="Buscar propiedad por título...">' +
             '<button class="btn-action" id="crmDtlAddProp"><i class="fas fa-plus"></i></button></div>' +
           '</div></div></div>' +
     '</div>';
@@ -1091,17 +1113,7 @@ function bindSideSave(lead, panel) {
   var originalStage = lead.stage || 'nuevo';
   btn.addEventListener('click', async function () {
     var d = collectSideForm(panel);
-    var nf = panel.querySelector('#crmDtlNextFollow');
-    if (nf && nf.value) {
-      var dt = new Date(nf.value);
-      if (isNaN(dt.getTime())) { toast('Fecha de próximo contacto inválida', 'error'); return; }
-      d.next_followup_at = dt.toISOString();
-    } else if (nf && !nf.value) {
-      d.next_followup_at = null;
-    }
     if (!d.full_name) { toast('El nombre es obligatorio.', 'error'); return; }
-    // teléfono informado pero whatsapp vacío -> copiar (se puede editar después)
-    if (d.phone && !d.whatsapp) d.whatsapp = d.phone;
     var stageChanged = d.stage && normalizeStage(d.stage) !== normalizeStage(originalStage);
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
@@ -1146,24 +1158,17 @@ function bindSideSave(lead, panel) {
 
 function collectSideForm(panel) {
   function v(id) { var el = panel.querySelector('#' + id); return el ? (el.value.trim() || null) : null; }
-  function n(id) { var val = v(id); return val && !isNaN(val) ? parseFloat(val) : null; }
   return {
     full_name: v('crmDtlName'),
     email: v('crmDtlEmail'),
     phone: v('crmDtlPhone'),
-    whatsapp: v('crmDtlWhatsapp'),
+    whatsapp: v('crmDtlPhone'),
     preferred_contact_method: v('crmDtlPrefContact'),
     stage: v('crmDtlStatus'),
     source: v('crmDtlOrigin'),
     tipo_cliente: v('crmDtlTipoCliente'),
     assigned_to: v('crmDtlAgent') || null,
-    budget_usd: n('crmDtlBudget'),
-    estimated_value: n('crmDtlEstValue'),
-    notes: v('crmDtlNotes'),
-    next_followup_at: (function () {
-      var el = panel.querySelector('#crmDtlNextFollow');
-      return (el && el.value) ? new Date(el.value).toISOString() : null;
-    })()
+    notes: v('crmDtlNotes')
   };
 }
 
@@ -1210,7 +1215,7 @@ function rerenderProps(panel, leadId, props) {
       }).join('');
   wrap.innerHTML = ph +
     '<div class="crm-prop-add">' +
-      '<input class="crm-field-input" id="crmDtlPropSearch" placeholder="Buscar propiedad por titulo...">' +
+      '<input class="crm-field-input" id="crmDtlPropSearch" placeholder="Buscar propiedad por título...">' +
       '<button class="btn-action" id="crmDtlAddProp"><i class="fas fa-plus"></i></button></div>';
   wrap.querySelectorAll('[data-action="removeProp"]').forEach(function (b) {
     b.addEventListener('click', function () { unlinkProperty(leadId, this.dataset.propId, panel); });
@@ -1264,7 +1269,7 @@ function bindPropSearch(panel, leadId) {
   });
   btn.addEventListener('click', async function () {
     var val = inp.value.trim();
-    if (!val) { toast('Ingresa un titulo.', 'error'); return; }
+    if (!val) { toast('Ingresá un título.', 'error'); return; }
     var r = await db().from('properties').select('id, title, property_code, image_urls').ilike('title', '%' + val.replace(/[%_]/g, ' ') + '%').limit(5);
     if (!r.data || !r.data.length) { toast('No se encontraron propiedades.', 'error'); return; }
     renderResults(r.data);
@@ -1282,101 +1287,6 @@ async function linkProperty(leadId, propertyId, panel) {
     rerenderProps(panel, leadId, props);
     await db().from('lead_activities').insert([{ lead_id: leadId, activity_type: 'note', title: 'Propiedad vinculada' }]).then(function () {}, function () {});
   } catch (e) { toast('Error: ' + e.message, 'error'); }
-}
-
-/* -- Quick actions -- */
-function bindQuickActions(lead, panel) {
-  var p = panel.querySelector('#crmQuickActionPanel');
-  if (!p) return;
-  var defs = [
-    { sel: '[data-action="logCall"]', label: 'Registrar llamada', type: 'call', hasDate: false, placeholder: 'Descripcion...', actTitle: 'Llamada telefonica' },
-    { sel: '[data-action="addNoteInline"]', label: 'Agregar nota', type: 'note', hasDate: false, placeholder: 'Escribi una nota...', actTitle: 'Nota' },
-    { sel: '[data-action="scheduleVisit"]', label: 'Agendar visita', type: 'visit', hasDate: true, placeholder: 'Notas para la visita...', actTitle: 'Visita agendada' },
-    { sel: '[data-action="markLost"]', label: 'Marcar perdido', type: 'lost', hasDate: false, placeholder: 'Motivo del rechazo (opcional)...', actTitle: 'Perdido / Rechazado' }]
-
-  defs.forEach(function (d) {
-    var btn = panel.querySelector(d.sel);
-    if (!btn) return;
-    btn.addEventListener('click', function () {
-      if (d.type === 'task') {
-        if (window.CrmTasks && window.CrmTasks.showTaskForm) window.CrmTasks.showTaskForm(lead.id, null, panel);
-        return;
-      }
-      p.innerHTML = '<div class="crm-quick-panel">' +
-        '<span class="crm-quick-panel-label">' + d.label + '</span>' +
-        (d.hasDate ?
-          '<div class="crm-quick-field">' +
-            '<label class="crm-quick-field-label" for="crmQaDate"><i class="fas fa-calendar"></i> Fecha y hora</label>' +
-            '<input class="crm-field-input" id="crmQaDate" type="datetime-local">' +
-          '</div>' : '') +
-        '<div class="crm-quick-field">' +
-          '<label class="crm-quick-field-label" for="crmQaText"><i class="fas fa-note-sticky"></i> ' + d.placeholder.replace(/\.\.\.$/, ' (opcional)') + '</label>' +
-          '<textarea class="crm-field-input" id="crmQaText" rows="2" placeholder="' + d.placeholder + '"></textarea>' +
-        '</div>' +
-        '<div class="crm-quick-panel-actions">' +
-          '<button class="crm-quick-btn-cancel" id="crmQaCancel" type="button">Cancelar</button>' +
-          '<button class="btn-luxury-action" id="crmQaSave" type="button">Guardar</button>' +
-        '</div></div>';
-      p.querySelector('#crmQaCancel').addEventListener('click', function () { p.innerHTML = ''; });
-      p.querySelector('#crmQaSave').addEventListener('click', async function () {
-        var txt = (p.querySelector('#crmQaText') || {}).value || '';
-        var dtEl = p.querySelector('#crmQaDate');
-        var dt = dtEl ? dtEl.value : null;
-        if (d.hasDate && !dt) { toast('Selecciona fecha y hora.', 'error'); return; }
-        try {
-          if (d.type === 'lost') {
-            if (!confirm('¿Marcar como perdido? El lead queda fuera del embudo (podés recuperarlo desde su panel cambiando el estado).')) return;
-            await db().from('leads').update({ stage: 'cerrado_perdido', last_contacted_at: new Date().toISOString() }).eq('id', lead.id);
-            if (txt.trim()) {
-              await db().from('lead_activities').insert([{ lead_id: lead.id, activity_type: 'note', title: 'Motivo del rechazo', description: txt.trim() }]);
-            }
-            toast('Marcado como perdido.', 'success');
-            p.innerHTML = '';
-            closeDetailPanel();
-            await loadLeads();
-            return;
-          }
-          if (d.type === 'call' || d.type === 'note') {
-            var aIns = await db().from('lead_activities').insert([{
-              lead_id: lead.id,
-              activity_type: d.type,
-              title: d.actTitle,
-              description: txt || null
-            }]);
-            if (aIns.error) throw new Error(aIns.error.message);
-            await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', lead.id);
-          } else if (d.type === 'visit') {
-            /* Solo registrar si hay propiedad: la tabla visits exige property_id NOT NULL */
-            var lprops = await getLeadProps(lead.id);
-            var propId = lprops.length ? lprops[0].property_id : lead.property_id;
-            if (!propId) {
-              toast('Vinculá una propiedad primero.', 'error');
-              return;
-            }
-            if (['nuevo', 'contactado', 'calificado'].indexOf(normalizeStage(lead.stage || 'nuevo')) !== -1) {
-              await db().from('leads').update({ stage: 'visita_agendada' }).eq('id', lead.id);
-            }
-            await db().from('visits').insert([{
-              property_id: propId,
-              client_name: lead.full_name || '',
-              client_phone: lead.phone || null,
-              client_email: lead.email || null,
-              visit_date: new Date(dt).toISOString(),
-              status: 'pendiente',
-              lead_id: lead.id,
-              notes: txt || null
-            }]);
-            await db().from('leads').update({ last_contacted_at: new Date().toISOString(), next_followup_at: new Date(dt).toISOString() }).eq('id', lead.id);
-          }
-          toast(d.label + ' guardado.', 'success');
-          p.innerHTML = '';
-          await loadLeads();
-          _selectedLeadId = lead.id;
-          openDetailPanel(lead.id);
-        } catch (e) { toast('Error: ' + e.message, 'error'); }
-      });
-    });
-  });
 }
 
 /* -- Init -- */
@@ -1725,46 +1635,208 @@ async function duplicateVisit(vid, leadId, panel) {
   } catch (e) { toast('Error: ' + e.message, 'error'); }
 }
 
-function bindQuickTask(panel, leadId) {
-  var inp = panel.querySelector('#crmQuickTask');
-  var btn = panel.querySelector('#crmQuickTaskBtn');
-  if (!inp || !btn) return;
-  async function go() {
-    var v = inp.value.trim();
-    if (!v || !window.CrmTasks || !window.CrmTasks.createQuick) return;
-    var ok = await window.CrmTasks.createQuick(leadId, v);
-    if (ok) {
-      inp.value = '';
-      await loadLeads();
-      openDetailPanel(leadId);
-    }
-  }
-  btn.addEventListener('click', go);
-  inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+var LEAD_TASK_TYPE_LABELS = { contact: 'Contacto', document: 'Documento', commission: 'Comisión', alert: 'Alerta', note: 'Nota interna' };
+var CONTACT_TYPE_LABELS = { telefono: 'Teléfono', whatsapp: 'WhatsApp', email: 'Mail' };
+
+async function syncLeadFollowup(leadId) {
+  try {
+    var r = await db().from('lead_tasks').select('due_at').eq('lead_id', leadId).eq('type', 'contact')
+      .in('status', ['pendiente', 'en_progreso']).not('due_at', 'is', null).order('due_at', { ascending: true }).limit(1);
+    if (r.error) return;
+    var next = (r.data && r.data[0] && r.data[0].due_at) || null;
+    await db().from('leads').update({ next_followup_at: next }).eq('id', leadId);
+  } catch (e) { console.warn('[crm] sync followup:', e.message); }
 }
 
-var __qaMenuDocBound = false;
-
-function bindQaMenu(panel) {
-  var btn = panel.querySelector('#crmQaTaskBtn');
-  var menu = panel.querySelector('#crmQaTaskMenu');
-  if (!btn || !menu) return;
-  btn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    menu.classList.toggle('open');
-  });
-  menu.querySelectorAll('.crm-qa-menu-item').forEach(function (item) {
-    item.addEventListener('click', function () { menu.classList.remove('open'); });
-  });
-  if (!__qaMenuDocBound) {
-    __qaMenuDocBound = true;
-    document.addEventListener('click', function (e) {
-      var open = document.querySelector('#crmQaTaskMenu');
-      if (open && open.classList.contains('open') && !open.contains(e.target) && e.target.id !== 'crmQaTaskBtn') {
-        open.classList.remove('open');
-      }
-    });
+function bindLeadTaskForm(panel, lead) {
+  var leadId = lead.id;
+  var actionSel = panel.querySelector('#leadTaskAction');
+  var addBtn = panel.querySelector('#leadTaskAddBtn');
+  if (!actionSel || !addBtn) return;
+  var agentId = lead.assigned_to || null;
+  var blocks = {
+    contactType: panel.querySelector('#ltfContactType'),
+    propWrap: panel.querySelector('#ltfPropWrap'),
+    duePrioRow: panel.querySelector('#ltfDuePrioRow'),
+    prio: panel.querySelector('#ltfPrioWrap'),
+    rem: panel.querySelector('#ltfRemWrap')
+  };
+  var descLabel = panel.querySelector('#leadTaskDescLabel');
+  var descInput = panel.querySelector('#leadTaskDesc');
+  var dueInput = panel.querySelector('#leadTaskDue');
+  var dueLabel = panel.querySelector('#leadTaskDueLabel');
+  var addLabel = panel.querySelector('#leadTaskAddLabel');
+  var prioInput = panel.querySelector('#leadTaskPriority');
+  var prioText = panel.querySelector('#leadTaskPrioText');
+  var prioBadge = panel.querySelector('#leadTaskPrioBadge');
+  var remSel = panel.querySelector('#leadTaskRemind');
+  var remHint = panel.querySelector('#leadTaskRemindHint');
+  var VISIBLE = {
+    contact: ['contactType', 'duePrioRow', 'prio', 'rem'],
+    visit: ['propWrap', 'duePrioRow'],
+    note: [],
+    lost: []
+  };
+  var LABELS = {
+    contact: { desc: 'Descripción de la tarea *', due: 'Fecha límite *', btn: 'Agregar Tarea', ph: 'Ej: Llamar al cliente para confirmar interés…' },
+    visit: { desc: 'Notas para la visita (opcional)', due: 'Fecha y hora de la visita *', btn: 'Agendar Visita', ph: 'Ej: Señas de la casa, con quién venir, etc.' },
+    note: { desc: 'Nota interna *', due: '', btn: 'Guardar Nota', ph: 'Ej: El cliente pidió que lo contactemos en enero…' },
+    lost: { desc: 'Motivo del rechazo (opcional)', due: '', btn: 'Marcar Perdido', ph: 'Ej: Compró por otra inmobiliaria…' }
+  };
+  var PRIO_META = {
+    urgente: { text: 'Urgente (menos de 24 h)', cls: 'is-urgente', icon: 'fa-fire' },
+    alta: { text: 'Alta (menos de 3 días)', cls: 'is-alta', icon: 'fa-arrow-up' },
+    media: { text: 'Media (menos de 7 días)', cls: 'is-media', icon: 'fa-minus' },
+    baja: { text: 'Baja (más de 7 días)', cls: 'is-baja', icon: 'fa-arrow-down' }
+  };
+  function hoursUntil(dueValue) {
+    if (!dueValue) return null;
+    var t = new Date(dueValue).getTime();
+    if (isNaN(t)) return null;
+    return (t - Date.now()) / 3600000;
   }
+  function refreshPrio() {
+    if (!prioInput || !prioText || !prioBadge) return;
+    var h = hoursUntil(dueInput && dueInput.value);
+    var key = h == null ? null : (h <= 0 || h <= 24 ? 'urgente' : h <= 72 ? 'alta' : h <= 168 ? 'media' : 'baja');
+    prioInput.value = key || 'media';
+    prioBadge.classList.remove('is-urgente', 'is-alta', 'is-media', 'is-baja', 'is-empty');
+    if (!key) {
+      prioBadge.classList.add('is-empty');
+      prioText.textContent = 'Se asigna según la fecha límite';
+      return;
+    }
+    prioBadge.classList.add(PRIO_META[key].cls);
+    prioText.textContent = PRIO_META[key].text;
+  }
+  function refreshRemind() {
+    if (!remSel) return;
+    var h = hoursUntil(dueInput && dueInput.value);
+    var limitMin = h == null ? Infinity : Math.max(0, h * 60);
+    var firstOk = null;
+    Array.prototype.forEach.call(remSel.options, function (o) {
+      var ok = parseInt(o.value, 10) <= limitMin;
+      o.disabled = !ok;
+      if (ok && firstOk == null) firstOk = o.value;
+      if (ok) remSel.value = o.value; // quedarse con la opción más grande que todavía entra
+    });
+    if (!firstOk) {
+      Array.prototype.forEach.call(remSel.options, function (o) { o.disabled = false; });
+      remSel.value = '30';
+    }
+    if (remHint) {
+      remHint.textContent = h != null && h <= 0 ? 'La fecha ya venció: elegí una fecha futura.' : '';
+      remHint.style.display = remHint.textContent ? '' : 'none';
+    }
+  }
+  function applyAction() {
+    var a = actionSel.value;
+    var vis = VISIBLE[a] || [];
+    Object.keys(blocks).forEach(function (k) {
+      if (blocks[k]) blocks[k].style.display = vis.indexOf(k) !== -1 ? '' : 'none';
+    });
+    var l = LABELS[a];
+    if (descLabel) descLabel.textContent = l.desc;
+    if (descInput) descInput.placeholder = l.ph;
+    if (dueLabel && l.due) dueLabel.textContent = l.due;
+    if (addLabel) addLabel.textContent = l.btn;
+    addBtn.classList.toggle('crm-task-add--danger', a === 'lost');
+    refreshPrio();
+    refreshRemind();
+  }
+  actionSel.addEventListener('change', applyAction);
+  if (dueInput) dueInput.addEventListener('change', function () { refreshPrio(); refreshRemind(); });
+  if (dueInput) dueInput.addEventListener('input', function () { refreshPrio(); refreshRemind(); });
+  applyAction();
+
+  addBtn.addEventListener('click', async function () {
+    var action = actionSel.value;
+    var desc = (panel.querySelector('#leadTaskDesc').value || '').trim();
+    var due = panel.querySelector('#leadTaskDue').value;
+    addBtn.disabled = true;
+    try {
+      if (action === 'contact') {
+        var contactType = panel.querySelector('#leadTaskContactType').value || null;
+        var priority = (prioInput && prioInput.value) || 'media';
+        var remind = parseInt(remSel && remSel.value, 10) || 1440;
+        if (!desc) { toast('Escribí la descripción de la tarea.', 'error'); return; }
+        if (!due) { toast('Ingresá la fecha límite.', 'error'); return; }
+        var dayStart = new Date(due); dayStart.setHours(0, 0, 0, 0);
+        var dayEnd = new Date(due); dayEnd.setHours(23, 59, 59, 999);
+        try {
+          var dup = await db().from('lead_tasks').select('id').eq('lead_id', leadId)
+            .ilike('title', desc)
+            .gte('due_at', dayStart.toISOString()).lte('due_at', dayEnd.toISOString())
+            .in('status', ['pendiente', 'en_progreso']).limit(1);
+          if (dup.data && dup.data.length) { toast('Esa tarea ya existe para este lead ese día.', 'error'); return; }
+        } catch (e) { console.warn('[crm] task dup-check:', e.message); }
+        var ins = await db().from('lead_tasks').insert([{
+          lead_id: leadId,
+          title: desc,
+          type: 'contact',
+          contact_type: contactType,
+          priority: priority,
+          status: 'pendiente',
+          due_at: new Date(due).toISOString(),
+          remind_before_minutes: remind,
+          assigned_to: agentId
+        }]);
+        if (ins.error) throw new Error(ins.error.message);
+        await syncLeadFollowup(leadId);
+        toast('Tarea creada.', 'success');
+      } else if (action === 'visit') {
+        if (!due) { toast('Seleccioná fecha y hora.', 'error'); return; }
+        var propSel = panel.querySelector('#leadTaskProp');
+        var propId = propSel && propSel.value ? propSel.value : null;
+        if (!propId) { toast('Vinculá una propiedad al lead primero.', 'error'); return; }
+        if (['nuevo', 'contactado', 'calificado'].indexOf(normalizeStage(lead.stage || 'nuevo')) !== -1) {
+          await db().from('leads').update({ stage: 'visita_agendada' }).eq('id', leadId);
+        }
+        var vIns = await db().from('visits').insert([{
+          property_id: propId,
+          client_name: lead.full_name || '',
+          client_phone: lead.whatsapp || lead.phone || null,
+          client_email: lead.email || null,
+          visit_date: new Date(due).toISOString(),
+          status: 'pendiente',
+          lead_id: leadId,
+          agent_id: agentId,
+          notes: desc || null
+        }]);
+        if (vIns.error) throw new Error(vIns.error.message);
+        await db().from('leads').update({ last_contacted_at: new Date().toISOString(), next_followup_at: new Date(due).toISOString() }).eq('id', leadId);
+        toast('Visita agendada.', 'success');
+      } else if (action === 'note') {
+        if (!desc) { toast('Escribí la nota.', 'error'); return; }
+        var nIns = await db().from('lead_activities').insert([{
+          lead_id: leadId,
+          activity_type: 'note',
+          title: 'Nota',
+          description: desc
+        }]);
+        if (nIns.error) throw new Error(nIns.error.message);
+        await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', leadId);
+        toast('Nota guardada.', 'success');
+      } else if (action === 'lost') {
+        if (!confirm('¿Marcar como perdido? El lead queda fuera del embudo (podés recuperarlo cambiando el estado).')) return;
+        var lUp = await db().from('leads').update({ stage: 'cerrado_perdido', last_contacted_at: new Date().toISOString() }).eq('id', leadId);
+        if (lUp.error) throw new Error(lUp.error.message);
+        if (desc) {
+          await db().from('lead_activities').insert([{ lead_id: leadId, activity_type: 'note', title: 'Motivo del rechazo', description: desc }]);
+        }
+        toast('Marcado como perdido.', 'success');
+        closeDetailPanel();
+        await loadLeads();
+        return;
+      }
+      await loadLeads();
+      openDetailPanel(leadId);
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    } finally {
+      addBtn.disabled = false;
+    }
+  });
 }
 
 /* -- Acciones de tareas dentro del timeline unificado -- */
@@ -1776,6 +1848,7 @@ async function doCompleteTlTask(item, leadId, panel) {
     item.classList.add('crm-tl-task--done');
     var chip = item.querySelector('.crm-tl-status');
     if (chip) { chip.textContent = 'Completada'; chip.classList.add('crm-tl-status--done'); }
+    await syncLeadFollowup(leadId);
     await loadLeads();
   } catch (e) { console.warn('[crm] complete task:', e.message); }
 }
@@ -1786,6 +1859,7 @@ async function doDeleteTlTask(item, leadId, panel) {
   if (!confirm('Eliminar esta tarea?')) return;
   try {
     await window.CrmTasks.deleteTask(taskId, item);
+    await syncLeadFollowup(leadId);
     await loadLeads();
   } catch (e) { console.warn('[crm] delete task:', e.message); }
 }
@@ -1818,7 +1892,7 @@ function buildUnifiedTimeline(activities, visits, tasks) {
   }
   var items = [];
   (activities || []).forEach(function (a) {
-    /* las visitas ya se renderizan desde la tabla visits; la actividad 'visit' (Visita agendada) duplicaria cada visita */
+    /* las visitas ya se renderizan desde la tabla visits; la actividad 'visit' (Visita agendada) duplicaría cada visita */
     if (a.activity_type === 'visit') return;
     items.push({
       _ts: a.created_at,
@@ -1867,6 +1941,9 @@ function buildUnifiedTimeline(activities, visits, tasks) {
     var dueStr = t.due_at ? fmtDateTime(t.due_at) : '';
     var overdue = t.due_at && !isDone && new Date(t.due_at).getTime() < Date.now();
     var stl = t.status === 'completada' ? 'Completada' : t.status === 'cancelada' ? 'Cancelada' : (taskStatusLbl[t.status] || t.status || 'Pendiente');
+    var typeLbl = LEAD_TASK_TYPE_LABELS[t.type] || '';
+    var contactLbl = CONTACT_TYPE_LABELS[t.contact_type] || '';
+    var agent = t.assigned_to ? _agents.filter(function (a) { return a.id === t.assigned_to; })[0] : null;
     items.push({
       _ts: t.created_at || t.due_at,
       html: '<div class="crm-interaction crm-tl-task' + (isDone ? ' crm-tl-task--done' : '') + '" data-task-id="' + t.id + '">' +
@@ -1881,8 +1958,11 @@ function buildUnifiedTimeline(activities, visits, tasks) {
           '</div>' +
           (t.description ? '<div class="crm-interaction-text">' + esc(t.description) + '</div>' : '') +
           '<div class="crm-tl-task-meta">' +
+            (typeLbl ? '<span class="crm-task-priority crm-task-priority--media" style="background:rgba(255,255,255,0.06); color:var(--text-secondary);">' + typeLbl + '</span>' : '') +
+            (contactLbl ? '<span class="crm-task-priority crm-task-priority--media" style="background:rgba(255,255,255,0.06); color:var(--text-secondary);">' + contactLbl + '</span>' : '') +
             '<span class="crm-task-priority ' + prioClass(t.priority) + '">' + (taskPrioLbl[t.priority] || 'Media') + '</span>' +
             (dueStr ? '<span class="crm-task-due' + (overdue ? ' crm-task-due--overdue' : '') + '">' + dueStr + '</span>' : '') +
+            (agent ? '<span class="crm-task-due">→ ' + esc(agent.full_name) + '</span>' : '') +
             '<span class="crm-tl-status' + (t.status === 'completada' ? ' crm-tl-status--done' : '') + '">' + stl + '</span>' +
           '</div>' +
           '<div class="crm-interaction-date">' + fmtDateTime(t.created_at) + '</div>' +

@@ -248,8 +248,8 @@ function showTaskForm(leadId, taskId, panel) {
   var prioOpts = TASK_PRIORITIES.map(function (p) { return '<option value="' + p + '"' + (p === 'media' ? ' selected' : '') + '>' + TASK_PRIORITY_LABELS[p] + '</option>'; }).join('');
   q.innerHTML = '<div class="crm-quick-panel">' +
     '<span class="crm-quick-panel-label">Nueva tarea</span>' +
-    '<input class="crm-field-input" id="crmTaskTitle" placeholder="Titulo *">' +
-    '<textarea class="crm-field-input" id="crmTaskDesc" rows="2" placeholder="Descripcion (opcional)"></textarea>' +
+    '<input class="crm-field-input" id="crmTaskTitle" placeholder="Título *">' +
+    '<textarea class="crm-field-input" id="crmTaskDesc" rows="2" placeholder="Descripción (opcional)"></textarea>' +
     '<div class="crm-side-field-row">' +
       '<div><span class="crm-side-field-label">Prioridad</span><select class="crm-field-input" id="crmTaskPriority">' + prioOpts + '</select></div>' +
       '<div><span class="crm-side-field-label">Vence</span><input class="crm-field-input" id="crmTaskDue" type="datetime-local"></div>' +
@@ -260,7 +260,7 @@ function showTaskForm(leadId, taskId, panel) {
   q.querySelector('#crmTaskCancel').addEventListener('click', function () { q.innerHTML = ''; });
   q.querySelector('#crmTaskSave').addEventListener('click', async function () {
     var title = (q.querySelector('#crmTaskTitle') || {}).value.trim();
-    if (!title) { toast('El titulo es obligatorio.', 'error'); return; }
+    if (!title) { toast('El título es obligatorio.', 'error'); return; }
     var data = {
       lead_id: leadId,
       title: title,
