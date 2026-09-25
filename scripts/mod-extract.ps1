@@ -74,7 +74,7 @@ $ftr = New-Object System.Collections.Generic.List[string]
 $ftr.Add('')
 foreach ($ex in $Exports) {
   $ftr.Add("  window.__BH.$ex = $ex;")
-  $ftr.Add("  if (!Object.prototype.hasOwnProperty.call(window, '$ex')) Object.defineProperty(window, '$ex', { get: () => $ex, configurable: true });")
+  $ftr.Add("  if (!Object.prototype.hasOwnProperty.call(window, '$ex')) Object.defineProperty(window, '$ex', { get: () => $ex, set: (v) => { $ex = v; }, configurable: true });")
 }
 $ftr.Add('})();')
 $ftr.Add('')
