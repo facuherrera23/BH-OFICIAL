@@ -4,7 +4,7 @@
    ============================================================ */
 (function () {
   'use strict';
-  const { logError, logWarn, on, PropertySchema, validateForm, getAuthedClient, loadAgentSelect, openModal, closeModal, showToast, invalidateSearchCache, updateSidebarBadges, formatPrice } = window.__BH || {};
+  const { logError, logWarn, on, PropertySchema, validateForm, getAuthedClient, loadAgentSelect, openModal, closeModal, showToast, invalidateSearchCache, updateSidebarBadges, formatPrice, esc, mutate } = window.__BH || {};
 
   /* ------------------------------------------------
      5. PROPERTIES CRUD

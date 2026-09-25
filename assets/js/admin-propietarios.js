@@ -4,7 +4,7 @@
    ============================================================ */
 (function () {
   'use strict';
-  const { logError, on, formatDateTimeWithTZ, validateForm, getAuthedClient, navigateTo, setKPI, refreshOwnerSelect, openModal, closeModal, showConfirmDialog, showInputPrompt, showToast, invalidateSearchCache, updateSidebarBadges, formatNumber, OwnerSchema } = window.__BH || {};
+  const { logError, on, formatDateTimeWithTZ, validateForm, getAuthedClient, navigateTo, setKPI, refreshOwnerSelect, openModal, closeModal, showConfirmDialog, showInputPrompt, showToast, invalidateSearchCache, updateSidebarBadges, formatNumber, OwnerSchema, esc, mutate } = window.__BH || {};
 
   /* ------------------------------------------------
      11. OWNERS CRUD

@@ -4,7 +4,7 @@
    ============================================================ */
 (function () {
   'use strict';
-  const { logError, logWarn, on, openModal, closeModal, showConfirmDialog, showToast } = window.__BH || {};
+  const { logError, logWarn, on, openModal, closeModal, showConfirmDialog, showToast, esc, mutate } = window.__BH || {};
 
   /* ------------------------------------------------
      13. PORTALS

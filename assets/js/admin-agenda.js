@@ -4,7 +4,7 @@
    ============================================================ */
 (function () {
   'use strict';
-  const { logError, on, validateForm, getAuthedClient, loadCRM, loadAgentSelect, loadPropertySelect, openModal, closeModal, showToast, invalidateSearchCache, updateSidebarBadges, VisitSchema } = window.__BH || {};
+  const { logError, on, validateForm, getAuthedClient, loadCRM, loadAgentSelect, loadPropertySelect, openModal, closeModal, showToast, invalidateSearchCache, updateSidebarBadges, VisitSchema, esc, mutate } = window.__BH || {};
 
   /* ------------------------------------------------
      8. AGENDA

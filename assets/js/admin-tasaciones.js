@@ -4,7 +4,7 @@
    ============================================================ */
 (function () {
   'use strict';
-  const { logError, on, navigateTo, openModal, closeModal, showConfirmDialog, showToast, invalidateSearchCache, updateSidebarBadges } = window.__BH || {};
+  const { logError, on, navigateTo, openModal, closeModal, showConfirmDialog, showToast, invalidateSearchCache, updateSidebarBadges, esc, mutate } = window.__BH || {};
 
   /* ------------------------------------------------
      13C. TASACIONES

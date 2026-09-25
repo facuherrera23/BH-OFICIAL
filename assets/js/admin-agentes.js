@@ -4,7 +4,7 @@
    ============================================================ */
 (function () {
   'use strict';
-  const { logError, on, AgentSchema, validateForm, getAuthedClient, uploadToCloudinary, openModal, closeModal, showToast, invalidateSearchCache, updateSidebarBadges } = window.__BH || {};
+  const { logError, on, AgentSchema, validateForm, getAuthedClient, uploadToCloudinary, openModal, closeModal, showToast, invalidateSearchCache, updateSidebarBadges, esc, mutate } = window.__BH || {};
 
   /* ------------------------------------------------
      10. AGENTS CRUD

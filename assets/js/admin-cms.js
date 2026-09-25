@@ -4,7 +4,7 @@
    ============================================================ */
 (function () {
   'use strict';
-  const { logError, on, z, getAuthedClient, showToast } = window.__BH || {};
+  const { logError, on, z, getAuthedClient, showToast, esc } = window.__BH || {};
 
   /* ------------------------------------------------
      9. CMS EDITOR

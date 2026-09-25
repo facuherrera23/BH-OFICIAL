@@ -4,7 +4,7 @@
    ============================================================ */
 (function () {
   'use strict';
-  const { logError, checkPasswordPwned, on, getAuthedClient, updateUserInfo, openModal, closeModal, downloadCSV, showToast, invalidateSearchCache } = window.__BH || {};
+  const { logError, checkPasswordPwned, on, getAuthedClient, updateUserInfo, openModal, closeModal, downloadCSV, showToast, invalidateSearchCache, esc } = window.__BH || {};
 
   /* ------------------------------------------------
      12. USERS MANAGEMENT

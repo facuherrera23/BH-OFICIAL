@@ -4,7 +4,7 @@
    ============================================================ */
 (function () {
   'use strict';
-  const { logError, on, navigateTo, setKPI, openModal, closeModal, downloadCSV, showToast } = window.__BH || {};
+  const { logError, on, navigateTo, setKPI, openModal, closeModal, downloadCSV, showToast, esc } = window.__BH || {};
 
   /* ------------------------------------------------
      SUPERVISION CENTER
