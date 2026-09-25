@@ -11,6 +11,13 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   'use strict';
   document.body.dataset.bhIifeStarted = 'true';
 
+  /* Modularización: window.adminApp y los helpers DOM se publican
+     acá (antes que cualquier asignación) porque los módulos
+     admin-*.js se cargan después de este archivo y los leen. */
+  window.adminApp = window.adminApp || {};
+  window.$ = window.$ || ((sel, ctx = document) => ctx.querySelector(sel));
+  window.$$ = window.$$ || ((sel, ctx = document) => Array.from(ctx.querySelectorAll(sel)));
+
   /* ------------------------------------------------
      DEBUG FLAG — false en producción, true solo en desarrollo
      ------------------------------------------------ */
@@ -3217,7 +3224,7 @@ on(document, 'keydown', (e) => {
     formatDateWithTZ, formatDateTimeWithTZ, getSupTimezone, setSupTimezone,
     showToast, openModal, closeModal, showConfirmDialog, showInputPrompt,
     downloadCSV, mutate, z, zodBaseType, validateForm,
-    setBtnLoading, restoreBtn, uploadToCloudinary, computeLeadScore,
+    setBtnLoading, restoreBtn,
     loadAgentSelect, loadPropertySelect, refreshOwnerSelect,
     updateSidebarBadges, invalidateSearchCache, navigateTo,
     updateAgendaBadge, sendBrowserNotification, requestNotificationPermission,
