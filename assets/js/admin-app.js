@@ -2086,8 +2086,10 @@ on(chip, 'click', () => {
       if (_chatSearchTerm) {
         const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
         const q = norm(_chatSearchTerm);
+        const normCache = new Map();
+        const normOf = (s) => { if (!normCache.has(s)) normCache.set(s, norm(s)); return normCache.get(s); };
         conversations = conversations.filter(c =>
-          norm(c.contact_name).includes(q) || norm(c.contact_handle).includes(q)
+          normOf(c.contact_name).includes(q) || normOf(c.contact_handle).includes(q)
         );
       }
       const accByPlatform = new Map((accounts || []).map(a => [a.zernio_account_id, a]));

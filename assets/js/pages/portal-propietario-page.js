@@ -6,9 +6,13 @@
     var safeUrl = (window.BHUtils && BHUtils.safeUrl) || function(s){ return s || ''; };
     var safeImageUrl = (window.BHUtils && BHUtils.safeImageUrl) || function(s){ return s || ''; };
 
+    // react-doctor-disable-next-line js-hoist-intl -- ya están hoisteados al tope del módulo (se construyen una sola vez)
     var FMT_USD = new Intl.NumberFormat('es-AR', { style:'currency', currency:'USD', maximumFractionDigits:0 });
+    // react-doctor-disable-next-line js-hoist-intl -- hoisted al tope del módulo
     var FMT_NUM = new Intl.NumberFormat('es-AR');
+    // react-doctor-disable-next-line js-hoist-intl -- hoisted al tope del módulo
     var FMT_DATE = new Intl.DateTimeFormat('es-AR', { day:'numeric', month:'short', year:'numeric' });
+    // react-doctor-disable-next-line js-hoist-intl -- hoisted al tope del módulo
     var FMT_DATETIME = new Intl.DateTimeFormat('es-AR', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
 
     function fmtUSD(v) { return v != null ? FMT_USD.format(v) : '-'; }

@@ -319,11 +319,10 @@ async function handleSummary(req: Request) {
         { count: sensitiveActionsToday },
         { count: errorsToday },
         { count: openAlerts },
-        { count: criticalAlerts }
-    ] = await Promise.all(summaryQueries);
-    
-    // Actividad reciente y alertas recientes en paralelo
-    const [recentActivityRes, recentAlertsRes] = await Promise.all([
+        { count: criticalAlerts },
+        recentActivityRes,
+        recentAlertsRes
+    ] = await Promise.all([...summaryQueries,
         supabase
             .from('audit_log')
             .select('created_at, user_id, module, action, entity_label, status')
