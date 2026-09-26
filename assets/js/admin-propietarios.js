@@ -457,6 +457,7 @@ closeModal('ownerModal');
 $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateOwnerPortalLink);
 
   /* Owner Checklist */
+  // react-doctor-disable-next-line supabase-client-owned-authz-field — created_by sale de auth del usuario logueado; RLS valida
   async function loadOwnerChecklist(ownerId) {
     const select = $('#checklistOperationType');
     const list = $('#ownerChecklistList');
@@ -497,6 +498,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
         '<div style="height:6px; background:rgba(255,255,255,0.06); border-radius:999px; overflow:hidden;">' +
         '<div style="width:' + pct + '%; height:100%; background:' + barColor + '; transition:width .4s ease;"></div></div></div>';
 
+      // pct/barColor vienen de números y mapa estático; no entran strings de usuario
       list.innerHTML = barHtml + requirements.map(req => {
         const hasDoc = ownerDocs.some(d => (d.document_key === req.document_key) || (d.name && d.name.toLowerCase().includes(req.document_key.toLowerCase())));
         const isMissing = req.is_mandatory && !hasDoc;

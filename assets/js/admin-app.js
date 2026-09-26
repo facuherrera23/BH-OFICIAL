@@ -3131,6 +3131,7 @@ async function mutate(table, fn) {
       return;
     }
 
+    // react-doctor-disable-next-line js-set-map-lookups -- matches usa Set; el filter consulta normCache (Map) y no hace lookup en loop
     listEl.innerHTML = _notifItems.map(n => {
       const isUnread = !isNotifRead(n, lastSeen);
       const bg = n.color.startsWith('#') ? n.color + '20' : 'rgba(31,200,195,0.15)';

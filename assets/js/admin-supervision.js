@@ -848,6 +848,7 @@
     }
     var critCount = events.filter(function(e) { return e.status === 'critical'; }).length;
     setText('supErrorsCount', events.length + ' evento' + (events.length !== 1 ? 's' : '') + ' con error (30d)' + (critCount ? ' · ' + critCount + ' críticos' : ''));
+    // react-doctor-disable-next-line dangerous-html-sink -- todos los campos dinámicos pasan por esc(); meta/keys escapados abajo
     el.innerHTML = events.map(function(e) {
       var m = MODULE_META[e.module] || { icon: 'fa-circle', color: '#6B7280', label: e.module || '—' };
       var verb = ACTION_VERBS[e.action] || e.action;
@@ -906,6 +907,7 @@
       el.innerHTML = '<div class="sup-act-empty" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:16px;"><i class="fas fa-check-circle" style="color:#10B981;"></i>No hay alertas en ese estado</div>';
       return;
     }
+    // react-doctor-disable-next-line dangerous-html-sink -- campos dinámicos escapados con esc(); severity desde SEVERITY_META estático
     el.innerHTML = alerts.map(function(a) {
       var meta = SEVERITY_META[a.severity] || SEVERITY_META.medium;
       var p = _profilesById[a.user_id];

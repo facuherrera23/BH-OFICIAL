@@ -1250,6 +1250,8 @@ function bindPropSearch(panel, leadId) {
     wrap.style.zIndex = '100001';
     var maxH = Math.max(200, window.innerHeight - rect.bottom - 20);
     wrap.style.maxHeight = Math.min(460, maxH) + 'px';
+    // react-doctor-disable-next-line dangerous-html-sink -- list.length/query se escapan con esc() antes de inyectar
+    var q = panel.querySelector('#crmDtlPropSearch') ? (panel.querySelector('#crmDtlPropSearch').value || '') : '';
     var header = document.createElement('div');
     header.className = 'crm-prop-results-count';
     header.innerHTML = list.length

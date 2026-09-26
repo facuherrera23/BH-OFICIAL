@@ -646,6 +646,7 @@
     }
 
     const severityColors = { critical: '#EF4444', error: '#EF4444', high: '#F97316', medium: '#FFB800', low: '#3B82F6', info: '#1FC8C3', success: 'var(--success)' };
+    // react-doctor-disable-next-line dangerous-html-sink -- meta/time escapados con esc(); severityColors es mapa estático
     listEl.innerHTML = filtered.slice(0, 100).map(a => {
       const color = severityColors[a.status] || 'var(--text-secondary)';
       const time = a.created_at ? new Date(a.created_at).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
