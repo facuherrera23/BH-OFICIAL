@@ -597,6 +597,7 @@
 <option value="en_curso">En curso</option>
 <option value="confirmada">Confirmada</option>
 <option value="completada">Completada</option>
+<option value="no_show">No asistió</option>
 <option value="cancelada">Cancelada</option>
 <option value="eliminada">🗑 Eliminadas</option>
 </select>
@@ -2533,7 +2534,9 @@
 <select name="status">
 <option value="pendiente">Pendiente</option>
 <option value="confirmada">Confirmada</option>
+<option value="en_curso">En curso</option>
 <option value="completada">Completada</option>
+<option value="no_show">No asistió</option>
 <option value="cancelada">Cancelada</option>
 </select>
 </div>
@@ -2565,6 +2568,9 @@
 </div>
 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px; align-items:center;">
 <button type="button" class="btn-action" id="visitCopyLinkBtn" style="display:none;" title="Copiar link de confirmación para el cliente"><i class="fas fa-link"></i> Copiar link</button>
+<button type="button" class="btn-action" id="visitQrBtn" style="display:none;" title="QR de llegada para pegar en la propiedad"><i class="fas fa-qrcode"></i> QR</button>
+<button type="button" class="btn-action" id="visitDuplicateBtn" style="display:none;" title="Crear otra visita con los mismos datos"><i class="fas fa-copy"></i> Duplicar</button>
+<button type="button" class="btn-action" id="visitReagendarBtn" style="display:none; color:var(--warning);" title="Reagendar esta visita cancelada con los mismos datos"><i class="fas fa-calendar-plus"></i> Reagendar</button>
 <button type="button" class="btn-action" id="visitGCalBtn" title="Agregar a Google Calendar"><i class="fab fa-google"></i> GCal</button>
 <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
 <button type="submit" class="btn-luxury-action" id="visitSaveBtn">Confirmar Cita</button>
@@ -3189,6 +3195,6 @@
 <script src="assets/js/admin-supervision-panel.js?v=2"></script>
 <script src="assets/js/admin-ficha.js?v=2"></script>
 <script src="assets/js/admin-propiedades.js?v=2"></script>
-<script src="assets/js/admin-agenda.js?v=2"></script>
+<script src="assets/js/admin-agenda.js?v=3"></script>
 <script src="assets/js/admin-supervision.js?v=14"></script></body>
 </html>

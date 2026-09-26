@@ -87,9 +87,27 @@
 
       const events = [];
 
+      if (!trashMode) {
+        const stale = (visitsRes.data || []).filter(v =>
+          v.status === 'confirmada' && !v.check_in && v.visit_date &&
+          (new Date(v.visit_date).getTime() + (v.duration_minutes || 60) * 60000 + 3 * 3600000) < Date.now());
+        if (stale.length) {
+          try {
+            await mutate('visits', async () => {
+              const { error } = await window.supabaseClient.from('visits')
+                .update({ status: 'no_show' }).in('id', stale.map(v => v.id));
+              if (error) throw error;
+            });
+            stale.forEach(v => { v.status = 'no_show'; });
+          } catch (_) {}
+        }
+      }
+
       /* Visitas programadas */
       (visitsRes.data || []).forEach(v => {
         if (!v.visit_date) return;
+        const dispStatus = (v.check_in && !v.check_out && (v.status === 'pendiente' || v.status === 'confirmada'))
+          ? 'en_curso' : (v.status || 'pendiente');
         events.push({
           key: 'vis-' + v.id,
           type: 'visita',
@@ -98,8 +116,9 @@
           date: new Date(v.visit_date),
           title: v.client_name || 'Visita',
           subtitle: (v.properties?.title ? v.properties.title : '') +
-            (v.leads?.full_name ? (v.properties?.title ? ' · ' : '') + v.leads.full_name : ''),
-          status: v.status || 'pendiente',
+            (v.leads?.full_name ? (v.properties?.title ? ' · ' : '') + v.leads.full_name : '') +
+            (v.reschedule_count ? ' · ↻ reprogramada ×' + v.reschedule_count : ''),
+          status: dispStatus,
           brokerId: v.agent_id || null,
           leadId: v.lead_id || null,
           onClick: trashMode
@@ -196,7 +215,7 @@
     const sinConfirmar = visits.filter(v => v.date >= now && v.status === 'pendiente').length;
     const mesHechas = visits.filter(v => v.status === 'completada' && v.date >= monthStart).length;
     const vencidas = visits.filter(v => v.date < now && ['pendiente', 'confirmada', 'en_curso'].includes(v.status)).length;
-    const cerradasMes = visits.filter(v => v.date >= monthStart && ['completada', 'cancelada'].includes(v.status));
+    const cerradasMes = visits.filter(v => v.date >= monthStart && ['completada', 'cancelada', 'no_show'].includes(v.status));
     const asistencia = cerradasMes.length ? Math.round(cerradasMes.filter(v => v.status === 'completada').length / cerradasMes.length * 100) + '%' : '—';
     const set = (id, val) => { const el = $(id); if (el) el.textContent = val; };
     set('#agendaKpiHoy', hoy);
@@ -491,14 +510,15 @@
       const [y, m, dd] = dateStr.split('-').map(Number);
       const target = new Date(y, m - 1, dd, d.getHours(), d.getMinutes());
       const { data: cur } = await window.supabaseClient
-        .from('visits').select('agent_id, property_id, duration_minutes').eq('id', visitId).single();
+        .from('visits').select('agent_id, property_id, duration_minutes, reschedule_count').eq('id', visitId).single();
       const conflict = await findVisitConflict(visitId, target, cur?.duration_minutes || 60, cur?.agent_id, cur?.property_id);
       if (conflict) {
         const cStart = new Date(conflict.visit_date);
         showToast('Conflicto de agenda: ya hay una visita el ' + cStart.toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + (conflict.client_name ? ' (' + conflict.client_name + ')' : ''), 'warning', 6000);
         return;
       }
-      const { error } = await window.supabaseClient.from('visits').update({ visit_date: target.toISOString() }).eq('id', visitId);
+      const { error } = await window.supabaseClient.from('visits')
+        .update({ visit_date: target.toISOString(), reschedule_count: (cur?.reschedule_count || 0) + 1 }).eq('id', visitId);
       if (error) throw error;
       if (ev && ev.leadId) {
         try {
@@ -761,7 +781,7 @@
         <td style="font-size:13px; font-weight:500;">${esc(v.client_name || 'Sin cliente')}</td>
         <td style="font-size:13px; color:var(--text-dim);">${leadLink}</td>
         <td style="font-size:12px; color:var(--text-dim);">${v.properties?.title ? esc(v.properties.title) : '—'}</td>
-        <td><span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : v.status === 'completada' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : v.status === 'completada' ? 'var(--accent)' : 'var(--warning)'}; font-size:11px;">${esc(v.status || 'pendiente')}</span>${countdownHtml}</td>
+        <td><span class="nav-badge" style="background:${v.status === 'confirmada' ? 'rgba(0,200,120,0.15)' : v.status === 'completada' ? 'rgba(31,200,195,0.15)' : v.status === 'no_show' ? 'rgba(239,68,68,0.18)' : v.status === 'en_curso' ? 'rgba(96,165,250,0.15)' : 'rgba(255,184,0,0.15)'}; color:${v.status === 'confirmada' ? 'var(--success)' : v.status === 'completada' ? 'var(--accent)' : v.status === 'no_show' ? 'var(--danger)' : v.status === 'en_curso' ? '#60a5fa' : 'var(--warning)'}; font-size:11px;">${esc(v.status === 'no_show' ? 'No asistió' : (v.status || 'pendiente'))}</span>${countdownHtml}${(v.reschedule_count || 0) > 0 ? '<span class="nav-badge" style="font-size:10px; background:rgba(167,139,250,0.15); color:#a78bfa; margin-left:6px; padding:2px 6px; border-radius:8px;" title="Cantidad de reprogramaciones"><i class="fas fa-rotate-right" style="margin-right:3px;"></i>×' + v.reschedule_count + '</span>' : ''}</td>
         <td style="font-size:12px; color:var(--text-dim);">${v.leads?.full_name ? esc(v.leads.full_name) : '—'}</td>
         <td>
           <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
@@ -1121,6 +1141,7 @@
     editingVisitId = null;
     const copyBtn = $('#visitCopyLinkBtn');
     if (copyBtn) copyBtn.style.display = 'none';
+    ['visitQrBtn', 'visitDuplicateBtn', 'visitReagendarBtn'].forEach(bid => { const b = $('#' + bid); if (b) b.style.display = 'none'; });
     const cbox = $('#visitConflictBox');
     if (cbox) cbox.style.display = 'none';
     const slotsWrap = $('#visitSlotsWrap');
@@ -1138,6 +1159,7 @@
     editingVisitId = null;
     const form = $('#visitForm');
     if (form) form.reset();
+    ['visitCopyLinkBtn', 'visitQrBtn', 'visitDuplicateBtn', 'visitReagendarBtn'].forEach(bid => { const b = $('#' + bid); if (b) b.style.display = 'none'; });
 
     loadAgentSelect($('#visitBrokerSelect'));
     loadVisitLeadSelect(prefill.lead_id || null);
@@ -1295,7 +1317,7 @@
 
     try {
       const oldVisit = editingVisitId
-        ? (await window.supabaseClient.from('visits').select('status, lead_id').eq('id', editingVisitId).single()).data
+        ? (await window.supabaseClient.from('visits').select('status, lead_id, visit_date, reschedule_count').eq('id', editingVisitId).single()).data
         : null;
       const oldStatus = oldVisit?.status ?? null;
       const oldLeadId = oldVisit?.lead_id ?? null;
@@ -1316,6 +1338,10 @@
         agent_id: validated.agent_id,
         duration_minutes: validated.duration_minutes,
       };
+      if (editingVisitId && oldVisit && oldVisit.visit_date &&
+          new Date(oldVisit.visit_date).getTime() !== new Date(data.visit_date).getTime()) {
+        data.reschedule_count = (oldVisit.reschedule_count || 0) + 1;
+      }
 
       /* Conflict detection: mismo broker O misma propiedad, horarios solapados */
       let conflict = null;
@@ -1455,6 +1481,18 @@ window.adminApp.editVisit = async function (id) {
       if (copyBtn) {
         copyBtn.style.display = data.confirmation_token ? 'inline-flex' : 'none';
         copyBtn.onclick = (e) => { e.preventDefault(); window.adminApp.copyVisitLink(id); };
+      }
+      const qrBtn = $('#visitQrBtn');
+      if (qrBtn) {
+        qrBtn.style.display = data.confirmation_token ? 'inline-flex' : 'none';
+        qrBtn.onclick = (e) => { e.preventDefault(); window.open('qr-visita.html?token=' + encodeURIComponent(data.confirmation_token), '_blank', 'noopener'); };
+      }
+      const dupBtn = $('#visitDuplicateBtn');
+      if (dupBtn) { dupBtn.style.display = 'inline-flex'; dupBtn.onclick = (e) => { e.preventDefault(); window.adminApp.duplicateVisit(id, false); }; }
+      const reagBtn = $('#visitReagendarBtn');
+      if (reagBtn) {
+        reagBtn.style.display = data.status === 'cancelada' ? 'inline-flex' : 'none';
+        reagBtn.onclick = (e) => { e.preventDefault(); window.adminApp.duplicateVisit(id, true); };
       }
 
       if (form) {
@@ -1667,6 +1705,113 @@ window.adminApp.editVisit = async function (id) {
   /* Event listeners for export buttons */
   $('#btnExportICS')?.addEventListener('click', window.adminApp.exportVisitsICS);
   $('#btnExportCSV')?.addEventListener('click', window.adminApp.exportVisitsCSV);
+
+  window.adminApp.duplicateVisit = async function (id, clearDate) {
+    try {
+      const { data: v, error } = await window.supabaseClient
+        .from('visits')
+        .select('client_name, client_phone, client_email, notes, lead_id, property_id, agent_id, duration_minutes, visit_date')
+        .eq('id', id).single();
+      if (error) throw error;
+      closeModal('visitModal');
+      window.adminApp.openVisitModal({
+        lead_id: v.lead_id, client_name: v.client_name, client_phone: v.client_phone,
+        client_email: v.client_email, duration_minutes: v.duration_minutes,
+        agent_id: v.agent_id, property_id: v.property_id,
+        visit_date: clearDate ? null : v.visit_date
+      });
+      const notesEl = $('#visitForm')?.elements['notes'];
+      if (notesEl && v.notes) notesEl.value = v.notes;
+      if (clearDate) { const d = $('#visitDateDay'); const t = $('#visitDateTime'); if (d) d.value = ''; if (t) t.value = ''; }
+      setTimeout(refreshBrokerSlots, 300);
+      showToast(clearDate ? 'Datos copiados. Elegí la nueva fecha.' : 'Visita duplicada: revisá y guardá.', 'info', 5000);
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  const VISIT_DURATION_BY_TYPE = { departamento: 30, depto: 30, casa: 45, lote: 60, terreno: 60, galpon: 90, local: 45, oficina: 45 };
+  $('#visitPropertySelect')?.addEventListener('change', async function () {
+    if (editingVisitId || !this.value || !window.supabaseClient) return;
+    try {
+      const { data: p } = await window.supabaseClient
+        .from('properties').select('property_type, status').eq('id', this.value).single();
+      if (p) {
+        if (p.status && !['active', 'publicada', 'venta', 'alquiler'].includes(p.status)) {
+          showToast('Atención: la propiedad está en estado "' + p.status + '" (no publicada).', 'warning', 5000);
+        }
+        const dur = VISIT_DURATION_BY_TYPE[String(p.property_type || '').toLowerCase()];
+        if (dur) {
+          const input = $('#visitForm')?.elements['duration_minutes'];
+          if (input) input.value = dur;
+          document.querySelectorAll('.visit-dur-chip').forEach(b => b.classList.toggle('is-active', b.dataset.min === String(dur)));
+          syncVisitDateHidden();
+        }
+      }
+    } catch (_) {}
+  });
+
+  async function promptVisitOutcome(leadId, clientName) {
+    if (!leadId) return;
+    const existing = $('#visitOutcomeModal');
+    if (existing) existing.remove();
+    const wrap = document.createElement('div');
+    wrap.className = 'admin-modal open';
+    wrap.id = 'visitOutcomeModal';
+    wrap.innerHTML = '<div class="modal-box" style="max-width:420px; text-align:center;">' +
+      '<h3 style="font-family:var(--font-heading); font-size:20px; color:#fff; margin-bottom:6px;">¿Cómo salió la visita?</h3>' +
+      '<p style="color:var(--text-dim); font-size:13px; margin-bottom:18px;">' + esc(clientName || 'El cliente') + ' — se registra en el historial del lead</p>' +
+      '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">' +
+      '<button class="btn-action" data-outcome="positiva" style="background:rgba(0,200,120,0.15); color:var(--success); padding:14px 8px;"><i class="fas fa-heart"></i> Le gustó</button>' +
+      '<button class="btn-action" data-outcome="duda" style="background:rgba(255,184,0,0.15); color:var(--warning); padding:14px 8px;"><i class="fas fa-circle-question"></i> Tiene dudas</button>' +
+      '<button class="btn-action" data-outcome="negativa" style="background:rgba(239,68,68,0.12); color:var(--danger); padding:14px 8px;"><i class="fas fa-thumbs-down"></i> No le gustó</button>' +
+      '<button class="btn-action" data-outcome="no_vino" style="background:rgba(239,68,68,0.22); color:var(--danger); padding:14px 8px;"><i class="fas fa-user-xmark"></i> No vino</button>' +
+      '</div>' +
+      '<button class="status-pill pending" data-outcome="" style="margin-top:14px;">Omitir</button>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    const LABELS = { positiva: 'Le gustó la propiedad', duda: 'Tiene dudas', negativa: 'No le gustó', no_vino: 'No asistió a la visita' };
+    wrap.querySelectorAll('[data-outcome]').forEach(btn => btn.addEventListener('click', async () => {
+      const outcome = btn.dataset.outcome;
+      wrap.remove();
+      if (!outcome) return;
+      try {
+        await window.supabaseClient.from('lead_activities').insert([{
+          lead_id: leadId,
+          activity_type: 'visit',
+          title: 'Resultado de visita: ' + LABELS[outcome],
+          description: outcome === 'no_vino' ? 'El cliente no se presentó (check-out marcado sin asistencia).' : ''
+        }]);
+        showToast('Resultado registrado en el lead.', 'success');
+        loadAgenda();
+      } catch (err) { showToast('Error: ' + err.message, 'error'); }
+    }));
+  }
+
+  window.adminApp.checkoutVisit = async function (id) {
+    try {
+      const { error } = await window.supabaseClient
+        .from('visits').update({ check_out: new Date().toISOString(), status: 'completada' }).eq('id', id);
+      if (error) throw error;
+      showToast('Salida registrada', 'success');
+      loadAgenda();
+      const { data: v } = await window.supabaseClient.from('visits').select('lead_id, client_name').eq('id', id).single();
+      if (v?.lead_id) promptVisitOutcome(v.lead_id, v.client_name);
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  function remindUpcomingVisits(events) {
+    const last = Number(localStorage.getItem('agenda:lastReminder') || 0);
+    if (Date.now() - last < 30 * 60000) return;
+    const soon = events.filter(ev => ev.type === 'visita' &&
+      (ev.status === 'pendiente' || ev.status === 'confirmada' || ev.status === 'en_curso') &&
+      ev.date && ev.date.getTime() > Date.now() && ev.date.getTime() < Date.now() + 45 * 60000);
+    if (!soon.length) return;
+    localStorage.setItem('agenda:lastReminder', String(Date.now()));
+    const list = soon.slice(0, 3).map(ev =>
+      ev.date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ' ' + ev.title).join(' • ');
+    showToast('⏰ Próximas visitas: ' + list + (soon.length > 3 ? ' (+' + (soon.length - 3) + ' más)' : ''), 'warning', 12000);
+  }
+  setInterval(() => { if ($('#tab-agenda')) remindUpcomingVisits(calEventsCache); }, 60 * 1000);
+  setTimeout(() => { if (calEventsCache.length) remindUpcomingVisits(calEventsCache); }, 4000);
 
 
   window.__BH.buildTasacionRowHtml = buildTasacionRowHtml;

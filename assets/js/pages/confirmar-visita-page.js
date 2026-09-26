@@ -44,20 +44,73 @@
         const statusMap = {
           pendiente: { icon: 'fa-clock', class: 'pending', label: 'Pendiente', badge: 'status-pendiente' },
           confirmada: { icon: 'fa-check-circle', class: 'success', label: 'Confirmada', badge: 'status-confirmada' },
+          en_curso: { icon: 'fa-door-open', class: 'success', label: 'En curso', badge: 'status-confirmada' },
           completada: { icon: 'fa-flag-checkered', class: 'success', label: 'Completada', badge: 'status-completada' },
+          no_show: { icon: 'fa-user-xmark', class: 'danger', label: 'No asistió', badge: 'status-cancelada' },
           cancelada: { icon: 'fa-times-circle', class: 'danger', label: 'Cancelada', badge: 'status-cancelada' }
         };
+        const isCheckinMode = new URLSearchParams(window.location.search).get('mode') === 'checkin';
         const s = statusMap[v.status] || statusMap.pendiente;
         icon.className = 'confirm-icon ' + s.class;
         icon.innerHTML = '<i class="fas ' + s.icon + '"></i>';
         badge.className = 'status-badge ' + s.badge;
         badge.textContent = s.label;
 
-        if (v.status === 'confirmada' || v.status === 'completada') {
+        if (isCheckinMode) {
+          if (v.status === 'cancelada' || v.status === 'completada' || v.status === 'no_show') {
+            title.textContent = 'Visita cerrada';
+            subtitle.textContent = 'Esta visita ya fue cancelada o completada.';
+            actions.style.display = 'none';
+          } else {
+            title.textContent = 'Registrar llegada';
+            subtitle.textContent = v.status === 'en_curso' ? 'La llegada ya fue registrada. ¡Éxitos con la visita!' : 'Tocá el botón al llegar a la propiedad.';
+            actions.style.display = 'flex';
+            btnConfirm.innerHTML = '<i class="fas fa-location-dot"></i> Registrar mi llegada';
+            btnConfirm.onclick = async () => {
+              btnConfirm.disabled = true;
+              btnConfirm.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Registrando...';
+              try {
+                const { data, error } = await supabaseClient
+                  .rpc('update_visit_status_by_token', { p_token: token, p_action: 'checkin' });
+                if (error) throw error;
+                if (!data?.ok) throw new Error(data?.error || 'No se pudo registrar la llegada');
+                title.textContent = '¡Llegada registrada!';
+                subtitle.textContent = 'El horario de inicio quedó guardado.';
+                actions.style.display = 'none';
+                badge.className = 'status-badge status-confirmada';
+                badge.textContent = 'En curso';
+              } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+                btnConfirm.disabled = false;
+                btnConfirm.innerHTML = '<i class="fas fa-location-dot"></i> Registrar mi llegada';
+              }
+            };
+            btnCancel.style.display = 'none';
+          }
+          document.getElementById('detailClient').textContent = v.client_name || '—';
+          document.getElementById('detailDate').textContent = v.visit_date
+            ? new Date(v.visit_date).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+            : '—';
+          document.getElementById('detailDuration').textContent = v.duration_minutes ? v.duration_minutes + ' min' : '60 min';
+          document.getElementById('detailBroker').textContent = v.agents?.full_name || 'Por asignar';
+          if (v.property && v.property.title) {
+            const prow2 = document.getElementById('detailPropertyRow');
+            const pel2 = document.getElementById('detailProperty');
+            if (pel2) pel2.textContent = v.property.title + (v.property.address ? ' (' + v.property.address + ')' : '');
+            if (prow2) prow2.style.display = '';
+          }
+          document.getElementById('detailNotes').textContent = v.notes || '—';
+          document.getElementById('visitDetails').style.display = 'block';
+          const btnWa2 = document.getElementById('btnWhatsApp');
+          if (btnWa2) btnWa2.style.display = 'none';
+          return;
+        }
+
+        if (v.status === 'confirmada' || v.status === 'completada' || v.status === 'en_curso') {
           title.textContent = 'Visita Confirmada ✓';
           subtitle.textContent = 'Tu visita está confirmada. Te esperamos.';
           actions.style.display = 'none';
-        } else if (v.status === 'cancelada') {
+        } else if (v.status === 'cancelada' || v.status === 'no_show') {
           title.textContent = 'Visita Cancelada';
           subtitle.textContent = 'Esta visita ha sido cancelada.';
           actions.style.display = 'none';
