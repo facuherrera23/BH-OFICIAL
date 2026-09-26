@@ -1819,6 +1819,42 @@ window.adminApp.editVisit = async function (id) {
     }
   };
 
+  $('#calSubscribeBtn')?.addEventListener('click', async function () {
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('agents').select('id, full_name, ics_token')
+        .eq('status', 'activo').is('deleted_at', null).order('full_name');
+      if (error) throw error;
+      const prev = $('.cal-popover');
+      if (prev) prev.remove();
+      const pop = document.createElement('div');
+      pop.className = 'cal-popover';
+      pop.style.width = '330px';
+      pop.innerHTML = '<div class="cal-popover-head"><strong>Calendario personal (feed ICS)</strong>' +
+        '<button type="button" class="btn-action cal-popover-close"><i class="fas fa-times"></i></button></div>' +
+        '<p style="font-size:11.5px; color:var(--text-dim); margin-bottom:10px;">Pegá la URL en Google Calendar (“Otros calendarios → Desde URL”), Apple u Outlook. Se actualiza sola.</p>' +
+        '<div class="cal-popover-list">' + (data || []).map(a => {
+          const feed = (window.BH_CONFIG?.SUPABASE_URL || '') + '/functions/v1/ics-feed?token=' + a.ics_token;
+          return '<div style="display:flex; gap:6px; align-items:center;"><span style="flex:1; font-size:12.5px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(a.full_name || 'Broker') + '</span>' +
+            '<button type="button" class="btn-action" data-copy-ics="' + esc(feed) + '" style="font-size:11px; padding:4px 8px;"><i class="fas fa-copy"></i> Copiar</button></div>';
+        }).join('') + '</div>';
+      document.body.appendChild(pop);
+      const r = this.getBoundingClientRect();
+      pop.style.position = 'fixed';
+      pop.style.top = (r.bottom + 8) + 'px';
+      pop.style.left = Math.max(8, Math.min(window.innerWidth - 340, r.left)) + 'px';
+      pop.querySelector('.cal-popover-close').onclick = () => pop.remove();
+      pop.querySelectorAll('[data-copy-ics]').forEach(btn => btn.addEventListener('click', async () => {
+        await navigator.clipboard.writeText(btn.dataset.copyIcs).catch(() => prompt('Copiá la URL:', btn.dataset.copyIcs));
+        showToast('URL del calendario copiada.', 'success');
+      }));
+      setTimeout(() => document.addEventListener('click', function closer(ev2) {
+        if (!pop.contains(ev2.target)) { pop.remove(); document.removeEventListener('click', closer); }
+      }), 0);
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  });
+
   /* Export ICS / CSV */
   function generateICS(visits) {
     const lines = [
@@ -1842,7 +1878,11 @@ window.adminApp.editVisit = async function (id) {
         'Estado: ' + (v.status || 'pendiente'),
         v.notes ? 'Notas: ' + v.notes : ''
       ].filter(Boolean).join('\\n');
-      const location = v.property_id ? 'Propiedad asignada' : 'Por confirmar';
+      const pAddr = v.properties?.address || '';
+      const pZone = v.properties?.zone || '';
+      const pTitle = v.properties?.title || '';
+      const location = pAddr ? (pAddr + (pZone ? ', ' + pZone : '')) : (pTitle || 'Por confirmar');
+      const mapsLink = pAddr ? '\\nMapa: https://maps.google.com/?q=' + encodeURIComponent(pAddr + (pZone ? ', ' + pZone : '')) : '';
       lines.push(
         'BEGIN:VEVENT',
         'UID:' + uid,
@@ -1850,7 +1890,7 @@ window.adminApp.editVisit = async function (id) {
         'DTSTART:' + dtStart,
         'DTEND:' + dtEnd,
         'SUMMARY:' + summary,
-        'DESCRIPTION:' + description,
+        'DESCRIPTION:' + description + mapsLink,
         'LOCATION:' + location,
         'STATUS:' + (v.status === 'confirmada' ? 'CONFIRMED' : v.status === 'cancelada' ? 'CANCELLED' : 'TENTATIVE'),
         'END:VEVENT'
@@ -1876,7 +1916,7 @@ window.adminApp.editVisit = async function (id) {
         v.client_email || '',
         v.agents?.full_name || '',
         v.status || '',
-        v.property_id ? 'Sí' : 'No',
+        v.properties?.title || '',
         v.leads?.full_name || '',
         (v.notes || '').replace(/\n/g, ' '),
         checkin,
@@ -1886,15 +1926,29 @@ window.adminApp.editVisit = async function (id) {
     return [headers.join(','), ...rows].join('\n');
   }
 
+  async function fetchFilteredVisits() {
+    const trashMode = ($('#calStatusFilter')?.value === 'eliminada');
+    let q = window.supabaseClient
+      .from('visits')
+      .select('*, agents(full_name), leads(full_name), properties(title, address, zone)')
+      .gte('visit_date', new Date(Date.now() - 180 * 86400000).toISOString())
+      .lte('visit_date', new Date(Date.now() + 180 * 86400000).toISOString())
+      .order('visit_date', { ascending: true });
+    q = trashMode ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null);
+    const st = !trashMode && $('#calStatusFilter')?.value;
+    if (st) q = q.eq('status', st);
+    const br = $('#calBrokerFilter')?.value;
+    if (br) q = q.eq('agent_id', br);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data || [];
+  }
+
   window.adminApp.exportVisitsICS = async function() {
     if (!window.supabaseClient) return;
     try {
-      const { data, error } = await window.supabaseClient
-        .from('visits')
-        .select('*, agents(full_name), leads(full_name)')
-        .order('visit_date', { ascending: true });
-      if (error) throw error;
-      const ics = generateICS(data || []);
+      const data = await fetchFilteredVisits();
+      const ics = generateICS(data);
       const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1911,12 +1965,8 @@ window.adminApp.editVisit = async function (id) {
   window.adminApp.exportVisitsCSV = async function() {
     if (!window.supabaseClient) return;
     try {
-      const { data, error } = await window.supabaseClient
-        .from('visits')
-        .select('*, agents(full_name), leads(full_name)')
-        .order('visit_date', { ascending: true });
-      if (error) throw error;
-      const csv = generateCSV(data || []);
+      const data = await fetchFilteredVisits();
+      const csv = generateCSV(data);
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
