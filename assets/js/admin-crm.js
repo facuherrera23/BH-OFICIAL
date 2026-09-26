@@ -1228,11 +1228,17 @@ function bindPropSearch(panel, leadId) {
   var inp = panel.querySelector('#crmDtlPropSearch');
   if (!btn || !inp) return;
   function renderResults(list) {
-    var existing = panel.querySelector('.crm-prop-results');
-    if (existing) existing.remove();
+    document.querySelectorAll('.crm-prop-results').forEach(function (el) { el.remove(); });
     if (!list.length) return;
     var wrap = document.createElement('div');
     wrap.className = 'crm-prop-results';
+    // position:fixed para que el dropdown no quede recortado por el overflow del panel
+    var rect = inp.getBoundingClientRect();
+    wrap.style.position = 'fixed';
+    wrap.style.left = rect.left + 'px';
+    wrap.style.top = (rect.bottom + 8) + 'px';
+    wrap.style.width = rect.width + 'px';
+    wrap.style.right = 'auto';
     list.forEach(function (p) {
       var b = document.createElement('button');
       b.className = 'crm-prop-result-btn';
@@ -1252,17 +1258,26 @@ function bindPropSearch(panel, leadId) {
       });
       wrap.appendChild(b);
     });
-    inp.parentNode.appendChild(wrap);
+    document.body.appendChild(wrap);
+    function closeOnOutside(e) {
+      if (!wrap.contains(e.target) && e.target !== inp) {
+        wrap.remove();
+        document.removeEventListener('click', closeOnOutside, true);
+      }
+    }
+    setTimeout(function () { document.addEventListener('click', closeOnOutside, true); }, 0);
   }
   var timer;
   inp.addEventListener('input', function () {
     var val = this.value.trim();
     clearTimeout(timer);
-    var dd = panel.querySelector('.crm-prop-results');
-    if (dd) dd.remove();
+    var dd = panel.ownerDocument.querySelectorAll('.crm-prop-results');
+    dd.forEach(function (el) { el.remove(); });
     if (val.length < 2) return;
+    var q = val.replace(/[%_]/g, ' ');
     timer = setTimeout(function () {
-      db().from('properties').select('id, title, property_code, image_urls').ilike('title', '%' + val.replace(/[%_]/g, ' ') + '%').limit(8)
+      db().from('properties').select('id, title, property_code, image_urls')
+        .or('title.ilike.%' + q + '%,property_code.ilike.%' + q + '%').limit(8)
         .then(function (r) { renderResults(r.data || []); })
         .catch(function () {});
     }, 300);
@@ -1270,7 +1285,9 @@ function bindPropSearch(panel, leadId) {
   btn.addEventListener('click', async function () {
     var val = inp.value.trim();
     if (!val) { toast('Ingresá un título.', 'error'); return; }
-    var r = await db().from('properties').select('id, title, property_code, image_urls').ilike('title', '%' + val.replace(/[%_]/g, ' ') + '%').limit(5);
+    var q = val.replace(/[%_]/g, ' ');
+    var r = await db().from('properties').select('id, title, property_code, image_urls')
+      .or('title.ilike.%' + q + '%,property_code.ilike.%' + q + '%').limit(8);
     if (!r.data || !r.data.length) { toast('No se encontraron propiedades.', 'error'); return; }
     renderResults(r.data);
   });
@@ -1281,7 +1298,7 @@ async function linkProperty(leadId, propertyId, panel) {
     var r = await db().from('lead_properties').insert([{ lead_id: leadId, property_id: propertyId }]);
     if (r.error) throw new Error(r.error.message);
     toast('Propiedad agregada.', 'success');
-    var dd = panel.querySelector('.crm-prop-results'); if (dd) dd.remove();
+    var dd = document.querySelectorAll('.crm-prop-results'); dd.forEach(function (el) { el.remove(); });
     var inp = panel.querySelector('#crmDtlPropSearch'); if (inp) inp.value = '';
     var props = await getLeadProps(leadId);
     rerenderProps(panel, leadId, props);
