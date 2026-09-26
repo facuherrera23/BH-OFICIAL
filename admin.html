@@ -593,6 +593,7 @@
 <button class="status-pill" id="calViewDayBtn" title="Vista día">Día</button>
 </div>
 <div style="display:flex; gap:8px; flex-wrap:wrap;">
+<input type="search" id="calSearchInput" placeholder="🔍 Buscar visita, cliente, propiedad..." style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px; min-width:230px;" />
 <select id="calStatusFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
 <option value="">Todos los estados</option>
 <option value="pendiente">Pendiente</option>
@@ -2523,6 +2524,25 @@
 </div>
 </div>
 <div class="form-field">
+<label>Plantilla rápida</label>
+<select id="visitTemplateSelect">
+<option value="">— Sin plantilla —</option>
+<option value="primera" data-dur="45" data-notes="Primera visita: presentación, recorrido completo y cuestionario de interés.">Primera visita</option>
+<option value="revisita" data-dur="30" data-notes="Revisita: resolver dudas pendientes y medir interés de cierre.">Revisita</option>
+<option value="llaves" data-dur="15" data-notes="Entrega de llaves y acta.">Entrega de llaves</option>
+<option value="openhouse" data-dur="120" data-notes="Open house: atención a múltiples interesados.">Open house</option>
+<option value="tasacion" data-dur="60" data-notes="Tasación: toma de datos y fotos de la propiedad.">Tasación</option>
+</select>
+</div>
+<div class="form-field">
+<label>Repetir</label>
+<select name="recurrence">
+<option value="">No repetir</option>
+<option value="weekly_4">Semanal ×4</option>
+<option value="weekly_8">Semanal ×8</option>
+</select>
+</div>
+<div class="form-field">
 <label>Lead vinculado</label>
 <select name="lead_id" id="visitLeadSelectEl">
 <option value="">— Sin lead (visita espontánea) —</option>
@@ -3202,6 +3222,6 @@
 <script src="assets/js/admin-supervision-panel.js?v=2"></script>
 <script src="assets/js/admin-ficha.js?v=2"></script>
 <script src="assets/js/admin-propiedades.js?v=2"></script>
-<script src="assets/js/admin-agenda.js?v=6"></script>
+<script src="assets/js/admin-agenda.js?v=7"></script>
 <script src="assets/js/admin-supervision.js?v=14"></script></body>
 </html>

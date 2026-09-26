@@ -123,6 +123,7 @@
           status: dispStatus,
           brokerId: v.agent_id || null,
           leadId: v.lead_id || null,
+          raw: v,
           onClick: trashMode
             ? async function () {
                 if (!confirm('¿Restaurar esta visita eliminada?')) return;
@@ -131,7 +132,7 @@
                 showToast('Visita restaurada.', 'success');
                 loadAgenda();
               }
-            : function () { window.adminApp.editVisit(v.id); }
+            : function () { openVisitDetail(calEventsCache.find(x => x.key === 'vis-' + v.id)); }
         });
       });
 
@@ -227,6 +228,67 @@
     set('#agendaKpiMes', mesHechas);
     set('#agendaKpiVencidas', vencidas);
     set('#agendaKpiAsistencia', asistencia);
+    const badge = document.querySelector('[data-tab="tab-agenda"] .nav-badge');
+    if (badge) { badge.textContent = hoy; badge.style.display = hoy > 0 ? '' : 'none'; }
+    if (!window.__agendaBaseTitle) window.__agendaBaseTitle = document.title;
+    document.title = (hoy > 0 ? '(' + hoy + ') ' : '') + window.__agendaBaseTitle;
+  }
+
+  function openVisitDetail(ev) {
+    if (!ev || !ev.raw) return;
+    const v = ev.raw;
+    const prev = $('#visitDetailPop');
+    if (prev) prev.remove();
+    const pop = document.createElement('div');
+    pop.className = 'cal-popover';
+    pop.id = 'visitDetailPop';
+    const when = new Date(v.visit_date).toLocaleString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+    const addr = v.properties?.address || '';
+    const waNum = (window.BH_CRM && window.BH_CRM.waNumber && v.client_phone) ? window.BH_CRM.waNumber(v.client_phone) : null;
+    const canCheckin = (v.status === 'pendiente' || v.status === 'confirmada') && !v.check_in;
+    const canCheckout = v.check_in && !v.check_out && v.status !== 'completada' && v.status !== 'cancelada';
+    pop.innerHTML =
+      '<div class="cal-popover-head"><strong>' + esc(v.client_name || 'Visita') + '</strong>' +
+      '<button type="button" class="btn-action cal-popover-close"><i class="fas fa-times"></i></button></div>' +
+      '<div style="font-size:12.5px; color:var(--text-secondary); display:grid; gap:6px;">' +
+      '<div><i class="fas fa-clock" style="width:16px; color:var(--text-dim);"></i> ' + esc(when) + ' · ' + (v.duration_minutes || 60) + ' min</div>' +
+      (v.properties?.title ? '<div><i class="fas fa-house" style="width:16px; color:var(--text-dim);"></i> ' + esc(v.properties.title) + '</div>' : '') +
+      (addr ? '<div><i class="fas fa-location-dot" style="width:16px; color:var(--text-dim);"></i> ' + esc(addr) + '</div>' : '') +
+      (v.agents?.full_name ? '<div><i class="fas fa-user-tie" style="width:16px; color:var(--text-dim);"></i> ' + esc(v.agents.full_name) + '</div>' : '') +
+      (v.leads?.full_name ? '<div><i class="fas fa-user" style="width:16px; color:var(--text-dim);"></i> Lead: ' + esc(v.leads.full_name) + '</div>' : '') +
+      '<div><span class="nav-badge" style="font-size:11px;">' + esc(v.status === 'no_show' ? 'No asistió' : v.status) + '</span></div>' +
+      (v.notes ? '<div style="font-size:12px; color:var(--text-dim); border-top:1px solid rgba(255,255,255,0.06); padding-top:6px;">' + esc(v.notes) + '</div>' : '') +
+      '</div>' +
+      '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:12px;">' +
+      '<button class="btn-action" data-vd="edit" style="font-size:11px;"><i class="fas fa-pen"></i> Editar</button>' +
+      (canCheckin ? '<button class="btn-action" data-vd="checkin" style="font-size:11px; background:rgba(0,200,120,0.15); color:var(--success);"><i class="fas fa-sign-in-alt"></i> Llegué</button>' : '') +
+      (canCheckout ? '<button class="btn-action" data-vd="checkout" style="font-size:11px; background:rgba(31,200,195,0.15); color:var(--accent);"><i class="fas fa-sign-out-alt"></i> Me fui</button>' : '') +
+      (waNum ? '<a class="btn-action" href="https://wa.me/' + waNum + '" target="_blank" rel="noopener" style="font-size:11px; color:#25D366;"><i class="fab fa-whatsapp"></i> WhatsApp</a>' : '') +
+      (addr ? '<button class="btn-action" data-vd="copyaddr" style="font-size:11px;"><i class="fas fa-location-dot"></i> Dirección</button>' : '') +
+      '<button class="btn-action" data-vd="dup" style="font-size:11px;"><i class="fas fa-copy"></i> Duplicar</button>' +
+      (v.confirmation_token ? '<button class="btn-action" data-vd="link" style="font-size:11px;"><i class="fas fa-link"></i> Link</button>' : '') +
+      '</div>';
+    document.body.appendChild(pop);
+    pop.style.position = 'fixed';
+    pop.style.top = '50%'; pop.style.left = '50%';
+    pop.style.transform = 'translate(-50%, -50%)';
+    pop.style.width = '340px';
+    pop.style.zIndex = '1300';
+    pop.querySelector('.cal-popover-close').onclick = () => pop.remove();
+    pop.querySelectorAll('[data-vd]').forEach(btn => btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const act = btn.dataset.vd;
+      pop.remove();
+      if (act === 'edit') window.adminApp.editVisit(v.id);
+      else if (act === 'checkin') window.adminApp.checkinVisit(v.id);
+      else if (act === 'checkout') window.adminApp.checkoutVisit(v.id);
+      else if (act === 'dup') window.adminApp.duplicateVisit(v.id, false);
+      else if (act === 'link') window.adminApp.copyVisitLink(v.id);
+      else if (act === 'copyaddr') await navigator.clipboard.writeText(addr).catch(() => prompt('Copiá la dirección:', addr)).then(() => showToast('Dirección copiada.', 'success'));
+    }));
+    setTimeout(() => document.addEventListener('click', function closer(e2) {
+      if (!pop.contains(e2.target)) { pop.remove(); document.removeEventListener('click', closer); }
+    }), 0);
   }
 
   /* ---------- Helpers de fecha ---------- */
@@ -241,7 +303,8 @@
     return {
       status: $('#calStatusFilter')?.value || '',
       type: $('#calTypeFilter')?.value || '',
-      broker: $('#calBrokerFilter')?.value || ''
+      broker: $('#calBrokerFilter')?.value || '',
+      q: ($('#calSearchInput')?.value || '').trim().toLowerCase()
     };
   }
 
@@ -250,6 +313,7 @@
     if (f.broker && ev.brokerId !== f.broker) return false;
     if (f.status === 'eliminada') return ev.type === 'visita';
     if (f.status && (!ev.status || ev.status !== f.status)) return false;
+    if (f.q && !(ev.title + ' ' + (ev.subtitle || '')).toLowerCase().includes(f.q)) return false;
     return true;
   }
 
@@ -782,6 +846,7 @@
   $('#calStatusFilter')?.addEventListener('change', function () { renderAgenda(); });
   $('#calTypeFilter')?.addEventListener('change', function () { renderAgenda(); });
   $('#calBrokerFilter')?.addEventListener('change', function () { renderAgenda(); });
+  $('#calSearchInput')?.addEventListener('input', function () { renderAgenda(); });
 
   /* Persistencia de filtros (sobrevive al cambio de pestaña/recarga) */
   ['calStatusFilter', 'calTypeFilter', 'calBrokerFilter'].forEach(id => {
@@ -902,6 +967,20 @@
   }
 
   populateBrokerFilters();
+
+  (async function setMyAgendaDefault() {
+    if (localStorage.getItem('agenda:calBrokerFilter') || !window.supabaseClient) return;
+    try {
+      const { data: { user } } = await window.supabaseClient.auth.getUser();
+      if (!user) return;
+      const { data: me } = await window.supabaseClient
+        .from('agents').select('id').eq('profile_id', user.id).is('deleted_at', null).maybeSingle();
+      if (me?.id) {
+        const sel = $('#calBrokerFilter');
+        if (sel) { sel.value = me.id; localStorage.setItem('agenda:calBrokerFilter', me.id); renderAgenda(); }
+      }
+    } catch (_) {}
+  })();
 
   function visitRowHtml(v) {
     const dateStr = v.visit_date
@@ -1399,6 +1478,18 @@
 
   initVisitDateFields();
 
+  $('#visitTemplateSelect')?.addEventListener('change', function () {
+    const opt = this.options[this.selectedIndex];
+    if (!opt || !opt.dataset.dur) return;
+    const form = $('#visitForm');
+    if (!form) return;
+    const dur = form.elements['duration_minutes'];
+    if (dur) dur.value = opt.dataset.dur;
+    document.querySelectorAll('.visit-dur-chip').forEach(b => b.classList.toggle('is-active', b.dataset.min === opt.dataset.dur));
+    const notes = form.elements['notes'];
+    if (notes && !notes.value) notes.value = opt.dataset.notes || '';
+  });
+
   /* Chips de duración: 1 click fija el campo */
   document.querySelectorAll('.visit-dur-chip').forEach(btn => {
     btn.addEventListener('click', function () {
@@ -1639,6 +1730,22 @@
           } else {
             showToast(`Link de confirmación copiado al portapapeles`, 'info', 8000);
           }
+        }
+        const rec = formData.get('recurrence');
+        if (inserted?.id && (rec === 'weekly_4' || rec === 'weekly_8')) {
+          const n = rec === 'weekly_4' ? 4 : 8;
+          const baseMs = new Date(data.visit_date).getTime();
+          const copies = [];
+          for (let i = 1; i < n; i++) {
+            copies.push({ ...insertData, confirmation_token: crypto.randomUUID(), visit_date: new Date(baseMs + i * 7 * 86400000).toISOString() });
+          }
+          try {
+            await mutate('visits', async () => {
+              const { error } = await window.supabaseClient.from('visits').insert(copies);
+              if (error) throw error;
+            });
+            showToast('Serie de ' + n + ' visitas semanales creada.', 'success');
+          } catch (err) { showToast('Error al crear la serie: ' + err.message, 'error'); }
         }
       }
 
