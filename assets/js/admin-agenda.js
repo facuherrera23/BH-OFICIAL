@@ -46,7 +46,15 @@
     contact: 'contacto'
   };
 
+  let _loadAgendaLast = 0, _loadAgendaTimer = null;
   async function loadAgenda() {
+    const nowMs = Date.now();
+    if (nowMs - _loadAgendaLast < 1500) {
+      if (_loadAgendaTimer) return;
+      _loadAgendaTimer = setTimeout(() => { _loadAgendaTimer = null; loadAgenda(); }, 1500);
+      return;
+    }
+    _loadAgendaLast = nowMs;
     invalidateSearchCache();
     const client = await getAuthedClient();
     if (!client) return;
@@ -2267,7 +2275,12 @@ window.adminApp.editVisit = async function (id) {
       ev.date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ' ' + ev.title).join(' • ');
     showToast('⏰ Próximas visitas: ' + list + (soon.length > 3 ? ' (+' + (soon.length - 3) + ' más)' : ''), 'warning', 12000);
   }
-  setInterval(() => { if ($('#tab-agenda')) remindUpcomingVisits(calEventsCache); }, 60 * 1000);
+  setInterval(() => {
+    const tab = $('#tab-agenda');
+    if (!tab || tab.offsetParent === null) return;
+    renderAgenda();
+    remindUpcomingVisits(calEventsCache);
+  }, 60 * 1000);
   setTimeout(() => { if (calEventsCache.length) remindUpcomingVisits(calEventsCache); }, 4000);
 
 
