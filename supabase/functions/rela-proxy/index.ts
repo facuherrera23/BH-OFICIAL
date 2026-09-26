@@ -124,6 +124,7 @@ class RelaClient {
         method,
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': 'BienenhausCRM/1.0 (contacto@bienenhaus.com.ar)' },
         body: body === undefined ? undefined : JSON.stringify(body),
+        redirect: 'error',
       });
     } catch (err) {
       if (attempt < RETRY_DELAYS_MS.length) { await sleep(RETRY_DELAYS_MS[attempt]); return this.request(method, path, body, attempt + 1, refreshed); }

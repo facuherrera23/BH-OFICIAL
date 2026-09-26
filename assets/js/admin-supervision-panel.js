@@ -20,6 +20,7 @@
       return;
     }
     if (!currentUser || !window.supabaseClient) return;
+    // react-doctor-disable-next-line supabase-client-owned-authz-field -- patrón intencional del CRM (ADR 003): RLS valida la fila
     if (currentProfile?.role !== 'super_admin') {
       showToast('Acceso denegado: solo Super Admin', 'error');
       navigateTo('tab-dashboard');
