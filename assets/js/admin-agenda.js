@@ -11,7 +11,8 @@
      ------------------------------------------------ */
   let calCurrentDate = new Date();
   let calEventsCache = [];
-  let calViewMode = 'month'; // 'month' | 'week' | 'day'
+  let calViewMode = localStorage.getItem('agenda:viewMode') || 'month';
+  let _calPrevViewMode = 'month';
 
   const AGENDA_TYPE_LABELS = {
     visita: 'Visita',
@@ -118,6 +119,7 @@
           subtitle: (v.properties?.title ? v.properties.title : '') +
             (v.leads?.full_name ? (v.properties?.title ? ' · ' : '') + v.leads.full_name : '') +
             (v.reschedule_count ? ' · ↻ reprogramada ×' + v.reschedule_count : ''),
+          durationMin: v.duration_minutes || 60,
           status: dispStatus,
           brokerId: v.agent_id || null,
           leadId: v.lead_id || null,
@@ -166,6 +168,7 @@
           title: t.title || 'Tarea',
           subtitle: ('Prioridad: ' + (t.priority || 'media')) +
             (t.leads?.full_name ? ' · ' + t.leads.full_name : ''),
+          durationMin: 30,
           status: t.status || 'pendiente',
           brokerId: t.assigned_to || t.leads?.assigned_to || null,
           leadId: t.lead_id || null,
@@ -345,13 +348,14 @@
           eventsHtml += agendaEventEl(ev);
         });
         if (dayEvents.length > maxShow) {
-          eventsHtml += '<div class="cal-event-more" data-goto-date="' + dateStr + '">+' + (dayEvents.length - maxShow) + ' más</div>';
+          eventsHtml += '<div class="cal-event-more" data-goto-date="' + dateStr + '" data-popover="1">+' + (dayEvents.length - maxShow) + ' más</div>';
         }
 
         const otherMonthClass = isCurrentMonth ? '' : ' other-month';
         const todayClass = isCurrentMonth && isToday ? ' today' : '';
+        const heatCls = dayEvents.length >= 5 ? ' cal-heat-3' : dayEvents.length >= 3 ? ' cal-heat-2' : dayEvents.length >= 1 ? ' cal-heat-1' : '';
 
-        html += '<div class="cal-day' + otherMonthClass + todayClass + '" data-date="' + dateStr + '" data-current-month="' + isCurrentMonth + '">' +
+        html += '<div class="cal-day' + otherMonthClass + todayClass + heatCls + '" data-date="' + dateStr + '" data-current-month="' + isCurrentMonth + '">' +
           '<div class="cal-day-number">' + dayNum + '</div>' +
           '<div class="cal-events">' + eventsHtml + '</div>' +
           '</div>';
@@ -368,7 +372,34 @@
     bindAgendaClicks();
   }
 
-  /* ---------- Vista Semana ---------- */
+  /* ---------- Vista Semana: grilla horaria 7:00-21:00 ---------- */
+  const CAL_HOUR_START = 7, CAL_HOUR_END = 21, CAL_HOUR_H = 48;
+
+  function laneEventsHtml(dayEvents, hourH) {
+    const H = hourH || CAL_HOUR_H;
+    const items = dayEvents.filter(ev => ev.date);
+    items.sort((a, b) => a.date - b.date);
+    let html = '';
+    const lanes = [];
+    items.forEach(ev => {
+      const startMin = (ev.date.getHours() - CAL_HOUR_START) * 60 + ev.date.getMinutes();
+      const dur = ev.durationMin || 60;
+      const clampedStart = Math.max(0, Math.min(startMin, (CAL_HOUR_END - CAL_HOUR_START) * 60 - 15));
+      const endMin = Math.min(startMin + dur, (CAL_HOUR_END - CAL_HOUR_START) * 60);
+      let lane = 0;
+      while (lanes[lane] !== undefined && lanes[lane] > startMin) lane++;
+      lanes[lane] = endMin;
+      const totalLanes = lanes.filter(l => l > startMin).length || 1;
+      const width = 100 / Math.max(totalLanes, lanes.length);
+      const top = (clampedStart / 60) * H;
+      const height = Math.max(22, ((endMin - Math.max(startMin, 0)) / 60) * H);
+      const timeStr = ev.date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+      html += '<div class="cal-event cal-event-lane ev-' + ev.type + (ev.status ? ' ev--' + ev.status : '') + '" data-key="' + ev.key + '" title="' + esc((timeStr + ' ' + ev.title + (ev.subtitle ? ' — ' + ev.subtitle : ''))) + '" style="top:' + top + 'px; height:' + height + 'px; left:' + (lane * width) + '%; width:' + width + '%;">' +
+        '<span class="ag-event-time">' + esc(timeStr) + '</span> ' + esc(ev.title) + '</div>';
+    });
+    return html;
+  }
+
   function renderWeekView() {
     const container = $('#calendarWeekGrid');
     if (!container) return;
@@ -387,35 +418,37 @@
       if (!eventsByDay[dk]) eventsByDay[dk] = [];
       eventsByDay[dk].push(ev);
     });
-    Object.keys(eventsByDay).forEach(dk => {
-      eventsByDay[dk].sort((a, b) => (a.date - b.date));
-    });
 
-    const todayStr = agendaDayKey(new Date());
-    let html = '';
+    const todayDk = agendaDayKey(new Date());
+    let gutter = '<div class="cal-hours-gutter">';
+    for (let h = CAL_HOUR_START; h < CAL_HOUR_END; h++) {
+      gutter += '<div class="cal-hour-label" style="height:' + CAL_HOUR_H + 'px">' + String(h).padStart(2, '0') + ':00</div>';
+    }
+    gutter += '</div>';
+
+    let colsHtml = '';
     for (let i = 0; i < 7; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
       const dk = agendaDayKey(d);
-      const isToday = dk === todayStr;
-      let eventsHtml = '';
-      (eventsByDay[dk] || []).forEach(ev => {
-        eventsHtml += agendaEventEl(ev);
-      });
-      html +=
-        '<div class="cal-week-col' + (isToday ? ' today' : '') + '" data-date="' + dk + '">' +
+      const isToday = dk === todayDk;
+      const evs = (eventsByDay[dk] || []);
+      colsHtml +=
+        '<div class="cal-week-col cal-week-col-lane' + (isToday ? ' today' : '') + '" data-date="' + dk + '">' +
         '<div class="cal-week-day-head">' +
         '<span class="cal-week-dayname">' + AGENDA_DOW_SHORT[i] + '</span>' +
         '<span class="cal-week-daynum">' + d.getDate() + '</span>' +
         '</div>' +
-        '<div class="cal-week-events">' + (eventsHtml || '<span class="cal-week-empty">—</span>') + '</div>' +
-        '</div>';
+        '<div class="cal-hours-lane" style="height:' + ((CAL_HOUR_END - CAL_HOUR_START) * CAL_HOUR_H) + 'px">' +
+        laneEventsHtml(evs) +
+        (isToday ? '<div class="cal-now-line" style="top:' + (((new Date().getHours() - CAL_HOUR_START) * 60 + new Date().getMinutes()) / 60 * CAL_HOUR_H) + 'px"></div>' : '') +
+        '</div></div>';
     }
-    container.innerHTML = html;
+    container.innerHTML = '<div class="cal-week-headrow"><div class="cal-hours-corner"></div></div>' + '<div class="cal-week-body">' + gutter + '<div class="cal-week-cols">' + colsHtml + '</div></div>';
     bindAgendaClicks();
   }
 
-  /* ---------- Vista Día ---------- */
+  /* ---------- Vista Día: timeline horario ---------- */
   function renderDayView() {
     const container = $('#calendarDayView');
     if (!container) return;
@@ -428,44 +461,67 @@
       .filter(ev => agendaDayKey(ev.date) === dk && agendaMatches(ev, f))
       .sort((a, b) => (a.date - b.date));
 
-    let html = '';
+    const isToday = dk === agendaDayKey(new Date());
+    const totalH = (CAL_HOUR_END - CAL_HOUR_START) * CAL_HOUR_H * 1.3;
+    let gutter = '<div class="cal-hours-gutter">';
+    for (let h = CAL_HOUR_START; h < CAL_HOUR_END; h++) {
+      gutter += '<div class="cal-hour-label" style="height:' + (CAL_HOUR_H * 1.3) + 'px">' + String(h).padStart(2, '0') + ':00</div>';
+    }
+    gutter += '</div>';
+
+    const laneHtml = dayEvents.length ? laneEventsHtml(dayEvents, CAL_HOUR_H * 1.3) : '';
+    const nowLine = isToday
+      ? '<div class="cal-now-line" style="top:' + (((new Date().getHours() - CAL_HOUR_START) * 60 + new Date().getMinutes()) / 60 * CAL_HOUR_H * 1.3) + 'px"><span>' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ' — ahora</span></div>'
+      : '';
+
+    let html = '<div style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">' +
+      '<button type="button" class="status-pill" id="calDayBackBtn"><i class="fas fa-arrow-left"></i> Volver</button>' +
+      '<button type="button" class="status-pill" id="calDayAddBtn" style="background:rgba(31,200,195,0.12); border-color:rgba(31,200,195,0.35); color:var(--accent);"><i class="fas fa-plus"></i> Visita este día</button>' +
+      '</div>';
+    html += '<div class="cal-week-body">' + gutter +
+      '<div class="cal-hours-lane cal-day-lane" data-date="' + dk + '" style="height:' + totalH + 'px">' + laneHtml + nowLine + '</div></div>';
     if (!dayEvents.length) {
-      html = '<div class="cal-day-empty">Sin eventos para este día'
-        + ' <button type="button" class="btn-action" id="calDayEmptyAdd" style="margin-left:12px;"><i class="fas fa-plus"></i> Agendar visita aquí</button></div>';
-    } else {
-      const isToday = dk === agendaDayKey(new Date());
-      let nowMarked = false;
-      dayEvents.forEach(ev => {
-        if (isToday && !nowMarked && ev.date.getTime() >= Date.now()) {
-          html += '<div class="cal-day-now"><span>' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ' — ahora</span></div>';
-          nowMarked = true;
-        }
-        const timeStr = ev.date
-          ? ev.date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-          : '';
-        html +=
-          '<div class="cal-day-row" data-key="' + ev.key + '">' +
-          '<div class="cal-day-row-time">' + esc(timeStr) + '</div>' +
-          '<div class="cal-day-row-main">' +
-          '<div class="cal-event ev-' + ev.type + '" data-key="' + ev.key + '">' + esc(ev.title) + '</div>' +
-          (ev.subtitle ? '<div class="cal-day-row-sub">' + esc(ev.subtitle) + '</div>' : '') +
-          '</div>' +
-          '</div>';
-      });
-      if (isToday && !nowMarked) {
-        html += '<div class="cal-day-now"><span>' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + ' — día finalizado</span></div>';
-      }
+      html += '<div class="cal-day-empty" style="padding:10px 0 0;">Sin eventos para este día.</div>';
     }
     container.innerHTML = html;
-    const addBtn = $('#calDayEmptyAdd');
+    const backBtn = $('#calDayBackBtn');
+    if (backBtn) backBtn.addEventListener('click', () => { calViewMode = _calPrevViewMode || 'month'; renderAgenda(); });
+    const addBtn = $('#calDayAddBtn');
     if (addBtn) addBtn.addEventListener('click', () => { if (window.adminApp.openVisitModal) window.adminApp.openVisitModal({ visit_date: calCurrentDate.toISOString() }); });
     bindAgendaClicks();
+  }
+
+  function renderMiniCal() {
+    const box = $('#calMiniMonth');
+    if (!box) return;
+    const year = calCurrentDate.getFullYear();
+    const month = calCurrentDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const startDay = (firstDay.getDay() + 6) % 7;
+    const todayStr = agendaDayKey(new Date());
+    const selStr = agendaDayKey(calCurrentDate);
+    const counts = {};
+    calEventsCache.forEach(ev => { const dk = agendaDayKey(ev.date); counts[dk] = (counts[dk] || 0) + 1; });
+    let html = '<div class="cal-mini-head">' + AGENDA_MONTH_NAMES[month] + ' ' + year + '</div><div class="cal-mini-grid">';
+    ['L', 'M', 'M', 'J', 'V', 'S', 'D'].forEach(d => { html += '<span class="cal-mini-dow">' + d + '</span>'; });
+    for (let i = 0; i < startDay; i++) html += '<span></span>';
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dk = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+      const cls = 'cal-mini-day' + (dk === todayStr ? ' today' : '') + (dk === selStr ? ' sel' : '') + (counts[dk] ? ' has' : '');
+      html += '<button type="button" class="' + cls + '" data-date="' + dk + '" title="' + (counts[dk] || 0) + ' eventos">' + d + (counts[dk] ? '<i></i>' : '') + '</button>';
+    }
+    box.innerHTML = html + '</div>';
+    box.querySelectorAll('.cal-mini-day').forEach(b => {
+      b.onclick = () => goToDayView(b.getAttribute('data-date'));
+    });
   }
 
   function renderAgenda() {
     if (calViewMode === 'week') renderWeekView();
     else if (calViewMode === 'day') renderDayView();
     else renderMonthView();
+    renderMiniCal();
     updateViewSwitcher();
   }
 
@@ -538,8 +594,10 @@
   function goToDayView(dateStr) {
     const parts = String(dateStr).split('-');
     if (parts.length !== 3) return;
+    if (calViewMode !== 'day') _calPrevViewMode = calViewMode;
     calCurrentDate = new Date(+parts[0], +parts[1] - 1, +parts[2]);
     calViewMode = 'day';
+    localStorage.setItem('agenda:viewMode', 'day');
     renderAgenda();
   }
 
@@ -559,7 +617,7 @@
         e.dataTransfer.effectAllowed = 'move';
       });
     });
-    document.querySelectorAll('#calendarGrid .cal-day[data-date], #calendarWeekGrid .cal-week-col[data-date]').forEach(el => {
+    document.querySelectorAll('#calendarGrid .cal-day[data-date], #calendarWeekGrid .cal-week-col[data-date], #calendarDayView .cal-day-lane[data-date]').forEach(el => {
       el.addEventListener('dragover', function (e) {
         if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('text/plain')) { e.preventDefault(); el.classList.add('cal-drop-target'); }
       });
@@ -600,7 +658,41 @@
     document.querySelectorAll('#calendarGrid .cal-event-more[data-goto-date]').forEach(el => {
       el.onclick = function (e) {
         e.stopPropagation();
-        goToDayView(el.getAttribute('data-goto-date'));
+        const dateStr = el.getAttribute('data-goto-date');
+        const events = calEventsCache
+          .filter(ev => agendaDayKey(ev.date) === dateStr && agendaMatches(ev, agendaFilters()))
+          .sort((a, b) => a.date - b.date);
+        const prev = $('.cal-popover');
+        if (prev) prev.remove();
+        const pop = document.createElement('div');
+        pop.className = 'cal-popover';
+        pop.innerHTML =
+          '<div class="cal-popover-head"><strong>' + new Date(+dateStr.slice(0, 4), +dateStr.slice(5, 7) - 1, +dateStr.slice(8, 10)).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }) + '</strong>' +
+          '<button type="button" class="btn-action cal-popover-close"><i class="fas fa-times"></i></button></div>' +
+          '<div class="cal-popover-list">' +
+          events.map(ev => {
+            const t = ev.date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+            return '<div class="cal-event ev-' + ev.type + (ev.status ? ' ev--' + ev.status : '') + '" data-key="' + ev.key + '" style="white-space:normal;">' + esc(t + ' ' + ev.title) + '</div>';
+          }).join('') +
+          '</div>' +
+          '<button type="button" class="status-pill cal-popover-day" style="margin-top:8px;"><i class="fas fa-calendar-day"></i> Ver día completo</button>';
+        document.body.appendChild(pop);
+        const r = el.getBoundingClientRect();
+        pop.style.position = 'fixed';
+        pop.style.top = Math.min(window.innerHeight - 320, r.bottom + 6) + 'px';
+        pop.style.left = Math.max(8, Math.min(window.innerWidth - 300, r.left)) + 'px';
+        pop.querySelector('.cal-popover-close').onclick = () => pop.remove();
+        pop.querySelector('.cal-popover-day').onclick = () => { pop.remove(); goToDayView(dateStr); };
+        pop.querySelectorAll('.cal-event[data-key]').forEach(evEl => {
+          evEl.onclick = () => {
+            const ev = calEventsCache.find(x => x.key === evEl.getAttribute('data-key'));
+            pop.remove();
+            if (ev && ev.onClick) ev.onClick();
+          };
+        });
+        setTimeout(() => document.addEventListener('click', function closer(ev2) {
+          if (!pop.contains(ev2.target)) { pop.remove(); document.removeEventListener('click', closer); }
+        }), 0);
       };
     });
   }
@@ -612,18 +704,14 @@
     calCurrentDate = new Date();
     renderAgenda();
   });
-  $('#calViewMonthBtn')?.addEventListener('click', function () {
-    calViewMode = 'month';
+  function setCalViewMode(mode) {
+    calViewMode = mode;
+    localStorage.setItem('agenda:viewMode', mode);
     renderAgenda();
-  });
-  $('#calViewWeekBtn')?.addEventListener('click', function () {
-    calViewMode = 'week';
-    renderAgenda();
-  });
-  $('#calViewDayBtn')?.addEventListener('click', function () {
-    calViewMode = 'day';
-    renderAgenda();
-  });
+  }
+  $('#calViewMonthBtn')?.addEventListener('click', function () { setCalViewMode('month'); });
+  $('#calViewWeekBtn')?.addEventListener('click', function () { setCalViewMode('week'); });
+  $('#calViewDayBtn')?.addEventListener('click', function () { if (calViewMode !== 'day') _calPrevViewMode = calViewMode; setCalViewMode('day'); });
   $('#calStatusFilter')?.addEventListener('change', function () { renderAgenda(); });
   $('#calTypeFilter')?.addEventListener('change', function () { renderAgenda(); });
   $('#calBrokerFilter')?.addEventListener('change', function () { renderAgenda(); });
@@ -700,7 +788,24 @@
     if (e.key === 'ArrowLeft') { calStep(-1); e.preventDefault(); }
     else if (e.key === 'ArrowRight') { calStep(1); e.preventDefault(); }
     else if (e.key === 't' || e.key === 'T') { calCurrentDate = new Date(); renderAgenda(); }
+    else if (e.key === '1') { calViewMode = 'month'; localStorage.setItem('agenda:viewMode', 'month'); renderAgenda(); }
+    else if (e.key === '2') { calViewMode = 'week'; localStorage.setItem('agenda:viewMode', 'week'); renderAgenda(); }
+    else if (e.key === '3') { calViewMode = 'day'; localStorage.setItem('agenda:viewMode', 'day'); renderAgenda(); }
+    else if (e.key === 'n' || e.key === 'N') { if (window.adminApp.openVisitModal) { e.preventDefault(); window.adminApp.openVisitModal({}); } }
   });
+
+  (function bindAgendaSwipe() {
+    let sx = null;
+    const area = document.getElementById('visitsCalendarView');
+    if (!area) return;
+    area.addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
+    area.addEventListener('touchend', e => {
+      if (sx === null) return;
+      const dx = e.changedTouches[0].clientX - sx;
+      if (Math.abs(dx) > 70 && !e.target.closest('.cal-event')) calStep(dx < 0 ? 1 : -1);
+      sx = null;
+    }, { passive: true });
+  })();
 
   /* ---------- Filtro de brokers (solo calendario) ---------- */
   async function populateBrokerFilters() {

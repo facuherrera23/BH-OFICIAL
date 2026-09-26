@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 <!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-<link rel="stylesheet" href="assets/css/admin.css?v=118" />
+<link rel="stylesheet" href="assets/css/admin.css?v=119" />
 </head>
 <body class="is-loading">
 <!-- PRELOADER LUXURY -->
@@ -620,6 +620,9 @@
 </select>
 </div>
 </div>
+<div class="cal-main-row">
+<div id="calMiniMonth" class="cal-mini"></div>
+<div class="cal-main-grid">
 <div class="calendar-grid" id="calendarGrid" style="display:grid; grid-template-columns:repeat(7, 1fr); gap:4px;">
 <!-- Días de la semana -->
 <div class="cal-day-header" style="font-weight:600; color:var(--text-dim); font-size:11px; text-align:center; padding:8px 4px; text-transform:uppercase;">Lun</div>
@@ -635,6 +638,8 @@
 <div class="calendar-week-grid" id="calendarWeekGrid" style="display:none;"></div>
 <!-- Vista Día -->
 <div class="calendar-day-view" id="calendarDayView" style="display:none;"></div>
+</div>
+</div>
 <!-- Leyenda de tipos -->
 <div class="calendar-legend" id="calendarLegend">
 <span><span class="badge-dot ev-dot-visita"></span> Visita</span>
@@ -3195,6 +3200,6 @@
 <script src="assets/js/admin-supervision-panel.js?v=2"></script>
 <script src="assets/js/admin-ficha.js?v=2"></script>
 <script src="assets/js/admin-propiedades.js?v=2"></script>
-<script src="assets/js/admin-agenda.js?v=3"></script>
+<script src="assets/js/admin-agenda.js?v=4"></script>
 <script src="assets/js/admin-supervision.js?v=14"></script></body>
 </html>

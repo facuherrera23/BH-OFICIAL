@@ -5194,3 +5194,36 @@ input[type="range"]::-moz-range-thumb {
   .cal-event{background:#fff;border:1px solid #333;color:#000}
   .cal-day-row-sub,.cal-day-header{color:#333}
 }
+
+/* ---------- Agenda fase 3: grilla horaria, mini-cal, heatmap, popover ---------- */
+.cal-main-row{display:flex;gap:14px;align-items:flex-start}
+.cal-main-grid{flex:1;min-width:0}
+.cal-mini{width:210px;flex-shrink:0;background:rgba(255,255,255,0.02);border:1px solid var(--border-subtle);border-radius:12px;padding:10px}
+.cal-mini-head{font-size:12px;font-weight:700;color:var(--text-secondary);text-align:center;margin-bottom:6px;font-family:var(--font-heading)}
+.cal-mini-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-mini-dow{font-size:9px;color:var(--text-dim);text-align:center;text-transform:uppercase;padding:2px 0}
+.cal-mini-day{position:relative;background:transparent;border:none;color:var(--text-muted);font-size:10.5px;padding:4px 0;border-radius:6px;cursor:pointer;text-align:center}
+.cal-mini-day:hover{background:rgba(31,200,195,0.12)}
+.cal-mini-day.today{color:var(--accent);font-weight:800;box-shadow:inset 0 0 0 1px var(--accent)}
+.cal-mini-day.sel{background:rgba(31,200,195,0.2);color:#fff}
+.cal-mini-day i{position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--accent)}
+@media (max-width:900px){.cal-main-row{flex-direction:column}.cal-mini{width:100%}}
+.cal-heat-1{background:rgba(31,200,195,0.05)}
+.cal-heat-2{background:rgba(31,200,195,0.10)}
+.cal-heat-3{background:rgba(31,200,195,0.16)}
+.cal-week-body{display:flex;min-height:0}
+.cal-week-cols{display:grid;grid-template-columns:repeat(7,1fr);flex:1;min-width:0}
+.cal-hours-gutter{flex-shrink:0;width:46px}
+.cal-hours-corner{width:46px;flex-shrink:0}
+.cal-hour-label{font-size:9.5px;color:var(--text-dim);text-align:right;padding:2px 5px 0 0;border-top:1px solid rgba(255,255,255,0.04);box-sizing:border-box}
+.cal-hours-lane{position:relative;flex:1;background:repeating-linear-gradient(to bottom,transparent 0,transparent 47px,rgba(255,255,255,0.045) 47px,rgba(255,255,255,0.045) 48px);border-radius:6px}
+.cal-event-lane{position:absolute;overflow:hidden;font-size:10px;padding:2px 5px;border-radius:5px;cursor:pointer;white-space:nowrap;text-overflow:ellipsis;border-left:2px solid rgba(255,255,255,0.25)}
+.cal-event-lane:hover{filter:brightness(1.3);z-index:5;box-shadow:0 2px 10px rgba(0,0,0,0.4)}
+.cal-now-line{position:absolute;left:0;right:0;border-top:2px solid #ef4444;pointer-events:none;z-index:4}
+.cal-now-line span{position:absolute;right:4px;top:-16px;font-size:9.5px;color:#ef4444;background:rgba(0,0,0,0.4);padding:0 4px;border-radius:4px}
+.cal-day-lane .cal-event-lane{font-size:12px;padding:4px 8px}
+.cal-popover{z-index:1200;width:290px;max-height:320px;overflow-y:auto;background:#14161c;border:1px solid var(--border-accent);border-radius:12px;padding:12px;box-shadow:0 12px 40px rgba(0,0,0,0.6)}
+.cal-popover-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;color:#fff;font-size:13px}
+.cal-popover-list{display:flex;flex-direction:column;gap:4px}
+.cal-week-col-lane{border:1px solid var(--border-subtle);border-radius:8px;overflow:hidden}
+.cal-week-col-lane .cal-hours-lane{border-radius:0}
