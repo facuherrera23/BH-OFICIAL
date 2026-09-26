@@ -61,13 +61,7 @@
         .order('visit_date', { ascending: true });
       visitsQ = trashMode ? visitsQ.not('deleted_at', 'is', null) : visitsQ.is('deleted_at', null);
       const [visitsRes, actsRes, tasksRes, timelineRes] = await Promise.all([
-        client
-          .from('visits')
-          .select('*, leads(id, full_name, stage), agents(id, full_name), properties(id, title, property_code)')
-          .is('deleted_at', null)
-          .gte('visit_date', new Date(Date.now() - 180 * 86400000).toISOString())
-          .lte('visit_date', new Date(Date.now() + 180 * 86400000).toISOString())
-          .order('visit_date', { ascending: true }),
+        visitsQ,
         client
           .from('lead_activities')
           .select('*, leads(id, full_name, stage, assigned_to)')
@@ -468,15 +462,45 @@
     if (day) day.style.display = calViewMode === 'day' ? 'block' : 'none';
   }
 
-  async function rescheduleVisitToDay(visitId, dateStr, oldDate) {
+  async function findVisitConflict(excludeId, start, durationMin, agentId, propertyId) {
+    if (!agentId && !propertyId) return null;
+    const startMs = start.getTime();
+    const endMs = startMs + (durationMin || 60) * 60 * 1000;
+    let cq = window.supabaseClient
+      .from('visits')
+      .select('id, client_name, visit_date, duration_minutes, agent_id, property_id')
+      .in('status', ['pendiente', 'confirmada', 'en_curso'])
+      .is('deleted_at', null)
+      .neq('id', excludeId || '00000000-0000-0000-0000-000000000000');
+    const parts = [];
+    if (agentId) parts.push('agent_id.eq.' + agentId);
+    if (propertyId) parts.push('property_id.eq.' + propertyId);
+    cq = cq.or(parts.join(','));
+    const { data: probConflicts } = await cq;
+    return (probConflicts || []).find(c => {
+      const cStart = new Date(c.visit_date).getTime();
+      const cEnd = cStart + (c.duration_minutes || 60) * 60 * 1000;
+      return startMs < cEnd && endMs > cStart;
+    }) || null;
+  }
+
+  async function rescheduleVisitToDay(visitId, dateStr, oldDate, ev) {
     if (!confirm('Mover la visita al ' + dateStr + '?')) return;
     try {
       const d = new Date(oldDate);
       const [y, m, dd] = dateStr.split('-').map(Number);
       const target = new Date(y, m - 1, dd, d.getHours(), d.getMinutes());
+      const { data: cur } = await window.supabaseClient
+        .from('visits').select('agent_id, property_id, duration_minutes').eq('id', visitId).single();
+      const conflict = await findVisitConflict(visitId, target, cur?.duration_minutes || 60, cur?.agent_id, cur?.property_id);
+      if (conflict) {
+        const cStart = new Date(conflict.visit_date);
+        showToast('Conflicto de agenda: ya hay una visita el ' + cStart.toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + (conflict.client_name ? ' (' + conflict.client_name + ')' : ''), 'warning', 6000);
+        return;
+      }
       const { error } = await window.supabaseClient.from('visits').update({ visit_date: target.toISOString() }).eq('id', visitId);
       if (error) throw error;
-      if (ev.leadId) {
+      if (ev && ev.leadId) {
         try {
           await window.supabaseClient.from('lead_activities').insert([{
             lead_id: ev.leadId,
@@ -529,7 +553,7 @@
         const visitId = key.slice(4);
         const ev = calEventsCache.find(x => x.key === key);
         if (!ev) return;
-        await rescheduleVisitToDay(visitId, targetDate, ev.date);
+        await rescheduleVisitToDay(visitId, targetDate, ev.date, ev);
       });
     });
 
@@ -1294,25 +1318,9 @@
       };
 
       /* Conflict detection: mismo broker O misma propiedad, horarios solapados */
-      if ((data.agent_id || data.property_id) && data.visit_date && data.duration_minutes) {
-        const visitStart = new Date(data.visit_date).getTime();
-        const visitEnd = visitStart + data.duration_minutes * 60 * 1000;
-        let cq = window.supabaseClient
-          .from('visits')
-          .select('id, client_name, visit_date, duration_minutes, agent_id, property_id')
-          .in('status', ['pendiente', 'confirmada', 'en_curso'])
-          .is('deleted_at', null)
-          .neq('id', editingVisitId || '00000000-0000-0000-0000-000000000000');
-        const parts = [];
-        if (data.agent_id) parts.push('agent_id.eq.' + data.agent_id);
-        if (data.property_id) parts.push('property_id.eq.' + data.property_id);
-        cq = cq.or(parts.join(','));
-        const { data: probConflicts } = await cq;
-        const conflict = (probConflicts || []).find(c => {
-          const cStart = new Date(c.visit_date).getTime();
-          const cEnd = cStart + (c.duration_minutes || 60) * 60 * 1000;
-          return visitStart < cEnd && visitEnd > cStart;
-        });
+      let conflict = null;
+      if ((data.agent_id || data.property_id) && data.visit_date) {
+        conflict = await findVisitConflict(editingVisitId, new Date(data.visit_date), data.duration_minutes || 60, data.agent_id, data.property_id);
         if (conflict) {
           const motivo = data.agent_id && conflict.agent_id === data.agent_id
             ? `el broker ya tiene una visita (${conflict.client_name || 'otra'})`
