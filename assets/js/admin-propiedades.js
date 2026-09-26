@@ -354,6 +354,26 @@
     refreshPreviewBadges();
   });
 
+  /* Toggle USD/ARS del campo precio (el label vive en cada field, se alterna display + required) */
+  function togglePriceFields() {
+    const currency = $('#priceCurrencySelect')?.value || 'USD';
+    const usdField = document.getElementById('priceUsdField');
+    const arsField = document.getElementById('priceArsField');
+    if (!usdField || !arsField) return;
+    const isArs = currency === 'ARS';
+    usdField.style.display = isArs ? 'none' : '';
+    arsField.style.display = isArs ? '' : 'none';
+    const usdInput = usdField.querySelector('input');
+    const arsInput = arsField.querySelector('input');
+    if (usdInput) { usdInput.required = !isArs; usdInput.disabled = isArs; }
+    if (arsInput) { arsInput.required = isArs; arsInput.disabled = !isArs; }
+  }
+  const currencySelBind = document.getElementById('priceCurrencySelect');
+  if (currencySelBind) {
+    currencySelBind.addEventListener('change', togglePriceFields);
+    togglePriceFields();
+  }
+
   /* Save property */
   on($('#propertyForm'), 'submit', async (e) => {
     e.preventDefault();
