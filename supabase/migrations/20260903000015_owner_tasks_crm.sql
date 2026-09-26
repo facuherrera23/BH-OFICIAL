@@ -56,6 +56,7 @@ CREATE INDEX IF NOT EXISTS idx_owner_tasks_overdue
 ALTER TABLE owner_tasks ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "owner_tasks_auth" ON owner_tasks;
+-- react-doctor-disable-next-line supabase-rls-policy-risk -- owner_tasks es tabla interna del CRM; TODO staff autenticado gestiona leads/tareas (decisión de diseño)
 CREATE POLICY "owner_tasks_auth" ON owner_tasks
   FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
