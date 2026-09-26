@@ -268,12 +268,9 @@ serve(async (req) => {
       const searchRes = await mlFetch(accessToken, "GET", `/users/${mlUserId}/items/search?status=active&limit=100`);
       const searchData = await searchRes.json();
       if (!searchData.results) return new Response(JSON.stringify({ error: "No items found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      const results: any[] = [];
-      for (const itemId of searchData.results.slice(0, 20)) {
-        const itemRes = await mlFetch(accessToken, "GET", `/items/${itemId}`);
-        const itemData = await itemRes.json();
-        results.push(itemData);
-      }
+      const idsToFetch = searchData.results.slice(0, 20);
+      const itemResults = await Promise.all(idsToFetch.map((itemId: string) => mlFetch(accessToken, "GET", `/items/${itemId}`)));
+      const results: any[] = await Promise.all(itemResults.map((r) => r.json()));
       return new Response(JSON.stringify({ items: results, total: searchData.paging?.total || 0 }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 

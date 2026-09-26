@@ -376,7 +376,8 @@
       if (pub) txt += ' · ' + pub;
       return '<span class="prop-status-badge ' + cls + '"><i class="fas ' + (sold ? 'fa-check-circle' : (p.is_published ? 'fa-circle' : 'fa-pen')) + '"></i> ' + esc(txt) + '</span>';
     }
-    function fmtARS(v) { return v != null ? new Intl.NumberFormat('es-AR', { style:'currency', currency:'ARS', maximumFractionDigits:0 }).format(v) : ''; }
+    var FMT_ARS = new Intl.NumberFormat('es-AR', { style:'currency', currency:'ARS', maximumFractionDigits:0 });
+    function fmtARS(v) { return v != null ? FMT_ARS.format(v) : ''; }
     function portalWaNumber(phone) {
       var d = String(phone || '').replace(/\D/g, '');
       if (!d) return null;

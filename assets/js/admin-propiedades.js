@@ -485,8 +485,12 @@
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
         body: JSON.stringify({ property_id: propertyId })
       });
+      if (!res.ok) {
+        const errOut = await res.json().catch(() => ({}));
+        logWarn('ficha-publish falló (' + res.status + '): ' + (errOut.error || 'desconocido'));
+        return;
+      }
       const out = await res.json().catch(() => ({}));
-      if (!res.ok) { logWarn('ficha-publish falló (' + res.status + '): ' + (out.error || 'desconocido')); return; }
       console.log('[ficha] generada para', propertyId, out.url || '');
     } catch (e) {
       logWarn('ficha-publish fetch error: ' + e.message);
@@ -772,10 +776,8 @@
       const bar = $('#propBulkPublishMl');
       if (bar) { bar.disabled = true; bar.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Publicando en ML…'; }
       let ok = 0; const fails = [];
-      for (const id of ids) {
-        try { await mlApiCall('publish', { property_id: id }); ok++; }
-        catch (err) { fails.push(err.message); }
-      }
+      const results = await Promise.allSettled(ids.map(id => mlApiCall('publish', { property_id: id })));
+      results.forEach(r => { if (r.status === 'fulfilled') ok++; else fails.push(r.reason?.message || String(r.reason)); });
       if (bar) { bar.disabled = false; bar.innerHTML = '<i class="fas fa-shopping-cart"></i> Publicar en ML'; }
       showToast(`ML: ${ok} publicadas${fails.length ? ', ' + fails.length + ' con error' : ''}`, fails.length ? 'warning' : 'success');
       await mlCheckStatus(true);

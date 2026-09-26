@@ -2090,10 +2090,11 @@ on(chip, 'click', () => {
           norm(c.contact_name).includes(q) || norm(c.contact_handle).includes(q)
         );
       }
+      const accByPlatform = new Map((accounts || []).map(a => [a.zernio_account_id, a]));
       if (_chatPlatformFilter !== 'all') {
         conversations = conversations.filter(c => {
           if (c.platform === _chatPlatformFilter) return true;
-          const acc = accounts?.find(a => a.zernio_account_id === c.account_id);
+          const acc = accByPlatform.get(c.account_id);
           return acc?.platform === _chatPlatformFilter;
         });
       }
@@ -3348,13 +3349,17 @@ on(document, 'keydown', (e) => {
         { name: 'Usuarios', sub: 'Roles y permisos', tab: 'tab-usuarios', color: '#8B5CF6', icon: 'fas fa-user-shield', keys: ['usuario', 'rol', 'permiso'] },
         { name: 'Configuración', sub: 'Integraciones y ajustes', tab: 'tab-configuracion', color: 'var(--text-dim)', icon: 'fas fa-cog', keys: ['config', 'ajuste', 'integracion'] },
       ];
+      const gsCache = new Map();
+      const gsCached = (k, fn) => { if (!gsCache.has(k)) gsCache.set(k, fn(k)); return gsCache.get(k); };
+      const gsNormKeys = (keys) => gsCached(keys, ks => ks.map(k => gsNorm(k)));
+      const gsNormStr = (s) => gsCached(s, gsNorm);
       MODULE_HITS.forEach((m) => {
-        if (m.keys.some((k) => gsNorm(k).startsWith(q) || (q.length >= 3 && gsNorm(k).includes(q)))) {
+        if (gsNormKeys(m.keys).some((k) => k.startsWith(q) || (q.length >= 3 && k.includes(q)))) {
           results.push({ icon: m.icon, text: 'Módulo: ' + m.name, sub: m.sub, tab: m.tab, color: m.color, action: () => navigateTo(m.tab) });
         }
       });
 
-      const matches = (fields) => fields.some(f => f && gsNorm(f).includes(q));
+      const matches = (fields) => fields.some(f => f && gsNormStr(f).includes(q));
 
       for (const p of cache.properties) {
         if (!matches([p.title, p.zone, p.address, p.property_code])) continue;

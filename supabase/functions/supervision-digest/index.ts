@@ -97,8 +97,9 @@ function formatDateTime(iso: string): string {
   });
 }
 
+const NUM_FORMAT = new Intl.NumberFormat("es-AR");
 function formatNumber(n: number): string {
-  return new Intl.NumberFormat("es-AR").format(n);
+  return NUM_FORMAT.format(n);
 }
 
 async function fetchDigestData(supabase: ReturnType<typeof createClient>) {

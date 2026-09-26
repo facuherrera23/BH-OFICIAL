@@ -94,6 +94,10 @@ serve(async (req) => {
     const userRes = await fetch("https://api.mercadolibre.com/users/me", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
+    if (!userRes.ok) {
+      const html = `<html><body><script>window.opener && window.opener.postMessage({type:'ml-auth-error',error:'User fetch failed'},'*');window.close();</script><p>User fetch failed (${userRes.status})</p></body></html>`;
+      return new Response(html, { headers: { ...corsHeaders, "Content-Type": "text/html" } });
+    }
     const userData = await userRes.json();
 
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();

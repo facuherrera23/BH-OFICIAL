@@ -73,7 +73,7 @@ Deno.serve(async () => {
       .gte("visit_date", nowIso)
       .lte("visit_date", aheadIso);
     if (error) { results.errors++; return; }
-    for (const v of visits || []) {
+    const jobs = (visits || []).map(async (v) => {
       const { subject, html } = buildEmail(kind, v);
       const ok = await sendBrevoEmail(v.client_email, subject, html);
       if (ok) {
@@ -82,7 +82,8 @@ Deno.serve(async () => {
       } else {
         results.errors++;
       }
-    }
+    });
+    await Promise.all(jobs);
   }
 
   await processWindow(in24h, "reminder_24h_sent_at", "24h");

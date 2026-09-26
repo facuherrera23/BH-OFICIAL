@@ -497,8 +497,11 @@ try {
         signal: controller.signal,
       });
 
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Error ML API (${res.status})`);
+      }
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || `Error ML API (${res.status})`);
       return json;
     } catch (err) {
       if (err.name === 'AbortError') throw new Error('Tiempo de espera agotado al contactar Mercado Libre');
@@ -753,8 +756,11 @@ try {
         body: JSON.stringify({ action, ...body }),
         signal: controller.signal,
       });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Error ${res.status}`);
+      }
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || `Error ${res.status}`);
       return json;
     } catch (err) {
       if (err.name === 'AbortError') throw new Error('Tiempo de espera agotado al contactar RELA');

@@ -40,19 +40,26 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const includeWebhooks = url.searchParams.get('webhooks') === '1';
 
-    const { data: conn } = await supabase
-        .from('ml_connection')
-        .select(
-            'id, user_id, nickname, email, site_id, access_token_encrypted, access_token_iv, token_expires_at, updated_at',
-        )
-        .eq('is_active', true)
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    const { data: counts } = await supabase
-        .from('ml_listings')
-        .select('status', { count: 'exact', head: false });
+    const [{ data: conn }, { data: counts }, { data: recentListings }, settings] = await Promise.all([
+        supabase
+            .from('ml_connection')
+            .select(
+                'id, user_id, nickname, email, site_id, access_token_encrypted, access_token_iv, token_expires_at, updated_at',
+            )
+            .eq('is_active', true)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        supabase
+            .from('ml_listings')
+            .select('status', { count: 'exact', head: false }),
+        supabase
+            .from('ml_listings')
+            .select('id, property_id, ml_item_id, status, permalink, price, last_synced_at')
+            .order('last_synced_at', { ascending: false, nullsFirst: false })
+            .limit(20),
+        getMlCredentials(supabase),
+    ]);
 
     const listingsByStatus: Record<string, number> = {};
     (counts ?? []).forEach((row) => {
@@ -60,13 +67,6 @@ Deno.serve(async (req) => {
         listingsByStatus[s] = (listingsByStatus[s] ?? 0) + 1;
     });
 
-    const { data: recentListings } = await supabase
-        .from('ml_listings')
-        .select('id, property_id, ml_item_id, status, permalink, price, last_synced_at')
-        .order('last_synced_at', { ascending: false, nullsFirst: false })
-        .limit(20);
-
-    const settings = await getMlCredentials(supabase);
     const hasCredentials = !!settings.clientId && !!settings.clientSecret;
 
     if (!conn) {

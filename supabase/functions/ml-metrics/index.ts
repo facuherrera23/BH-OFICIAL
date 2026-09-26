@@ -140,22 +140,25 @@ async function fetchMlMetrics(
     let totalQuestions = 0;
     let unansweredQuestions = 0;
 
+    const itemBatches: string[][] = [];
     for (let i = 0; i < itemIds.length; i += batchSize) {
-        const batch = itemIds.slice(i, i + batchSize);
+        itemBatches.push(itemIds.slice(i, i + batchSize));
+    }
+    const detailsResults = await Promise.all(itemBatches.map(async (batch) => {
         const idsParam = batch.join(',');
-
-        // Get item details
-        const detailsResult = await runMlApiCallWithRetry(
+        return runMlApiCallWithRetry(
             accessToken,
             () => fetchWithTimeout(`https://api.mercadolibre.com/items?ids=${idsParam}`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             }),
             'fetchItemDetails',
         );
-        if (!detailsResult.ok) throw new Error(detailsResult.error);
-        const detailsRes = detailsResult.data;
-        const detailsData = await detailsRes.json();
-
+    }));
+    const detailsDataAll = await Promise.all(detailsResults.map((dr) => {
+        if (!dr.ok) throw new Error(dr.error);
+        return dr.data.json();
+    }));
+    for (const detailsData of detailsDataAll) {
         for (const itemResult of detailsData) {
             if (itemResult.code === 200 && itemResult.body) {
                 const item = itemResult.body;
@@ -189,8 +192,9 @@ async function fetchMlMetrics(
         const visitsRes = visitsResult.data;
         const visitsData = (await visitsRes.json()) as MlVisitsResponse[];
 
+        const metricsByItem = new Map(itemsMetrics.map((m) => [m.item_id, m]));
         for (const visitData of visitsData) {
-            const metric = itemsMetrics.find((m) => m.item_id === visitData.item_id);
+            const metric = metricsByItem.get(visitData.item_id);
             if (metric) {
                 metric.visits = visitData.visits || 0;
                 totalVisits += visitData.visits || 0;
@@ -201,32 +205,36 @@ async function fetchMlMetrics(
     }
 
     // Fetch questions for all items
+    const questionBatches: string[] = [];
     for (let i = 0; i < itemIds.length; i += batchSize) {
-        const batch = itemIds.slice(i, i + batchSize);
-        const idsParam = batch.join(',');
-
-        try {
-            const questionsResult = await runMlApiCallWithRetry(
-                accessToken,
-                () => fetchWithTimeout(`https://api.mercadolibre.com/questions/search?item_ids=${idsParam}&limit=50`, {
-                    headers: { Authorization: `Bearer ${accessToken}` },
-                }),
-                'fetchQuestions',
-            );
-            if (!questionsResult.ok) throw new Error(questionsResult.error);
-            const questionsRes = questionsResult.data;
-            const questionsData = (await questionsRes.json()) as MlQuestionsResponse;
-
-            for (const q of questionsData.questions || []) {
-                const metric = itemsMetrics.find((m) => m.item_id === q.item_id);
-                if (metric) {
-                    metric.questions += 1;
-                    totalQuestions += 1;
-                    if (q.status === 'UNANSWERED') unansweredQuestions += 1;
-                }
+        questionBatches.push(itemIds.slice(i, i + batchSize).join(','));
+    }
+    const questionResults = await Promise.allSettled(questionBatches.map(async (idsParam) => {
+        const questionsResult = await runMlApiCallWithRetry(
+            accessToken,
+            () => fetchWithTimeout(`https://api.mercadolibre.com/questions/search?item_ids=${idsParam}&limit=50`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            }),
+            'fetchQuestions',
+        );
+        if (!questionsResult.ok) throw new Error(questionsResult.error);
+        const questionsRes = questionsResult.data;
+        return (await questionsRes.json()) as MlQuestionsResponse;
+    }));
+    for (const r of questionResults) {
+        if (r.status === 'rejected') {
+            console.error('[ml-metrics] questions fetch failed:', r.reason);
+            continue;
+        }
+        const questionsData = r.value;
+        const metricsByItemForQuestions = new Map(itemsMetrics.map((m) => [m.item_id, m]));
+        for (const q of questionsData.questions || []) {
+            const metric = metricsByItemForQuestions.get(q.item_id);
+            if (metric) {
+                metric.questions += 1;
+                totalQuestions += 1;
+                if (q.status === 'UNANSWERED') unansweredQuestions += 1;
             }
-        } catch (error) {
-            console.error('[ml-metrics] questions fetch failed:', error);
         }
     }
 

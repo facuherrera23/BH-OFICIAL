@@ -39,7 +39,7 @@ Deno.serve(async (req: Request) => {
 
       if (error) throw error;
 
-      for (const owner of owners || []) {
+      const ownerResults = await Promise.all((owners || []).map(async (owner) => {
         const alertType = days === 60 ? "60 días" : days === 30 ? "30 días" : "7 días";
         const text = `⚠️ Exclusividad vence en ${alertType} (${owner.exclusive_end})`;
         await addTimelineAlert(supabase, owner.id, text);
@@ -48,8 +48,13 @@ Deno.serve(async (req: Request) => {
           await sendRenewalEmail(supabase, owner, days);
         }
 
-        if (days === 60) results.alerts_60++;
-        else if (days === 30) results.alerts_30++;
+        if (days === 60) return "alert_60";
+        if (days === 30) return "alert_30";
+        return "alert_7";
+      }));
+      for (const r of ownerResults) {
+        if (r === "alert_60") results.alerts_60++;
+        else if (r === "alert_30") results.alerts_30++;
         else results.alerts_7++;
       }
     }
@@ -61,11 +66,11 @@ Deno.serve(async (req: Request) => {
       .eq("exclusive", true)
       .lt("exclusive_end", now.toISOString().split("T")[0]);
 
-    for (const owner of expired || []) {
+    await Promise.all((expired || []).map(async (owner) => {
       const text = `🚨 EXCLUSIVIDAD VENCIDA el ${new Date(owner.exclusive_end).toLocaleDateString("es-AR")}`;
       await addTimelineAlert(supabase, owner.id, text);
-      results.expired++;
-    }
+    }));
+    results.expired += (expired || []).length;
 
     return jsonResponse(200, { success: true, ...results }, req);
   } catch (err) {

@@ -365,7 +365,7 @@ async function detectAnomalies(
 
 // Guardar resultados en DB
 async function saveAnomalyResults(supabase: any, results: AnomalyResult[]): Promise<void> {
-    for (const r of results) {
+    await Promise.all(results.map(async (r) => {
         if (r.isAnomaly) {
             await supabase
                 .from('supervision_alerts')
@@ -380,7 +380,7 @@ async function saveAnomalyResults(supabase: any, results: AnomalyResult[]): Prom
                     status: 'open',
                 });
         }
-    }
+    }));
 }
 
 // Endpoint principal

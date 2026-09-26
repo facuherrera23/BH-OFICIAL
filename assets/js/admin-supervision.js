@@ -491,10 +491,11 @@
     })).join('\r\n');
     var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
     var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    var blobUrl = URL.createObjectURL(blob);
+    a.href = blobUrl;
     a.download = filename;
     a.click();
-    URL.revokeObjectURL(a.href);
+    URL.revokeObjectURL(blobUrl);
   }
 
   function activityToCsvRows(entries) {

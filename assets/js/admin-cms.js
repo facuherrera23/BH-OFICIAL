@@ -209,9 +209,10 @@
     if (!container) return [];
     return [...container.querySelectorAll('.cms-field')].map(wrap => {
       const obj = {};
+      const subkeysSet = new Set(subkeys);
       wrap.querySelectorAll('[data-subkey]').forEach(i => {
         const k = i.dataset.subkey;
-        if (subkeys.includes(k)) obj[k] = i.value.trim();
+        if (subkeysSet.has(k)) obj[k] = i.value.trim();
       });
       return Object.keys(obj).length ? obj : null;
     }).filter(Boolean);
@@ -308,13 +309,14 @@
       const updatesBySection = {};
 
       const urlFields = ['og_url', 'og_image', 'twitter_image', 'hero_video_url', 'cta_url', 'instagram', 'facebook', 'linkedin', 'youtube', 'video_url'];
-      const requiredFields = ['title', 'meta_title', 'meta_description'];
+      const requiredFields = new Set(['title', 'meta_title', 'meta_description']);
+      const urlFieldsSet = new Set(urlFields);
       const errors = [];
       fields.forEach(f => {
         const k = f.dataset.key;
         if (!_cmsDirtyFields.has(k)) return;
-        if (requiredFields.includes(k) && !String(f.value).trim()) errors.push(`"${k}" está vacío pero es requerido`);
-        if (urlFields.includes(k) && f.value && !/^(https?:\/\/|#|\/)/.test(f.value)) errors.push(`"${k}" no es una URL válida`);
+        if (requiredFields.has(k) && !String(f.value).trim()) errors.push(`"${k}" está vacío pero es requerido`);
+        if (urlFieldsSet.has(k) && f.value && !/^(https?:\/\/|#|\/)/.test(f.value)) errors.push(`"${k}" no es una URL válida`);
       });
       if (errors.length) {
         showToast('Revisá antes de guardar: ' + errors.slice(0, 3).join(' | '), 'error');

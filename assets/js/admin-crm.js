@@ -1227,78 +1227,120 @@ function bindPropSearch(panel, leadId) {
   var btn = panel.querySelector('#crmDtlAddProp');
   var inp = panel.querySelector('#crmDtlPropSearch');
   if (!btn || !inp) return;
-  function renderResults(list) {
+  var activeIdx = -1;
+  function fmtPrice(p) {
+    if (p.price_usd) return 'US$ ' + Number(p.price_usd).toLocaleString('es-AR');
+    if (p.price) return (p.price_currency === 'USD' ? 'US$ ' : '$ ') + Number(p.price).toLocaleString('es-AR');
+    return 'Consultar';
+  }
+  function renderResults(list, query) {
     document.querySelectorAll('.crm-prop-results').forEach(function (el) { el.remove(); });
-    if (!list.length) return;
+    activeIdx = -1;
     var wrap = document.createElement('div');
     wrap.className = 'crm-prop-results';
     // position:fixed para que el dropdown no quede recortado por el overflow del panel
-    var rect = inp.getBoundingClientRect();
+    var row = inp.closest('.crm-prop-add') || inp;
+    var rect = row.getBoundingClientRect();
     wrap.style.position = 'fixed';
     wrap.style.left = rect.left + 'px';
     wrap.style.top = (rect.bottom + 8) + 'px';
-    wrap.style.width = rect.width + 'px';
+    wrap.style.width = Math.min(rect.width, 1400) + 'px';
     wrap.style.right = 'auto';
     // el panel usa --z-modal (100000): sin override el dropdown fijo queda detrás
     wrap.style.zIndex = '100001';
-    var maxH = Math.max(160, window.innerHeight - rect.bottom - 16);
-    wrap.style.maxHeight = Math.min(300, maxH) + 'px';
+    var maxH = Math.max(200, window.innerHeight - rect.bottom - 20);
+    wrap.style.maxHeight = Math.min(460, maxH) + 'px';
     var header = document.createElement('div');
     header.className = 'crm-prop-results-count';
-    header.innerHTML = '<span>Propiedades</span><b>' + list.length + '</b>';
+    header.innerHTML = list.length
+      ? '<span>' + list.length + ' resultado' + (list.length === 1 ? '' : 's') + (query ? ' para “' + esc(query) + '”' : '') + '</span><b><i class="fas fa-arrow-pointer"></i> Click o Enter</b>'
+      : '<span>Sin resultados para “' + esc(query || '') + '”</span>';
     wrap.appendChild(header);
-    list.forEach(function (p) {
+    if (!list.length) {
+      document.body.appendChild(wrap);
+      attachClose(wrap);
+      return;
+    }
+    list.forEach(function (p, i) {
       var b = document.createElement('button');
       b.className = 'crm-prop-result-btn';
       b.type = 'button';
+      b.dataset.idx = i;
       var imgUrl = (p.image_urls && p.image_urls[0]) ? safeCssUrl(p.image_urls[0]) : '';
       var thumb = imgUrl
         ? '<span class="crm-prop-result-thumb" style="background-image:url(' + imgUrl + ')"></span>'
         : '<span class="crm-prop-result-thumb"><i class="fas fa-home"></i></span>';
       b.innerHTML = thumb +
         '<span class="crm-prop-result-text">' +
-          '<span class="crm-prop-result-code">' + esc(p.property_code || '—') + '</span>' +
           '<span class="crm-prop-result-title">' + esc(p.title || 'Propiedad') + '</span>' +
-        '</span>';
+          '<span class="crm-prop-result-code">' + esc(p.property_code || '—') + '</span>' +
+        '</span>' +
+        '<span class="crm-prop-result-price">' + fmtPrice(p) + '</span>' +
+        '<span class="crm-prop-result-check"><i class="fas fa-plus"></i></span>';
       b.addEventListener('click', function (e) {
         e.stopPropagation();
         linkProperty(leadId, p.id, panel);
+        inp.focus();
       });
       wrap.appendChild(b);
     });
     document.body.appendChild(wrap);
+    attachClose(wrap);
+  }
+  function attachClose(wrap) {
     function closeOnOutside(e) {
-      if (!wrap.contains(e.target) && e.target !== inp) {
+      if (!wrap.contains(e.target) && !inp.contains(e.target)) {
         wrap.remove();
         document.removeEventListener('click', closeOnOutside, true);
+        document.removeEventListener('keydown', closeOnKey, true);
       }
     }
-    setTimeout(function () { document.addEventListener('click', closeOnOutside, true); }, 0);
+    function closeOnKey(e) {
+      if (e.key === 'Escape') { wrap.remove(); document.removeEventListener('click', closeOnOutside, true); document.removeEventListener('keydown', closeOnKey, true); }
+    }
+    setTimeout(function () {
+      document.addEventListener('click', closeOnOutside, true);
+      document.addEventListener('keydown', closeOnKey, true);
+    }, 0);
   }
+  inp.addEventListener('keydown', function (e) {
+    var wrap = document.querySelector('.crm-prop-results');
+    if (!wrap) return;
+    var items = wrap.querySelectorAll('.crm-prop-result-btn');
+    if (!items.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIdx = e.key === 'ArrowDown'
+        ? Math.min(activeIdx + 1, items.length - 1)
+        : Math.max(activeIdx - 1, -1);
+      items.forEach(function (el, i) { el.classList.toggle('is-active', i === activeIdx); });
+      if (items[activeIdx]) items[activeIdx].scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter' && activeIdx >= 0 && items[activeIdx]) {
+      e.preventDefault();
+      items[activeIdx].click();
+    }
+  });
   var timer;
+  function doSearch(val) {
+    var q = val.trim().replace(/[%_]/g, ' ');
+    if (q.length < 2) {
+      document.querySelectorAll('.crm-prop-results').forEach(function (el) { el.remove(); });
+      return;
+    }
+    db().from('properties').select('id, title, property_code, image_urls, price_usd, price, price_currency, zone, address')
+      .or('title.ilike.%' + q + '%,property_code.ilike.%' + q + '%,zone.ilike.%' + q + '%,address.ilike.%' + q + '%').limit(12)
+      .then(function (r) { renderResults(r.data || [], q); })
+      .catch(function () {});
+  }
   inp.addEventListener('input', function () {
-    var val = this.value.trim();
     clearTimeout(timer);
-    var dd = panel.ownerDocument.querySelectorAll('.crm-prop-results');
-    dd.forEach(function (el) { el.remove(); });
-    if (val.length < 2) return;
-    var q = val.replace(/[%_]/g, ' ');
-    timer = setTimeout(function () {
-      db().from('properties').select('id, title, property_code, image_urls')
-        .or('title.ilike.%' + q + '%,property_code.ilike.%' + q + '%').limit(8)
-        .then(function (r) { renderResults(r.data || []); })
-        .catch(function () {});
-    }, 300);
+    var val = this.value;
+    timer = setTimeout(function () { doSearch(val); }, 250);
   });
-  btn.addEventListener('click', async function () {
-    var val = inp.value.trim();
-    if (!val) { toast('Ingresá un título.', 'error'); return; }
-    var q = val.replace(/[%_]/g, ' ');
-    var r = await db().from('properties').select('id, title, property_code, image_urls')
-      .or('title.ilike.%' + q + '%,property_code.ilike.%' + q + '%').limit(8);
-    if (!r.data || !r.data.length) { toast('No se encontraron propiedades.', 'error'); return; }
-    renderResults(r.data);
+  inp.addEventListener('focus', function () {
+    if (this.value.trim().length >= 2) doSearch(this.value);
   });
+  btn.addEventListener('click', function () { doSearch(inp.value); });
 }
 
 async function linkProperty(leadId, propertyId, panel) {
@@ -1756,9 +1798,9 @@ function bindLeadTaskForm(panel, lead) {
   }
   function applyAction() {
     var a = actionSel.value;
-    var vis = VISIBLE[a] || [];
+    var vis = new Set(VISIBLE[a] || []);
     Object.keys(blocks).forEach(function (k) {
-      if (blocks[k]) blocks[k].style.display = vis.indexOf(k) !== -1 ? '' : 'none';
+      if (blocks[k]) blocks[k].style.display = vis.has(k) ? '' : 'none';
     });
     var l = LABELS[a];
     if (descLabel) descLabel.textContent = l.desc;

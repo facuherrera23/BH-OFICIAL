@@ -88,8 +88,17 @@ export class RelaClient {
       method: 'POST',
       headers: { 'User-Agent': this.userAgent() },
     });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => null);
+      throw new RelaError(
+        `RELA login falló (${res.status})`,
+        res.status,
+        errBody,
+        RETRYABLE_STATUSES.has(res.status),
+      );
+    }
     const body = await res.json().catch(() => null);
-    if (!res.ok || !body?.access_token) {
+    if (!body?.access_token) {
       throw new RelaError(
         `RELA login falló (${res.status})`,
         res.status,
@@ -159,6 +168,20 @@ export class RelaClient {
         return this.request(method, path, body, { attempt: attempt + 1 });
       }
       throw new RelaError(`RELA red: ${(err as Error).message}`, 0, null, true);
+    }
+
+    if (!res.ok) {
+      const errText = await res.text();
+      let errParsed: unknown = null;
+      try { errParsed = errText ? JSON.parse(errText) : null; } catch { errParsed = { raw: errText }; }
+      console.log(JSON.stringify({
+        module: 'rela', action: 'api_call', correlationId: this.correlationId,
+        method, path, status: res.status, durationMs: Date.now() - startedAt, attempt,
+      }));
+      if (res.status === 401 && attempt === 0 && !opts?.retryOnAuth) {
+        return this.request(method, path, body, { attempt: 1, retryOnAuth: true });
+      }
+      throw new RelaError(`RELA ${method} ${path} → ${res.status}`, res.status, errParsed, RETRYABLE_STATUSES.has(res.status));
     }
 
     const text = await res.text();

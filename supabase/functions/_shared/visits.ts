@@ -183,28 +183,27 @@ export async function processReminders(): Promise<RemindersResult> {
   let sent = 0;
   let failed = 0;
 
-  for (const visit of (visits as any[]) || []) {
-    try {
-      const confirmUrl = visit.confirmation_token
-        ? `${config.site_origin}/confirmar-visita.html?token=${visit.confirmation_token}`
-        : null;
-      const { html, text } = buildReminderEmail(visit, confirmUrl);
-      const subject = `Recordatorio: visita mañana ${fmtDateTimeAR(visit.visit_date)}`;
-      const r = await sendBrevo(config, visit.client_email, subject, html, text);
-      if (!r.ok) {
-        console.error(`[visits-rem] visita ${visit.id}: ${r.error}`);
-        failed++;
-        continue;
-      }
-      await supabase
-        .from('visits')
-        .update({ reminder_24h_sent_at: new Date().toISOString() })
-        .eq('id', visit.id);
-      sent++;
-    } catch (e) {
-      console.error(`[visits-rem] excepción en visita ${visit.id}:`, e);
-      failed++;
+  const visitJobs = ((visits as any[]) || []).map(async (visit) => {
+    const confirmUrl = visit.confirmation_token
+      ? `${config.site_origin}/confirmar-visita.html?token=${visit.confirmation_token}`
+      : null;
+    const { html, text } = buildReminderEmail(visit, confirmUrl);
+    const subject = `Recordatorio: visita mañana ${fmtDateTimeAR(visit.visit_date)}`;
+    const r = await sendBrevo(config, visit.client_email, subject, html, text);
+    if (!r.ok) {
+      console.error(`[visits-rem] visita ${visit.id}: ${r.error}`);
+      return false;
     }
+    await supabase
+      .from('visits')
+      .update({ reminder_24h_sent_at: new Date().toISOString() })
+      .eq('id', visit.id);
+    return true;
+  });
+  const visitResults = await Promise.allSettled(visitJobs);
+  for (const r of visitResults) {
+    if (r.status === 'fulfilled' && r.value) sent++;
+    else failed++;
   }
 
   return { sent, failed };

@@ -74,12 +74,14 @@ Deno.serve(async (req) => {
 
                 // Eliminar en batches para evitar timeouts
                 const batchSize = 100;
+                const batches: Array<Array<{ id: string }>> = [];
                 for (let i = 0; i < toDelete.length; i += batchSize) {
-                    const batch = toDelete.slice(i, i + batchSize);
-                    const ids = batch.map((d) => d.id);
-
-                    const { error } = await supabase.from(policy.entity).delete().in('id', ids);
-
+                    batches.push(toDelete.slice(i, i + batchSize));
+                }
+                const results = await Promise.all(
+                    batches.map((batch) => supabase.from(policy.entity).delete().in('id', batch.map((d) => d.id))),
+                );
+                for (const { error } of results) {
                     if (error) {
                         console.error(`[retention] Error eliminando batch:`, error);
                     }

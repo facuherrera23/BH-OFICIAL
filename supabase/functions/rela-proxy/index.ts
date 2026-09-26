@@ -94,8 +94,12 @@ class RelaClient {
     const res = await fetch(`${this.baseUrl}/v1/application/login?${q.toString()}`, {
       method: 'POST', headers: { 'User-Agent': 'BienenhausCRM/1.0 (contacto@bienenhaus.com.ar)' },
     });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => null);
+      throw new RelaError(`RELA login falló (${res.status})`, res.status, errBody, RETRYABLE_STATUSES.has(res.status));
+    }
     const body = await res.json().catch(() => null);
-    if (!res.ok || !body?.access_token) {
+    if (!body?.access_token) {
       throw new RelaError(`RELA login falló (${res.status})`, res.status, body, RETRYABLE_STATUSES.has(res.status));
     }
     const expiresAt = new Date(Date.now() + (Number(body.expires_in) > 0 ? Number(body.expires_in) : 86400) * 1000);
@@ -125,16 +129,20 @@ class RelaClient {
       if (attempt < RETRY_DELAYS_MS.length) { await sleep(RETRY_DELAYS_MS[attempt]); return this.request(method, path, body, attempt + 1, refreshed); }
       throw new RelaError(`RELA red: ${(err as Error).message}`, 0, null, true);
     }
+    if (!res.ok) {
+      const errText = await res.text();
+      let errParsed: unknown = null;
+      try { errParsed = errText ? JSON.parse(errText) : null; } catch { errParsed = { raw: errText }; }
+      console.log(JSON.stringify({ module: 'rela', action: 'api_call', method, path, status: res.status, durationMs: Date.now() - startedAt, attempt }));
+      if (res.status === 401 && !refreshed) return this.request(method, path, body, attempt, true);
+      const retryable = RETRYABLE_STATUSES.has(res.status);
+      if (retryable && attempt < RETRY_DELAYS_MS.length) { await sleep(RETRY_DELAYS_MS[attempt]); return this.request(method, path, body, attempt + 1, refreshed); }
+      throw new RelaError(`RELA ${method} ${path} → ${res.status}`, res.status, errParsed, retryable);
+    }
     const text = await res.text();
     let parsed: unknown = null;
     try { parsed = text ? JSON.parse(text) : null; } catch { parsed = { raw: text }; }
     console.log(JSON.stringify({ module: 'rela', action: 'api_call', method, path, status: res.status, durationMs: Date.now() - startedAt, attempt }));
-    if (res.status === 401 && !refreshed) return this.request(method, path, body, attempt, true);
-    if (!res.ok) {
-      const retryable = RETRYABLE_STATUSES.has(res.status);
-      if (retryable && attempt < RETRY_DELAYS_MS.length) { await sleep(RETRY_DELAYS_MS[attempt]); return this.request(method, path, body, attempt + 1, refreshed); }
-      throw new RelaError(`RELA ${method} ${path} → ${res.status}`, res.status, parsed, retryable);
-    }
     return parsed as T;
   }
 }
@@ -449,8 +457,7 @@ async function handleRequest(req: Request): Promise<Response> {
       if (!WRITE_ROLES.includes(profile.role)) return json({ error: 'Sin permiso' }, 403);
       const client = makeClient(supabase, cfgRow);
       const { data: listings } = await supabase.from('rela_listings').select('id, property_id, codigo_aviso, status').in('status', ['PUBLISHED', 'UPDATE_PENDING', 'ERROR', 'SYNCING']);
-      const results: Json[] = [];
-      for (const l of listings || []) {
+      const jobs = (listings || []).map(async (l) => {
         try {
           const aviso = (await client.request('GET', `/v1/inmobiliarias/${enc(cfgRow.codigo_inmobiliaria)}/avisos/${enc(l.codigo_aviso)}`)) as Record<string, unknown>;
           await supabase.from('rela_listings').update({
@@ -459,11 +466,12 @@ async function handleRequest(req: Request): Promise<Response> {
             last_sync_at: new Date().toISOString(),
             status: aviso?.estado === 'ONLINE' ? 'PUBLISHED' : aviso?.estado === 'OFFLINE' ? 'UNPUBLISHED' : l.status,
           }).eq('id', l.id);
-          results.push({ codigo_aviso: l.codigo_aviso, remote_status: aviso?.estado });
+          return { codigo_aviso: l.codigo_aviso, remote_status: aviso?.estado } as Json;
         } catch (err) {
-          results.push({ codigo_aviso: l.codigo_aviso, error: (err as Error).message });
+          return { codigo_aviso: l.codigo_aviso, error: (err as Error).message } as Json;
         }
-      }
+      });
+      const results: Json[] = await Promise.all(jobs);
       await supabase.from('rela_config').update({ last_sync_at: new Date().toISOString() }).eq('id', true);
       return json({ ok: true, reconciled: results });
     }
@@ -486,12 +494,15 @@ async function handleRequest(req: Request): Promise<Response> {
       ];
       const synced: string[] = [];
       const failed: Record<string, string> = {};
-      for (const [name, path] of endpoints) {
+      const jobs = endpoints.map(async ([name, path]) => {
         try {
           const payload = await client.request('GET', path);
           await supabase.from('rela_catalog_cache').upsert({ catalog: name, payload, fetched_at: new Date().toISOString() });
-          synced.push(name);
-        } catch (err) { failed[name] = (err as Error).message; }
+          return { name, ok: true as const };
+        } catch (err) { return { name, ok: false as const, error: (err as Error).message }; }
+      });
+      for (const r of await Promise.all(jobs)) {
+        if (r.ok) synced.push(r.name); else failed[r.name] = r.error || 'unknown';
       }
       await audit(supabase, 'rela_catalogs_sync', { synced, failedCount: Object.keys(failed).length, correlationId }, Object.keys(failed).length ? 'error' : 'success');
       return json({ ok: Object.keys(failed).length === 0, synced, failed });
