@@ -1242,7 +1242,11 @@ function bindPropSearch(panel, leadId) {
     // el panel usa --z-modal (100000): sin override el dropdown fijo queda detrás
     wrap.style.zIndex = '100001';
     var maxH = Math.max(160, window.innerHeight - rect.bottom - 16);
-    wrap.style.maxHeight = Math.min(280, maxH) + 'px';
+    wrap.style.maxHeight = Math.min(300, maxH) + 'px';
+    var header = document.createElement('div');
+    header.className = 'crm-prop-results-count';
+    header.innerHTML = '<span>Propiedades</span><b>' + list.length + '</b>';
+    wrap.appendChild(header);
     list.forEach(function (p) {
       var b = document.createElement('button');
       b.className = 'crm-prop-result-btn';
