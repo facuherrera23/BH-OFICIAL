@@ -212,15 +212,26 @@
     const visits = events.filter(e => e.type === 'visita');
     const now = new Date();
     const todayStr = agendaDayKey(now);
-    const weekEnd = new Date(now); weekEnd.setDate(now.getDate() + (7 - now.getDay()));
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const weekStart = new Date(calCurrentDate);
+    weekStart.setDate(calCurrentDate.getDate() - ((calCurrentDate.getDay() + 6) % 7));
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart.getTime() + 7 * 86400000 - 1);
+    const monthStart = new Date(calCurrentDate.getFullYear(), calCurrentDate.getMonth(), 1);
+    const monthEnd = new Date(calCurrentDate.getFullYear(), calCurrentDate.getMonth() + 1, 1);
     const hoy = visits.filter(v => agendaDayKey(v.date) === todayStr && v.status !== 'cancelada').length;
-    const semana = visits.filter(v => v.date >= now && v.date <= weekEnd && v.status !== 'cancelada').length;
+    const semana = visits.filter(v => v.date >= weekStart && v.date <= weekEnd && v.status !== 'cancelada').length;
     const sinConfirmar = visits.filter(v => v.date >= now && v.status === 'pendiente').length;
-    const mesHechas = visits.filter(v => v.status === 'completada' && v.date >= monthStart).length;
+    const mesHechas = visits.filter(v => v.status === 'completada' && v.date >= monthStart && v.date < monthEnd).length;
     const vencidas = visits.filter(v => v.date < now && ['pendiente', 'confirmada', 'en_curso'].includes(v.status)).length;
-    const cerradasMes = visits.filter(v => v.date >= monthStart && ['completada', 'cancelada', 'no_show'].includes(v.status));
+    const cerradasMes = visits.filter(v => v.date >= monthStart && v.date < monthEnd && ['completada', 'cancelada', 'no_show'].includes(v.status));
     const asistencia = cerradasMes.length ? Math.round(cerradasMes.filter(v => v.status === 'completada').length / cerradasMes.length * 100) + '%' : '—';
+    const conTiempos = visits.filter(v => v.status === 'completada' && v.raw?.check_in && v.raw?.check_out && v.date >= monthStart && v.date < monthEnd);
+    const durProm = conTiempos.length
+      ? Math.round(conTiempos.reduce((s, v) => s + (new Date(v.raw.check_out) - new Date(v.raw.check_in)) / 60000, 0) / conTiempos.length) + ' min'
+      : '—';
+    const evalMes = visits.filter(v => v.date >= monthStart && v.date < monthEnd && ['completada', 'no_show', 'cancelada'].includes(v.status));
+    const noShows = evalMes.filter(v => v.status === 'no_show').length;
+    const noShowRate = evalMes.length ? Math.round(noShows / evalMes.length * 100) + '%' : '—';
     const set = (id, val) => { const el = $(id); if (el) el.textContent = val; };
     set('#agendaKpiHoy', hoy);
     set('#agendaKpiSemana', semana);
@@ -228,6 +239,10 @@
     set('#agendaKpiMes', mesHechas);
     set('#agendaKpiVencidas', vencidas);
     set('#agendaKpiAsistencia', asistencia);
+    set('#agendaKpiDuracion', durProm);
+    set('#agendaKpiNoShow', noShowRate);
+    set('#agendaKpiDuracion', durProm);
+    set('#agendaKpiNoShow', noShowRate);
     const badge = document.querySelector('[data-tab="tab-agenda"] .nav-badge');
     if (badge) { badge.textContent = hoy; badge.style.display = hoy > 0 ? '' : 'none'; }
     if (!window.__agendaBaseTitle) window.__agendaBaseTitle = document.title;
@@ -256,7 +271,8 @@
       (addr ? '<div><i class="fas fa-location-dot" style="width:16px; color:var(--text-dim);"></i> ' + esc(addr) + '</div>' : '') +
       (v.agents?.full_name ? '<div><i class="fas fa-user-tie" style="width:16px; color:var(--text-dim);"></i> ' + esc(v.agents.full_name) + '</div>' : '') +
       (v.leads?.full_name ? '<div><i class="fas fa-user" style="width:16px; color:var(--text-dim);"></i> Lead: ' + esc(v.leads.full_name) + '</div>' : '') +
-      '<div><span class="nav-badge" style="font-size:11px;">' + esc(v.status === 'no_show' ? 'No asistió' : v.status) + '</span></div>' +
+      '<div><span class="nav-badge" style="font-size:11px;">' + esc(v.status === 'no_show' ? 'No asistió' : v.status) + '</span>' +
+      ((v.reschedule_count || 0) > 0 ? ' <span class="nav-badge" style="font-size:11px; background:rgba(167,139,250,0.15); color:#a78bfa;">↻ reprogramada ×' + v.reschedule_count + '</span>' : '') + '</div>' +
       (v.notes ? '<div style="font-size:12px; color:var(--text-dim); border-top:1px solid rgba(255,255,255,0.06); padding-top:6px;">' + esc(v.notes) + '</div>' : '') +
       '</div>' +
       '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:12px;">' +
@@ -304,6 +320,7 @@
       status: $('#calStatusFilter')?.value || '',
       type: $('#calTypeFilter')?.value || '',
       broker: $('#calBrokerFilter')?.value || '',
+      property: $('#calPropertyFilter')?.value || '',
       q: ($('#calSearchInput')?.value || '').trim().toLowerCase()
     };
   }
@@ -311,6 +328,7 @@
   function agendaMatches(ev, f) {
     if (f.type && ev.type !== f.type) return false;
     if (f.broker && ev.brokerId !== f.broker) return false;
+    if (f.property && ev.raw?.property_id !== f.property) return false;
     if (f.status === 'eliminada') return ev.type === 'visita';
     if (f.status && (!ev.status || ev.status !== f.status)) return false;
     if (f.q && !(ev.title + ' ' + (ev.subtitle || '')).toLowerCase().includes(f.q)) return false;
@@ -846,10 +864,11 @@
   $('#calStatusFilter')?.addEventListener('change', function () { renderAgenda(); });
   $('#calTypeFilter')?.addEventListener('change', function () { renderAgenda(); });
   $('#calBrokerFilter')?.addEventListener('change', function () { renderAgenda(); });
+  $('#calPropertyFilter')?.addEventListener('change', function () { renderAgenda(); });
   $('#calSearchInput')?.addEventListener('input', function () { renderAgenda(); });
 
   /* Persistencia de filtros (sobrevive al cambio de pestaña/recarga) */
-  ['calStatusFilter', 'calTypeFilter', 'calBrokerFilter'].forEach(id => {
+  ['calStatusFilter', 'calTypeFilter', 'calBrokerFilter', 'calPropertyFilter'].forEach(id => {
     const el = $('#' + id);
     if (!el) return;
     const saved = localStorage.getItem('agenda:' + id);
@@ -895,6 +914,44 @@
 
   /* Imprimir la vista actual */
   $('#calPrintBtn')?.addEventListener('click', function () { window.print(); });
+
+  /* Reporte semanal imprimible: visitas por dia y por broker con tasas */
+  $('#calReportBtn')?.addEventListener('click', function () {
+    const weekStart = new Date(calCurrentDate);
+    weekStart.setDate(calCurrentDate.getDate() - ((calCurrentDate.getDay() + 6) % 7));
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart.getTime() + 7 * 86400000 - 1);
+    const visits = calEventsCache
+      .filter(ev => ev.type === 'visita' && ev.date >= weekStart && ev.date <= weekEnd && ev.status !== 'cancelada')
+      .sort((a, b) => a.date - b.date);
+    const byBroker = {};
+    visits.forEach(ev => {
+      const b = ev.raw?.agents?.full_name || 'Sin broker';
+      if (!byBroker[b]) byBroker[b] = { total: 0, completada: 0, pendiente: 0, confirmada: 0, no_show: 0, en_curso: 0 };
+      byBroker[b].total++;
+      if (byBroker[b][ev.status] !== undefined) byBroker[b][ev.status]++;
+    });
+    const fmtD = d => d.toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: 'long' });
+    const byDay = {};
+    visits.forEach(ev => { const dk = agendaDayKey(ev.date); (byDay[dk] = byDay[dk] || []).push(ev); });
+    const brokerRows = Object.entries(byBroker).map(([b, s]) =>
+      '<tr><td>' + esc(b) + '</td><td>' + s.total + '</td><td>' + s.completada + '</td><td>' + s.pendiente + '</td><td>' + s.confirmada + '</td><td>' + s.no_show + '</td></tr>').join('');
+    const daySections = Object.keys(byDay).sort().map(dk =>
+      '<h3>' + fmtD(new Date(+dk.slice(0, 4), +dk.slice(5, 7) - 1, +dk.slice(8, 10))) + '</h3><ul>' +
+      byDay[dk].map(ev => '<li><b>' + ev.date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + '</b> — ' + esc(ev.title) +
+        (ev.raw?.agents?.full_name ? ' (' + esc(ev.raw.agents.full_name) + ')' : '') + ' · ' + esc(ev.status) + '</li>').join('') + '</ul>').join('');
+    const rangeLabel = fmtD(weekStart) + ' al ' + fmtD(weekEnd);
+    const htmlDoc = '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Reporte semanal — ' + rangeLabel + '</title>' +
+      '<style>body{font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:30px;color:#111} h1{font-size:20px} h3{margin:16px 0 6px} table{width:100%;border-collapse:collapse;font-size:13px} td,th{border:1px solid #ccc;padding:6px 8px;text-align:left} th{background:#f0f0ee} ul{margin:0;padding-left:18px} li{margin:3px 0;font-size:13px} .brand{color:#0f766e;font-weight:800;letter-spacing:2px} .meta{color:#666;font-size:12px}</style></head><body>' +
+      '<div class="brand">BIENENHAUS PROPIEDADES</div><h1>Reporte semanal de visitas</h1><p class="meta">' + rangeLabel + ' · Generado ' + new Date().toLocaleString('es-AR') + ' · ' + visits.length + ' visitas</p>' +
+      '<h3>Por broker</h3><table><tr><th>Broker</th><th>Total</th><th>Completadas</th><th>Pendientes</th><th>Confirmadas</th><th>No asistió</th></tr>' + (brokerRows || '<tr><td colspan="6">Sin visitas esta semana</td></tr>') + '</table>' +
+      daySections +
+      '</body></html>';
+    const blob = new Blob([htmlDoc], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank', 'noopener');
+    if (w) setTimeout(() => { w.print(); }, 600);
+  });
 
   /* KPIs clickeables: atajos de navegación */
   $('#agendaKpiHoy')?.closest('.crm-kpi')?.addEventListener('click', function () {
@@ -967,6 +1024,21 @@
   }
 
   populateBrokerFilters();
+
+  (async function populatePropertyFilter() {
+    const sel = $('#calPropertyFilter');
+    if (!sel || !window.supabaseClient) return;
+    try {
+      const { data } = await window.supabaseClient
+        .from('properties').select('id, title').is('deleted_at', null).order('title');
+      (data || []).forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.title;
+        sel.appendChild(opt);
+      });
+    } catch (_) {}
+  })();
 
   (async function setMyAgendaDefault() {
     if (localStorage.getItem('agenda:calBrokerFilter') || !window.supabaseClient) return;

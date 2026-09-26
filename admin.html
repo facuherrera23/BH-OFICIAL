@@ -563,6 +563,8 @@
 <div class="crm-kpi"><span class="crm-kpi-label">Hechas este mes</span><span class="crm-kpi-value crm-kpi--win" id="agendaKpiMes">0</span></div>
 <div class="crm-kpi"><span class="crm-kpi-label">Vencidas sin cierre</span><span class="crm-kpi-value crm-kpi--lost" id="agendaKpiVencidas">0</span></div>
 <div class="crm-kpi"><span class="crm-kpi-label">Asistencia (mes)</span><span class="crm-kpi-value" id="agendaKpiAsistencia">—</span></div>
+<div class="crm-kpi"><span class="crm-kpi-label">Duración prom.</span><span class="crm-kpi-value" id="agendaKpiDuracion">—</span></div>
+<div class="crm-kpi"><span class="crm-kpi-label">No-show (mes)</span><span class="crm-kpi-value crm-kpi--lost" id="agendaKpiNoShow">—</span></div>
 </div>
 <!-- Vista Calendario -->
 <div id="visitsCalendarView">
@@ -582,6 +584,8 @@
 </i> Hoy</button>
 <button class="status-pill" id="calShareDayBtn" title="Compartir la agenda del día por WhatsApp" style="background:rgba(37,211,102,0.08); border-color:rgba(37,211,102,0.3); color:#25D366;">
 <i class="fab fa-whatsapp"></i> Compartir día</button>
+<button class="status-pill" id="calReportBtn" title="Reporte semanal imprimible (visita por broker, confirmación y asistencia)">
+<i class="fas fa-file-lines"></i> Reporte</button>
 <button class="status-pill" id="calPrintBtn" title="Imprimir la vista actual">
 <i class="fas fa-print"></i> Imprimir</button>
 <button class="status-pill" id="calSubscribeBtn" title="Suscribir el calendario del broker desde Google/Apple/Outlook (feed ICS)">
@@ -620,6 +624,9 @@
 </select>
 <select id="calBrokerFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px;">
 <option value="">Todos los brokers</option>
+</select>
+<select id="calPropertyFilter" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; padding:8px 12px; color:#fff; font-size:13px; max-width:220px;">
+<option value="">Todas las propiedades</option>
 </select>
 </div>
 </div>
@@ -3222,6 +3229,6 @@
 <script src="assets/js/admin-supervision-panel.js?v=2"></script>
 <script src="assets/js/admin-ficha.js?v=2"></script>
 <script src="assets/js/admin-propiedades.js?v=2"></script>
-<script src="assets/js/admin-agenda.js?v=7"></script>
+<script src="assets/js/admin-agenda.js?v=8"></script>
 <script src="assets/js/admin-supervision.js?v=14"></script></body>
 </html>
