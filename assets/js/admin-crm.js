@@ -1239,6 +1239,10 @@ function bindPropSearch(panel, leadId) {
     wrap.style.top = (rect.bottom + 8) + 'px';
     wrap.style.width = rect.width + 'px';
     wrap.style.right = 'auto';
+    // el panel usa --z-modal (100000): sin override el dropdown fijo queda detrás
+    wrap.style.zIndex = '100001';
+    var maxH = Math.max(160, window.innerHeight - rect.bottom - 16);
+    wrap.style.maxHeight = Math.min(280, maxH) + 'px';
     list.forEach(function (p) {
       var b = document.createElement('button');
       b.className = 'crm-prop-result-btn';
