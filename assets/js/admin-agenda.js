@@ -537,10 +537,29 @@
     if (day) day.style.display = calViewMode === 'day' ? 'block' : 'none';
   }
 
+  const agendaCfg = {
+    travelBufferMin: Math.max(0, Number(localStorage.getItem('agenda:travelBufferMin') || 30)),
+    maxDailyVisits: Math.max(1, Number(localStorage.getItem('agenda:maxDailyVisits') || 6))
+  };
+
+  let _brokerBlocksCache = null;
+  async function loadBrokerBlocks(force) {
+    if (_brokerBlocksCache && !force) return _brokerBlocksCache;
+    try {
+      const { data } = await window.supabaseClient
+        .from('broker_blocks').select('*');
+      _brokerBlocksCache = data || [];
+    } catch (_) { _brokerBlocksCache = []; }
+    return _brokerBlocksCache;
+  }
+
   async function findVisitConflict(excludeId, start, durationMin, agentId, propertyId) {
     if (!agentId && !propertyId) return null;
     const startMs = start.getTime();
     const endMs = startMs + (durationMin || 60) * 60 * 1000;
+    const bufferMs = agendaCfg.travelBufferMin * 60000;
+    const dow = start.getDay();
+    const dayDate = agendaDayKey(start);
     let cq = window.supabaseClient
       .from('visits')
       .select('id, client_name, visit_date, duration_minutes, agent_id, property_id')
@@ -552,11 +571,59 @@
     if (propertyId) parts.push('property_id.eq.' + propertyId);
     cq = cq.or(parts.join(','));
     const { data: probConflicts } = await cq;
-    return (probConflicts || []).find(c => {
+    const visitConflict = (probConflicts || []).find(c => {
       const cStart = new Date(c.visit_date).getTime();
       const cEnd = cStart + (c.duration_minutes || 60) * 60 * 1000;
-      return startMs < cEnd && endMs > cStart;
-    }) || null;
+      if (agentId && c.agent_id === agentId) return startMs < cEnd + bufferMs && endMs + bufferMs > cStart;
+      if (propertyId && c.property_id === propertyId) return startMs < cEnd && endMs > cStart;
+      return false;
+    });
+    if (visitConflict) return visitConflict;
+    if (agentId) {
+      const blocks = await loadBrokerBlocks();
+      const b = blocks.find(bl => bl.agent_id === agentId && bl.day_of_week === dow && (() => {
+        const bStart = new Date(dayDate + 'T' + bl.start_time).getTime();
+        const bEnd = new Date(dayDate + 'T' + bl.end_time).getTime();
+        return startMs < bEnd && endMs > bStart;
+      })());
+      if (b) return { id: 'block-' + b.id, client_name: '⛔ ' + (b.label || 'Bloqueado'), visit_date: dayDate + 'T' + b.start_time, duration_minutes: 0, agent_id: agentId };
+    }
+    return null;
+  }
+
+  async function suggestFreeSlots(agentId, dateStr, durationMin) {
+    if (!agentId || !dateStr) return [];
+    const dur = (durationMin || 60) * 60000;
+    const buffer = agendaCfg.travelBufferMin * 60000;
+    const dayStart = new Date(dateStr + 'T' + String(CAL_HOUR_START).padStart(2, '0') + ':00:00');
+    const dayEnd = new Date(dateStr + 'T' + String(CAL_HOUR_END).padStart(2, '0') + ':00:00');
+    const { data: dayVisits } = await window.supabaseClient.from('visits')
+      .select('visit_date, duration_minutes')
+      .eq('agent_id', agentId)
+      .is('deleted_at', null)
+      .in('status', ['pendiente', 'confirmada', 'en_curso'])
+      .gte('visit_date', dayStart.toISOString())
+      .lte('visit_date', dayEnd.toISOString())
+      .order('visit_date', { ascending: true });
+    const dow = dayStart.getDay();
+    const blocks = (await loadBrokerBlocks())
+      .filter(b => b.agent_id === agentId && b.day_of_week === dow);
+    const busy = (dayVisits || []).map(v => {
+      const s = new Date(v.visit_date).getTime() - buffer;
+      return { s, e: s + (v.duration_minutes || 60) * 60000 + buffer };
+    }).concat(blocks.map(b => ({
+      s: new Date(dateStr + 'T' + b.start_time).getTime(),
+      e: new Date(dateStr + 'T' + b.end_time).getTime()
+    }))).sort((a, b) => a.s - b.s);
+    const slots = [];
+    let cursor = Math.max(dayStart.getTime(), Date.now() + 15 * 60000);
+    for (const b of busy) {
+      if (b.s - cursor >= dur) slots.push(cursor);
+      cursor = Math.max(cursor, b.e);
+      if (slots.length >= 3) break;
+    }
+    if (slots.length < 3 && dayEnd.getTime() - cursor >= dur) slots.push(cursor);
+    return slots.slice(0, 3).map(ms => new Date(ms));
   }
 
   async function rescheduleVisitToDay(visitId, dateStr, oldDate, ev) {
@@ -1341,6 +1408,10 @@
     });
   });
 
+  function blockUi() {
+    return '<button type="button" class="btn-action" id="visitBlockAdd" style="margin-top:6px; font-size:11px;"><i class="fas fa-ban"></i> Bloquear franja recurrente</button>';
+  }
+
   /* Huecos del broker: al elegir broker+fecha, listar su agenda de ese día */
   async function refreshBrokerSlots() {
     const wrap = $('#visitSlotsWrap');
@@ -1361,18 +1432,39 @@
         .lte('visit_date', dayEnd.toISOString())
         .order('visit_date', { ascending: true });
       const busy = (data || []).filter(v => v.id !== editingVisitId);
+      const dow = new Date(dateVal + 'T00:00:00').getDay();
+      const blocks = (await loadBrokerBlocks()).filter(b => b.agent_id === agentId && b.day_of_week === dow);
       wrap.style.display = 'block';
-      if (!busy.length) {
-        hint.innerHTML = '<span style="color:var(--success);">✔ Broker libre todo el día.</span>';
-        return;
+      const blockLines = blocks.map(b => '<div>⛔ ' + esc(b.start_time.slice(0, 5)) + '–' + esc(b.end_time.slice(0, 5)) + ' — ' + esc(b.label || 'Bloqueado') +
+        ' <button type="button" class="btn-action" data-del-block="' + b.id + '" style="padding:1px 5px; font-size:10px;" title="Quitar bloqueo"><i class="fas fa-trash"></i></button></div>').join('');
+      if (!busy.length && !blocks.length) {
+        hint.innerHTML = '<span style="color:var(--success);">✔ Broker libre todo el día.</span>' + blockUi();
+      } else {
+        const lines = busy.map(v => {
+          const t = new Date(v.visit_date);
+          const end = new Date(t.getTime() + (v.duration_minutes || 60) * 60000);
+          const fmt = d => d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+          return `<div>⏰ ${fmt(t)}–${fmt(end)} — ${esc(v.client_name || 'Visitante')}</div>`;
+        }).join('');
+        hint.innerHTML = '<strong style="color:var(--warning);">Ocupado:</strong>' + lines + blockLines + blockUi();
       }
-      const lines = busy.map(v => {
-        const t = new Date(v.visit_date);
-        const end = new Date(t.getTime() + (v.duration_minutes || 60) * 60000);
-        const fmt = d => d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
-        return `<div>⏰ ${fmt(t)}–${fmt(end)} — ${esc(v.client_name || 'Visitante')}</div>`;
-      }).join('');
-      hint.innerHTML = '<strong style="color:var(--warning);">Ocupado:</strong>' + lines;
+      hint.querySelectorAll('[data-del-block]').forEach(btn => btn.addEventListener('click', async () => {
+        await window.supabaseClient.from('broker_blocks').delete().eq('id', btn.dataset.delBlock);
+        loadBrokerBlocks(true); refreshBrokerSlots();
+      }));
+      const addBtn = hint.querySelector('#visitBlockAdd');
+      if (addBtn) addBtn.addEventListener('click', async () => {
+        const label = prompt('Etiqueta del bloqueo (ej: Almuerzo):', 'Almuerzo');
+        if (label === null) return;
+        const desde = prompt('Desde (HH:MM):', '13:00');
+        const hasta = prompt('Hasta (HH:MM):', '14:00');
+        if (!desde || !hasta) return;
+        try {
+          await window.supabaseClient.from('broker_blocks').insert([{ agent_id: agentId, day_of_week: dow, start_time: desde + ':00', end_time: hasta + ':00', label: label || 'No disponible' }]);
+          loadBrokerBlocks(true); refreshBrokerSlots();
+          showToast('Bloqueo recurrente agregado para todos los ' + ['domingos','lunes','martes','miércoles','jueves','viernes','sábados'][dow] + '.', 'success');
+        } catch (err) { showToast('Error: ' + err.message, 'error'); }
+      });
     } catch (_) { wrap.style.display = 'none'; }
   }
   $('#visitBrokerSelect')?.addEventListener('change', refreshBrokerSlots);
@@ -1460,16 +1552,47 @@
           const box = $('#visitConflictBox');
           if (box) {
             const cStart = new Date(conflict.visit_date);
+            const isBlock = String(conflict.id).startsWith('block-');
             box.innerHTML = '⚠ ' + esc(motivo) + ' el ' + cStart.toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) +
-              ' <button type="button" class="btn-action" style="margin-left:8px; padding:4px 10px; font-size:11px;" id="visitConflictOpen">Ver</button>';
+              (isBlock ? '' : ' <button type="button" class="btn-action" style="margin-left:8px; padding:4px 10px; font-size:11px;" id="visitConflictOpen">Ver</button>') +
+              ' <div id="visitSlotSuggestions" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;"></div>';
             box.style.display = 'block';
-            box.querySelector('#visitConflictOpen').onclick = (ev) => {
-              ev.preventDefault();
-              closeModal('visitModal');
-              window.adminApp.editVisit(conflict.id);
-            };
+            if (!isBlock) {
+              box.querySelector('#visitConflictOpen').onclick = (ev) => {
+                ev.preventDefault();
+                closeModal('visitModal');
+                window.adminApp.editVisit(conflict.id);
+              };
+            }
+            const dayInput = $('#visitDateDay');
+            if (data.agent_id && dayInput?.value) {
+              suggestFreeSlots(data.agent_id, dayInput.value, data.duration_minutes || 60).then(slots => {
+                const wrap = box.querySelector('#visitSlotSuggestions');
+                if (!wrap) return;
+                if (!slots.length) { wrap.innerHTML = '<span style="color:var(--text-dim); font-size:11.5px;">Sin huecos libres ese día (7–21h).</span>'; return; }
+                wrap.innerHTML = '<span style="font-size:11.5px; color:var(--text-dim); width:100%;">Huecos sugeridos:</span>' +
+                  slots.map((d, i) => '<button type="button" class="status-pill" data-slot="' + i + '" style="font-size:11.5px;">' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + '</button>').join('');
+                wrap.querySelectorAll('[data-slot]').forEach(btn => btn.addEventListener('click', () => {
+                  const d = slots[Number(btn.dataset.slot)];
+                  const timeEl = $('#visitDateTime');
+                  if (timeEl) { timeEl.value = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); syncVisitDateHidden(); }
+                  box.style.display = 'none';
+                  showToast('Horario sugerido aplicado. Volvé a guardar.', 'info');
+                }));
+              });
+            }
           }
           return;
+        }
+      }
+
+      if (data.agent_id && data.visit_date) {
+        const dayStart = agendaDayKey(new Date(data.visit_date));
+        const countDay = calEventsCache.filter(ev =>
+          ev.type === 'visita' && ev.brokerId === data.agent_id && ev.date &&
+          agendaDayKey(ev.date) === dayStart && ev.status !== 'cancelada').length;
+        if (countDay >= agendaCfg.maxDailyVisits) {
+          showToast('⚠ El broker ya tiene ' + countDay + ' visitas ese día (límite sugerido: ' + agendaCfg.maxDailyVisits + '). Se guardó igual.', 'warning', 7000);
         }
       }
 
