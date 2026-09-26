@@ -1506,12 +1506,12 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     }
   };
 
-  let _tasacionOwnerCtx = null;
+  window.__BH.tasacionOwnerCtx = null;
   window.adminApp.createTasacionForOwner = async function (ownerId) {
     const propSelect = $('#tasaProperty');
     const ownerSelect = $('#tasaOwner');
     if (!propSelect || !ownerSelect || !window.supabaseClient) return;
-    _tasacionOwnerCtx = ownerId || null;
+    window.__BH.tasacionOwnerCtx = ownerId || null;
     try {
       const [propsRes, ownerRes] = await Promise.all([
         window.supabaseClient.from('properties').select('id, property_code, title').eq('owner_id', ownerId).is('deleted_at', null).order('property_code'),
@@ -1524,7 +1524,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
         ? '<option value="' + esc(o.id) + '">' + esc(o.full_name || '') + '</option>'
         : '<option value="">Sin propietario</option>';
       ownerSelect.disabled = !!o;
-      _tasacionOwnerCtx = o ? o.id : null;
+      window.__BH.tasacionOwnerCtx = o ? o.id : null;
     } catch (err) {
       showToast('No se pudieron cargar los datos: ' + err.message, 'error');
       return;

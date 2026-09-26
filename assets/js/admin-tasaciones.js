@@ -296,7 +296,7 @@
     const propSelect = $('#tasaProperty');
     const ownerSelect = $('#tasaOwner');
     if (!propSelect || !ownerSelect) return;
-    _tasacionOwnerCtx = null;
+    window.__BH.tasacionOwnerCtx = null;
     ownerSelect.disabled = false;
       try {
         const [propsRes, ownersRes] = await Promise.all([
@@ -325,7 +325,7 @@
     const type = $('#tasaType')?.value || 'venta';
     const propertyId = $('#tasaProperty')?.value || null;
     let ownerId = $('#tasaOwner')?.value || null;
-    if (_tasacionOwnerCtx) ownerId = _tasacionOwnerCtx;
+    if (window.__BH.tasacionOwnerCtx) ownerId = window.__BH.tasacionOwnerCtx;
     if (propertyId) {
       try {
         const { data: propRow } = await window.supabaseClient.from('properties').select('title, property_code, owner_id').eq('id', propertyId).single();
@@ -360,7 +360,7 @@
         newTasacionId = data.id;
       });
       closeModal('newTasacionModal');
-      if (_tasacionOwnerCtx) {
+      if (window.__BH.tasacionOwnerCtx) {
         closeModal('ownerModal');
         navigateTo('tab-tasaciones');
       }

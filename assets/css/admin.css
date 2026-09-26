@@ -1377,6 +1377,17 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
 }
 .btn-action:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
+.btn-action-labeled {
+    width: auto;
+    height: auto;
+    padding: 7px 14px;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+
 /* Botón "mostrar/ocultar" contraseña dentro de un input relativo */
 .toggle-pwd {
     background: none;
