@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 <!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-<link rel="stylesheet" href="assets/css/admin.css?v=124" />
+<link rel="stylesheet" href="assets/css/admin.css?v=125" />
 </head>
 <body class="is-loading">
 <!-- PRELOADER LUXURY -->
@@ -1502,27 +1502,79 @@
 <h2 class="panel-title">Brokers &amp; Asesores Comerciales</h2>
 <p style="color:var(--text-muted); font-size:12.5px;">Padrón de asesores matriculados.</p>
 </div>
+<div style="display:flex; gap:10px; align-items:center;">
+<button class="btn-luxury-action" id="agExportCsv" title="Exportar CSV" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);"><i class="fas fa-download"></i> CSV</button>
+<button class="btn-luxury-action" id="agTrashToggle" title="Ver papelera" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);"><i class="fas fa-trash-can"></i> Papelera</button>
 <button class="btn-luxury-action" id="btnNewAgent">+ Registrar Agente</button>
+</div>
+</div>
+<div class="crm-kpis">
+<div class="crm-kpi"><span class="crm-kpi-label">Total</span><span class="crm-kpi-value" id="agKpiTotal">—</span></div>
+<div class="crm-kpi"><span class="crm-kpi-label">Activos</span><span class="crm-kpi-value crm-kpi--win" id="agKpiActivos">—</span></div>
+<div class="crm-kpi"><span class="crm-kpi-label">En licencia</span><span class="crm-kpi-value crm-kpi--nuevo" id="agKpiLicencia">—</span></div>
+<div class="crm-kpi"><span class="crm-kpi-label">Propiedades asignadas</span><span class="crm-kpi-value" id="agKpiProps">—</span></div>
+<div class="crm-kpi"><span class="crm-kpi-label">Ventas YTD</span><span class="crm-kpi-value crm-kpi--win" id="agKpiVentas">—</span></div>
+</div>
+<div class="tas-filters">
+<input type="search" id="agSearchInput" class="tas-filter-input" placeholder="Buscar por nombre, email o matrícula..." aria-label="Buscar agente" />
+<select id="agStatusFilter" class="tas-filter-select" aria-label="Filtrar por estado">
+<option value="">Todos los estados</option>
+<option value="activo">Activos</option>
+<option value="inactivo">Inactivos</option>
+<option value="licencia">En licencia</option>
+</select>
+<button type="button" id="agFilterClear" class="btn-action" title="Limpiar filtros" aria-label="Limpiar filtros" style="padding:8px 12px; border-radius:10px;"><i class="fas fa-rotate-left"></i></button>
+</div>
+<div id="agentBulkBar" class="props-bulk-bar">
+<span id="agentBulkCount" class="props-bulk-count"></span>
+<select id="agentBulkStatusSelect" class="props-bulk-select">
+<option value="">Cambiar estado a...</option>
+<option value="activo">Activo</option>
+<option value="inactivo">Inactivo</option>
+<option value="licencia">Licencia</option>
+</select>
+<button type="button" class="props-bulk-btn" id="agentBulkApplyStatus"><i class="fas fa-check"></i> Aplicar estado</button>
+<button type="button" class="props-bulk-btn props-bulk-draft" id="agentBulkDelete"><i class="fas fa-trash"></i> Enviar a papelera</button>
+<button type="button" class="props-bulk-btn props-bulk-clear" id="agentBulkClear"><i class="fas fa-xmark"></i> Quitar selección</button>
 </div>
 <div class="table-responsive">
 <table class="luxury-table">
 <thead>
 <tr>
-<th>Agente</th>
+<th style="width:34px;"><input type="checkbox" id="agentSelectAll" title="Seleccionar todos" /></th>
+<th class="ag-th-sort" data-sort="full_name">Agente <i class="fas fa-sort ag-sort-icon"></i></th>
 <th>Matrícula</th>
 <th>Especialidades</th>
-<th>Comisión</th>
+<th class="ag-th-sort" data-sort="commission_rate">Comisión <i class="fas fa-sort ag-sort-icon"></i></th>
 <th>Estado</th>
-<th>Teléfono</th>
-<th>Acción</th>
+<th style="text-align:center;" title="Propiedades activas asignadas">Props</th>
+<th class="ag-th-sort" data-sort="sales_ytd" style="text-align:right;">Ventas YTD <i class="fas fa-sort ag-sort-icon"></i></th>
+<th>Contacto</th>
+<th style="text-align:right;">Acciones</th>
 </tr>
 </thead>
 <tbody id="agentsTableBody">
 <tr>
-<td colspan="7" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando agentes...</td>
+<td colspan="10" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando agentes...</td>
 </tr>
 </tbody>
 </table>
+</div>
+<div class="crm-pagination">
+<button class="tas-pag-btn" id="agPagePrev" title="Página anterior" disabled><i class="fas fa-chevron-left"></i></button>
+<span class="crm-pag-info" id="agPageInfo">Página 1 de 1</span>
+<button class="tas-pag-btn" id="agPageNext" title="Página siguiente" disabled><i class="fas fa-chevron-right"></i></button>
+<select id="agPageSize" class="tas-page-size" title="Filas por página">
+<option value="10">10 por página</option>
+<option value="25" selected>25 por página</option>
+<option value="50">50 por página</option>
+</select>
+</div>
+</div>
+<div class="ag-drawer" id="agentDrawer" aria-hidden="true">
+<div class="ag-drawer-panel">
+<button type="button" class="ag-drawer-close" id="agentDrawerClose" title="Cerrar" aria-label="Cerrar detalle"><i class="fas fa-xmark"></i></button>
+<div id="agentDrawerBody" class="ag-drawer-body"></div>
 </div>
 </div>
 </section>
@@ -2658,7 +2710,16 @@
 </div>
 <div class="form-field">
 <label>Foto</label>
-<input type="file" name="photo_file" accept="image/*" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:12px; padding:12px 16px; color:#fff; font-size:13.5px; width:100%;" />
+<div id="agentPhotoPreviewWrap" style="display:none; margin-bottom:8px;">
+<img id="agentPhotoPreview" src="" alt="Foto actual" style="width:64px; height:64px; border-radius:50%; object-fit:cover; border:1px solid var(--border-subtle);" />
+<button type="button" id="agentPhotoRemove" class="status-pill pending" style="margin-left:8px;">Quitar foto</button>
+</div>
+<input type="file" name="photo_file" id="agentPhotoFile" accept="image/jpeg,image/png,image/webp" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:12px; padding:12px 16px; color:#fff; font-size:13.5px; width:100%;" />
+<small style="color:var(--text-dim); font-size:11px;">JPG, PNG o WebP, máx. 2 MB. Se redimensiona a 512×512 antes de subir.</small>
+</div>
+<div class="form-field">
+<label>Especialidades</label>
+<div id="agentSpecialtiesWrap" class="ag-spec-wrap"></div>
 </div>
 <div class="form-field">
 <label>Bio</label>
@@ -2667,7 +2728,7 @@
 </div>
 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
 <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
-<button type="submit" class="btn-luxury-action" id="agentSaveBtn">Guardar Broker</button>
+<button type="submit" class="btn-luxury-action" id="agentSaveBtn">Guardar Agente</button>
 </div>
 </form>
 </div>
@@ -3260,7 +3321,7 @@
 <script src="assets/js/admin-app.js?v=331"></script>
 <script src="assets/js/admin-propietarios.js?v=5"></script>
 <script src="assets/js/admin-usuarios.js?v=2"></script>
-<script src="assets/js/admin-agentes.js?v=2"></script>
+<script src="assets/js/admin-agentes.js?v=3"></script>
 <script src="assets/js/admin-cms.js?v=3"></script>
 <script src="assets/js/admin-portales.js?v=3"></script>
 <script src="assets/js/admin-tasaciones.js?v=4"></script>
