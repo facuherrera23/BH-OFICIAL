@@ -487,6 +487,15 @@
   /* ------------------------------------------------
      Filtros, búsqueda, paginación, sort, papelera
      ------------------------------------------------ */
+  /* readonly al cargar: evita que el autofill del navegador llene el buscador
+     con el email del login (se quita al primer focus) */
+  (function () {
+    const inp = $('#agSearchInput');
+    if (inp && inp.hasAttribute('readonly')) {
+      inp.addEventListener('focus', () => inp.removeAttribute('readonly'), { once: true });
+    }
+  })();
+
   on($('#agSearchInput'), 'input', (e) => {
     clearTimeout(window._agSearchTimer);
     window._agSearchTimer = setTimeout(() => { _agSearchQuery = e.target.value.trim(); _agPage = 1; loadAgents(); }, 300);
