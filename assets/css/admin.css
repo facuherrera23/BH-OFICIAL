@@ -4684,7 +4684,18 @@ input[type="range"]::-moz-range-thumb {
 .crm-tipo-chip--tas.tas-chip--alquiler{background:rgba(31,200,195,0.15);color:var(--accent)}
 .tas-valor{color:var(--accent);font-weight:700;font-size:13.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .tas-fecha{color:var(--text-muted);font-size:12.5px;white-space:nowrap}
-.tas-th-actions{width:140px}
+.tas-th-actions{width:170px}
+.tas-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0 4px}
+.tas-filter-input{flex:1;min-width:220px;padding:10px 14px;background:rgba(255,255,255,0.03);border:1px solid var(--border-input);border-radius:12px;color:#fff;font-size:13px}
+.tas-filter-select{padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border-input);border-radius:12px;color:#fff;font-size:12.5px;color-scheme:dark}
+.tas-th-sort{cursor:pointer;user-select:none;white-space:nowrap}
+.tas-th-sort:hover{color:var(--accent)}
+.tas-sort-icon{font-size:10px;opacity:.4;margin-left:4px}
+.tas-th-sort[data-dir="asc"] .tas-sort-icon{opacity:1;color:var(--accent)}
+.tas-th-sort[data-dir="desc"] .tas-sort-icon{opacity:1;color:var(--accent);transform:rotate(180deg);display:inline-block}
+.tas-valor-ars{display:block;font-size:11px;color:var(--text-dim);font-weight:400}
+.tas-vinc-link{color:var(--accent);cursor:pointer;text-decoration:none}
+.tas-vinc-link:hover{text-decoration:underline}
 .tas-empty{text-align:center;padding:48px 20px;display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--text-dim)}
 .tas-empty i{font-size:30px;opacity:.4}
 .tas-empty p{margin:0;color:#fff;font-weight:600;font-size:14px}

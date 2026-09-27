@@ -1317,16 +1317,34 @@
         }
       }
       const valuationStr = valuation ? 'US$ ' + Number(valuation).toLocaleString('es-AR') : '—';
+      const arsRate = (window.__BH && window.__BH.tasaUsdRate) || 0;
+      const valuationArs = valuation && arsRate > 0
+        ? `<span class="tas-valor-ars">≈ $ ${Number(Math.round(valuation * arsRate)).toLocaleString('es-AR')}</span>`
+        : '';
       const avatarBase = ownerName || t.title || 'Tasacion';
-      const meta = [ownerName, propName].filter(Boolean).map(x => esc(x)).join(' · ') || 'Sin vínculos en el CRM';
+      const ownerHtml = ownerName
+        ? (t.owner_id
+          ? `<span class="tas-vinc-link" data-open-owner-vinc="${esc(t.owner_id)}" title="Abrir expediente">${esc(ownerName)}</span>`
+          : esc(ownerName))
+        : null;
+      const propHtml = propName
+        ? (t.property_id
+          ? `<span class="tas-vinc-link" data-open-prop-vinc="${esc(t.property_id)}" title="Abrir propiedad">${esc(propName)}</span>`
+          : esc(propName))
+        : null;
+      const meta = [ownerHtml, propHtml].filter(Boolean).join(' · ') || 'Sin vínculos en el CRM';
+      const isFinal = t.status === 'finalized';
       return `<tr class="tas-row" data-id="${esc(t.id)}">
         <td><div class="crm-client-row"><span class="crm-client-avatar" style="background:${tasAvatarColor(avatarBase)}">${esc(tasInitials(avatarBase))}</span><div><strong>${esc(t.title || 'Sin título')}</strong>${typeChip}<div class="crm-meta">${meta}</div></div></div></td>
-        <td><span class="tas-valor">${valuationStr}</span></td>
+        <td><span class="tas-valor">${valuationStr}</span>${valuationArs}</td>
         <td><span class="status-pill ${statusClass}">${statusLabel}</span></td>
         <td><span class="tas-fecha">${date}</span></td>
         <td class="crm-td-actions">
           <button class="btn-action" title="Abrir" data-open-tasacion="${esc(t.id)}" data-tasacion-title="${esc(t.title || '')}"><i class="fas fa-external-link-alt"></i></button>
           <button class="btn-action" title="Exportar PDF" data-pdf-tasacion="${esc(t.id)}" data-tasacion-title="${esc(t.title || '')}"><i class="fas fa-file-pdf"></i></button>
+          <button class="btn-action" title="Vincular propietario" data-link-owner="${esc(t.id)}"><i class="fas fa-link"></i></button>
+          <button class="btn-action" title="${isFinal ? 'Volver a borrador' : 'Marcar finalizada'}" data-toggle-status="${esc(t.id)}" data-status="${esc(t.status || 'draft')}"><i class="fas ${isFinal ? 'fa-rotate-left' : 'fa-check'}"></i></button>
+          <button class="btn-action" title="Duplicar" data-dup-tasacion="${esc(t.id)}"><i class="fas fa-copy"></i></button>
           <button class="btn-action danger" title="Eliminar" data-del-tasacion="${esc(t.id)}"><i class="fas fa-trash"></i></button>
         </td>
       </tr>`;

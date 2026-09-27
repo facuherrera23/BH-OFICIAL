@@ -1659,23 +1659,38 @@ function esc(s) {
     if (!window.supabaseClient) return;
     const { data, error } = await window.supabaseClient
       .from('tasaciones')
-      .select('id, title, status, type, created_at, updated_at, valuation_usd, property_id, owner_id')
+      .select('id, title, status, type, created_at, updated_at, valuation_usd, property_id, owner_id, data')
       .order('created_at', { ascending: false });
     if (error) { showToast('Error exportando: ' + error.message, 'error'); return; }
     const propIds = [...new Set((data || []).map(t => t.property_id).filter(Boolean))];
     const ownerIds = [...new Set((data || []).map(t => t.owner_id).filter(Boolean))];
-    const [propsRes, ownersRes] = await Promise.all([
+    const [propsRes, ownersRes, prefsRes] = await Promise.all([
       propIds.length ? window.supabaseClient.from('properties').select('id, property_code, title').in('id', propIds) : { data: [] },
-      ownerIds.length ? window.supabaseClient.from('owners').select('id, full_name').in('id', ownerIds) : { data: [] }
+      ownerIds.length ? window.supabaseClient.from('owners').select('id, full_name').in('id', ownerIds) : { data: [] },
+      window.supabaseClient.from('app_settings').select('value').eq('key', 'preferences').maybeSingle()
     ]);
+    const usdRate = Number(prefsRes.data?.value?.usd_rate) || 0;
     const propMap = new Map((propsRes.data || []).map(p => [p.id, p]));
     const ownerMap = new Map((ownersRes.data || []).map(o => [o.id, o]));
-    const headers = ['ID', 'Título', 'Tipo', 'Estado', 'Propiedad', 'Propietario', 'Valor Estimado (USD)', 'Fecha creación', 'Última edición'];
+    const getValuation = (t) => {
+      let v = t.valuation_usd;
+      if (!v && t.data && typeof t.data === 'object') {
+        v = t.data.valuation_usd || t.data.final_valuation || null;
+        if (!v && window.BH_TasacionCalc) {
+          const r = window.BH_TasacionCalc.compute(t.data);
+          v = r && r.valorFinal;
+        }
+      }
+      return v || '';
+    };
+    const headers = ['ID', 'Título', 'Tipo', 'Estado', 'Propiedad', 'Propietario', 'Valor Estimado (USD)', 'Valor Estimado (ARS)', 'Fecha creación', 'Última edición'];
     const rows = data.map(function(t) {
       const prop = t.property_id ? propMap.get(t.property_id) : null;
       const propName = prop ? (prop.property_code || '') + ' - ' + (prop.title || '') : '';
       const owner = t.owner_id ? ownerMap.get(t.owner_id) : null;
-      return [t.id, t.title, t.type || '', t.status, propName, owner?.full_name || '', t.valuation_usd || '', t.created_at, t.updated_at];
+      const val = getValuation(t);
+      const valArs = val && usdRate > 0 ? Math.round(val * usdRate) : '';
+      return [t.id, t.title, t.type || '', t.status, propName, owner?.full_name || '', val, valArs, t.created_at, t.updated_at];
     });
     const date = new Date().toISOString().slice(0, 10);
     downloadCSV('tasaciones-' + date + '.csv', rows, headers);

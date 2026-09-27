@@ -106,32 +106,53 @@
     if (!currentUser || !window.supabaseClient) return;
 
     try {
-      /* Get total count for pagination */
-      const { count: totalCount, error: countError } = await window.supabaseClient
-        .from('tasaciones')
-        .select('*', { count: 'exact', head: true });
-      if (countError) throw countError;
-      _tasacionesTotalCount = totalCount || 0;
+      const q = ($('#tasaSearchText')?.value || '').trim();
+      const tipo = $('#tasaFilterTipo')?.value || '';
+      const estado = $('#tasaFilterEstado')?.value || '';
+      const desde = $('#tasaFilterDesde')?.value || '';
+      const hasta = $('#tasaFilterHasta')?.value || '';
+
+      /* Ilke usa comodines %; las comas rompen la sintaxis de filtros PostgREST */
+      const qSafe = q.replace(/[%,]/g, ' ');
+
+      const applyFilters = (query) => {
+        if (qSafe) query = query.or('title.ilike.%' + qSafe + '%,data->fields->>f_direccion.ilike.%' + qSafe + '%');
+        if (tipo) query = query.eq('type', tipo);
+        if (estado) query = query.eq('status', estado);
+        if (desde) query = query.gte('created_at', desde + 'T00:00:00');
+        if (hasta) query = query.lte('created_at', hasta + 'T23:59:59.999');
+        return query;
+      };
+
+      /* Count total filtrado (paginación) y KPIs globales (sin filtro) en paralelo */
+      const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
+      const [countRes, finRes, draftRes, recentRes, prefsRes] = await Promise.all([
+        applyFilters(window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true })),
+        window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true }).eq('status', 'finalized'),
+        window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true }).eq('status', 'draft'),
+        window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true }).gte('created_at', since30),
+        window.supabaseClient.from('app_settings').select('value').eq('key', 'preferences').maybeSingle()
+      ]);
+      if (countRes.error) throw countRes.error;
+      _tasacionesTotalCount = countRes.count || 0;
+      window.__BH.tasaUsdRate = Number(prefsRes.data?.value?.usd_rate) || 0;
 
       const from = (_tasacionesPage - 1) * _tasacionesPageSize;
       const to = from + _tasacionesPageSize - 1;
 
-      const { data, error } = await window.supabaseClient
-        .from('tasaciones')
-        .select('id, title, status, created_at, property_id, owner_id, type, data, valuation_usd')
-        .order('created_at', { ascending: false })
-        .range(from, to);
+      const { data, error } = await applyFilters(
+        window.supabaseClient
+          .from('tasaciones')
+          .select('id, title, status, created_at, property_id, owner_id, type, data, valuation_usd')
+          .order(_tasSort.col, { ascending: _tasSort.asc, nullsFirst: false })
+      ).range(from, to);
       if (error) throw error;
 
       const propIds = [...new Set((data || []).map(t => t.property_id).filter(Boolean))];
       const ownerIds = [...new Set((data || []).map(t => t.owner_id).filter(Boolean))];
-      const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
-      const [propsRes, ownersRes, finRes, draftRes, recentRes] = await Promise.all([
+      const [propsRes, ownersRes] = await Promise.all([
         propIds.length ? window.supabaseClient.from('properties').select('id, property_code, title').in('id', propIds) : { data: [] },
-        ownerIds.length ? window.supabaseClient.from('owners').select('id, full_name').in('id', ownerIds) : { data: [] },
-        window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true }).eq('status', 'finalized'),
-        window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true }).eq('status', 'draft'),
-        window.supabaseClient.from('tasaciones').select('*', { count: 'exact', head: true }).gte('created_at', since30)
+        ownerIds.length ? window.supabaseClient.from('owners').select('id, full_name').in('id', ownerIds) : { data: [] }
       ]);
       const propMap = new Map((propsRes.data || []).map(p => [p.id, { ...p, code: p.property_code || p.code || null }]));
       const ownerMap = new Map((ownersRes.data || []).map(o => [o.id, o]));
@@ -149,7 +170,10 @@
       if (pageNext) pageNext.disabled = _tasacionesPage >= totalPages;
 
       if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5"><div class="tas-empty"><i class="fas fa-file-invoice"></i><p>No hay tasaciones registradas todavía.</p><span>Creá la primera con “Nueva Tasación”.</span></div></td></tr>';
+        const conFiltros = qSafe || tipo || estado || desde || hasta;
+        tbody.innerHTML = conFiltros
+          ? '<tr><td colspan="5"><div class="tas-empty"><i class="fas fa-filter"></i><p>Sin resultados para esos filtros.</p><span>Probá limpiar o ajustar la búsqueda.</span></div></td></tr>'
+          : '<tr><td colspan="5"><div class="tas-empty"><i class="fas fa-file-invoice"></i><p>No hay tasaciones registradas todavía.</p><span>Creá la primera con “Nueva Tasación”.</span></div></td></tr>';
         return;
       }
 
@@ -166,6 +190,38 @@
       tbody.innerHTML = '<tr><td colspan="5" class="tas-empty-cell">Error al cargar tasaciones</td></tr>';
     }
   }
+
+  /* Filtros y ordenamiento del listado */
+  const _tasSort = { col: 'created_at', asc: false };
+  let _tasSearchTimer = null;
+  const _tasReload = () => { _tasacionesPage = 1; loadTasaciones(); };
+  const _tasReloadDebounced = () => { clearTimeout(_tasSearchTimer); _tasSearchTimer = setTimeout(_tasReload, 250); };
+  on($('#tasaSearchText'), 'input', _tasReloadDebounced);
+  on($('#tasaFilterTipo'), 'change', _tasReload);
+  on($('#tasaFilterEstado'), 'change', _tasReload);
+  on($('#tasaFilterDesde'), 'change', _tasReload);
+  on($('#tasaFilterHasta'), 'change', _tasReload);
+  on($('#tasaFilterClear'), 'click', () => {
+    ['#tasaSearchText', '#tasaFilterTipo', '#tasaFilterEstado', '#tasaFilterDesde', '#tasaFilterHasta']
+      .forEach(sel => { const el = $(sel); if (el) el.value = ''; });
+    _tasReload();
+  });
+  on(document, 'click', (e) => {
+    const th = e.target.closest('.tas-th-sort');
+    if (!th || !th.closest('#tab-tasaciones')) return;
+    const col = th.dataset.sort;
+    if (!col) return;
+    if (_tasSort.col === col) { _tasSort.asc = !_tasSort.asc; } else { _tasSort.col = col; _tasSort.asc = false; }
+    document.querySelectorAll('#tab-tasaciones .tas-th-sort').forEach(el => {
+      el.removeAttribute('data-dir');
+      const icon = el.querySelector('.tas-sort-icon');
+      if (icon) icon.className = 'fas fa-sort tas-sort-icon';
+    });
+    th.dataset.dir = _tasSort.asc ? 'asc' : 'desc';
+    const icon = th.querySelector('.tas-sort-icon');
+    if (icon) icon.className = 'fas ' + (_tasSort.asc ? 'fa-sort-up' : 'fa-sort-down') + ' tas-sort-icon';
+    _tasReload();
+  });
 
   window.navigateToTasacion = function (id, title) {
     showTasacionEditor(id, title);
@@ -284,12 +340,127 @@
   });
 
   on($('#tasacionesTableBody'), 'click', (e) => {
+    const linkVinc = e.target.closest('[data-open-owner-vinc]');
+    if (linkVinc) { window.adminApp.editOwner(linkVinc.dataset.openOwnerVinc); return; }
+    const propVinc = e.target.closest('[data-open-prop-vinc]');
+    if (propVinc) { window.adminApp.editProperty(propVinc.dataset.openPropVinc); return; }
     const open = e.target.closest('[data-open-tasacion]');
     if (open) { window.navigateToTasacion(open.dataset.openTasacion, open.dataset.tasacionTitle || ''); return; }
     const del = e.target.closest('[data-del-tasacion]');
-    if (del) _deleteTasacion(del.dataset.delTasacion);
+    if (del) { _deleteTasacion(del.dataset.delTasacion); return; }
     const pdf = e.target.closest('[data-pdf-tasacion]');
     if (pdf) { _openTasacionPDF(pdf.dataset.pdfTasacion); return; }
+    const dup = e.target.closest('[data-dup-tasacion]');
+    if (dup) { _duplicateTasacion(dup.dataset.dupTasacion); return; }
+    const toggle = e.target.closest('[data-toggle-status]');
+    if (toggle) { _toggleTasacionStatus(toggle.dataset.toggleStatus, toggle.dataset.status); return; }
+    const link = e.target.closest('[data-link-owner]');
+    if (link) { _openLinkOwnerModal(link.dataset.linkOwner); return; }
+  });
+
+  async function _duplicateTasacion(id) {
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('tasaciones')
+        .select('title, type, data, valuation_usd, property_id, owner_id, broker_id')
+        .eq('id', id)
+        .single();
+      if (error || !data) throw (error || new Error('No se encontró la tasación'));
+      await mutate('tasaciones', async () => {
+        const { error: insErr } = await window.supabaseClient.from('tasaciones').insert({
+          title: (data.title || 'Tasación') + ' (copia)',
+          type: data.type || 'venta',
+          data: data.data || {},
+          valuation_usd: data.valuation_usd || null,
+          property_id: data.property_id || null,
+          owner_id: data.owner_id || null,
+          broker_id: data.broker_id || null,
+          created_by: currentUser?.id || null,
+          status: 'draft'
+        });
+        if (insErr) throw insErr;
+      });
+      showToast('Tasación duplicada como borrador', 'success');
+      loadTasaciones();
+      updateSidebarBadges();
+    } catch (err) {
+      showToast('Error al duplicar: ' + err.message, 'error');
+    }
+  }
+
+  async function _toggleTasacionStatus(id, current) {
+    const next = current === 'finalized' ? 'draft' : 'finalized';
+    const ok = await showConfirmDialog({
+      title: next === 'finalized' ? 'Marcar como finalizada' : 'Volver a borrador',
+      message: next === 'finalized'
+        ? 'La tasación pasará a FINALIZADA (el editor quedará en solo lectura). ¿Continuar?'
+        : 'La tasación volverá a BORRADOR y podrá editarse. ¿Continuar?',
+      icon: next === 'finalized' ? 'fas fa-check' : 'fas fa-rotate-left',
+      confirmText: next === 'finalized' ? 'Finalizar' : 'Volver a borrador',
+      danger: next === 'draft'
+    });
+    if (!ok) return;
+    try {
+      await mutate('tasaciones', async () => {
+        const { error } = await window.supabaseClient.from('tasaciones')
+          .update({ status: next, updated_at: new Date().toISOString() })
+          .eq('id', id);
+        if (error) throw error;
+      });
+      showToast(next === 'finalized' ? 'Tasación finalizada' : 'Tasación en borrador', 'success');
+      loadTasaciones();
+      updateSidebarBadges();
+    } catch (err) {
+      showToast('Error al cambiar estado: ' + err.message, 'error');
+    }
+  }
+
+  let _linkOwnerTasacionId = null;
+  async function _openLinkOwnerModal(tasacionId) {
+    _linkOwnerTasacionId = tasacionId;
+    const sel = $('#tasaLinkOwnerSelect');
+    const unlink = $('#tasaLinkOwnerUnlink');
+    if (!sel || !window.supabaseClient) return;
+    sel.innerHTML = '<option value="">Cargando...</option>';
+    if (unlink) unlink.checked = false;
+    openModal('tasaLinkOwnerModal');
+    try {
+      const [tasaRes, ownersRes] = await Promise.all([
+        window.supabaseClient.from('tasaciones').select('title, owner_id').eq('id', tasacionId).single(),
+        window.supabaseClient.from('owners').select('id, full_name').is('deleted_at', null).order('full_name')
+      ]);
+      if (ownersRes.error) throw ownersRes.error;
+      const sub = $('#tasaLinkOwnerSubtitle');
+      if (sub) sub.textContent = 'Elegí el propietario para "' + (tasaRes.data?.title || 'esta tasación') + '".';
+      sel.innerHTML = '<option value="">— Seleccionar propietario —</option>' +
+        (ownersRes.data || []).map(o => '<option value="' + esc(o.id) + '">' + esc(o.full_name || '') + '</option>').join('');
+      if (tasaRes.data?.owner_id) sel.value = tasaRes.data.owner_id;
+    } catch (err) {
+      showToast('No se pudieron cargar propietarios: ' + err.message, 'error');
+      sel.innerHTML = '<option value="">— Seleccionar propietario —</option>';
+    }
+  }
+
+  on($('#tasaLinkOwnerSave'), 'click', async () => {
+    if (!_linkOwnerTasacionId) return;
+    const unlink = $('#tasaLinkOwnerUnlink')?.checked;
+    const ownerId = $('#tasaLinkOwnerSelect')?.value || '';
+    const newOwner = unlink ? null : (ownerId || null);
+    if (!unlink && !ownerId) { showToast('Elegí un propietario o marcá "Quitar vínculo"', 'warning'); return; }
+    try {
+      await mutate('tasaciones', async () => {
+        const { error } = await window.supabaseClient.from('tasaciones')
+          .update({ owner_id: newOwner, updated_at: new Date().toISOString() })
+          .eq('id', _linkOwnerTasacionId);
+        if (error) throw error;
+      });
+      showToast(newOwner ? 'Propietario vinculado' : 'Vínculo eliminado', 'success');
+      closeModal('tasaLinkOwnerModal');
+      _linkOwnerTasacionId = null;
+      loadTasaciones();
+    } catch (err) {
+      showToast('Error al vincular: ' + err.message, 'error');
+    }
   });
 
   async function createNewTasacion() {
