@@ -2162,7 +2162,8 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
 }
 
 .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
-.calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+/* minmax(0,1fr): 1fr puro = minmax(auto,1fr) y las celdas con nowrap expanden los tracks, rompiendo el layout del mes */
+.calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .cal-day-header {
     font-weight: 600;
     color: var(--text-dim);
@@ -2178,6 +2179,7 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
     border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 8px;
     padding: 6px;
+    min-width: 0; /* permite que la celda se achique sin forzar overflow del grid por textos largos */
     transition: border-color 0.15s ease, background 0.15s ease;
 }
 .cal-day:hover { border-color: var(--border-accent); }
@@ -2186,7 +2188,7 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
 .cal-day-number { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; }
 .cal-day.today .cal-day-number { color: var(--accent); }
 
-.cal-events { display: flex; flex-direction: column; gap: 3px; }
+.cal-events { display: flex; flex-direction: column; gap: 3px; min-width: 0; /* idem: evita que los eventos expandan la columna */ }
 .cal-event {
     font-size: 10px;
     line-height: 1.3;
@@ -2984,7 +2986,8 @@ input[type="range"]::-moz-range-thumb {
    AGENDA UNIFICADA - vistas semana/dia + colores por tipo
    ================================================================ */
 .cal-view-switcher { display: flex; gap: 6px; }
-.calendar-week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+/* La vista semana usa timeline: sus hijos (.cal-week-headrow / .cal-week-body) deben ocupar todo el ancho, no una celda de 7 */
+.calendar-week-grid { display: grid; gap: 4px; }
 .calendar-day-view { display: block; }
 
 .cal-week-col {
