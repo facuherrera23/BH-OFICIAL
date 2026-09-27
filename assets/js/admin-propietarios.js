@@ -201,6 +201,32 @@ openModal('ownerModal');
     if (title) title.textContent = 'Nuevo Propietario';
     openModal('ownerModal');
   });
+
+  /* Crear propietario inline desde el modal Nueva Tasación */
+  let _ownerFormSourceTasacionModal = false;
+  async function _refreshTasaOwnerSelect(selectedId) {
+    const sel = $('#tasaOwner');
+    if (!sel || !window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient.from('owners').select('id, full_name').is('deleted_at', null).order('full_name');
+      if (error) return;
+      sel.innerHTML = '<option value="">Sin vincular</option>' +
+        (data || []).map(o => '<option value="' + esc(o.id) + '">' + esc(o.full_name || '') + '</option>').join('');
+      if (selectedId) sel.value = selectedId;
+    } catch (_) { /* silent */ }
+  }
+  on($('#btnAddOwnerForTasacion'), 'click', () => {
+    _ownerFormSourceTasacionModal = true;
+    editingOwnerId = null;
+    $('#ownerForm')?.reset();
+    const title = $('#ownerModalTitle');
+    if (title) title.textContent = 'Nuevo Propietario';
+    openModal('ownerModal');
+    /* newTasacionModal y ownerModal comparten z-index 100000; sin esto el modal de
+       propietario abre debajo del de tasación (mismo stacking context, gana el DOM posterior). */
+    const om = $('#ownerModal');
+    if (om) om.style.zIndex = '100010';
+  });
   /* Save owner */
   on($('#ownerForm'), 'submit', async (e) => {
     e.preventDefault();
@@ -295,6 +321,13 @@ closeModal('ownerModal');
       if (_ownerFormSourcePropertyModal) {
         _ownerFormSourcePropertyModal = false;
         await refreshOwnerSelect($('#propOwnerSelect'), _createdOwnerId);
+        _createdOwnerId = null;
+      }
+
+      if (_ownerFormSourceTasacionModal) {
+        _ownerFormSourceTasacionModal = false;
+        await _refreshTasaOwnerSelect(_createdOwnerId);
+        window.__BH.tasacionOwnerCtx = _createdOwnerId;
         _createdOwnerId = null;
       }
 
