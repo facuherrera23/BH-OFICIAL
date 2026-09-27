@@ -1309,6 +1309,12 @@
       let valuation = t.valuation_usd;
       if (!valuation && t.data && typeof t.data === 'object') {
         valuation = t.data.valuation_usd || t.data.final_valuation || null;
+        if (!valuation && window.BH_TasacionCalc) {
+          /* Tasaciones viejas quedaron con valuation_usd null (se guardaron con valor 0):
+             se recalcula desde data (comparables + campos + servicios) con el modulo compartido. */
+          const r = window.BH_TasacionCalc.compute(t.data);
+          valuation = r && r.valorFinal;
+        }
       }
       const valuationStr = valuation ? 'US$ ' + Number(valuation).toLocaleString('es-AR') : '—';
       const avatarBase = ownerName || t.title || 'Tasacion';

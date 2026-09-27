@@ -36,37 +36,8 @@ let TASACION_ID = urlParams.get('id');
 /* Último valor final calculado por recalcAll() (USD), para persistir en valuation_usd */
 let _lastValorFinalUSD = null;
 
-const PESOS = {
-  CASA:   {label:'Casa',    vars:[['Calidad de ubicación',0.30],['Cantidad de habitaciones',0.20],['Estado de mantenimiento',0.20],['Antigüedad',0.15],['Comodidades',0.10],['Estacionamiento',0.05]]},
-  DEPTO:  {label:'Depto',   vars:[['Calidad de ubicación (barrio)',0.30],['Cantidad de habitaciones',0.20],['Ubicación piso',0.15],['Antigüedad',0.15],['Comodidades (edificio)',0.12],['Ubicación planta',0.08]]},
-  LOTE:   {label:'Lote',    vars:[['Calidad de ubicación',0.35],['Superficie',0.25],['Servicios',0.20],['Acceso',0.10],['Forma',0.06],['Orientación',0.04]]},
-  GALPON: {label:'Galpón',  vars:[['Calidad de ubicación',0.25],['Superficie y altura libre',0.25],['Acceso',0.20],['Instalaciones',0.15],['Estado / antigüedad',0.10],['Oficinas y servicios anexos',0.05]]},
-  OFICINA:{label:'Oficina', vars:[['Calidad de ubicación',0.30],['Superficie y layout',0.20],['Ubicación piso / vista',0.15],['Comodidades del edificio',0.15],['Antigüedad / estado',0.12],['Estacionamiento',0.08]]},
-  LOCAL:  {label:'Local',   vars:[['Calidad de ubicación',0.35],['Frente / vidriera',0.20],['Superficie y forma',0.15],['Instalaciones',0.12],['Estado de mantenimiento',0.10],['Estacionamiento / carga y descarga',0.08]]},
-  OTRO:   {label:'Otro',    vars:[['Calidad de ubicación',0.30],['Superficie',0.15],['Servicios',0.15],['Acceso',0.15],['Instalaciones',0.15],['Estado de mantenimiento',0.10]]},
-};
-const SLOT_ORDER = [3,2,5,0,4,1];
-
-const NIVELES = {'Mucho Mejor':-0.75, 'Mejor':-0.3, 'Igual':0, 'Peor':0.3, 'Mucho Peor':0.75};
-const NIVELES_LIST = Object.keys(NIVELES);
-
-const RUBROS = {
-  'Electricidad':        {'Óptimo / Impecable (Listo para Habitar)':0,   'Sencilla (Cosmética / Menor)':0.010, 'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.065,'A Nuevo (Rediseño Total)':0.10},
-  'Agua Sanitaria':      {'Óptimo / Impecable (Listo para Habitar)':0,   'Sencilla (Cosmética / Menor)':0.0075,'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.07, 'A Nuevo (Rediseño Total)':0.11},
-  'Cloacas y Desagües':  {'Óptimo / Impecable (Listo para Habitar)':0,   'Sencilla (Cosmética / Menor)':0.0075,'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.08, 'A Nuevo (Rediseño Total)':0.115},
-  'Gas Natural':         {'Óptimo / Impecable (Listo para Habitar)':0,   'Sencilla (Cosmética / Menor)':0.0075,'Moderada (Parcial / Funcional)':0.03, 'Grave (Deterioro Estructural)':0.09, 'A Nuevo (Rediseño Total)':0.125},
-  'Techos y Cubiertas':  {'Óptimo / Impecable (Listo para Habitar)':0,   'Sencilla (Cosmética / Menor)':0.015, 'Moderada (Parcial / Funcional)':0.045,'Grave (Deterioro Estructural)':0.115,'A Nuevo (Rediseño Total)':0.20},
-  'Internet / Redes':    {'Óptimo / Impecable (Listo para Habitar)':0,   'Sencilla (Cosmética / Menor)':0.0035,'Moderada (Parcial / Funcional)':0.01, 'Grave (Deterioro Estructural)':0.03, 'A Nuevo (Rediseño Total)':0.045},
-};
-const RUBRO_NIVELES = ['Óptimo / Impecable (Listo para Habitar)','Sencilla (Cosmética / Menor)','Moderada (Parcial / Funcional)','Grave (Deterioro Estructural)','A Nuevo (Rediseño Total)'];
-const SERVICIOS_MAP = [
-  {key:'electricidad', label:'Electricidad', rubro:'Electricidad'},
-  {key:'gas',           label:'Gas',            rubro:'Gas Natural'},
-  {key:'internet',      label:'Internet',       rubro:'Internet / Redes'},
-  {key:'agua',          label:'Agua',           rubro:'Agua Sanitaria'},
-  {key:'cloaca',        label:'Cloaca',         rubro:'Cloacas y Desagües'},
-  {key:'techos',        label:'Techos y Desagües', rubro:'Techos y Cubiertas'},
-];
+/* Constantes del ACM centralizadas en assets/js/tasacion-calc.js (fuente única). */
+const { PESOS, SLOT_ORDER, NIVELES, NIVELES_LIST, RUBROS, RUBRO_NIVELES, SERVICIOS_MAP } = window.BH_TasacionCalc;
 
 let comparableCount = 0;
 let finalized = false;
