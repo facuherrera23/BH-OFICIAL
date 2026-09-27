@@ -445,8 +445,8 @@
       if (error) throw error;
       const [props, visits, comms] = await Promise.all([
         window.supabaseClient.from('properties').select('id, title, status, price_usd, price_currency').eq('agent_id', id).is('deleted_at', null).order('created_at', { ascending: false }).limit(10),
-        window.supabaseClient.from('visits').select('id, scheduled_at, status, lead_id').eq('agent_id', id).gte('scheduled_at', new Date().toISOString()).order('scheduled_at', { ascending: true }).limit(5),
-        window.supabaseClient.from('commissions').select('id, amount, status, created_at').eq('broker', id).order('created_at', { ascending: false }).limit(5),
+        window.supabaseClient.from('visits').select('id, visit_date, status, lead_id, client_name').eq('agent_id', id).gte('visit_date', new Date().toISOString()).order('visit_date', { ascending: true }).limit(5),
+        window.supabaseClient.from('commissions').select('id, commission_amount_usd, commission_amount_ars, status, created_at').eq('broker_id', id).order('created_at', { ascending: false }).limit(5),
       ]);
       const kv = (k, v) => '<div class="ag-d-kv"><span>' + k + '</span><strong>' + (v || '—') + '</strong></div>';
       const wa = waLink(a.phone);
@@ -459,6 +459,7 @@
         (wa ? '<a class="status-pill win" href="' + esc(wa) + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> WhatsApp</a>' : '') +
         (a.ics_token ? '<button type="button" class="status-pill pending" data-ag-act="ical" data-ag-id="' + esc(a.id) + '"><i class="fas fa-calendar-days"></i> Copiar ICS</button>' : '') +
         '<button type="button" class="status-pill pending" data-ag-act="edit" data-ag-id="' + esc(a.id) + '"><i class="fas fa-pen"></i> Editar</button>' +
+        '<button type="button" class="status-pill pending" data-ag-act="duplicate" data-ag-id="' + esc(a.id) + '"><i class="fas fa-copy"></i> Duplicar</button>' +
         '</div>' +
         '<div class="ag-d-section"><h4>Datos</h4>' +
         kv('Matrícula', esc(a.matricula || '—')) + kv('Estado', esc(a.status || 'activo')) +
@@ -469,9 +470,9 @@
         '<div class="ag-d-section"><h4>Cartera (' + (props.data?.length || 0) + ')</h4>' +
         ((props.data || []).length ? props.data.map(p => '<div class="ag-d-item"><span>' + esc(p.title || 'Propiedad') + '</span><span>' + esc(p.status || '') + '</span></div>').join('') : '<div class="ag-d-empty">Sin propiedades asignadas</div>') + '</div>' +
         '<div class="ag-d-section"><h4>Próximas visitas</h4>' +
-        ((visits.data || []).length ? visits.data.map(v => '<div class="ag-d-item"><span>' + esc(v.status || '') + '</span><span>' + new Date(v.scheduled_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + '</span></div>').join('') : '<div class="ag-d-empty">Sin visitas próximas</div>') + '</div>' +
+        ((visits.data || []).length ? visits.data.map(v => '<div class="ag-d-item"><span>' + esc(v.client_name || v.status || '') + '</span><span>' + new Date(v.visit_date).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + '</span></div>').join('') : '<div class="ag-d-empty">Sin visitas próximas</div>') + '</div>' +
         '<div class="ag-d-section"><h4>Comisiones recientes</h4>' +
-        ((comms.data || []).length ? comms.data.map(c => '<div class="ag-d-item"><span>$ ' + Number(c.amount || 0).toLocaleString('es-AR') + '</span><span>' + esc(c.status || '') + '</span></div>').join('') : '<div class="ag-d-empty">Sin comisiones registradas</div>') +
+        ((comms.data || []).length ? comms.data.map(c => '<div class="ag-d-item"><span>' + (c.commission_amount_usd != null ? 'USD ' + Number(c.commission_amount_usd).toLocaleString('es-AR') : '$ ' + Number(c.commission_amount_ars || 0).toLocaleString('es-AR')) + '</span><span>' + esc(c.status || '') + '</span></div>').join('') : '<div class="ag-d-empty">Sin comisiones registradas</div>') +
         '</div>';
       drawer.classList.add('is-open');
       drawer.setAttribute('aria-hidden', 'false');
@@ -619,6 +620,7 @@
     const id = btn.dataset.agId;
     if (btn.dataset.agAct === 'edit') { agCloseDrawer(); window.adminApp.editAgent(id); }
     else if (btn.dataset.agAct === 'ical') agCopyIcs(id);
+    else if (btn.dataset.agAct === 'duplicate') { if (confirm('¿Duplicar este agente? Se creará inactivo, sin email ni matrícula.')) { agCloseDrawer(); duplicateAgent(id); } }
   });
 
   /* Export CSV del padrón filtrado */
