@@ -106,7 +106,9 @@
       }
 
       tbody.innerHTML = data.map(p => {
-        const rawThumb = p.image_urls?.[0] || 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=200&q=60&fit=crop';
+        // Placeholder neutro: una foto de stock ajena haría creer que la ficha tiene imágenes reales
+        const NO_PHOTO = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='%23141820'/><text x='100' y='112' text-anchor='middle' fill='%234a5568' font-family='sans-serif' font-size='18'>Sin foto</text></svg>";
+        const rawThumb = p.image_urls?.[0] || NO_PHOTO;
         const thumb = rawThumb.includes('res.cloudinary.com') && rawThumb.includes('/upload/')
           ? rawThumb.replace('/upload/', '/upload/w_200,h_200,c_fill,')
           : rawThumb;
@@ -387,7 +389,8 @@
       
       // Zod validation
       const validated = validateForm(PropertySchema, formData);
-      const { price_currency, price_ars: _formArs, ...rest } = validated;
+      // price_ars se excluye del payload: es columna generada a partir de price_usd + price_currency (enviarla da error)
+      const { price_currency, price_ars: _priceArsDropped, ...rest } = validated;
       
       let priceUsd;
       if (price_currency === 'ARS' && validated.price_ars > 0) {
@@ -500,8 +503,6 @@
 
     /* Edit property */
   window.adminApp = window.adminApp || {};
-  window.adminApp.loadSupervision = loadSupervision;
-  window.adminApp.loadAnomaliesTable = loadAnomaliesTable;
   window.adminApp.editProperty = async function (id) {
     try {
       const { data, error } = await window.supabaseClient

@@ -1451,6 +1451,10 @@
 
   window.__BH.loadSupervision = loadSupervision;
   window.__BH.loadAnomaliesTable = loadAnomaliesTable;
+  // API pública documentada (README): window.adminApp.loadSupervision / loadAnomaliesTable vive en su módulo, no en admin-propiedades.js
+  window.adminApp = window.adminApp || {};
+  window.adminApp.loadSupervision = loadSupervision;
+  window.adminApp.loadAnomaliesTable = loadAnomaliesTable;
   if (!Object.prototype.hasOwnProperty.call(window, 'loadSupervision')) Object.defineProperty(window, 'loadSupervision', { get: () => loadSupervision, set: (v) => { loadSupervision = v; }, configurable: true });
   if (!Object.prototype.hasOwnProperty.call(window, 'loadAnomaliesTable')) Object.defineProperty(window, 'loadAnomaliesTable', { get: () => loadAnomaliesTable, set: (v) => { loadAnomaliesTable = v; }, configurable: true });
 

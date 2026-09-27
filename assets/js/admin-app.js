@@ -622,7 +622,13 @@ function esc(s) {
     mlCheckStatus().catch(() => {});
     requestNotificationPermission();
     initVisitReminders();
-    if (wasHidden) navigateTo('tab-dashboard');
+    if (wasHidden) {
+      // Deep-link: respetar #tab-* del hash (ej. #tab-propiedades al recargar); fallback al dashboard
+      const h = (location.hash || '').replace(/^#/, '');
+      const hEl = document.getElementById(h);
+      const target = (/^tab-[a-z-]+$/.test(h) && hEl && hEl.classList.contains('tab-module')) ? h : 'tab-dashboard';
+      navigateTo(target);
+    }
   }
 
   function hidePreloader() {
@@ -759,9 +765,11 @@ function esc(s) {
 
   function navigateTo(section) {
     const prevSection = currentSection;
-
-    if (prevSection === 'tab-chat-redes' && section !== 'tab-chat-redes' && window.__chatTeardown) { window.__chatTeardown(); }
     currentSection = section;
+    // Sincronizar hash para deep-linking (replaceState: no ensucia el historial)
+    if (('#' + section) !== location.hash) {
+      history.replaceState(null, '', location.pathname + '#' + section);
+    }
 
     /* Sidebar active */
     $$('.nav-item[data-tab]').forEach(el => {
@@ -3503,6 +3511,12 @@ on(document, 'keydown', (e) => {
           item.dataset.bhNavBound = 'true';
           item.addEventListener('click', () => navigateTo(item.dataset.tab));
         }
+      });
+      // Back/forward del navegador y links externos con #tab-*
+      window.addEventListener('hashchange', () => {
+        const h = (location.hash || '').replace(/^#/, '');
+        const el = document.getElementById(h);
+        if (/^tab-[a-z-]+$/.test(h) && el && el.classList.contains('tab-module') && h !== currentSection) navigateTo(h);
       });
       if ($('#tab-ficha-html')) {
         window.loadFichaHtml = async function() {
