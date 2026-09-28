@@ -4708,7 +4708,8 @@ input[type="range"]::-moz-range-thumb {
 .crm-side-modal .crm-side-field{gap:2px}
 .crm-side-modal .crm-field-input{padding:7px 12px;border-radius:9px}
 .crm-side-modal .crm-quickadd{margin-bottom:8px}
-.crm-side-modal .crm-side-save{margin-top:12px}
+.crm-side-modal .crm-side-save{position:sticky;bottom:0;margin-top:12px;padding:12px 0 4px;background:var(--bg-secondary);z-index:5;box-shadow:0 -12px 18px -14px rgba(0,0,0,.6)}
+.crm-row--selected{background:rgba(31,200,195,.08);box-shadow:inset 3px 0 0 var(--accent)}
 .crm-side-modal .crm-contact-row{margin:6px 0 10px}
 .crm-side-modal .crm-template-row{margin-bottom:12px}
 

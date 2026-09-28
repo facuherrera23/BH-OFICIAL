@@ -522,7 +522,9 @@ async function loadLeads() {
   var c = $id('crmLeadList');
   if (!c) return;
   c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Cargando prospectos...</div>';
-  closeDetailPanel();
+  /* No cerrar el panel lateral acá: refrescar la lista no debe descartar el trabajo
+     en curso del lead abierto (asignar agente/propiedad y seguir creando tareas).
+     Los cierres intencionales (papelera, eliminar, perdido) llaman closeDetailPanel explicitamente. */
   try {
     var countRes = await applyBaseFilters(
       db().from('leads').select('id', { count: 'exact', head: true }));
@@ -748,8 +750,16 @@ function buildPagination() {
 }
 
 function bindListHandlers(c) {
+  if (_selectedLeadId) {
+    var sel = c.querySelector('.crm-row[data-id="' + _selectedLeadId + '"]');
+    if (sel) sel.classList.add('crm-row--selected');
+  }
   c.querySelectorAll('.crm-row').forEach(function (r) {
-    r.addEventListener('click', function () { openDetailPanel(this.dataset.id); });
+    r.addEventListener('click', function () {
+      c.querySelectorAll('.crm-row--selected').forEach(function (x) { x.classList.remove('crm-row--selected'); });
+      r.classList.add('crm-row--selected');
+      openDetailPanel(this.dataset.id);
+    });
   });
   c.querySelectorAll('[data-action="viewLead"],[data-action="editLead"],[data-action="deleteLead"],[data-action="restoreLead"]').forEach(function (b) {
     b.addEventListener('click', function (e) {
@@ -1211,6 +1221,8 @@ function bindSideSave(lead, panel) {
       _selectedLeadId = lead.id;
       await loadLeads();
       panel.querySelector('.crm-side-title').textContent = d.full_name;
+      var dot = panel.querySelector('.crm-status-dot');
+      if (dot) dot.className = 'crm-status-dot crm-status-dot--' + normalizeStage(d.stage || originalStage);
     } catch (e) {
       toast('Error: ' + e.message, 'error');
     } finally {
@@ -1930,6 +1942,7 @@ function bindLeadTaskForm(panel, lead) {
       chipWrap.querySelectorAll('.crm-task-chip').forEach(function (c) { c.classList.toggle('is-active', c === chip); });
       actionSel.value = chip.dataset.lta || 'contact';
       applyAction();
+      addBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
   }
   if (dueInput) dueInput.addEventListener('change', function () { refreshPrio(); refreshRemind(); });
