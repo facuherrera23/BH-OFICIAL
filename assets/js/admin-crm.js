@@ -43,6 +43,9 @@ var _ownerProps = {};
 var _nextActions = {};
 var _ownerSearch = '';
 var _ownerFiltered = [];
+var _ownerAgentFilter = '';
+var _ownerExclFilter = '';
+var _ownerTaskFilter = '';
 
 function $id(id) { return document.getElementById(id); }
 function esc(s) {
@@ -253,6 +256,62 @@ async function loadOwners() {
       q0 = q0.or(ors);
       qw = qw.or(ors);
     }
+
+    /* Filtros desplegables: exclusividad, agente asignado y tareas pendientes.
+       Agente y tareas resuelven primero a un set de owner_id (agregan la condicion
+       id.in. directo sobre Supabase, sin bajar toda la tabla). */
+    if (_ownerExclFilter) {
+      var todayIso = new Date().toISOString().slice(0, 10);
+      var in30Iso = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+      if (_ownerExclFilter === 'exclusive') { q0 = q0.eq('exclusive', true); qw = qw.eq('exclusive', true); }
+      else if (_ownerExclFilter === 'non_exclusive') { q0 = q0.neq('exclusive', true); qw = qw.neq('exclusive', true); }
+      else if (_ownerExclFilter === 'vence_30') {
+        q0 = q0.eq('exclusive', true).gte('exclusive_end', todayIso).lte('exclusive_end', in30Iso);
+        qw = qw.eq('exclusive', true).gte('exclusive_end', todayIso).lte('exclusive_end', in30Iso);
+      } else if (_ownerExclFilter === 'vencida') {
+        q0 = q0.eq('exclusive', true).not('exclusive_end', 'is', null).lt('exclusive_end', todayIso);
+        qw = qw.eq('exclusive', true).not('exclusive_end', 'is', null).lt('exclusive_end', todayIso);
+      }
+    }
+    var idConstraints = [];
+    if (_ownerAgentFilter) {
+      var pa = await db().from('properties').select('owner_id').eq('agent_id', _ownerAgentFilter).is('deleted_at', null).limit(500);
+      idConstraints.push([...new Set((pa.data || []).map(function (p) { return p.owner_id; }).filter(Boolean))]);
+    }
+    if (_ownerTaskFilter) {
+      var tq = db().from('owner_tasks').select('owner_id, status, due_date').limit(1000);
+      var tr = await tq;
+      var allT = tr.data || [];
+      var ovIds, todayOv = new Date().toISOString();
+      var openIds = [...new Set(allT.filter(function (t) { return t.status !== 'completada'; }).map(function (t) { return t.owner_id; }))];
+      if (_ownerTaskFilter === 'pendientes') ovIds = openIds;
+      else if (_ownerTaskFilter === 'vencidas') ovIds = [...new Set(allT.filter(function (t) { return t.status !== 'completada' && t.due_date && t.due_date < todayOv; }).map(function (t) { return t.owner_id; }))];
+      else ovIds = [...new Set(allT.filter(function (t) { return t.status === 'completada'; }).map(function (t) { return t.owner_id; }))];
+      if (_ownerTaskFilter === 'sin_pendientes') {
+        var withOpen = new Set(openIds);
+        var ex = await db().from('owners').select('id').is('deleted_at', null).limit(1000);
+        ovIds = (ex.data || []).map(function (o) { return o.id; }).filter(function (id) { return !withOpen.has(id); });
+      }
+      if (ovIds) idConstraints.push(ovIds);
+    }
+    if (idConstraints.length && idConstraints[0]) {
+      if (idConstraints.length > 1 && idConstraints[1]) {
+        var s0 = new Set(idConstraints[1]);
+        idConstraints[0] = idConstraints[0].filter(function (id) { return s0.has(id); });
+      }
+      if (!idConstraints[0].length) {
+        var emptyRes = $id('crmLeadList');
+        _owners = []; _ownerFiltered = []; _totalRows = 0; _totalPages = 1; _page = 1;
+        if (emptyRes) emptyRes.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Ningún propietario coincide con los filtros.</div>';
+        updateOwnerKpis();
+        var subEmpty = $id('crmSubtitle');
+        if (subEmpty) subEmpty.textContent = '0 propietarios (filtro)';
+        return;
+      }
+      q0 = q0.in('id', idConstraints[0]);
+      qw = qw.in('id', idConstraints[0]);
+    }
+
     var countRes = await q0;
     _totalRows = (countRes && countRes.count) || 0;
     _totalPages = Math.max(1, Math.ceil(_totalRows / PAGE_SIZE));
@@ -269,6 +328,14 @@ async function loadOwners() {
     _agents = (aRes.data || []);
     _agents.forEach(function(x){ _agentMapById[x.id] = x.full_name; });
     window._crmAgents = _agents;
+    var oaFilter = $id('crmOwnerAgentFilter');
+    if (oaFilter && !oaFilter.dataset.filled) {
+      oaFilter.dataset.filled = '1';
+      var cur = oaFilter.value;
+      oaFilter.innerHTML = '<option value="">Agente: todos</option>' +
+        _agents.map(function (a) { return '<option value="' + esc(String(a.id)) + '">' + esc(a.full_name || 'Sin nombre') + '</option>'; }).join('');
+      oaFilter.value = cur;
+    }
 // cargar tareas pendientes por owner (no excluidos)
     var ids = _owners.map(function (o) { return o.id; });
     _ownerTasks = {};
@@ -1402,6 +1469,21 @@ if (search) search.addEventListener('input', function () {
     fup.dataset.bound = '1';
     fup.addEventListener('change', function () { _hasFollowupFilter = !!this.checked; _page = 1; loadLeads(); });
   }
+  var oaSel = $id('crmOwnerAgentFilter');
+  if (oaSel && !oaSel.dataset.bound) {
+    oaSel.dataset.bound = '1';
+    oaSel.addEventListener('change', function () { _ownerAgentFilter = this.value; _page = 1; loadOwners(); });
+  }
+  var oeSel = $id('crmOwnerExclFilter');
+  if (oeSel && !oeSel.dataset.bound) {
+    oeSel.dataset.bound = '1';
+    oeSel.addEventListener('change', function () { _ownerExclFilter = this.value; _page = 1; loadOwners(); });
+  }
+  var otSel = $id('crmOwnerTaskFilter');
+  if (otSel && !otSel.dataset.bound) {
+    otSel.dataset.bound = '1';
+    otSel.addEventListener('change', function () { _ownerTaskFilter = this.value; _page = 1; loadOwners(); });
+  }
   var stSel = $id('crmStatusFilter');
   if (stSel && !stSel.dataset.filled) {
     stSel.dataset.filled = '1';
@@ -1439,6 +1521,8 @@ function _bindViewModeToggle() {
     _viewMode = _viewMode === 'leads' ? 'owners' : 'leads';
     console.log('CRM mode:', _viewMode);
     _ownerSearch = '';
+    _ownerAgentFilter = ''; _ownerExclFilter = ''; _ownerTaskFilter = '';
+    ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter'].forEach(function (id) { var el = $id(id); if (el) el.value = ''; });
     var sr = $id('crmSearch');
     if (sr) sr.value = '';
     _page = 1;
@@ -1466,6 +1550,7 @@ function _syncHeader() {
   var titleEl = $id('crmTitle');
   var searchEl = $id('crmSearch');
   var leadOnly = ['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmAgentFilter', 'crmFollowupWrap'];
+  var ownerOnly = ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter'];
   if (btn) {
     btn.innerHTML = ownersMode
       ? '<i class="fas fa-users"></i> Leads'
@@ -1479,6 +1564,10 @@ function _syncHeader() {
   leadOnly.forEach(function (id) {
     var el = $id(id);
     if (el) el.style.display = ownersMode ? 'none' : '';
+  });
+  ownerOnly.forEach(function (id) {
+    var el = $id(id);
+    if (el) el.style.display = ownersMode ? '' : 'none';
   });
   if (titleEl) {
     titleEl.textContent = ownersMode ? 'Propietarios y Asignaciones' : 'Leads & CRM';
