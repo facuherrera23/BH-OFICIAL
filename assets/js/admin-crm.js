@@ -674,9 +674,9 @@ var propCell;
 
 function buildPagination() {
   var h = '<div class="crm-pagination">';
-  if (_page > 1) h += '<button class="btn-action" data-page="' + (_page - 1) + '"><i class="fas fa-chevron-left"></i> Anterior</button>';
+  if (_page > 1) h += '<button class="btn-action btn-action-labeled" data-page="' + (_page - 1) + '"><i class="fas fa-chevron-left"></i> Anterior</button>';
   h += '<span class="crm-pag-info">Pagina ' + _page + ' de ' + _totalPages + ' (' + _totalRows + ')</span>';
-  if (_page < _totalPages) h += '<button class="btn-action" data-page="' + (_page + 1) + '">Siguiente <i class="fas fa-chevron-right"></i></button>';
+  if (_page < _totalPages) h += '<button class="btn-action btn-action-labeled" data-page="' + (_page + 1) + '">Siguiente <i class="fas fa-chevron-right"></i></button>';
   return h + '</div>';
 }
 
@@ -907,14 +907,11 @@ function closeDetailPanel() {
   document.querySelectorAll('.crm-row--selected').forEach(function (r) { r.classList.remove('crm-row--selected'); });
 }
 
-/* Clic fuera de la card (sobre el overlay) cierra el panel, igual que los demás modales.
-   El panel se mueve a <body> al abrir y se reutiliza; la flag evita listeners duplicados. */
+/* El panel del lead NO se cierra con clic fuera de la card: un clic accidental
+   no debe descartar el trabajo en curso. Se cierra con la X. */
 function bindSideOverlayClose(panel) {
   if (panel.dataset.sideBound) return;
   panel.dataset.sideBound = '1';
-  panel.addEventListener('click', function (e) {
-    if (e.target === panel) closeDetailPanel();
-  });
 }
 
 function renderSide(panel, lead, activities, props, visits, tasks) {
@@ -1601,7 +1598,25 @@ window.initCrm = init;
 
 var VISIT_STATUS_LABELS = { pendiente: 'Pendiente', confirmada: 'Confirmada', en_curso: 'En curso', completada: 'Completada', cancelada: 'Cancelada' };
 
+// Nota obligatoria con el modal del sistema (mismo estilo que el resto del panel).
+// Reintenta mientras esté vacía; cancelar devuelve null.
+async function askRequiredVisitNote() {
+  var ask = typeof window.showInputPrompt === 'function'
+    ? function () { return window.showInputPrompt({ title: 'Completar visita', message: '¿Cómo salió la visita? Describí el resultado (obligatorio):', icon: 'fas fa-flag-checkered', placeholder: 'Ej: Le gustó la propiedad pero pidió tiempo para decidir…', confirmText: 'Guardar resultado' }); }
+    : function () { return Promise.resolve(prompt('¿Cómo salió la visita? Describí el resultado (obligatorio):')); };
+  var t = await ask();
+  if (t === null) return null;
+  t = String(t).trim();
+  if (!t) { toast('Escribí el resultado de la visita.', 'error'); return askRequiredVisitNote(); }
+  return t;
+}
+
 async function updateVisitStatus(visitId, newStatus, leadId, panel, cancelReason) {
+  var visitOutcome = null;
+  if (newStatus === 'completada') {
+    visitOutcome = await askRequiredVisitNote();
+    if (visitOutcome === null) { toast('No se completó la visita: falta el resultado.', 'error'); return; }
+  }
   try {
     var patch = { status: newStatus };
     var nowIso = new Date().toISOString();
@@ -1612,13 +1627,10 @@ async function updateVisitStatus(visitId, newStatus, leadId, panel, cancelReason
     var r = await db().from('visits').update(patch).eq('id', visitId);
     if (r.error) throw new Error(r.error.message);
     if (newStatus === 'completada') { try { await db().from('leads').update({ stage: 'visita_realizada' }).eq('id', leadId); } catch (e) { console.warn('[crm] stage after visita:', e.message); } }
-    if (newStatus === 'completada') {
-      var outcome = prompt('¿Cómo salió la visita? (opcional)');
-      if (outcome && outcome.trim()) {
-        try {
-          await db().from('lead_activities').insert([{ lead_id: leadId, activity_type: 'note', title: 'Resultado de la visita', description: outcome.trim() }]);
-        } catch (_) {}
-      }
+    if (newStatus === 'completada' && leadId) {
+      try {
+        await db().from('lead_activities').insert([{ lead_id: leadId, activity_type: 'note', title: 'Resultado de la visita', description: visitOutcome }]);
+      } catch (_) {}
     }
     if ((newStatus === 'cancelada' || newStatus === 'confirmada') && leadId) {
       try {
@@ -1638,7 +1650,9 @@ async function updateVisitStatus(visitId, newStatus, leadId, panel, cancelReason
 }
 
 async function rescheduleVisit(visitId, leadId, panel) {
-  var input = prompt('Nueva fecha y hora (YYYY-MM-DDTHH:mm):');
+  var input = typeof window.showInputPrompt === 'function'
+    ? await window.showInputPrompt({ title: 'Reprogramar visita', message: 'Nueva fecha y hora (YYYY-MM-DDTHH:mm):', icon: 'fas fa-clock', placeholder: '2026-10-02T10:30', confirmText: 'Reprogramar' })
+    : prompt('Nueva fecha y hora (YYYY-MM-DDTHH:mm):');
   if (!input) return;
   try {
     var prev = await db().from('visits').select('visit_date').eq('id', visitId).single();
@@ -1660,7 +1674,7 @@ async function rescheduleVisit(visitId, leadId, panel) {
 
 function bindAgendaActions(panel, leadId) {
   panel.querySelectorAll('[data-visit-action]').forEach(function (b) {
-    b.addEventListener('click', function () {
+    b.addEventListener('click', async function () {
       var vid = this.dataset.visitId;
       var act = this.dataset.visitAction;
       if (act === 'confirm') updateVisitStatus(vid, 'confirmada', leadId, panel);
@@ -1668,10 +1682,15 @@ function bindAgendaActions(panel, leadId) {
       else if (act === 'start') updateVisitStatus(vid, 'en_curso', leadId, panel);
       else if (act === 'duplicate') duplicateVisit(vid, leadId, panel);
       else if (act === 'cancel') {
-        var reason = prompt('Motivo de la cancelación (opcional):');
+        var reason = typeof window.showInputPrompt === 'function'
+          ? await window.showInputPrompt({ title: 'Cancelar visita', message: 'Motivo de la cancelación (opcional):', icon: 'fas fa-times', placeholder: 'Ej: El cliente avisó que no puede asistir…', confirmText: 'Continuar' })
+          : prompt('Motivo de la cancelación (opcional):');
         if (reason === null) return;
-        if (!confirm('Cancelar esta visita?')) return;
-        updateVisitStatus(vid, 'cancelada', leadId, panel, reason.trim() || null);
+        var confirmCancel = typeof window.showConfirmDialog === 'function'
+          ? await window.showConfirmDialog({ title: 'Cancelar visita', message: 'La visita quedará marcada como cancelada.', icon: 'fas fa-times', confirmText: 'Cancelar visita' })
+          : confirm('Cancelar esta visita?');
+        if (!confirmCancel) return;
+        updateVisitStatus(vid, 'cancelada', leadId, panel, String(reason).trim() || null);
       }
       else if (act === 'reschedule') rescheduleVisit(vid, leadId, panel);
     });
@@ -1750,7 +1769,7 @@ function bindLeadTaskForm(panel, lead) {
     contact: { desc: 'Descripción de la tarea *', due: 'Fecha límite *', btn: 'Agregar Tarea', ph: 'Ej: Llamar al cliente para confirmar interés…' },
     visit: { desc: 'Notas para la visita (opcional)', due: 'Fecha y hora de la visita *', btn: 'Agendar Visita', ph: 'Ej: Señas de la casa, con quién venir, etc.' },
     note: { desc: 'Nota interna *', due: '', btn: 'Guardar Nota', ph: 'Ej: El cliente pidió que lo contactemos en enero…' },
-    lost: { desc: 'Motivo del rechazo (opcional)', due: '', btn: 'Marcar Perdido', ph: 'Ej: Compró por otra inmobiliaria…' }
+    lost: { desc: 'Motivo del rechazo *', due: '', btn: 'Marcar Perdido', ph: 'Ej: Compró por otra inmobiliaria…' }
   };
   var PRIO_META = {
     urgente: { text: 'Urgente (menos de 24 h)', cls: 'is-urgente', icon: 'fa-fire' },
@@ -1897,7 +1916,11 @@ function bindLeadTaskForm(panel, lead) {
         await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', leadId);
         toast('Nota guardada.', 'success');
       } else if (action === 'lost') {
-        if (!confirm('¿Marcar como perdido? El lead queda fuera del embudo (podés recuperarlo cambiando el estado).')) return;
+        if (!desc) { toast('Escribí el motivo del rechazo.', 'error'); return; }
+        var confirmLost = typeof window.showConfirmDialog === 'function'
+          ? await window.showConfirmDialog({ title: 'Marcar como perdido', message: 'El lead queda fuera del embudo (podés recuperarlo cambiando el estado).', icon: 'fas fa-ban', confirmText: 'Marcar Perdido' })
+          : confirm('¿Marcar como perdido? El lead queda fuera del embudo (podés recuperarlo cambiando el estado).');
+        if (!confirmLost) return;
         var lUp = await db().from('leads').update({ stage: 'cerrado_perdido', last_contacted_at: new Date().toISOString() }).eq('id', leadId);
         if (lUp.error) throw new Error(lUp.error.message);
         if (desc) {
@@ -1923,7 +1946,8 @@ async function doCompleteTlTask(item, leadId, panel) {
   var taskId = item.getAttribute('data-task-id');
   if (!taskId || !window.CrmTasks || !window.CrmTasks.completeTask) return;
   try {
-    await window.CrmTasks.completeTask(taskId, item, panel);
+    var done = await window.CrmTasks.completeTask(taskId, item, panel);
+    if (!done) return;
     item.classList.add('crm-tl-task--done');
     var chip = item.querySelector('.crm-tl-status');
     if (chip) { chip.textContent = 'Completada'; chip.classList.add('crm-tl-status--done'); }

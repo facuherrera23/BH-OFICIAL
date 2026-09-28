@@ -67,7 +67,10 @@ function bindTaskCardEvents(panel) {
     cb.addEventListener('change', function () {
       var card = this.closest('.crm-task-card');
       if (!card) return;
-      completeTask(card.dataset.taskId, card, panel);
+      var checkbox = this;
+      Promise.resolve(completeTask(card.dataset.taskId, card, panel)).then(function (done) {
+        if (done === false) { checkbox.checked = false; checkbox.disabled = false; }
+      });
     });
   });
   panel.querySelectorAll('.crm-task-delete').forEach(function (btn) {
@@ -81,19 +84,16 @@ function bindTaskCardEvents(panel) {
   });
 }
 
+// Completar una tarea exige registrar una nota de resultado. La DB solo se
+// actualiza cuando el usuario confirma la nota; cancelar deja la tarea pendiente.
 async function completeTask(taskId, cardEl, panel) {
-  try {
-    var r = await db().from('lead_tasks').update({ status: 'completada', completed_at: new Date().toISOString() }).eq('id', taskId);
-    if (r.error) throw new Error(r.error.message);
-    if (cardEl) cardEl.classList.add('crm-task-card--done');
-    var cb = cardEl && cardEl.querySelector('.crm-task-checkbox');
-    if (cb) { cb.checked = true; cb.disabled = true; }
-    toast('Tarea completada.', 'success');
-    var titleEl = cardEl && (cardEl.querySelector('.crm-task-title') || cardEl.querySelector('.crm-tl-task-head strong'));
-    var title = titleEl ? (titleEl.textContent || '') : '';
-    var leadId = panel && panel.dataset ? panel.dataset.leadId : null;
-    if (cardEl && leadId) showOutcome(cardEl, taskId, title, leadId);
-  } catch (e) { toast('Error: ' + e.message, 'error'); }
+  var cb = cardEl && cardEl.querySelector('.crm-task-checkbox');
+  if (cb) { cb.checked = false; cb.disabled = false; }
+  var titleEl = cardEl && (cardEl.querySelector('.crm-task-title') || cardEl.querySelector('.crm-tl-task-head strong'));
+  var title = titleEl ? (titleEl.textContent || '') : '';
+  var leadId = panel && panel.dataset ? panel.dataset.leadId : null;
+  if (!cardEl) return false;
+  return await showOutcome(cardEl, taskId, title, leadId);
 }
 
 var OUTCOMES = [
@@ -104,60 +104,38 @@ var OUTCOMES = [
 ];
 
 function showOutcome(cardEl, taskId, taskTitle, leadId) {
-  var old = cardEl.parentElement.querySelector('.crm-outcome[data-task-id="' + taskId + '"]');
-  if (old) old.remove();
-  var box = document.createElement('div');
-  box.className = 'crm-outcome';
-  box.dataset.taskId = taskId;
-  box.innerHTML =
-    '<div class="crm-outcome-label">Resultado de “' + esc(taskTitle) + '”:</div>' +
-    '<div class="crm-outcome-chips">' +
-      OUTCOMES.map(function (o) { return '<button type="button" class="crm-outcome-chip" data-outcome="' + o.id + '">' + o.label + '</button>'; }).join('') +
-      '<button type="button" class="crm-outcome-chip crm-outcome-chip--ghost" data-outcome="__otro">Otro…</button>' +
-    '</div>' +
-    '<div class="crm-outcome-next" style="display:none;">' +
-      '<input type="text" class="crm-field-input crm-outcome-next-input" placeholder="Siguiente acción (opcional): ej. “Llamar mañana 10:00”">' +
-      '<button type="button" class="btn-action crm-outcome-next-add" title="Crear siguiente tarea"><i class="fas fa-plus"></i></button>' +
-    '</div>';
-  cardEl.parentElement.insertBefore(box, cardEl.nextSibling);
+  return new Promise(function (resolve) {
+    var old = cardEl.parentElement.querySelector('.crm-outcome[data-task-id="' + taskId + '"]');
+    if (old) old.remove();
+    var box = document.createElement('div');
+    box.className = 'crm-outcome';
+    box.dataset.taskId = taskId;
+    box.innerHTML =
+      '<div class="crm-outcome-label">Resultado de “' + esc(taskTitle) + '” (obligatorio):</div>' +
+      '<div class="crm-outcome-chips">' +
+        OUTCOMES.map(function (o) { return '<button type="button" class="crm-outcome-chip" data-outcome="' + o.label + '">' + o.label + '</button>'; }).join('') +
+      '</div>' +
+      '<textarea class="crm-field-input crm-outcome-note" rows="2" placeholder="Describí brevemente cómo salió la tarea…"></textarea>' +
+      '<div class="crm-outcome-next">' +
+        '<input type="text" class="crm-field-input crm-outcome-next-input" placeholder="Siguiente acción (opcional): ej. “Llamar mañana 10:00”">' +
+        '<button type="button" class="btn-action crm-outcome-next-add" title="Crear siguiente tarea"><i class="fas fa-plus"></i></button>' +
+      '</div>' +
+      '<div class="crm-outcome-actions">' +
+        '<button type="button" class="btn-action btn-action-labeled crm-outcome-cancel">Cancelar</button>' +
+        '<button type="button" class="btn-luxury-action crm-outcome-save"><i class="fas fa-check"></i> Guardar resultado</button>' +
+      '</div>';
+    cardEl.parentElement.insertBefore(box, cardEl.nextSibling);
 
-  async function finish(text) {
-    try {
-      var desc = 'Resultado: ' + text;
-      await db().from('lead_activities').insert([{
-        lead_id: leadId,
-        activity_type: 'note',
-        title: '✓ ' + taskTitle,
-        description: desc
-      }]);
-      // Contacto real registrado: actualizar timeline
-      if (text.indexOf('Sin respuesta') !== 0) {
-        await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', leadId);
-      }
-    } catch (e) { console.warn('[tasks] outcome log:', e.message); }
-    var nextInp = box.querySelector('.crm-outcome-next-input');
-    if (nextInp && nextInp.value.trim() && window.CrmTasks && window.CrmTasks.createQuick) {
-      await window.CrmTasks.createQuick(leadId, nextInp.value.trim());
-    }
-    toast('Resultado registrado.', 'success');
-    box.remove();
-  }
-
-  box.querySelectorAll('[data-outcome]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var id = this.dataset.outcome;
-      if (id === '__otro') {
-        var input = prompt('Resultado de la tarea:', '');
-        if (input === null) return;
-        finish(input.trim() || 'Otro');
-      } else {
-        finish(OUTCOMES.filter(function (o) { return o.id === id; })[0].label);
-      }
+    var noteEl = box.querySelector('.crm-outcome-note');
+    box.querySelectorAll('[data-outcome]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var label = this.dataset.outcome;
+        noteEl.value = noteEl.value.trim() ? label + ': ' + noteEl.value.trim() : label;
+        noteEl.focus();
+      });
     });
-  });
-  var nextWrap = box.querySelector('.crm-outcome-next');
-  if (nextWrap) {
-    nextWrap.style.display = 'flex';
+    box.querySelector('.crm-outcome-cancel').addEventListener('click', function () { box.remove(); resolve(false); });
+    box.querySelector('.crm-outcome-save').addEventListener('click', function () { finish(); });
     box.querySelector('.crm-outcome-next-add').addEventListener('click', function () {
       var inp = box.querySelector('.crm-outcome-next-input');
       if (inp && inp.value.trim() && window.CrmTasks && window.CrmTasks.createQuick) {
@@ -165,7 +143,38 @@ function showOutcome(cardEl, taskId, taskTitle, leadId) {
         inp.value = '';
       }
     });
-  }
+    if (noteEl.focus) noteEl.focus();
+
+    async function finish() {
+      var text = noteEl.value.trim();
+      if (!text) { toast('Escribí el resultado de la tarea.', 'error'); noteEl.focus(); return; }
+      try {
+        var r = await db().from('lead_tasks').update({ status: 'completada', completed_at: new Date().toISOString() }).eq('id', taskId);
+        if (r.error) throw new Error(r.error.message);
+        if (leadId) {
+          await db().from('lead_activities').insert([{
+            lead_id: leadId,
+            activity_type: 'note',
+            title: '✓ ' + taskTitle,
+            description: 'Resultado: ' + text
+          }]);
+          await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', leadId);
+        }
+      } catch (e) { toast('Error: ' + e.message, 'error'); return; }
+      var nextInp = box.querySelector('.crm-outcome-next-input');
+      if (nextInp && nextInp.value.trim() && window.CrmTasks && window.CrmTasks.createQuick) {
+        await window.CrmTasks.createQuick(leadId, nextInp.value.trim());
+      }
+      cardEl.classList.add('crm-task-card--done', 'crm-tl-task--done');
+      var cb = cardEl.querySelector('.crm-task-checkbox');
+      if (cb) { cb.checked = true; cb.disabled = true; }
+      var chip = cardEl.querySelector('.crm-tl-status');
+      if (chip) { chip.textContent = 'Completada'; chip.classList.add('crm-tl-status--done'); }
+      toast('Resultado registrado. Tarea completada.', 'success');
+      box.remove();
+      resolve(true);
+    }
+  });
 }
 
 async function deleteTask(taskId, cardEl) {

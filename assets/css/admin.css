@@ -5004,6 +5004,9 @@ input[type="range"]::-moz-range-thumb {
 .crm-outcome-chip--ghost{border-style:dashed;color:var(--text-dim)}
 .crm-outcome-next{display:flex;gap:8px}
 .crm-outcome-next input{flex:1;font-size:12.5px;padding:6px 10px}
+.crm-outcome-note{width:100%;margin:0 0 8px;font-size:12.5px;resize:vertical}
+.crm-outcome-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.crm-outcome-chip.is-active{border-color:var(--accent);color:var(--accent);background:rgba(31,200,195,0.12)}
 
 /* ============================================================
    CRM AGENDA (visits) dentro del panel lateral del lead
