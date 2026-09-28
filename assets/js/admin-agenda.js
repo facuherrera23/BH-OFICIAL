@@ -1797,6 +1797,15 @@
       const newLeadId = data.lead_id;
       const leadIdChanged = oldLeadId !== newLeadId;
 
+      let visitOutcomeNote = null;
+      if (newStatus === 'completada' && oldStatus !== 'completada' && newLeadId) {
+        visitOutcomeNote = await promptVisitOutcome(newLeadId, data.client_name);
+        if (visitOutcomeNote === null) {
+          showToast('No se completó la visita: falta el resultado.', 'error');
+          return;
+        }
+      }
+
       if (editingVisitId) {
         await mutate('visits', async () => {
           const { error } = await window.supabaseClient.from('visits').update(data).eq('id', editingVisitId);
@@ -1855,7 +1864,8 @@
         }
       }
 
-      /* Prompt: visita completada ? mover lead a Oferta */
+      /* Visita completada: nota de resultado obligatoria al historial y ofrecer pasar a Negociación */
+      if (visitOutcomeNote) await logVisitOutcome(newLeadId, visitOutcomeNote);
       if (newStatus === 'completada' && oldStatus !== 'completada' && newLeadId) {
         try {
           const { data: leadData } = await window.supabaseClient
@@ -2240,52 +2250,71 @@ window.adminApp.editVisit = async function (id) {
     } catch (_) {}
   });
 
-  async function promptVisitOutcome(leadId, clientName) {
-    if (!leadId) return;
-    const existing = $('#visitOutcomeModal');
-    if (existing) existing.remove();
-    const wrap = document.createElement('div');
-    wrap.className = 'admin-modal open';
-    wrap.id = 'visitOutcomeModal';
-    wrap.innerHTML = '<div class="modal-box" style="max-width:420px; text-align:center;">' +
-      '<h3 style="font-family:var(--font-heading); font-size:20px; color:#fff; margin-bottom:6px;">¿Cómo salió la visita?</h3>' +
-      '<p style="color:var(--text-dim); font-size:13px; margin-bottom:18px;">' + esc(clientName || 'El cliente') + ' — se registra en el historial del lead</p>' +
-      '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">' +
-      '<button class="btn-action" data-outcome="positiva" style="background:rgba(0,200,120,0.15); color:var(--success); padding:14px 8px;"><i class="fas fa-heart"></i> Le gustó</button>' +
-      '<button class="btn-action" data-outcome="duda" style="background:rgba(255,184,0,0.15); color:var(--warning); padding:14px 8px;"><i class="fas fa-circle-question"></i> Tiene dudas</button>' +
-      '<button class="btn-action" data-outcome="negativa" style="background:rgba(239,68,68,0.12); color:var(--danger); padding:14px 8px;"><i class="fas fa-thumbs-down"></i> No le gustó</button>' +
-      '<button class="btn-action" data-outcome="no_vino" style="background:rgba(239,68,68,0.22); color:var(--danger); padding:14px 8px;"><i class="fas fa-user-xmark"></i> No vino</button>' +
-      '</div>' +
-      '<button class="status-pill pending" data-outcome="" style="margin-top:14px;">Omitir</button>' +
-      '</div>';
-    document.body.appendChild(wrap);
-    const LABELS = { positiva: 'Le gustó la propiedad', duda: 'Tiene dudas', negativa: 'No le gustó', no_vino: 'No asistió a la visita' };
-    wrap.querySelectorAll('[data-outcome]').forEach(btn => btn.addEventListener('click', async () => {
-      const outcome = btn.dataset.outcome;
-      wrap.remove();
-      if (!outcome) return;
-      try {
-        await window.supabaseClient.from('lead_activities').insert([{
-          lead_id: leadId,
-          activity_type: 'visit',
-          title: 'Resultado de visita: ' + LABELS[outcome],
-          description: outcome === 'no_vino' ? 'El cliente no se presentó (check-out marcado sin asistencia).' : ''
-        }]);
-        showToast('Resultado registrado en el lead.', 'success');
-        loadAgenda();
-      } catch (err) { showToast('Error: ' + err.message, 'error'); }
-    }));
+  // Devuelve la nota escrita o null si se cancela. La nota es obligatoria:
+  // completar una visita sin resultado no es válido.
+  function promptVisitOutcome(leadId, clientName) {
+    return new Promise(function (resolve) {
+      const existing = $('#visitOutcomeModal');
+      if (existing) existing.remove();
+      const wrap = document.createElement('div');
+      wrap.className = 'admin-modal open';
+      wrap.id = 'visitOutcomeModal';
+      wrap.innerHTML = '<div class="modal-box" style="max-width:420px;">' +
+        '<h3 style="font-family:var(--font-heading); font-size:20px; color:#fff; margin-bottom:6px; text-align:center;">¿Cómo salió la visita?</h3>' +
+        '<p style="color:var(--text-dim); font-size:13px; margin-bottom:14px; text-align:center;">' + esc(clientName || 'El cliente') + ' — se registra en el historial del lead</p>' +
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">' +
+        '<button type="button" class="btn-action" data-outcome="Le gustó la propiedad" style="background:rgba(0,200,120,0.15); color:var(--success); padding:14px 8px; width:auto;"><i class="fas fa-heart"></i> Le gustó</button>' +
+        '<button type="button" class="btn-action" data-outcome="Tiene dudas" style="background:rgba(255,184,0,0.15); color:var(--warning); padding:14px 8px; width:auto;"><i class="fas fa-circle-question"></i> Tiene dudas</button>' +
+        '<button type="button" class="btn-action" data-outcome="No le gustó" style="background:rgba(239,68,68,0.12); color:var(--danger); padding:14px 8px; width:auto;"><i class="fas fa-thumbs-down"></i> No le gustó</button>' +
+        '<button type="button" class="btn-action" data-outcome="No asistió a la visita" style="background:rgba(239,68,68,0.22); color:var(--danger); padding:14px 8px; width:auto;"><i class="fas fa-user-xmark"></i> No vino</button>' +
+        '</div>' +
+        '<textarea id="visitOutcomeNote" class="crm-field-input" rows="3" placeholder="Describí brevemente el resultado (obligatorio)…" style="width:100%; resize:vertical;"></textarea>' +
+        '<div style="display:flex; justify-content:flex-end; gap:10px; margin-top:14px;">' +
+          '<button type="button" class="status-pill pending" id="visitOutcomeCancel">Cancelar</button>' +
+          '<button type="button" class="btn-luxury-action" id="visitOutcomeSave"><i class="fas fa-check"></i> Guardar resultado</button>' +
+        '</div>' +
+        '</div>';
+      document.body.appendChild(wrap);
+      const noteEl = wrap.querySelector('#visitOutcomeNote');
+      wrap.querySelectorAll('[data-outcome]').forEach(btn => btn.addEventListener('click', () => {
+        const label = btn.dataset.outcome;
+        noteEl.value = noteEl.value.trim() ? label + ': ' + noteEl.value.trim() : label;
+        noteEl.focus();
+      }));
+      wrap.querySelector('#visitOutcomeCancel').addEventListener('click', () => { wrap.remove(); resolve(null); });
+      wrap.querySelector('#visitOutcomeSave').addEventListener('click', () => {
+        const note = noteEl.value.trim();
+        if (!note) { showToast('Escribí el resultado de la visita.', 'error'); noteEl.focus(); return; }
+        wrap.remove();
+        resolve(note);
+      });
+      setTimeout(() => noteEl.focus(), 60);
+    });
+  }
+
+  async function logVisitOutcome(leadId, note) {
+    if (!leadId || !note) return;
+    try {
+      await window.supabaseClient.from('lead_activities').insert([{
+        lead_id: leadId,
+        activity_type: 'visit',
+        title: 'Resultado de visita',
+        description: note
+      }]);
+    } catch (err) { showToast('Error al registrar el resultado: ' + err.message, 'error'); }
   }
 
   window.adminApp.checkoutVisit = async function (id) {
     try {
+      const { data: v } = await window.supabaseClient.from('visits').select('lead_id, client_name').eq('id', id).single();
+      const note = await promptVisitOutcome(v?.lead_id, v?.client_name);
+      if (note === null) return;
       const { error } = await window.supabaseClient
         .from('visits').update({ check_out: new Date().toISOString(), status: 'completada' }).eq('id', id);
       if (error) throw error;
+      if (v?.lead_id) await logVisitOutcome(v.lead_id, note);
       showToast('Salida registrada', 'success');
       loadAgenda();
-      const { data: v } = await window.supabaseClient.from('visits').select('lead_id, client_name').eq('id', id).single();
-      if (v?.lead_id) promptVisitOutcome(v.lead_id, v.client_name);
     } catch (err) { showToast('Error: ' + err.message, 'error'); }
   };
 
