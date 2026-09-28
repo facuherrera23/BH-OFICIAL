@@ -952,7 +952,7 @@ Guía detallada: [`CLOUDFLARE_SETUP.md`](CLOUDFLARE_SETUP.md).
 
 ### Cache busters
 
-Al modificar un JS o CSS, subir el `?v=N` en el HTML correspondiente (`admin-app.js`, `landing-app.js`, `admin.css`, `landing.css`, `config.js`, `utils.js`, etc.).
+Al modificar un JS o CSS, correr `npm run bump` (sube automáticamente el `?v=N` de los assets con cambios en todos los HTML del root) o subirlo a mano en el HTML correspondiente.
 
 ### Edge Functions
 

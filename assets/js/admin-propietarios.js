@@ -1763,7 +1763,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     try {
       const { count } = await window.supabaseClient.from('properties').select('id', { count: 'exact', head: true }).eq('owner_id', id).is('deleted_at', null);
       conProps = count || 0;
-    } catch (_) {}
+    } catch (_) { logError('Propietarios: falló contar propiedades a su nombre:', _); }
     const extra = conProps > 0 ? '\n⚠ Tiene ' + conProps + ' propiedad(es) a su nombre. Quedan vinculadas pero el propietario se oculta.' : '';
     if (!confirm('¿Eliminar este propietario? Baja lógica restaurable.' + extra)) return;
     try {

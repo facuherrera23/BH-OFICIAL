@@ -922,7 +922,7 @@
           bulkSel.appendChild(opt);
         });
       }
-    } catch (_) {}
+    } catch (_) { logError('Propiedades: falló cargar select masivo de agentes:', _); }
   }
 
   /* ------------------------------------------------

@@ -317,7 +317,7 @@
       try {
         const { count } = await window.supabaseClient.from('leads').select('id', { count: 'exact', head: true }).eq('assigned_to', userId).is('deleted_at', null);
         if (count) orphanNote = ` Tiene ${count} lead${count !== 1 ? 's' : ''} asignado${count !== 1 ? 's' : ''} que quedarán sin atención.`;
-      } catch (_) {}
+      } catch (_) { logError('Usuarios: falló contar leads asignados:', _); }
       if (!window.confirm(`¿Desactivar el acceso de ${label}? No podrá volver a iniciar sesión.${orphanNote}`)) return;
     } else {
       if (!window.confirm(`¿Reactivar el acceso de ${label}?`)) return;

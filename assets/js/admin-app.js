@@ -2205,7 +2205,7 @@ on(chip, 'click', () => {
       platformBadgeEl.innerHTML = getPlatformIcon(data.account?.platform) + ' ' + (data.account?.platform || '—');
       accountBadgeEl.textContent = data.account?.username ? '@' + data.account.username : '—';
 
-      let lastInAt = null; try { const { data: lastIn } = await window.supabaseClient.from('zernio_messages').select('occurred_at').eq('conversation_id', convId).eq('direction', 'in').order('occurred_at', { ascending: false }).limit(1).maybeSingle(); lastInAt = lastIn?.occurred_at || null; } catch {}
+      let lastInAt = null; try { const { data: lastIn } = await window.supabaseClient.from('zernio_messages').select('occurred_at').eq('conversation_id', convId).eq('direction', 'in').order('occurred_at', { ascending: false }).limit(1).maybeSingle(); lastInAt = lastIn?.occurred_at || null; } catch (e) { logError('Chat last-in-query failed:', e); }
 
       const windowClosed = lastInAt ? (Date.now() - new Date(lastInAt).getTime() > 24 * 60 * 60 * 1000) : true;
       const platform = data.account?.platform || 'desconocido';

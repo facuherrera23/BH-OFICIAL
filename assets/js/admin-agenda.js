@@ -741,7 +741,7 @@
             title: 'Visita reprogramada (arrastrar y soltar)',
             description: d.toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' → ' + target.toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
           }]);
-        } catch (_) {}
+        } catch (_) { logError('Visit reprogram note log failed:', _); }
       }
       showToast('Visita reprogramada al ' + target.toLocaleDateString('es-AR'), 'success');
       loadAgenda();
@@ -1047,7 +1047,7 @@
         opt.textContent = p.title;
         sel.appendChild(opt);
       });
-    } catch (_) {}
+    } catch (_) { logError('Property select load failed:', _); }
   })();
 
   (async function setMyAgendaDefault() {
@@ -1831,7 +1831,7 @@
               title: 'Visita agendada desde el panel',
               description: new Date(data.visit_date).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
             }]);
-          } catch (_) {}
+          } catch (_) { logError('Visita creada: falló el log de actividad del lead:', _); }
         }
         /* Link de confirmación: siempre se copia; con email avisa, con teléfono ofrece WhatsApp */
         if (inserted?.id) {
@@ -1883,7 +1883,7 @@
               showToast('Lead movido a Negociación', 'success');
             }
           }
-        } catch (_) {}
+        } catch (_) { logError('Visita: falló mover lead a Negociación:', _); }
       }
 
       /* Si se asignó lead_id nuevo (era NULL) ? el trigger DB actualizará lead a "visita" */
@@ -1986,7 +1986,7 @@ window.adminApp.editVisit = async function (id) {
                   await loadPropertySelect($('#visitPropertySelect'), leadData.property_id);
                 }
               }
-            } catch (_) {}
+            } catch (_) { logError('Visita: falló autocompletar datos del lead:', _); }
           });
         }
         if (data.lead_id) { leadSelect.dispatchEvent(new Event('change')); }
@@ -2247,7 +2247,7 @@ window.adminApp.editVisit = async function (id) {
           syncVisitDateHidden();
         }
       }
-    } catch (_) {}
+    } catch (_) { logError('Visita: falló chequear tipo/estado de propiedad:', _); }
   });
 
   // Devuelve la nota escrita o null si se cancela. La nota es obligatoria:

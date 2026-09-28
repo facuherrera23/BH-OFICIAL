@@ -1165,7 +1165,7 @@
         if (n > 0) { side.textContent = n > 99 ? '99+' : String(n); side.style.display = ''; }
         else side.style.display = 'none';
       }
-    } catch (_) {}
+    } catch (_) { console.error('[sup] refreshBadge:', _); }
   }
 
   async function refreshErrorsBadge() {
@@ -1175,7 +1175,7 @@
       if (!badge) return;
       if (n > 0) { badge.textContent = n > 99 ? '99+' : String(n); badge.style.display = ''; }
       else badge.style.display = 'none';
-    } catch (_) {}
+    } catch (_) { console.error('[sup] refreshErrorsBadge:', _); }
   }
 
   function bind() {

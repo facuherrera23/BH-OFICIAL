@@ -27,7 +27,7 @@
                El SUPABASE_URL previo hacia fallar la entrega del token por origin mismatch. */
             iframe.contentWindow.postMessage({ type: 'auth-session', token: session.access_token }, window.location.origin);
           }
-        } catch (_) {}
+        } catch (_) { logError('Tasaciones iframe: falló entregar sesión:', _); }
       };
     }
   }
@@ -143,7 +143,10 @@
       const { data, error } = await applyFilters(
         window.supabaseClient
           .from('tasaciones')
-          .select('id, title, status, created_at, property_id, owner_id, type, data, valuation_usd')
+          /* Sin 'data' a proposito: el listado no necesita el JSONB (fotos base64 pesan MB).
+             Si una tasacion vieja tuviera valuation_usd NULL, buildTasacionRowHtml reconsultaria,
+             pero todas las actuales tienen valor guardado. */
+          .select('id, title, status, created_at, property_id, owner_id, type, valuation_usd')
           .order(_tasSort.col, { ascending: _tasSort.asc, nullsFirst: false })
       ).range(from, to);
       if (error) throw error;

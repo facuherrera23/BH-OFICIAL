@@ -251,7 +251,7 @@ async function loadOwners() {
       try {
         var pr = await db().from('properties').select('owner_id').or('title.ilike.%' + os + '%,property_code.ilike.%' + os + '%').is('deleted_at', null).limit(200);
         ownerIdsByProp = (pr.data || []).map(function (p) { return p.owner_id; }).filter(Boolean);
-      } catch (e) {}
+      } catch (e) { window.__BH.logError('CRM owner search by property failed:', e); }
       if (ownerIdsByProp.length) ors += ',id.in.(' + ownerIdsByProp.join(',') + ')';
       q0 = q0.or(ors);
       qw = qw.or(ors);
@@ -553,7 +553,7 @@ async function loadLeads() {
           linkByLead[lp.lead_id].add(lp.property_id);
           propIds[lp.property_id] = true;
         });
-      } catch (e) {}
+      } catch (e) { window.__BH.logError('CRM lead_properties load failed:', e); }
     }
     var props = {};
     var ids = Object.keys(propIds);
@@ -568,7 +568,7 @@ async function loadLeads() {
         (vRes.data || []).forEach(function (v) { if (!visitsByLead[v.lead_id]) visitsByLead[v.lead_id] = []; visitsByLead[v.lead_id].push(v); });
         var tRes = await db().from('lead_tasks').select('lead_id, status, due_at, title').in('lead_id', leadIds);
         (tRes.data || []).forEach(function (tk) { if (!tasksByLead[tk.lead_id]) tasksByLead[tk.lead_id] = []; tasksByLead[tk.lead_id].push(tk); });
-      } catch (e) {}
+      } catch (e) { window.__BH.logError('CRM visits/tasks load failed:', e); }
     }
     _leads.forEach(function (l) {
       l.agent_name = _agentMapById[l.assigned_to] || null;
