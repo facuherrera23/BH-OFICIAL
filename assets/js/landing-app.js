@@ -44,7 +44,6 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
   window.addEventListener('load', () => {
     setTimeout(hidePreloaderOnce, 100);
     initScrollAnimations();
-    initCursorGlow();
     initParallax();
     loadLandingData();
   });
@@ -111,47 +110,6 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
     }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
 
     document.querySelectorAll('[data-animate], .timeline').forEach(el => observer.observe(el));
-  }
-
-  /* ------------------------------------------------
-     4. CURSOR GLOW (desktop only)
-     ------------------------------------------------ */
-  function initCursorGlow() {
-    const dot = document.getElementById('cursorDot');
-    const glow = document.getElementById('cursorGlow');
-    if (!dot || !glow) return;
-    if (matchMedia('(hover: none)').matches || matchMedia('(pointer: coarse)').matches) return;
-
-    let mx = 0, my = 0, cx = 0, cy = 0;
-
-    document.addEventListener('mousemove', (e) => {
-      mx = e.clientX;
-      my = e.clientY;
-      dot.style.left = mx + 'px';
-      dot.style.top = my + 'px';
-      dot.classList.add('is-visible');
-      glow.classList.add('is-visible');
-    });
-
-    document.addEventListener('mouseleave', () => {
-      dot.classList.remove('is-visible');
-      glow.classList.remove('is-visible');
-    });
-
-    function animateGlow() {
-      cx += (mx - cx) * 0.12;
-      cy += (my - cy) * 0.12;
-      glow.style.left = cx + 'px';
-      glow.style.top = cy + 'px';
-      requestAnimationFrame(animateGlow);
-    }
-    animateGlow();
-
-    const hoverEls = document.querySelectorAll('a, button, .property-card, .team-card, .filter-pill, .form-pill, .stat-card, .service-card, .step-card');
-    hoverEls.forEach(el => {
-      el.addEventListener('mouseenter', () => glow.classList.add('is-hover'));
-      el.addEventListener('mouseleave', () => glow.classList.remove('is-hover'));
-    });
   }
 
   /* ------------------------------------------------
@@ -1040,8 +998,6 @@ function renderSocialLinks(social) {
       return;
     }
 
-    const cursorGlow = document.getElementById('cursorGlow');
-
     const fragment = document.createDocumentFragment();
 
     for (const p of props) {
@@ -1130,9 +1086,6 @@ function renderSocialLinks(social) {
       body.append(price, title, location, features, desc, detailsBtn);
       card.append(imageWrapper, body);
       fragment.appendChild(card);
-
-      card.addEventListener('mouseenter', () => cursorGlow?.classList.add('is-hover'));
-      card.addEventListener('mouseleave', () => cursorGlow?.classList.remove('is-hover'));
     }
 
     grid.replaceChildren(fragment);

@@ -725,35 +725,6 @@ function esc(s) {
   });
 
   /* ------------------------------------------------
-     2. PRELOADER & CURSOR EFFECTS
-     ------------------------------------------------ */
-  function initCursorGlow() {
-    const glow = $('#cursorGlow');
-    const dot = $('#cursorDot');
-    if (!glow && !dot) return;
-
-    document.addEventListener('mouseenter', () => {
-      if (glow) glow.classList.add('is-visible');
-      if (dot) dot.classList.add('is-visible');
-    });
-    document.addEventListener('mouseleave', () => {
-      if (glow) glow.classList.remove('is-visible');
-      if (dot) dot.classList.remove('is-visible');
-    });
-
-    document.addEventListener('mousemove', (e) => {
-      if (glow) {
-        glow.style.left = e.clientX + 'px';
-        glow.style.top = e.clientY + 'px';
-      }
-      if (dot) {
-        dot.style.left = e.clientX + 'px';
-        dot.style.top = e.clientY + 'px';
-      }
-    });
-  }
-
-  /* ------------------------------------------------
      3. NAVIGATION
      ------------------------------------------------ */
   $$('.nav-item[data-tab]').forEach(item => {
@@ -3538,7 +3509,6 @@ window.supabaseClient.from('agents').select('id, full_name, phone, email').eq('s
     setInterval(() => { if (currentUser) loadNotifications(); }, 90000);
 
     initAuth();
-    initCursorGlow();
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', startApp);
