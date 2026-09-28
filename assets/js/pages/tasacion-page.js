@@ -586,6 +586,33 @@ window.addEventListener('afterprint', ()=>renderAnalisisComparativo(false));
 document.getElementById('ac_dispersion').addEventListener('input', ()=>renderAnalisisComparativo());
 
 let photoDataUrl = null;
+
+/* Comprime y redimensiona la foto antes de persistirla en tasaciones.data: una foto
+   de celular pesa 3-8 MB en base64; en JPEG a max 1600px queda en ~150-400 KB, sin
+   diferencia visual en pantalla ni en el PDF. Las tasaciones viejas no se tocan. */
+function resizeImageToDataUrl(file, maxDim, quality){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        canvasResize(img, scale, quality, resolve);
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  function canvasResize(img, scale, q, done){
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    done(canvas.toDataURL('image/jpeg', q));
+  }
+}
 function setPhoto(dataUrl){
   photoDataUrl = dataUrl;
   const img = document.getElementById('photoPreview');
@@ -607,12 +634,10 @@ document.getElementById('photoBox').addEventListener('click', (e)=>{
   if(e.target.id === 'photoRemove') return;
   document.getElementById('f_fotoFachada').click();
 });
-document.getElementById('f_fotoFachada').addEventListener('change', (e)=>{
+document.getElementById('f_fotoFachada').addEventListener('change', async (e)=>{
   const file = e.target.files[0];
   if(!file) return;
-  const reader = new FileReader();
-  reader.onload = ()=> setPhoto(reader.result);
-  reader.readAsDataURL(file);
+  setPhoto(await resizeImageToDataUrl(file, 1600, 0.82));
 });
 document.getElementById('photoRemove').addEventListener('click', (e)=>{
   e.stopPropagation();
@@ -744,18 +769,15 @@ function setupComparablePhoto(wrap){
   const removeBtn = wrap.querySelector('.c_foto_remove');
 
   box.addEventListener('click', (e)=>{ if(e.target !== removeBtn) input.click(); });
-  input.addEventListener('change', (e)=>{
+  input.addEventListener('change', async (e)=>{
     const file = e.target.files[0];
     if(!file) return;
-    const reader = new FileReader();
-    reader.onload = ()=>{
-      wrap.dataset.photo = reader.result;
-      img.src = reader.result;
-      img.style.display = 'block';
-      placeholder.style.display = 'none';
-      removeBtn.style.display = 'block';
-    };
-    reader.readAsDataURL(file);
+    const dataUrl = await resizeImageToDataUrl(file, 1400, 0.82);
+    wrap.dataset.photo = dataUrl;
+    img.src = dataUrl;
+    img.style.display = 'block';
+    placeholder.style.display = 'none';
+    removeBtn.style.display = 'block';
   });
   removeBtn.addEventListener('click', (e)=>{
     e.stopPropagation();

@@ -495,7 +495,7 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
   let currentPage = 1;
   let allTeam = [];
 
-  const FALLBACK_IMG = 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80&fit=crop';
+  const FALLBACK_IMG = 'assets/images/hero-bg.webp';
 
   // Cloudinary sirve el original (hasta 3000px) si no se acota el ancho:
   // cada contexto pide solo los px que necesita (cards 800, thumbs 240, modal 1400).
