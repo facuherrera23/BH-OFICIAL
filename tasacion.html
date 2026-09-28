@@ -7,7 +7,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net/npm/chart.js https://cdn.jsdelivr.net/npm/@supabase/supabase-js https://cdn.jsdelivr.net https://unpkg.com https://static.cloudflareinsights.com https://api.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://*.cloudinary.com https://images.unsplash.com https://*.supabase.co https://res.cloudinary.com; connect-src 'self' https://*.supabase.co https://static.cloudflareinsights.com https://api.cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com https://api.cloudinary.com; frame-src 'self';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net/npm/chart.js https://cdn.jsdelivr.net/npm/@supabase/supabase-js https://cdn.jsdelivr.net https://unpkg.com https://static.cloudflareinsights.com https://api.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://*.cloudinary.com https://images.unsplash.com https://*.supabase.co https://res.cloudinary.com https://*.tile.openstreetmap.org; connect-src 'self' https://*.supabase.co https://static.cloudflareinsights.com https://api.cloudflareinsights.com https://cdn.jsdelivr.net https://unpkg.com https://api.cloudinary.com https://nominatim.openstreetmap.org; frame-src 'self';" />
   <title>Bienenhaus Propiedades · Análisis Comparativo de Mercado</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
@@ -251,6 +251,8 @@
   }
   .toast.show{opacity:1; bottom:92px;}
 
+  @page{ size: A4; margin: 12mm; }
+
   @media print{
     .action-bar, .toast, .add-btn, .remove{display:none !important;}
     .comp-block[data-included="false"]{display:none !important;}
@@ -261,13 +263,14 @@
     section.card.collapsed .accordion-body{display:block !important;}
     section.card.collapsed h2{border-bottom-color:#ccc !important;}
     body{padding-bottom:0; background:#fff !important; color:var(--dark) !important;}
-    section.card{break-inside:avoid; border:1px solid #ccc; background:#fff !important; color:var(--dark) !important;}
-    section.card h2{color:var(--teal-dark) !important; border-bottom-color:#ccc !important;}
+    section.card{border:1px solid #ccc; background:#fff !important; color:var(--dark) !important; break-inside:auto; page-break-inside:auto;}
+    section.card h2{color:var(--teal-dark) !important; border-bottom-color:#ccc !important; break-after:avoid; page-break-after:avoid;}
     .field label, .char-cell .label, .valor-box label, .valuation-summary .box .lbl{color:#555 !important;}
     .comp-block{background:#fff !important; border-color:var(--teal) !important;}
-    .comp-block h3{color:var(--teal-dark) !important;}
+    .comp-block h3{color:var(--teal-dark) !important; break-after:avoid; page-break-after:avoid;}
     .marketing-text{color:#333 !important;}
     .marketing-text b{color:var(--dark) !important;}
+    .valuation-summary{break-inside:avoid; page-break-inside:avoid;}
     .valuation-summary .box{background:#f6f5f2 !important; color:var(--dark) !important; border-color:#ccc !important;}
     .valuation-summary .box.final{background:#fff !important; color:#000 !important; border:2px solid var(--teal) !important;}
     .valor-input input{color:var(--dark) !important;}
@@ -279,60 +282,72 @@
     header.top .brand span{color:var(--teal-dark) !important;}
     header.top .subtitle{color:#555 !important;}
     .logo-badge{box-shadow:none; border:1px solid var(--line);}
-    .status-bar{display:none;}
-    .map-legend{display:none;}
+    .status-bar{display:none !important;}
     .photo-box{background:#f7f6f3 !important; border-color:#ccc !important;}
     .photo-placeholder, .photo-placeholder *{color:#666 !important;}
     fieldset:disabled .field input, fieldset:disabled .field select, fieldset:disabled .field textarea{background:#f9f8f5 !important; color:#333 !important;}
     input.c_precioM2, .char-cell select{background:#fff !important; color:var(--dark) !important; border-color:#ccc !important;}
+    table.data-table{break-inside:auto;}
+    table.data-table tr, .ac-table tr{break-inside:avoid; page-break-inside:avoid;}
+    table.data-table thead{display:table-header-group;}
+    .ac-table thead{display:table-header-group;}
     table.data-table th{color:#555 !important; border-bottom-color:#ccc !important;}
     table.data-table td{border-bottom-color:#ddd !important;}
-    .ac-chart-wrap{background:#fff !important; border-color:#ccc !important;}
+    .ac-chart-wrap{background:#fff !important; border-color:#ccc !important; break-inside:avoid; page-break-inside:avoid;}
     .ac-table td, .ac-table th{color:var(--dark) !important;}
     [style*="--muted"]{color:#555 !important;}
 
     /* Ocultar bloques vacíos (fotos sin cargar, mapa sin ubicar) */
     .photo-box:has(.photo-placeholder:not([style*="display: none"])){display:none !important;}
     section.card:has(#leafletMap > .map-placeholder:not([style*="display: none"])){display:none !important;}
-    .map-frame{print-color-adjust:exact; -webkit-print-color-adjust:exact; border-radius:6px; overflow:hidden;}
 
-    /* Compactar para reducir páginas */
-    main{padding:16px 14px 20px;}
-    header.top{padding:12px 20px;}
-    .logo-badge img{height:34px;}
-    section.card{padding:14px 16px; margin-bottom:12px; break-inside:auto; page-break-inside:auto;}
-    section.card h2{font-size:11px; margin-bottom:10px; padding-bottom:6px;}
-    .grid{gap:8px;}
-    .field input, .field select, .field textarea{padding:5px 8px; font-size:12.5px;}
-    .field label{margin-bottom:3px;}
+    /* Leaflet imprime bien si los paneles recuperan z-index propio: sin esto los
+       tiles quedan detrás del placeholder o no se ven en el PDF exportado. */
+    .map-frame{print-color-adjust:exact; -webkit-print-color-adjust:exact; border-radius:6px; overflow:hidden; height:420px; break-inside:avoid; page-break-inside:avoid; border-color:#ccc !important;}
+    .leaflet-pane{z-index:1 !important;}
+    .leaflet-map-pane img.leaflet-tile{position:absolute; visibility:visible !important;}
+    .leaflet-marker-pane img, .leaflet-pane svg{display:block !important;}
+    .leaflet-container img{max-width:none !important;}
+    .leaflet-control-attribution{display:none !important;}
+    .map-legend{display:flex !important; font-size:11px !important; margin-top:8px;}
+    .map-legend .chip{background:#fff !important; border-color:#ccc !important; color:var(--dark) !important; padding:2px 10px !important;}
+
+    /* Equilibrio: suficiente aire para que no quede comprimido, sin tirar hojas */
+    main{padding:18px 16px 22px;}
+    header.top{padding:14px 22px;}
+    .logo-badge img{height:36px;}
+    section.card{padding:18px 20px; margin-bottom:14px;}
+    section.card h2{font-size:12.5px; margin-bottom:12px; padding-bottom:7px;}
+    .grid{gap:10px;}
+    .field input, .field select, .field textarea{padding:6px 9px; font-size:13px;}
+    .field label{margin-bottom:4px; font-size:10.5px;}
     .comp-block{padding:12px 14px; margin-bottom:10px;}
-    .comp-block h3{margin-bottom:8px;}
-    .char-grid{gap:6px 10px;}
-    .amb-field{padding:4px 0;}
-    .valuation-summary .box{padding:10px;}
-    .valuation-summary .box .val{font-size:18px;}
-    .coef-box{padding:8px 12px; margin-top:8px;}
-    .total-cuartos-row{padding:6px 10px; margin:8px 0 2px;}
-    .photo-box{margin-bottom:0;}
-    .marketing-text{font-size:12.5px; margin-bottom:6px;}
-    .ac-chart-wrap{height:220px; padding:10px; margin-top:12px;}
-    .grid.cols-4 .field label{font-size:9.5px;}
-    /* Comparables compactos: que entren 2 por hoja sin huecos */
-    .comp-block{padding:6px 10px; margin-bottom:6px;}
-    .comp-block h3{font-size:11px; margin-bottom:4px;}
-    .comp-block .photo-box{max-width:280px; aspect-ratio:16/5; margin:4px auto 0; min-height:0;}
-    .comp-block .field input, .comp-block .field select, .comp-block .field textarea{padding:3px 6px; font-size:11.5px;}
-    .comp-block .field label{margin-bottom:2px; font-size:9.5px;}
-    .comp-block .grid{gap:6px;}
-    .comp-block .char-grid{gap:4px 8px; margin-top:6px;}
-    .comp-block .char-cell .label{font-size:9.5px;}
-    .comp-block .char-cell select{padding:3px 6px; font-size:11.5px;}
-    .comp-block .coef-box{padding:5px 10px; margin-top:6px;}
-    .comp-block .coef-box span{font-size:10.5px;}
-    .comp-block .coef-box strong{font-size:13px;}
-    /* Footer de marca compacto: no debe generar una hoja casi vacía */
-    .brand-footer{padding:8px 20px 4px; break-before:avoid; page-break-before:avoid;}
-    .brand-footer img{height:30px; opacity:.8;}
+    .comp-block h3{font-size:12px; margin-bottom:6px;}
+    .comp-block .photo-box{max-width:300px; aspect-ratio:16/7; margin:6px auto 0; min-height:0;}
+    .comp-block .field input, .comp-block .field select, .comp-block .field textarea{padding:5px 8px; font-size:12.5px;}
+    .comp-block .field label{margin-bottom:3px; font-size:10px;}
+    .comp-block .grid{gap:8px;}
+    .comp-block .char-grid{gap:6px 10px; margin-top:8px;}
+    .comp-block .char-cell .label{font-size:10px;}
+    .comp-block .char-cell select{padding:5px 8px; font-size:12.5px;}
+    .comp-block .coef-box{padding:7px 12px; margin-top:8px;}
+    .comp-block .coef-box span{font-size:11.5px;}
+    .comp-block .coef-box strong{font-size:14px;}
+    .char-grid{gap:8px 12px;}
+    .amb-field{padding:5px 0;}
+    .valor-row{break-inside:avoid; page-break-inside:avoid;}
+    .valor-box{padding:12px 16px;}
+    .valor-input input{font-size:19px;}
+    .valuation-summary .box{padding:12px;}
+    .valuation-summary .box .val{font-size:19px;}
+    .coef-box{padding:10px 14px; margin-top:10px; break-inside:avoid; page-break-inside:avoid;}
+    .total-cuartos-row{padding:7px 12px; margin:10px 0 4px; break-inside:avoid; page-break-inside:avoid;}
+    .photo-box{margin-bottom:0; break-inside:avoid; page-break-inside:avoid;}
+    .marketing-text{font-size:13px; margin-bottom:8px;}
+    .ac-chart-wrap{height:230px; padding:12px; margin-top:14px;}
+    .grid.cols-4 .field label{font-size:10px;}
+    .brand-footer{padding:10px 22px 6px; break-before:avoid; page-break-before:avoid; break-inside:avoid;}
+    .brand-footer img{height:32px; opacity:.85;}
   }
 </style>
 </head>
@@ -716,6 +731,6 @@
 </div>
 
 <script src="assets/js/tasacion-calc.js?v=1"></script>
-<script src="assets/js/pages/tasacion-page.js?v=2"></script>
+<script src="assets/js/pages/tasacion-page.js?v=3"></script>
 </body>
 </html>

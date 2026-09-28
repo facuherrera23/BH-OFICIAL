@@ -453,8 +453,19 @@ document.getElementById('btnEdit').addEventListener('click', ()=>{
   showToast('Documento habilitado para edición');
 });
 
-document.getElementById('btnPdf').addEventListener('click', ()=>{
-  window.print();
+document.getElementById('btnPdf').addEventListener('click', async (e)=>{
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  try{
+    if(!leafletMapInstance && buildPropiedadQuery()){
+      showToast('Ubicando direcciones para el mapa del PDF...');
+      await updateMainMap();
+      await new Promise(r=>setTimeout(r, 400));
+    }
+  }finally{
+    btn.disabled = false;
+    window.print();
+  }
 });
 
 document.getElementById('addComparable').addEventListener('click', ()=>addComparable());
@@ -643,16 +654,23 @@ async function updateMainMap(){
   const legendEl = document.getElementById('mapLegend');
   const container = document.getElementById('leafletMap');
   const placeholder = document.getElementById('mainMapPlaceholder');
+  const phParent = placeholder.parentElement; /* L.map() vacia el contenedor; sin esta referencia el placeholder queda desconectado del DOM y no puede re-mostrarse */
+
+  const propQuery = buildPropiedadQuery();
+  const localidad = document.getElementById('f_localidad').value;
+  const provincia = document.getElementById('f_provincia').value;
+  const context = [localidad, provincia].filter(Boolean).join(', ');
 
   const points = [];
-  const propQuery = buildPropiedadQuery();
-  if(propQuery) points.push({label:'Propiedad', query: propQuery, color: MARKER_COLOR_PROPIEDAD});
+  if(propQuery) points.push({label:'Propiedad', query: propQuery, color: MARKER_COLOR_PROPIEDAD, fallback: [document.getElementById('f_barrio').value, context].filter(Boolean).join(', ')});
 
   document.querySelectorAll('.comp-block').forEach((wrap,i)=>{
     const dir = wrap.querySelector('.c_direccion').value;
     const barrio = wrap.querySelector('.c_barrio').value;
-    const q = [dir, barrio].filter(Boolean).join(', ');
-    if(q) points.push({label:'Comparable '+(i+1), query:q, color: MARKER_COLOR_COMPARABLE});
+    let q = [dir, barrio].filter(Boolean).join(', ');
+    /* Sin localidad explicita, el comparable se asume de la misma zona que la propiedad */
+    if(q && context && !q.toLowerCase().includes(localidad.toLowerCase())) q += ', ' + context;
+    if(q) points.push({label:'Comparable '+(i+1), query:q, color: MARKER_COLOR_COMPARABLE, fallback: context});
   });
 
   if(!points.length){
@@ -676,12 +694,18 @@ async function updateMainMap(){
   const bounds = [];
   legendEl.innerHTML = '';
   let okCount = 0;
+  let failQueries = [];
 
   for(const p of points){
     const wasCached = _geocodeCache.has(p.query.trim().toLowerCase());
     try{
-      const geo = await geocode(p.query);
-      if(!geo){ continue; }
+      /* Si la direccion completa no resuelve, se prueba con "barrio, localidad" */
+      let geo = await geocode(p.query);
+      if(!geo && p.fallback){
+        if(!wasCached) await new Promise(r=>setTimeout(r, 1100));
+        geo = await geocode(p.fallback);
+      }
+      if(!geo){ failQueries.push(p.label); continue; }
       const icon = L.divIcon({
         className:'', html:'<div style="width:16px;height:16px;border-radius:50%;background:'+p.color+';border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.2)"></div>',
         iconSize:[16,16], iconAnchor:[8,8]
@@ -693,17 +717,20 @@ async function updateMainMap(){
       chip.className = 'chip';
       chip.innerHTML = '<span class="swatch" style="background:'+p.color+'"></span>'+_bhEsc(p.label);
       legendEl.appendChild(chip);
-    }catch(e){}
+    }catch(e){ failQueries.push(p.label); }
     /* Solo esperamos si hubo un request real a Nominatim (respeta su limite de 1 req/seg) */
     if(!wasCached) await new Promise(r=>setTimeout(r, 1100));
   }
 
   if(bounds.length){
     leafletMapInstance.fitBounds(bounds, {padding:[30,30]});
-    statusEl.textContent = okCount+' de '+points.length+' ubicación(es) encontradas.';
+    statusEl.textContent = okCount+' de '+points.length+' ubicación(es) encontradas.'
+      + (failQueries.length ? ' No se ubicó: '+failQueries.join(', ')+'.' : '');
   } else {
     statusEl.textContent = 'No se pudo ubicar ninguna dirección. Revisá que estén completas (calle, barrio, ciudad).';
+    if(!placeholder.isConnected) phParent.appendChild(placeholder);
     placeholder.style.display = 'flex';
+    if(leafletMapInstance){ leafletMapInstance.remove(); leafletMapInstance = null; }
   }
   setTimeout(()=>{ if(leafletMapInstance) leafletMapInstance.invalidateSize(); }, 200);
 }
@@ -799,6 +826,7 @@ async function init(){
         applyFormData(data.data);
         if(data.status === 'finalized') setLocked(true);
         showToast('Tasación cargada correctamente');
+        updateMainMap().catch(()=>{});
       } else {
         addComparable();
       }
@@ -823,8 +851,15 @@ if (new URLSearchParams(window.location.search).get('print') === '1') {
       || document.getElementById('dirDomicilio')?.value;
     if (hasData && _imgsReady()) {
       clearInterval(_autoPrintCheck);
-      window.print();
+      (async () => {
+        try{
+          if(buildPropiedadQuery()) await updateMainMap();
+          /* los tiles de Leaflet tardan en llegar tras fitBounds: se espera antes de imprimir */
+          await new Promise(r=>setTimeout(r, 1500));
+        }catch(_){ }
+        window.print();
+      })();
     }
   }, 500);
-  setTimeout(() => { clearInterval(_autoPrintCheck); window.print(); }, 8000);
+  setTimeout(() => { clearInterval(_autoPrintCheck); window.print(); }, 15000);
 }
