@@ -62,7 +62,6 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   let _submittingProperty = false;
   let _pendingPropertyNotes = [];
   let _submittingAgent = false;
-let _submittingOwner = false;
 
   let _ownerFormSourcePropertyModal = false;
 

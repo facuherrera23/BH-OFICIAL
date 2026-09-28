@@ -219,6 +219,7 @@ ${(() => { const t = nextTaskByOwner[o.id]; if (!t) return '<div style="font-siz
 
   /* Crear propietario inline desde el modal Nueva Tasación */
   let _ownerFormSourceTasacionModal = false;
+  let _submittingOwner = false;
   async function _refreshTasaOwnerSelect(selectedId) {
     const sel = $('#tasaOwner');
     if (!sel || !window.supabaseClient) return;
