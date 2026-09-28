@@ -506,7 +506,16 @@ Deno.serve(async (req) => {
             payload.pictures = mlImageUrls.map((url) => ({ source: url }));
 
             const item = await createMlItem(accessToken, payload);
-            await setDescription(accessToken, item.id, property.description ?? property.title);
+            // ML puede rechazar la descripción (p.ej. DESCRIPTION_PLAIN_TEXT_NOT_ALLOWED en
+            // inmuebles). El ítem YA está creado: si esto lanza, quedaría una publicación
+            // huérfana en ML sin fila en ml_listings. Se tolera el error y se reporta.
+            let descriptionWarning: string | null = null;
+            try {
+                await setDescription(accessToken, item.id, property.description ?? property.title);
+            } catch (descErr) {
+                descriptionWarning = (descErr as Error).message;
+                console.warn('[ml-publish] setDescription falló, el ítem se crea igual:', descriptionWarning);
+            }
 
             await upsertListing({
                 propertyId,
@@ -523,7 +532,11 @@ Deno.serve(async (req) => {
                 action: 'ml_publish',
                 propertyId,
                 mlItemId: item.id,
-                metadata: { event: 'publish_create', permalink: item.permalink },
+                metadata: {
+                    event: 'publish_create',
+                    permalink: item.permalink,
+                    description_warning: descriptionWarning,
+                },
             });
 
             return respond(200, {
@@ -532,6 +545,7 @@ Deno.serve(async (req) => {
                 listing_id: item.id,
                 permalink: item.permalink,
                 status: item.status,
+                description_warning: descriptionWarning,
             });
         }
 
@@ -595,8 +609,14 @@ Deno.serve(async (req) => {
             }
 
             const item = await updateMlItem(accessToken, mlItemId, updatePayload);
+            let descriptionWarning: string | null = null;
             if (property.description) {
-                await setDescription(accessToken, item.id, property.description);
+                try {
+                    await setDescription(accessToken, item.id, property.description);
+                } catch (descErr) {
+                    descriptionWarning = (descErr as Error).message;
+                    console.warn('[ml-publish] setDescription falló en update, se continúa igual:', descriptionWarning);
+                }
             }
 
             await upsertListing({
@@ -614,7 +634,7 @@ Deno.serve(async (req) => {
                 action: 'ml_publish',
                 propertyId,
                 mlItemId,
-                metadata: { event: 'publish_update' },
+                metadata: { event: 'publish_update', description_warning: descriptionWarning },
             });
 
             return respond(200, {
@@ -623,6 +643,7 @@ Deno.serve(async (req) => {
                 listing_id: mlItemId,
                 permalink: item.permalink,
                 status: item.status,
+                description_warning: descriptionWarning,
             });
         }
 

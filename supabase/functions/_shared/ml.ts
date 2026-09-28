@@ -337,7 +337,7 @@ export async function getMlCooldown(
 ): Promise<Date | null> {
     const { data, error } = await supabase
         .from('ml_sync_cooldown')
-        .select('cooldown_until')
+        .select('expires_at')
         .eq('connection_id', connectionId)
         .maybeSingle();
 
@@ -346,9 +346,9 @@ export async function getMlCooldown(
         return null;
     }
 
-    if (!data?.cooldown_until) return null;
+    if (!data?.expires_at) return null;
 
-    const until = new Date(data.cooldown_until);
+    const until = new Date(data.expires_at);
     return until.getTime() > Date.now() ? until : null;
 }
 
@@ -362,16 +362,19 @@ export async function setMlCooldown(
     reason: string,
     durationMs: number = ML_COOLDOWN_DEFAULT_MS,
 ): Promise<void> {
+    // La tabla es singleton (PK booleana id=true): una sola fila de cooldown global.
+    const now = new Date().toISOString();
     const { error } = await supabase
         .from('ml_sync_cooldown')
         .upsert(
             {
+                id: true,
                 connection_id: connectionId,
-                cooldown_until: new Date(Date.now() + durationMs).toISOString(),
                 reason,
-                updated_at: new Date().toISOString(),
+                started_at: now,
+                expires_at: new Date(Date.now() + durationMs).toISOString(),
             },
-            { onConflict: 'connection_id' },
+            { onConflict: 'id' },
         );
 
     if (error) {
