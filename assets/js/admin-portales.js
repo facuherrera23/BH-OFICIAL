@@ -672,6 +672,9 @@ try {
       const result = await mlApiCall('publish', { property_id: propertyId });
       const listingId = result.listing_id || result.item_id || result.id || '';
       showToast('¡Propiedad publicada en Mercado Libre! ID: ' + listingId, 'success');
+      if (result.description_warning) {
+        showToast('Publicada sin descripción: ML rechazó el texto (' + result.description_warning + ')', 'warning');
+      }
       await mlCheckStatus();
       loadProperties();
     } catch (err) {
@@ -690,8 +693,11 @@ try {
     }))) return;
     try {
       showToast('Actualizando en Mercado Libre...', 'info');
-      await mlApiCall('update', { property_id: propertyId, listing_id: listingId });
+      const result = await mlApiCall('update', { property_id: propertyId, listing_id: listingId });
       showToast('¡Propiedad actualizada en Mercado Libre!', 'success');
+      if (result.description_warning) {
+        showToast('Actualizada sin descripción: ML rechazó el texto (' + result.description_warning + ')', 'warning');
+      }
       await mlCheckStatus();
       loadProperties();
     } catch (err) {
