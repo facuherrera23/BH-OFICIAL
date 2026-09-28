@@ -181,24 +181,39 @@ ${(() => { const t = nextTaskByOwner[o.id]; if (!t) return '<div style="font-siz
   }
 
 
-  /* Create owner */
-  on($('#btnNewOwner'), 'click', () => {
+  // Un propietario nuevo arranca limpio: sin datos, en "Datos Principales" y
+  // sin contenido heredado del propietario editado antes (tareas, tasaciones,
+  // timeline, propiedades, botones de contacto).
+  function resetOwnerModalForNew(titleText) {
     editingOwnerId = null;
     $('#ownerForm')?.reset();
     const title = $('#ownerModalTitle');
-    if (title) title.textContent = 'Expediente de Propietario';
-
+    if (title) title.textContent = titleText;
+    $$('#ownerModal .owner-tab-btn').forEach((btn, i) => {
+      btn.classList.toggle('is-active', i === 0);
+      btn.style.background = i === 0 ? 'rgba(31,200,195,0.15)' : 'none';
+      btn.style.color = i === 0 ? 'var(--accent)' : 'var(--text-dim)';
+    });
+    $$('#ownerModal .owner-tab-content').forEach((c, i) => c.style.display = i === 0 ? 'block' : 'none');
+    const empty = '<div class="crm-timeline-empty">Guardá el propietario primero.</div>';
+    ['#ownerTasksList', '#ownerTasacionesList', '#ownerTimelineList', '#ownerPropsList'].forEach(function (sel) {
+      const el = $(sel);
+      if (el) el.innerHTML = sel === '#ownerPropsList' ? '' : empty;
+    });
+    const contactRow = document.querySelector('#ownerModal .owner-contact-row');
+    if (contactRow) contactRow.style.display = 'none';
     refreshOwnerTaskPrioAuto();
-openModal('ownerModal');
+  }
 
+  /* Create owner */
+  on($('#btnNewOwner'), 'click', () => {
+    resetOwnerModalForNew('Expediente de Propietario');
+    openModal('ownerModal');
   });
 
   on($('#btnAddOwnerInline'), 'click', () => {
     _ownerFormSourcePropertyModal = true;
-    editingOwnerId = null;
-    $('#ownerForm')?.reset();
-    const title = $('#ownerModalTitle');
-    if (title) title.textContent = 'Nuevo Propietario';
+    resetOwnerModalForNew('Nuevo Propietario');
     openModal('ownerModal');
   });
 
@@ -217,10 +232,7 @@ openModal('ownerModal');
   }
   on($('#btnAddOwnerForTasacion'), 'click', () => {
     _ownerFormSourceTasacionModal = true;
-    editingOwnerId = null;
-    $('#ownerForm')?.reset();
-    const title = $('#ownerModalTitle');
-    if (title) title.textContent = 'Nuevo Propietario';
+    resetOwnerModalForNew('Nuevo Propietario');
     openModal('ownerModal');
     /* newTasacionModal y ownerModal comparten z-index 100000; sin esto el modal de
        propietario abre debajo del de tasación (mismo stacking context, gana el DOM posterior). */
@@ -803,12 +815,13 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     if (!window.supabaseClient) return;
     const resultNotes = await showInputPrompt({
       title: 'Completar tarea',
-      message: 'Nota de cierre (opcional):',
+      message: 'Nota de cierre de la tarea (obligatoria):',
       icon: 'fas fa-check',
       placeholder: 'Ej: El propietario confirmó que envía la documentación...',
       confirmText: 'Completar'
     });
     if (resultNotes === null) return;
+    if (!resultNotes.trim()) { showToast('Escribí la nota de cierre de la tarea.', 'error'); return; }
 
     try {
       const task = await mutate('owner_tasks', async () => {
