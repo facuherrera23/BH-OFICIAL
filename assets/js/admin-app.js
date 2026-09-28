@@ -1558,15 +1558,8 @@ function esc(s) {
 
   window.showInputPrompt = showInputPrompt;
 
-  /* Close on backdrop click */
-  $$('.admin-modal').forEach(overlay => {
-    on(overlay, 'click', (e) => {
-      if (e.target === overlay) {
-        overlay.classList.remove('is-open');
-        document.body.style.overflow = '';
-      }
-    });
-  });
+  /* Los modales NO se cierran con clic en el backdrop: un clic accidental no
+     debe descartar el formulario en curso. Se cierran con la X o Escape. */
 
   /* Close on Escape */
   on(document, 'keydown', (e) => {

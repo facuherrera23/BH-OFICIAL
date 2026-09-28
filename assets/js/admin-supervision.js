@@ -537,7 +537,6 @@
     document.body.appendChild(modal);
     var body = $('supEntityBody');
     $('supEntityClose').addEventListener('click', function() { modal.remove(); });
-    modal.addEventListener('click', function(ev) { if (ev.target === modal) modal.remove(); });
     var esc2 = esc;
     fetchEntityHistory(entityLabel).then(function(entries) {
       if (!entries.length) {
