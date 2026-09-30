@@ -4,7 +4,7 @@
    ============================================================ */
 (function () {
   'use strict';
-  const { logError, on, formatDateTimeWithTZ, validateForm, getAuthedClient, navigateTo, setKPI, refreshOwnerSelect, openModal, closeModal, showConfirmDialog, showInputPrompt, showToast, invalidateSearchCache, updateSidebarBadges, formatNumber, OwnerSchema, esc, mutate } = window.__BH || {};
+  const { logError, on, formatDateTimeWithTZ, validateForm, getAuthedClient, navigateTo, setKPI, refreshOwnerSelect, openModal, closeModal, showConfirmDialog, showInputPrompt, showToast, invalidateSearchCache, updateSidebarBadges, formatNumber, OwnerSchema, esc, mutate, loadAgentSelect } = window.__BH || {};
 
   /* ------------------------------------------------
      11. OWNERS CRUD
@@ -202,6 +202,7 @@ ${(() => { const t = nextTaskByOwner[o.id]; if (!t) return '<div style="font-siz
     });
     const contactRow = document.querySelector('#ownerModal .owner-contact-row');
     if (contactRow) contactRow.style.display = 'none';
+    loadAgentSelect($('#ownerAgentSelect'));
     refreshOwnerTaskPrioAuto();
   }
 
@@ -313,6 +314,7 @@ ${(() => { const t = nextTaskByOwner[o.id]; if (!t) return '<div style="font-siz
         dni_expiry: validated.dni_expiry || null,
         cuit_expiry: validated.cuit_expiry || null,
         notes: validated.notes,
+        agent_id: validated.agent_id || null,
       };
 
       if (editingOwnerId) {
@@ -360,6 +362,7 @@ closeModal('ownerModal');
       const { data, error } = await window.supabaseClient.from('owners').select('*').eq('id', id).single();
       if (error) throw error;
       editingOwnerId = id;
+      await loadAgentSelect($('#ownerAgentSelect'), data.agent_id);
       const form = $('#ownerForm');
       if (form) {
         form.elements.full_name.value = data.full_name || '';
@@ -381,6 +384,7 @@ closeModal('ownerModal');
         if (form.elements.dni_expiry) form.elements.dni_expiry.value = data.dni_expiry || '';
         if (form.elements.cuit_expiry) form.elements.cuit_expiry.value = data.cuit_expiry || '';
         form.elements.notes.value = data.notes || '';
+        if (form.elements.agent_id) form.elements.agent_id.value = data.agent_id || '';
       }
       const title = $('#ownerModalTitle');
       if (title) {

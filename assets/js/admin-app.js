@@ -283,6 +283,7 @@ function esc(s) {
     dni_expiry: z.string().optional().nullable(),
     cuit_expiry: z.string().optional().nullable(),
     notes: z.string().max(1000).optional().nullable(),
+    agent_id: z.string().optional().nullable(),
   });
 
   // Helper: parse and validate form data
@@ -2739,6 +2740,7 @@ function setupCoreRealtime() {
               } else if (event === 'DELETE') {
                 removeLeadCard(oldRecord.id);
               }
+              if (window.BH_CRM && typeof window.BH_CRM.refresh === 'function') window.BH_CRM.refresh();
               updateSidebarBadges();
               break;
             case 'properties':
@@ -2764,6 +2766,7 @@ function setupCoreRealtime() {
               } else if (event === 'DELETE') {
                 removeOwnerRow(oldRecord.id);
               }
+              if (window.BH_CRM && typeof window.BH_CRM.refreshOwners === 'function') window.BH_CRM.refreshOwners();
               updateSidebarBadges();
               break;
             case 'owner_tasks':

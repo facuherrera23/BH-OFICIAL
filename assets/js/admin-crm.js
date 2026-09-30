@@ -206,6 +206,7 @@ function fmtTaskTimeLeft(iso) {
 function ownerAgentNames(o) {
   var ps = _ownerProps[o.id] || [];
   var agentIds = new Set();
+  if (o.agent_id) agentIds.add(o.agent_id);
   ps.forEach(function (p) { if (p.agent_id) agentIds.add(p.agent_id); });
   return Array.from(agentIds).map(function (aid) { return (_agentMapById[aid] || '').toLowerCase(); }).join(' ');
 }
@@ -243,7 +244,7 @@ async function loadOwners() {
   closeDetailPanel();
   try {
     var q0 = db().from('owners').select('id', { count: 'exact', head: true }).is('deleted_at', null);
-    var qw = db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, created_at').is('deleted_at', null);
+    var qw = db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, created_at, agent_id').is('deleted_at', null);
     if (_ownerSearch.trim()) {
       var os = _ownerSearch.trim().replace(/[%_]/g, ' ');
       var ors = ['full_name', 'email', 'phone', 'dni_cuit', 'address'].map(function (f) { return f + '.ilike.%' + os + '%'; }).join(',');
@@ -276,7 +277,12 @@ async function loadOwners() {
     var idConstraints = [];
     if (_ownerAgentFilter) {
       var pa = await db().from('properties').select('owner_id').eq('agent_id', _ownerAgentFilter).is('deleted_at', null).limit(500);
-      idConstraints.push([...new Set((pa.data || []).map(function (p) { return p.owner_id; }).filter(Boolean))]);
+      var oa = await db().from('owners').select('id').eq('agent_id', _ownerAgentFilter).is('deleted_at', null).limit(500);
+      idConstraints.push([...new Set(
+        (pa.data || []).map(function (p) { return p.owner_id; })
+          .concat((oa.data || []).map(function (o) { return o.id; }))
+          .filter(Boolean)
+      )]);
     }
     if (_ownerTaskFilter) {
       var tq = db().from('owner_tasks').select('owner_id, status, due_date').limit(1000);
@@ -387,9 +393,11 @@ function renderOwnerPropsCell(ownerId) {
 }
 
 
-function renderOwnerAgentCell(ownerId) {
+function renderOwnerAgentCell(owner) {
+  var ownerId = owner && owner.id;
   var ps = _ownerProps[ownerId] || [];
   var agentIds = new Set();
+  if (owner && owner.agent_id) agentIds.add(owner.agent_id);
   ps.forEach(function (p) { if (p.agent_id) agentIds.add(p.agent_id); });
   if (!agentIds.size) return '<span class="crm-muted">—</span>';
   return Array.from(agentIds).map(function (aid) {
@@ -443,7 +451,7 @@ function renderOwnerList(c) {
       '<td><div class="crm-client-row"><span class="crm-client-avatar" style="background:' + avColor + '">' + inits + '</span><div><strong>' + esc(o.full_name) + '</strong>' + (o.exclusive ? '<span class="crm-tipo-chip crm-tipo-chip--estado">EXCLUSIVO</span>' : '') + '<div class="crm-meta">' + esc(contactMetrics.join(' · ')) + '</div></div></div></td>' +
       '<td>' + (o.dni_cuit ? '<code style="font-size:11px;color:var(--text-secondary);">' + esc(o.dni_cuit) + '</code>' : '<span class="crm-muted">—</span>') + '</td>' +
       '<td>' + renderOwnerPropsCell(o.id) + '</td>' +
-      '<td>' + renderOwnerAgentCell(o.id) + '</td>' +
+      '<td>' + renderOwnerAgentCell(o) + '</td>' +
       '<td>' + tareaCell + '</td>' +
       '<td>' + (o.exclusive && o.exclusive_end ? fmtDate(o.exclusive_end) : '<span class="crm-muted">—</span>') + '</td>' +
       '<td>' + proxCell + '</td>' +
