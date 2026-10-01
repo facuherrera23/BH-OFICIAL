@@ -975,7 +975,7 @@
                 statusBadge(p) +
                 nextBadge +
               '</div>' +
-              (badges.length || isLong ? '<div class="prop-card-badges">' + badges.join('') + (isLong ? '<span class="prop-badge larga" title="Lleva más de 60 días en publicación"><i class="fas fa-circle-exclamation"></i> ' + daysOnMarket(p) + ' días en mercado</span>' : '') + '</div>' : '') +
+              (dbadges.length || isLong ? '<div class="prop-card-badges">' + dbadges.join('') + (isLong ? '<span class="prop-badge larga" title="Lleva más de 60 días en publicación"><i class="fas fa-circle-exclamation"></i> ' + daysOnMarket(p) + ' días en mercado</span>' : '') + '</div>' : '') +
             '</div>' +
             '<div class="prop-card-expand"><i class="fas fa-chevron-down"></i></div>' +
           '</div>' +
