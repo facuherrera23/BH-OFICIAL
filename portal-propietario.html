@@ -19,8 +19,166 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <style>
-    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+    /* Scroll-to-top */
+    .scroll-top-btn {
+      position: fixed; bottom: 24px; right: 24px;
+      width: 44px; height: 44px; border-radius: 50%;
+      background: var(--gold); color: #06090d;
+      border: 1px solid var(--border-accent);
+      display: none; align-items: center; justify-content: center;
+      font-size: 16px; cursor: pointer; z-index: 90;
+      box-shadow: 0 8px 24px rgba(31,200,195,0.35);
+      transition: transform 0.2s, opacity 0.2s;
+    }
+    .scroll-top-btn:hover { transform: translateY(-4px); }
+
+    /* Toast */
+    .portal-toast {
+      position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-8px);
+      background: var(--bg-card); color: var(--text);
+      border: 1px solid var(--border-accent);
+      border-radius: 10px; padding: 10px 18px;
+      font-size: 13px; font-weight: 500;
+      z-index: 9999; opacity: 0;
+      transition: opacity 0.3s, transform 0.3s;
+      pointer-events: none;
+    }
+    .portal-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .portal-toast i { margin-right: 6px; color: var(--green); }
+    .portal-toast.error i { color: var(--red); }
+
+    /* Top banners */
+    .portal-top-banner, .portal-conv-banner {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px; border-radius: var(--radius-sm);
+      font-size: 13px;
+      margin-bottom: 12px;
+      border-left: 3px solid var(--gold);
+      background: linear-gradient(90deg, var(--gold-dim), transparent);
+      color: var(--text);
+    }
+    .portal-top-banner i { color: var(--gold); font-size: 14px; }
+    .portal-conv-banner { border-left-color: var(--green); background: linear-gradient(90deg, var(--green-dim), transparent); }
+    .portal-conv-banner i { color: var(--green); font-size: 14px; }
+
+    /* Badges nuevos en cards */
+    .prop-badge.nueva { background: rgba(251,191,36,0.15); color: var(--warm); }
+    .prop-badge.larga { background: rgba(239,68,68,0.12); color: var(--red); }
+
+    /* Filtros con underline animado */
+    .prop-filter { position: relative; overflow: hidden; }
+    .prop-filter::after {
+      content: ''; position: absolute; bottom: 0; left: 0; right: 0;
+      height: 2px; background: var(--gold);
+      transform: scaleX(0); transform-origin: left;
+      transition: transform 0.2s;
+    }
+    .prop-filter:hover::after, .prop-filter.active::after { transform: scaleX(1); }
+
+    /* Calidad publicación warn */
+    .prop-quality-warn {
+      margin-top: 12px; padding: 10px 14px;
+      font-size: 12px; color: var(--orange);
+      background: var(--orange-dim); border-left: 3px solid var(--orange);
+      border-radius: var(--radius-sm);
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    /* Calidad y actividad en detail grid */
+    .prop-detail-item.item-hot .val { color: var(--hot); }
+    .prop-detail-item.item-warm .val { color: var(--warm); }
+    .prop-detail-item.item-cold .val { color: var(--cold); }
+
+    /* Stat-card como link */
+    .stat-card--link { cursor: pointer; }
+    .stat-card--link:hover { border-color: var(--border-accent); background: var(--bg-card-hover); }
+    .stat-card--link:active { transform: translateY(0); }
+
+    /* Footer timestamp */
+    .portal-footer-meta {
+      font-size: 11px; color: var(--text-muted); text-align: center;
+      margin-top: 32px; margin-bottom: 12px; padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Broker card con borde pulsante */
+    .broker-card { animation: broker-pulse 3s ease-in-out infinite; }
+    @keyframes broker-pulse {
+      0%, 100% { border-color: var(--border); }
+      50% { border-color: var(--border-accent); }
+    }
+    .broker-report-link {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; color: var(--text-muted); margin-top: 6px;
+      text-decoration: none; transition: color 0.2s;
+    }
+    .broker-report-link:hover { color: var(--gold); }
+
+    /* Dot pulsante en actividad hoy */
+    .activity-dot.pulse {
+      box-shadow: 0 0 0 0 rgba(31,200,195,0.6);
+      animation: dot-pulse 1.5s ease-out infinite;
+    }
+    @keyframes dot-pulse {
+      0% { box-shadow: 0 0 0 0 rgba(31,200,195,0.6); }
+      70% { box-shadow: 0 0 0 8px rgba(31,200,195,0); }
+      100% { box-shadow: 0 0 0 0 rgba(31,200,195,0); }
+    }
+
+    /* CTA en empty activity */
+    .inicio-empty-cta {
+      margin-left: 8px; color: var(--green); font-weight: 600;
+      text-decoration: none; white-space: nowrap;
+    }
+    .inicio-empty-cta:hover { text-decoration: underline; }
+
+    /* Sort pills */
+    .prop-sort {
+      display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+      margin: 0 0 10px 4px;
+    }
+    .prop-sort-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .prop-sort-pill {
+      background: var(--bg-card); border: 1px solid var(--border);
+      color: var(--text-dim); font-size: 11px; font-weight: 600;
+      padding: 5px 12px; border-radius: 20px; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .prop-sort-pill:hover { border-color: var(--border-accent); color: var(--text); }
+    .prop-sort-pill.active { background: var(--gold-dim); border-color: var(--gold); color: var(--gold); }
+
+    /* Stagger animation */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .prop-card, .stat-card, .excl-benefit, .excl-delta, .excl-share-card {
+      animation: fadeInUp 0.35s ease-out backwards;
+    }
+    .tab-panel.active > *:nth-child(1) { animation-delay: 0.02s; }
+    .tab-panel.active > *:nth-child(2) { animation-delay: 0.05s; }
+    .tab-panel.active > *:nth-child(3) { animation-delay: 0.08s; }
+    .tab-panel.active > *:nth-child(4) { animation-delay: 0.11s; }
+    .tab-panel.active > *:nth-child(5) { animation-delay: 0.14s; }
+
+    /* Banner exclusividad flotante */
+    .excl-banner h3 i { animation: float-x 3.5s ease-in-out infinite; }
+    @keyframes float-x {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-2px); }
+    }
+
+    /* Glow en thumbs */
+    .prop-card-thumb { transition: filter 0.2s; }
+    .prop-card:hover .prop-card-thumb { filter: brightness(1.06); }
+
+    /* Print extra */
+    @media print {
+      .portal-footer-meta { display: none !important; }
+      .portal-header { display: block !important; background: none; }
+      .portal-logo-text { color: #000 !important; }
+      body::before { display: none; }
+    ]
 
     :root {
       --bg-dark: #05070A;
@@ -46,6 +204,9 @@
       --radius: 18px;
       --radius-sm: 10px;
       --shadow: 0 16px 40px rgba(0,0,0,0.4);
+      --hot: #F87171;
+      --warm: #FBBF24;
+      --cold: #60A5FA;
     }
 
     html { scroll-behavior: smooth; scroll-padding-top: 80px; }
@@ -77,7 +238,19 @@
       line-height: 1.5;
       min-height: 100vh;
       overflow-x: hidden;
+      position: relative;
     }
+    /* Glow dinámico sutil */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(1000px 400px at var(--mx, 50%) var(--my, 0%), rgba(31,200,195,0.05), transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+      transition: background 0.3s;
+    }
+    body > * { position: relative; z-index: 1; }
 
     /* ── HEADER ── */
     .portal-header {
@@ -1553,13 +1726,17 @@
       .stat-card .value { font-size: 18px; }
     }
     @media print {
-      .portal-header, .tabs-bar, .quick-actions, .whatsapp-cta, .lightbox-overlay, #quickActionsSlot, #loginState, #errorState, .portal-loading { display: none !important; }
+      .portal-header, .tabs-bar, .quick-actions, .whatsapp-cta, .lightbox-overlay, .portal-toast, .scroll-top-btn, .portal-footer-meta, #quickActionsSlot, #loginState, #errorState, .portal-loading { display: none !important; }
       body { background: #fff !important; color: #000 !important; }
+      body::before { display: none !important; }
       .tab-panel { display: block !important; }
-      .stat-card, .prop-card, .broker-card, .excl-banner, .activity-card, .inicio-empty, .prop-summary-item, .excl-benefit, .excl-delta, .excl-share-card { border: 1px solid #ddd !important; background: #fff !important; box-shadow: none !important; color: #000 !important; page-break-inside: avoid; }
+      .prop-card { border-top: 2px solid #1FC8C3 !important; }
       .prop-card-detail { display: block !important; }
+      .prop-card + .prop-card { page-break-before: always; }
+      .stat-card, .prop-card, .broker-card, .excl-banner, .activity-card, .inicio-empty, .prop-summary-item, .excl-benefit, .excl-delta, .excl-share-card { border: 1px solid #ddd !important; background: #fff !important; box-shadow: none !important; color: #000 !important; page-break-inside: avoid; }
       .prop-gallery, .prop-video, .prop-timeline { display: none !important; }
       .section-title { color: #000 !important; page-break-after: avoid; }
+      body::after { content: 'Generado ' attr(data-date) ' — bienenhaus.com.ar'; position: fixed; bottom: 12px; left: 0; right: 0; font-size: 10px; color: #888; text-align: center; }
     }
   </style>
 

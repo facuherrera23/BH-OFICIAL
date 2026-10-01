@@ -129,13 +129,23 @@
     loadPortal();
 
     async function loadPortal() {
-      try {
-        var result = await supabase.rpc('portal_get_portal_data', { p_token: token });
-        if (result.error) { showError('Error', 'No se pudieron cargar los datos. Intentá de nuevo más tarde.'); return; }
-        var data = result.data;
-        if (!data) { showError('Link inválido o expirado', 'El enlace que utilizaste ya no es válido o expiró. Pedí un nuevo link a tu asesor.'); return; }
-        renderAll(data);
-      } catch(e) { showError('Error inesperado', 'Ocurrió un error al cargar el portal.'); }
+      var attempts = 0;
+      while (attempts < 2) {
+        attempts++;
+        try {
+          var result = await supabase.rpc('portal_get_portal_data', { p_token: token });
+          if (result.error) {
+            if (attempts === 2) { showError('Error', 'No se pudieron cargar los datos. Intentá de nuevo más tarde.'); return; }
+            continue;
+          }
+          var data = result.data;
+          if (!data) { showError('Link inválido o expirado', 'El enlace que utilizaste ya no es válido o expiró. Pedí un nuevo link a tu asesor.'); return; }
+          renderAll(data);
+          return;
+        } catch(e) {
+          if (attempts === 2) showError('Error inesperado', 'Ocurrió un error al cargar el portal.');
+        }
+      }
     }
 
     /* ── Show states ── */
@@ -168,18 +178,41 @@
       if (props.length > 0) { pc.textContent = props.length; pc.style.display = ''; }
       else pc.style.display = 'none';
 
-      renderInicio(d, owner, props);
-      renderPropiedades(d, props);
-      renderExclusividad(d, owner);
+      /* Cada panel tiene su propio try para que una falla no tumbe todo */
+      try { renderInicio(d, owner, props); } catch (e) { console.error('[portal] inicio:', e); }
+      try { renderPropiedades(d, props); } catch (e) { console.error('[portal] propiedades:', e); }
+      try { renderExclusividad(d, owner); } catch (e) { console.error('[portal] exclusividad:', e); }
       setupTabs();
       showContent();
 
+      /* Marca de tiempo de última actualización al pie */
+      var foot = document.createElement('div');
+      foot.className = 'portal-footer-meta';
+      foot.textContent = 'Actualizado: ' + fmtDateTimeShort(new Date());
+      var main = document.querySelector('.portal-main');
+      if (main) main.appendChild(foot);
+
       /* Refresco del saludo si la pestaña queda abierta y cambia de día */
       var lastDay = new Date().getDate();
+      var lastDataTs = Date.now();
       setInterval(function () {
         var nowD = new Date().getDate();
-        if (nowD !== lastDay) { lastDay = nowD; renderInicio(d, owner, props); }
+        if (nowD !== lastDay && lastDataTs) { lastDay = nowD; try { renderInicio(d, owner, props); } catch (e) {} }
       }, 60 * 1000);
+    }
+
+    /* Toast básico compartido para acciones (imprimir, compartir) */
+    function portalToast(msg, kind) {
+      var existing = document.getElementById('portalToast');
+      if (existing) existing.remove();
+      var t = document.createElement('div');
+      t.id = 'portalToast';
+      t.className = 'portal-toast ' + (kind || 'info');
+      t.setAttribute('role', 'status');
+      t.innerHTML = '<i class="fas ' + (kind === 'error' ? 'fa-exclamation-circle' : 'fa-check-circle') + '"></i> ' + esc(msg);
+      document.body.appendChild(t);
+      requestAnimationFrame(function(){ t.classList.add('show'); });
+      setTimeout(function () { t.classList.remove('show'); setTimeout(function(){ t.remove(); }, 300); }, 2200);
     }
 
     /* ── TABS ── */
@@ -192,9 +225,22 @@
           document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
           var panel = $('panel-' + btn.dataset.tab);
           if (panel) panel.classList.add('active');
+          /* aria-current para accesibilidad */
+          btns.forEach(function(b){ b.removeAttribute('aria-current'); });
+          btn.setAttribute('aria-current', 'page');
           window.scrollTo({ top: 0, behavior: 'smooth' });
           btn.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
         });
+      });
+      /* Flechas izquierda/derecha navegan tabs */
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+        var active = document.querySelector('.tab-btn.active');
+        if (!active) return;
+        var i = Array.prototype.indexOf.call(btns, active);
+        var next = e.key === 'ArrowRight' ? btns[i + 1] : btns[i - 1];
+        if (next) next.click();
       });
       /* Deep-link: si la URL trae #propiedades o #exclusividad, abrir ese tab */
       var hash = (location.hash || '').replace('#', '');
@@ -221,6 +267,9 @@
       var firstName = name.split(' ')[0] || name;
       var hourNow = new Date().getHours();
       var greetWord = hourNow < 12 ? 'Buen día' : (hourNow < 20 ? 'Buenas tardes' : 'Buenas noches');
+      var exclStartRaw0 = owner.exclusive_start ? new Date(owner.exclusive_start) : null;
+      var exclEndRaw = owner.exclusive_end ? new Date(owner.exclusive_end) : null;
+      greetWord += exclState(exclStartRaw0, exclEndRaw).key === 'activa' ? '' : ', ';
       var waBroker = (d.broker && d.broker.phone && portalWaNumber(d.broker.phone)) ? 'https://wa.me/' + portalWaNumber(d.broker.phone) + '?text=' + encodeURIComponent('Hola ' + (d.broker.full_name || '') + ', te escribo desde mi portal de propietario en BIENENHAUS.') : '';
 
       /* ── A2: Resumen de cartera ── */
@@ -229,21 +278,38 @@
       var totalCarteraLeads = props.reduce(function(a,p){ return a + (p.leads_total || 0); }, 0);
       var totalCarteraVisitas = props.reduce(function(a,p){ return a + (p.visits_total || 0); }, 0);
       var totalCarteraProx = props.reduce(function(a,p){ return a + (p.visits_next || 0); }, 0);
+      var leadsLast30 = d.lead_last30 != null ? d.lead_last30 : 0;
+      var convPct = totalCarteraLeads > 0 ? Math.min(100, Math.round((totalCarteraVisitas / totalCarteraLeads) * 100)) : 0;
       var summaryCards = [
         { icon:'fas fa-home', label:'Propiedades', val: props.length },
         { icon:'fas fa-tag', label:'En venta', val: nVenta },
         { icon:'fas fa-key', label:'En alquiler', val: nAlquiler },
-        { icon:'fas fa-users', label:'Consultas', val: totalCarteraLeads },
+        { icon:'fas fa-users', label:'Consultas', val: totalCarteraLeads, glow: leadsLast30 > 0 },
         { icon:'fas fa-calendar-check', label:'Visitas', val: totalCarteraVisitas },
         { icon:'fas fa-arrow-right', label:'Próximas', val: totalCarteraProx }
       ];
+      var topBanner = '';
+      if (leadsLast30 > 0) {
+        topBanner = '<div class="portal-top-banner">' +
+          '<i class="fas fa-bolt"></i>' +
+          '<span><strong>' + fmtNum(leadsLast30) + '</strong> ' + (leadsLast30 === 1 ? 'consulta nueva' : 'consultas nuevas') + ' en los últimos 30 días.</span>' +
+        '</div>';
+      }
+      var convBanner = '';
+      if (totalCarteraLeads > 0 && convPct > 0) {
+        convBanner = '<div class="portal-conv-banner">' +
+          '<i class="fas fa-chart-line"></i>' +
+          '<span>De cada <strong>100 consultas</strong>, <strong>' + convPct + '</strong> terminan en visita.</span>' +
+        '</div>';
+      }
       $('welcomeSlot').innerHTML =
+        topBanner + convBanner +
         '<div class="welcome-header">' +
           '<div class="welcome-top">' +
             '<div class="welcome-greet">' +
               '<div class="wg-avatar">' + esc(name.charAt(0).toUpperCase()) + '</div>' +
               '<div class="wg-text">' +
-                '<h2>' + greetWord + ', ' + esc(firstName) + '</h2>' +
+                '<h2>' + esc(greetWord) + ' ' + esc(firstName) + '</h2>' +
                 '<div class="wg-date">' + esc(fmtDateLong(new Date())) + '</div>' +
               '</div>' +
             '</div>' +
@@ -321,6 +387,10 @@
         if (b.phone) actionsHtml += '<a href="tel:' + esc(b.phone) + '" title="Llamar"><i class="fas fa-phone"></i></a>';
         if (b.email) actionsHtml += '<a href="mailto:' + esc(b.email) + '" title="Email"><i class="fas fa-envelope"></i></a>';
         actionsHtml += '</div>';
+        var reportHref = '';
+        if (bWa) {
+          reportHref = 'https://wa.me/' + bWa + '?text=' + encodeURIComponent('Hola ' + (b.full_name || '') + ', tengo una consulta sobre el portal: ' + location.href);
+        }
         $('brokerSlot').innerHTML =
           '<div class="broker-card">' +
             photoHtml +
@@ -328,6 +398,7 @@
               '<div class="broker-role">' + esc(roleLabel) + '</div>' +
               '<h4>' + esc(b.full_name) + '</h4>' +
               '<p class="broker-contact">' + esc(b.email || '') + (b.phone ? ' · ' + esc(b.phone) : '') + '</p>' +
+              (reportHref ? '<a href="' + reportHref + '" target="_blank" rel="noopener" class="broker-report-link">Reportar un problema con el portal</a>' : '') +
             '</div>' +
             actionsHtml +
           '</div>';
@@ -365,12 +436,12 @@
       /* ── D1: Resumen general (stats optimizado) ── */
       var nPropsActivas = props.filter(function(p){ return p.is_published === true || p.status === 'venta' || p.status === 'alquiler'; }).length;
       var stats = [
-        { icon:'fas fa-building', label:'Propiedades activas', value:fmtNum(nPropsActivas), sub: props.length ? (fmtNum(props.length) + ' en total') : '', cls:'' },
-        { icon:'fas fa-tag', label:'En venta', value:fmtNum(nVenta), sub: nVenta ? 'en cartera' : '', cls:'' },
-        { icon:'fas fa-key', label:'En alquiler', value:fmtNum(nAlquiler), sub: nAlquiler ? 'en cartera' : '', cls:'' },
-        { icon:'fas fa-users', label:'Consultas totales', value:fmtNum(d.lead_total), sub: (d.lead_last30 != null && d.lead_last30 > 0) ? (fmtNum(d.lead_last30) + ' en 30 días') : '', cls:'' },
-        { icon:'fas fa-calendar', label:'Visitas realizadas', value:fmtNum(visits.completadas || 0), sub: fmtNum(visits.total || 0) + ' totales', cls:'green' },
-        { icon:'fas fa-calendar-plus', label:'Próximas visitas', value:fmtNum(visits.proximas || 0), sub: (visits.confirmadas || 0) > 0 ? ('+' + fmtNum(visits.confirmadas) + ' confirmadas') : '', cls:'blue' }
+        { icon:'fas fa-building', label:'Propiedades activas', value:fmtNum(nPropsActivas), sub: props.length ? (fmtNum(props.length) + ' en total') : '', cls:'', go:'propiedades' },
+        { icon:'fas fa-tag', label:'En venta', value:fmtNum(nVenta), sub: nVenta ? 'en cartera' : '', cls:'', go:'propiedades' },
+        { icon:'fas fa-key', label:'En alquiler', value:fmtNum(nAlquiler), sub: nAlquiler ? 'en cartera' : '', cls:'', go:'propiedades' },
+        { icon:'fas fa-users', label:'Consultas totales', value:fmtNum(d.lead_total), sub: (d.lead_last30 != null && d.lead_last30 > 0) ? (fmtNum(d.lead_last30) + ' en 30 días') : '', cls:'', go:'propiedades' },
+        { icon:'fas fa-calendar', label:'Visitas realizadas', value:fmtNum(visits.completadas || 0), sub: fmtNum(visits.total || 0) + ' totales', cls:'green', go:'propiedades' },
+        { icon:'fas fa-calendar-plus', label:'Próximas visitas', value:fmtNum(visits.proximas || 0), sub: (visits.confirmadas || 0) > 0 ? ('+' + fmtNum(visits.confirmadas) + ' confirmadas') : '', cls:'blue', go:'propiedades' }
       ];
       /* Añadir cards no-nulas solo para enriquecer sin ruido */
       if ((visits.pendientes || 0) > 0) {
@@ -381,13 +452,25 @@
       }
       stats.push({ icon:'fas fa-dollar-sign', label:'Cotización USD', value: (d.usd_rate && d.usd_rate > 0) ? esc(fmtARS(d.usd_rate)) : null, sub: (d.usd_rate && d.usd_rate > 0) ? 'referencia' : null, cls:'gold' });
       var cardHtml = stats.filter(function(s){ return s.value !== null && s.value !== undefined; }).map(function(s) {
-        return '<div class="stat-card">' +
+        return '<div class="stat-card' + (s.go ? ' stat-card--link' : '') + '"' + (s.go ? ' data-go-tab="' + s.go + '" role="button" tabindex="0" title="Ver detalle"' : '') + '>' +
           '<div class="label"><i class="' + esc(s.icon) + '"></i> ' + esc(s.label) + '</div>' +
           '<div class="value ' + esc(s.cls || '') + '">' + esc(s.value) + '</div>' +
           (s.sub ? '<div class="sub">' + esc(s.sub) + '</div>' : '') +
         '</div>';
       }).join('');
       $('statGrid').innerHTML = cardHtml;
+
+      /* Stats que navegan al detalle */
+      document.querySelectorAll('.stat-card--link').forEach(function(card){
+        card.addEventListener('click', function(){
+          var t = card.getAttribute('data-go-tab');
+          var btn = document.querySelector('.tab-btn[data-tab="' + t + '"]');
+          if (btn) btn.click();
+        });
+        card.addEventListener('keydown', function(ev){
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); card.click(); }
+        });
+      });
 
       /* ── E1/E2: Origen de consultas (siempre visible) ── */
       var sourceNames = { landing_page:'Landing', ml:'Mercado Libre', whatsapp:'WhatsApp', portal:'Portal', facebook:'Facebook', instagram:'Instagram', telefono:'Teléfono', email:'Email', walk_in:'Visita directa', zernio:'Chat', gvamax:'GvaMax', otro:'Otro' };
@@ -402,7 +485,7 @@
             sorted.map(function(s) {
               var pct = maxCount > 0 ? Math.round((s.count / maxCount) * 100) : 0;
               var label = sourceNames[s.source] || s.source;
-              return '<div class="source-bar">' +
+              return '<div class="source-bar" title="' + esc(label) + ': ' + fmtNum(s.count) + ' consultas">' +
                 '<span class="source-name">' + esc(label) + '</span>' +
                 '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>' +
                 '<span class="bar-count">' + fmtNum(s.count) + '</span>' +
@@ -415,12 +498,15 @@
 
       /* ── F1: Novedades recientes ── */
       var act = d.activity || [];
+      var todayIso = new Date().toISOString().slice(0, 10);
       if (act.length === 0) {
-        $('activityList').innerHTML = '<li class="activity-item activity-item--empty"><i class="fas fa-clock"></i><span>Sin novedades recientes. Cuando haya movimientos (publicaciones, consultas, visitas), los vas a ver acá.</span></li>';
+        var waEmptyAct = waBroker ? '<a href="' + waBroker + '" target="_blank" rel="noopener" class="inicio-empty-cta">Consultar al asesor</a>' : '';
+        $('activityList').innerHTML = '<li class="activity-item activity-item--empty"><i class="fas fa-clock"></i><span>Sin novedades recientes.</span>' + waEmptyAct + '</li>';
       } else {
         $('activityList').innerHTML = act.map(function(a) {
+          var isToday = a.at && a.at.slice(0, 10) === todayIso;
           return '<li class="activity-item">' +
-            '<div class="activity-dot ' + esc(a.type) + '"></div>' +
+            '<div class="activity-dot ' + esc(a.type) + (isToday ? ' pulse' : '') + '"></div>' +
             '<span class="activity-text">' + esc(a.text) + '</span>' +
             '<span class="activity-time">' + ago(a.at) + '</span>' +
           '</li>';
@@ -439,18 +525,38 @@
 
       /* Botón imprimir reporte */
       var btnRep = $('btnInicioReporte');
-      if (btnRep) btnRep.addEventListener('click', function () { window.print(); });
+      if (btnRep) btnRep.addEventListener('click', function () { window.print(); portalToast('Preparando impresión…'); });
 
       /* Compartir: usa Web Share API si existe, sino copia el link */
       var btnShare = $('btnCompartirPortal');
       if (btnShare) btnShare.addEventListener('click', function () {
         var shareData = { title: document.title, text: 'Mirá el seguimiento de mi propiedad en BIENENHAUS', url: location.href };
         if (navigator.share) {
-          navigator.share(shareData).catch(function () { });
+          navigator.share(shareData).then(function(){ portalToast('Compartido'); }, function () { });
         } else if (navigator.clipboard) {
-          navigator.clipboard.writeText(location.href).then(function () { }, function () { });
+          navigator.clipboard.writeText(location.href).then(function () { portalToast('Link copiado al portapapeles'); }, function () { portalToast('No se pudo copiar', 'error'); });
         }
       });
+
+      /* Botón volver arriba */
+      var scrollBtn = document.createElement('button');
+      scrollBtn.id = 'scrollTopBtn';
+      scrollBtn.className = 'scroll-top-btn';
+      scrollBtn.setAttribute('aria-label', 'Volver arriba');
+      scrollBtn.innerHTML = '<i class="fas fa-arrow-up"></i>';
+      scrollBtn.style.display = 'none';
+      document.body.appendChild(scrollBtn);
+      scrollBtn.addEventListener('click', function () { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+      var scrollTick = false;
+      window.addEventListener('scroll', function () {
+        if (!scrollTick) {
+          scrollTick = true;
+          requestAnimationFrame(function () {
+            scrollBtn.style.display = (window.scrollY > 500) ? 'flex' : 'none';
+            scrollTick = false;
+          });
+        }
+      }, { passive: true });
     }
 
     /* ── PROPIEDADES ── */
@@ -565,11 +671,14 @@
       function propCardHtml(p) {
         var img = (p.image_urls && p.image_urls.length > 0) ? p.image_urls[0] : '';
         var imgCount = (p.image_urls && p.image_urls.length) || 0;
-        var badges = [];
-        if (p.is_oportunidad) badges.push('<span class="prop-badge oportunidad"><i class="fas fa-tag"></i> Oportunidad</span>');
-        if (p.is_retasada) badges.push('<span class="prop-badge retasada"><i class="fas fa-redo"></i> Retasada</span>');
-        if (p.featured) badges.push('<span class="prop-badge destacada"><i class="fas fa-star"></i> Destacada</span>');
-        if (p.ml_item_id) badges.push('<span class="prop-badge ml"><i class="fab fa-envira"></i> ML</span>');
+        var isNew = p.created_at && (Date.now() - new Date(p.created_at).getTime()) < 7*24*60*60*1000;
+        var isLong = p.created_at && (Date.now() - new Date(p.created_at).getTime()) > 60*24*60*60*1000;
+        var dbadges = [];
+        if (p.is_oportunidad) dbadges.push('<span class="prop-badge oportunidad" title="Precio agresivo para la zona"><i class="fas fa-tag"></i> Oportunidad</span>');
+        if (p.is_retasada) dbadges.push('<span class="prop-badge retasada" title="Precio ajustado recientemente"><i class="fas fa-redo"></i> Retasada</span>');
+        if (p.featured) dbadges.push('<span class="prop-badge destacada" title="Aparece destacada en el sitio"><i class="fas fa-star"></i> Destacada</span>');
+        if (p.ml_item_id) dbadges.push('<span class="prop-badge ml" title="Publicada también en Mercado Libre"><i class="fas fa-megaphone" style="font-style:italic;">ML</i></span>');
+        if (isNew) dbadges.push('<span class="prop-badge nueva" title="Cargada en los últimos 7 días"><i class="fas fa-bolt"></i> Nueva</span>');
 
         var location = [p.zone, p.address].filter(Boolean).join(' · ');
         var typeLabel = ptypeLabel(p.property_type);
@@ -634,6 +743,10 @@
         }
 
         /* Características completas */
+        var perM2 = pricePerM2(p);
+        var comp = completeness(p);
+        var daysM = daysOnMarket(p);
+        var temp = tempBadge(p);
         var feats = [
           { label:'Ambientes', val: p.rooms != null ? p.rooms : null },
           { label:'Dormitorios', val: p.bedrooms != null ? p.bedrooms : null },
@@ -643,10 +756,14 @@
           { label:'Sup. total', val: p.area_total ? fmtNum(p.area_total) + ' m²' : (p.area_m2 ? fmtNum(p.area_m2) + ' m²' : null) },
           { label:'Tipo', val: typeLabel },
           { label:'Código', val: p.property_code },
-          { label:'ML ID', val: p.ml_item_id }
-        ].filter(function(f){ return f.val != null && f.val !== '' && f.val !== '-'; });
+          { label:'ML ID', val: p.ml_item_id },
+          { label:'Calidad publicación', val: comp + '%', tip: 'calidad basada en fotos, descripción, video y precio' },
+          { label:'En mercado hace', val: daysM !== null ? daysM + (daysM === 1 ? ' día' : ' días') : null, tip: daysM !== null ? 'desde la carga al sistema' : '' },
+          (perM2 ? { label:'Precio por m²', val: (p.price_currency === 'ARS' ? fmtARS(perM2) : fmtUSD(perM2)) } : null),
+          (temp ? { label:'Actividad', val: temp.txt, tip: temp.tip, cls: temp.cls } : null)
+        ].filter(function(f){ return f && f.val != null && f.val !== '' && f.val !== '-'; });
         var featsHtml = '<div class="prop-detail-grid">' + feats.map(function(f){
-          return '<div class="prop-detail-item"><div class="label">' + esc(f.label) + '</div><div class="val">' + esc(f.val) + '</div></div>';
+          return '<div class="prop-detail-item' + (f.cls ? ' item-' + f.cls : '') + '" title="' + esc(f.tip || '') + '"><div class="label">' + esc(f.label) + '</div><div class="val">' + esc(f.val) + '</div></div>';
         }).join('') + '</div>';
 
         /* Descripción */
@@ -686,10 +803,16 @@
           galleryHtml = '<div class="prop-gallery-empty"><i class="fas fa-image"></i> Todavía no hay fotos de esta propiedad</div>';
         }
 
+      /* Badge "Calidad" si la publicación está incompleta */
+        var qualBadge = '';
+        if (comp < 60) {
+          qualBadge = '<div class="prop-quality-warn"><i class="fas fa-triangle-exclamation"></i> La publicación está incompleta. Mejorala con más fotos, video o descripción para recibir más consultas.</div>';
+        }
+
         return '<div class="prop-card" data-id="' + esc(p.id) + '">' +
           '<div class="prop-card-header">' +
             (img
-              ? '<div class="prop-card-thumb-wrap"><img class="prop-card-thumb" src="' + esc(safeImageUrl(img)) + '" alt="' + esc(p.title || '') + '">' + (imgCount > 1 ? '<span class="prop-thumb-count">' + imgCount + ' fotos</span>' : '') + '</div>'
+              ? '<div class="prop-card-thumb-wrap"><img class="prop-card-thumb" src="' + esc(safeImageUrl(img)) + '" alt="' + esc(p.title || '') + '" decoding="async">' + (imgCount > 1 ? '<span class="prop-thumb-count">' + imgCount + ' fotos</span>' : '') + '</div>'
               : '<div class="prop-card-thumb prop-card-thumb--placeholder"><i class="fas fa-home"></i></div>') +
             '<div class="prop-card-body">' +
               '<div class="prop-card-title">' + esc(p.title || 'Sin título') +
@@ -704,12 +827,13 @@
                 statusBadge(p) +
                 nextBadge +
               '</div>' +
-              (badges.length ? '<div class="prop-card-badges">' + badges.join('') + '</div>' : '') +
+              (badges.length || isLong ? '<div class="prop-card-badges">' + badges.join('') + (isLong ? '<span class="prop-badge larga" title="Lleva más de 60 días en publicación"><i class="fas fa-circle-exclamation"></i> ' + daysOnMarket(p) + ' días en mercado</span>' : '') + '</div>' : '') +
             '</div>' +
             '<div class="prop-card-expand"><i class="fas fa-chevron-down"></i></div>' +
           '</div>' +
           '<div class="prop-card-detail">' +
             featsHtml +
+            (qualBadge || '') +
             (statsHtml || '') +
             (descHtml || '') +
             (videoHtml || '') +
@@ -721,19 +845,32 @@
         '</div>';
       }
 
+      function sortBinds() {
+        document.querySelectorAll('.prop-sort-pill').forEach(function(b){
+          b.addEventListener('click', function(){
+            activeSort = b.dataset.sort;
+            document.querySelectorAll('.prop-sort-pill').forEach(function(x){ x.classList.remove('active'); });
+            b.classList.add('active');
+            renderListFromFilter();
+          });
+        });
+      }
+
       function renderListFromFilter() {
-        var filtered = props.filter(function(p){ return matchFilter(p, activeFilter); });
+        var filtered = props.filter(function(p){ return matchFilter(p, activeFilter); }).sort(matchSort);
         var countBar = (activeFilter !== 'all' && filtered.length !== props.length)
           ? '<div class="prop-count-hint">Mostrando ' + fmtNum(filtered.length) + ' de ' + fmtNum(props.length) + '</div>'
           : '';
         if (!filtered.length) {
-          $('propList').innerHTML = summaryHtml + filtersHtml + countBar +
+          $('propList').innerHTML = summaryHtml + filtersHtml + sortHtml + countBar +
             '<div class="empty-msg" style="margin-top:16px;"><i class="fas fa-filter"></i><h3>Sin resultados</h3><p>No hay propiedades en este filtro.</p></div>';
           bindFilterButtons();
+          sortBinds();
           return;
         }
-        $('propList').innerHTML = summaryHtml + filtersHtml + countBar + filtered.map(propCardHtml).join('');
+        $('propList').innerHTML = summaryHtml + filtersHtml + sortHtml + countBar + filtered.map(propCardHtml).join('');
         bindPropEvents(filtered);
+        sortBinds();
       }
 
       function bindFilterButtons() {
@@ -752,9 +889,32 @@
           h.addEventListener('click', function() {
             h.closest('.prop-card').classList.toggle('expanded');
           });
+          /* Doble clic abre el detalle directo */
+          h.addEventListener('dblclick', function() {
+            h.closest('.prop-card').classList.add('expanded');
+          });
+          /* Long-press también expande (mobile) */
+          var pressT;
+          h.addEventListener('touchstart', function () { pressT = setTimeout(function(){ h.closest('.prop-card').classList.add('expanded'); }, 550); }, { passive: true });
+          h.addEventListener('touchend', function () { clearTimeout(pressT); }, { passive: true });
+          h.addEventListener('touchmove', function () { clearTimeout(pressT); }, { passive: true });
         });
         bindFilterButtons();
         bindGalleryLightbox(list);
+
+        /* Prefetch de la 2da imagen al hover/focus de la thumb */
+        document.querySelectorAll('.prop-card-thumb').forEach(function(t){
+          t.addEventListener('mouseenter', function(){
+            var card = t.closest('.prop-card');
+            var dEl = card && card.querySelector('.prop-lightbox-data');
+            if (!dEl) return;
+            var spans = dEl.querySelectorAll('span');
+            if (spans.length > 1) {
+              var pre = new Image();
+              pre.src = spans[1].getAttribute('data-src');
+            }
+          }, { passive: true });
+        });
       }
 
       function bindGalleryLightbox(list) {
@@ -1088,13 +1248,24 @@
         '</div>' +
         '<div class="section-title"><i class="fas fa-gift"></i> Beneficios incluidos</div>' +
         '<div class="excl-benefits">' + benefitsHtml + '</div>' +
-        (shareHtml ? '<div class="section-title" style="margin-top:24px;"><i class="fas fa-chart-pie"></i> Tu exclusividad en el portfolio</div>' + shareHtml : '') +
+          (shareHtml ? '<div class="section-title" style="margin-top:24px;"><i class="fas fa-chart-pie"></i> Tu exclusividad en el portfolio</div>' + shareHtml : '') +
         '<div class="section-title" style="margin-top:24px;"><i class="fas fa-chart-bar"></i> Resultados en exclusividad</div>' +
         statsHtml +
         (deltaHtml || '') +
         (renewHtml || '') +
         waHtml +
-        timelineHtml;
+        timelineHtml +
+        (st.key !== 'sin' ? '<div style="margin-top:20px;"><button type="button" id="btnShareExcl" class="quick-action"><i class="fas fa-share-alt"></i> Copiar resumen</button></div>' : '');
+
+      /* Botón compartir resumen de exclusividad */
+      var shareEx = $('btnShareExcl');
+      if (shareEx) shareEx.addEventListener('click', function(){
+        var prefix = st.key !== 'sin' ? 'Mi exclusividad BIENENHAUS (' + (start ? fmtDate(start) : '-') + (end ? ' — ' + fmtDate(end) : '') + '): ' : 'Portal BIENENHAUS: ';
+        var txt = prefix + fmtNum(es.leads || 0) + ' consultas, ' + fmtNum(es.visits || 0) + ' visitas' + (es.prev_leads != null ? ' (vs ' + fmtNum(es.prev_leads) + ' antes)' : '') + '.';
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(txt).then(function(){ portalToast('Resumen copiado'); }, function(){ portalToast('No se pudo copiar', 'error'); });
+        }
+      });
     }
 
   })();
