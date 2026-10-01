@@ -757,6 +757,31 @@
           default: return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
         }
       }
+      function tempBadge(p) {
+        if (!p.last_lead_at) return null;
+        var days = (Date.now() - new Date(p.last_lead_at).getTime()) / (24*60*60*1000);
+        if (days <= 7) return { txt:'Caliente', cls:'hot', tip:'Consulta en los últimos 7 días' };
+        if (days <= 30) return { txt:'Tibia', cls:'warm', tip:'Consulta hace ' + Math.floor(days) + ' días' };
+        return { txt:'Fría', cls:'cold', tip:'Sin consultas hace ' + Math.floor(days) + ' días' };
+      }
+      function completeness(p) {
+        var parts = 0;
+        if (p.image_urls && p.image_urls.length >= 6) parts += 40; else if (p.image_urls && p.image_urls.length > 0) parts += 25;
+        if (p.description && String(p.description).length > 100) parts += 20;
+        if (p.video_url) parts += 20;
+        if (p.price_usd != null && p.price_usd > 0) parts += 20;
+        return Math.min(100, parts);
+      }
+      function daysOnMarket(p) {
+        if (!p.created_at) return null;
+        return Math.floor((Date.now() - new Date(p.created_at).getTime()) / (24*60*60*1000));
+      }
+      function pricePerM2(p) {
+        var area = p.area_covered || p.area_total || p.area_m2;
+        var price = (p.price_usd != null && p.price_usd > 0) ? p.price_usd : null;
+        if (!area || !price || area <= 0) return null;
+        return Math.round(price / area);
+      }
       var sortHtml = '<div class="prop-sort">' +
         '<span class="prop-sort-label">Ordenar:</span>' +
         '<button class="prop-sort-pill' + (activeSort === 'reciente' ? ' active' : '') + '" data-sort="reciente">Más recientes</button>' +
