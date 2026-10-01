@@ -668,7 +668,7 @@
         var shareBtn = '';
         if (imgs.length) {
           var shareText = 'Mirá ' + (p.title || 'esta propiedad') + (p.property_code ? ' (' + p.property_code + ')' : '') + ' en BIENENHAUS';
-          var shareHref = 'https://wa.me/?text=' + encodeURIComponent(shareText + ' — ' + location.origin + '/?q=' + encodeURIComponent(p.property_code || p.title || ''));
+          var shareHref = 'https://wa.me/?text=' + encodeURIComponent(shareText + ' — ' + (location.protocol + '//' + location.host) + '/?q=' + encodeURIComponent(p.property_code || p.title || ''));
           shareBtn = '<a class="prop-share-btn" href="' + shareHref + '" target="_blank" rel="noopener" title="Compartir por WhatsApp"><i class="fab fa-whatsapp"></i> Compartir</a>';
           galleryHtml = '<div class="prop-gallery">' +
             imgs.slice(0, 6).map(function(u, i){
