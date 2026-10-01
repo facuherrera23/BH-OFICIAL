@@ -812,7 +812,7 @@
         var imgCount = (p.image_urls && p.image_urls.length) || 0;
         var isNew = p.created_at && (Date.now() - new Date(p.created_at).getTime()) < 7*24*60*60*1000;
         var isLong = p.created_at && (Date.now() - new Date(p.created_at).getTime()) > 60*24*60*60*1000;
-        var dbadges = [];
+        var badges = [];
         if (p.is_oportunidad) dbadges.push('<span class="prop-badge oportunidad" title="Precio agresivo para la zona"><i class="fas fa-tag"></i> Oportunidad</span>');
         if (p.is_retasada) dbadges.push('<span class="prop-badge retasada" title="Precio ajustado recientemente"><i class="fas fa-redo"></i> Retasada</span>');
         if (p.featured) dbadges.push('<span class="prop-badge destacada" title="Aparece destacada en el sitio"><i class="fas fa-star"></i> Destacada</span>');
