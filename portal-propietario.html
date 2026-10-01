@@ -313,6 +313,23 @@
       font-weight: 600;
       font-size: 13px;
     }
+    .portal-logout-btn {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: none; border: 1px solid var(--border);
+      color: var(--text-muted); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; transition: all 0.2s;
+    }
+    .portal-logout-btn:hover { border-color: var(--red); color: var(--red); }
+
+    /* Breadcrumb mobile */
+    .portal-breadcrumb {
+      display: none; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--text-muted); margin-bottom: 10px;
+    }
+    .portal-breadcrumb i { font-size: 9px; }
+    .portal-breadcrumb .current { color: var(--gold); }
+    @media (max-width: 640px) { .portal-breadcrumb { display: flex; } }
 
     /* ── ERROR STATES ── */
     .portal-error {
@@ -1518,6 +1535,193 @@
     .prop-share-btn:hover { background: rgba(16,185,129,0.22); }
     .prop-share-btn i { font-size: 12px; }
     .broker-contact { word-break: break-all; }
+
+    /* Sticky mini-KPI (se muestra al scrollear) */
+    .mini-kpi {
+      position: fixed; top: 76px; left: 50%; transform: translateX(-50%);
+      display: none; align-items: center; gap: 14px;
+      background: rgba(14,19,26,0.95); backdrop-filter: blur(12px);
+      border: 1px solid var(--border-accent); border-radius: 999px;
+      padding: 8px 18px; z-index: 85;
+      font-size: 12px; color: var(--text-dim);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .mini-kpi.show { display: flex; }
+    .mini-kpi .mk-val { color: var(--gold); font-weight: 700; }
+
+    /* Breadcrumbs mobile */
+    .portal-breadcrumb {
+      display: none; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--text-muted); margin-bottom: 10px;
+    }
+    .portal-breadcrumb i { font-size: 9px; }
+    .portal-breadcrumb .current { color: var(--gold); }
+
+    /* Acciones de detalle de propiedad */
+    .prop-card-detail-actions {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px;
+      align-items: center;
+    }
+    .prop-card-detail-actions .prop-share-btn { margin-top: 0; }
+    .prop-map-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 12px; font-size: 12px; font-weight: 600;
+      color: var(--text-dim); background: var(--bg-card-hover);
+      border: 1px solid var(--border); border-radius: 8px;
+      text-decoration: none; transition: all 0.2s;
+    }
+    .prop-map-link:hover { border-color: var(--border-accent); color: var(--gold); }
+
+    /* Buscador de propiedades y vista */
+    .prop-search {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 12px;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 6px 12px;
+    }
+    .prop-search i { color: var(--text-muted); font-size: 12px; }
+    .prop-search input {
+      flex: 1; background: none; border: none; outline: none;
+      color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 13px; padding: 6px 0;
+    }
+    .prop-search input::placeholder { color: var(--text-muted); }
+    .prop-view-toggle {
+      background: none; border: none; color: var(--text-muted);
+      cursor: pointer; padding: 4px 8px; font-size: 13px;
+    }
+    .prop-view-toggle:hover { color: var(--text); }
+
+    /* Vista lista */
+    .prop-list--list .prop-card { display: flex; }
+    .prop-list--list .prop-card-header { flex-direction: row; }
+    .prop-list--list .prop-card-thumb, .prop-list--list .prop-card-thumb-wrap { width: 100px; height: 84px; }
+    .prop-list--list .prop-card-detail { display: none; }
+
+    /* Favorito */
+    .prop-fav-btn {
+      position: absolute; top: 10px; right: 10px;
+      width: 32px; height: 32px; border-radius: 50%;
+      border: 1px solid var(--border);
+      background: rgba(5,7,10,0.6); color: var(--text-muted);
+      cursor: pointer; font-size: 14px; z-index: 2;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .prop-fav-btn:hover { border-color: var(--warm); color: var(--warm); }
+    .prop-fav-btn.is-fav { color: var(--warm); border-color: var(--warm); background: rgba(251,191,36,0.1); }
+    .prop-card-body { position: relative; }
+    .prop-card-body .prop-fav-btn { position: absolute; top: 8px; right: 8px; }
+
+    /* Urgencia exclusividad */
+    .excl-urgency {
+      margin-left: 8px; font-weight: 600; padding: 2px 8px; border-radius: 10px; font-size: 11px;
+    }
+    .excl-urgency.urgent { background: var(--red-dim); color: var(--red); }
+    .excl-urgency.soon { background: var(--orange-dim); color: var(--orange); }
+
+    /* Flotante WA */
+    .portal-wa-float {
+      position: fixed; bottom: 24px; left: 24px;
+      width: 52px; height: 52px; border-radius: 50%;
+      background: #25d366; color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; text-decoration: none; z-index: 90;
+      box-shadow: 0 8px 24px rgba(37,211,102,0.4);
+      transition: transform 0.2s;
+    }
+    .portal-wa-float:hover { transform: scale(1.08); }
+
+    /* Exclusividad banner FX */
+    .excl-banner { position: relative; overflow: hidden; }
+    .excl-banner::before {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(600px 200px at 20% 0%, rgba(31,200,195,0.08), transparent 70%);
+      pointer-events: none;
+    }
+
+    @media (max-width: 640px) {
+      .portal-breadcrumb { display: flex; }
+      .portal-wa-float { width: 48px; height: 48px; font-size: 20px; }
+      .mini-kpi { top: 68px; padding: 6px 14px; font-size: 11px; }
+    }
+
+    /* Acciones de detalle de propiedad */
+    .prop-card-detail-actions {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px;
+      align-items: center;
+    }
+    .prop-card-detail-actions .prop-share-btn { margin-top: 0; }
+    .prop-map-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 12px;
+      font-size: 12px; font-weight: 600;
+      color: var(--text-dim); background: var(--bg-card-hover);
+      border: 1px solid var(--border); border-radius: 8px;
+      text-decoration: none; transition: all 0.2s;
+    }
+    .prop-map-link:hover { border-color: var(--border-accent); color: var(--gold); }
+    .prop-map-link i { color: var(--gold); font-size: 12px; }
+
+    /* Buscador de propiedades y toggle de vista */
+    .prop-search {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 4px; margin-bottom: 12px;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 6px 12px;
+    }
+    .prop-search i { color: var(--text-muted); font-size: 12px; }
+    .prop-search input {
+      flex: 1; background: none; border: none; outline: none;
+      color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 13px; padding: 6px 0;
+    }
+    .prop-search input::placeholder { color: var(--text-muted); }
+    .prop-view-toggle {
+      background: none; border: none; color: var(--text-muted);
+      cursor: pointer; padding: 4px 8px; font-size: 13px;
+    }
+    .prop-view-toggle:hover { color: var(--text); }
+
+    /* Vista lista de propiedades */
+    .prop-list--list .prop-card { display: flex; }
+    .prop-list--list .prop-card-header { flex-direction: row; }
+    .prop-list--list .prop-card-thumb, .prop-list--list .prop-card-thumb-wrap { width: 100px; height: 84px; }
+    .prop-list--list .prop-card-detail { display: none; }
+
+    /* Favorito en card */
+    .prop-fav-btn {
+      position: absolute; top: 10px; right: 10px;
+      width: 32px; height: 32px; border-radius: 50%;
+      border: 1px solid var(--border);
+      background: rgba(5,7,10,0.6); color: var(--text-muted);
+      cursor: pointer; font-size: 14px; z-index: 2;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+    }
+    .prop-fav-btn:hover { border-color: var(--warm); color: var(--warm); }
+    .prop-fav-btn.is-fav { color: var(--warm); border-color: var(--warm); background: rgba(251,191,36,0.1); }
+    .prop-fav-btn { position: relative; top: auto; right: auto; float: right; margin-top: -4px; }
+
+    /* Urgencia exclusividad */
+    .excl-urgency {
+      margin-left: 8px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+      font-size: 11px;
+    }
+    .excl-urgency.urgent { background: var(--red-dim); color: var(--red); }
+    .excl-urgency.soon { background: var(--orange-dim); color: var(--orange); }
+
+    /* Flotante WA */
+    .portal-wa-float {
+      position: fixed; bottom: 24px; left: 24px;
+      width: 52px; height: 52px; border-radius: 50%;
+      background: #25d366; color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; text-decoration: none; z-index: 90;
+      box-shadow: 0 8px 24px rgba(37,211,102,0.4);
+      transition: transform 0.2s;
+    }
+    .portal-wa-float:hover { transform: scale(1.08); }
 
     /* ── LIGHTBOX ── */
     .lightbox-overlay {

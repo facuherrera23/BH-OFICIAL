@@ -60,7 +60,24 @@
     var params = new URLSearchParams(location.search);
     var token = params.get('token');
 
-    /* Sesión corta (4h) por dispositivo: evita re-pedir el código si recarga */
+    /* Preferencias locales (favoritos, vista) — sessionStorage, no persistente */
+    var PREFS_KEY = 'bh_portal_prefs';
+    function prefsGet() {
+      try { var raw = sessionStorage.getItem(PREFS_KEY); return raw ? JSON.parse(raw) : {}; } catch (_) { return {}; }
+    }
+    function prefsSet(patch) {
+      try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch (_) {}
+    }
+    function toggleFav(id) {
+      var p = prefsGet();
+      if (!p.favs) p.favs = [];
+      var i = p.favs.indexOf(id);
+      if (i === -1) p.favs.push(id); else p.favs.splice(i, 1);
+      prefsSet({ favs: p.favs });
+      return p.favs.indexOf(id) !== -1;
+    }
+    function isFav(id) { var p = prefsGet(); return (p.favs || []).indexOf(id) !== -1; }
+
     var SESSION_KEY = 'bh_portal_token';
     function sessionGet() {
       try {
@@ -185,6 +202,71 @@
       setupTabs();
       showContent();
 
+      /* Breadcrumb en mobile */
+      var bc = document.createElement('div');
+      bc.className = 'portal-breadcrumb';
+      bc.innerHTML = '<span>Inicio</span><i class="fas fa-chevron-right"></i><span class="current">' + esc(name) + '</span>';
+      var mainEl = document.querySelector('.portal-main');
+      if (mainEl) mainEl.insertBefore(bc, mainEl.firstChild);
+
+      /* Mini-KPI sticky al scrollear */
+      var leadsTotal = d.lead_total || 0;
+      var visitsTotal = (d.visits && d.visits.total) || 0;
+      var propsCount = props.length;
+      var miniKpi = document.createElement('div');
+      miniKpi.className = 'mini-kpi';
+      miniKpi.innerHTML =
+        '<span><span class="mk-val">' + fmtNum(propsCount) + '</span> ' + (propsCount === 1 ? 'propiedad' : 'propiedades') + '</span>' +
+        '<span class="mk-sep">·</span>' +
+        '<span><span class="mk-val">' + fmtNum(leadsTotal) + '</span> consultas</span>' +
+        '<span class="mk-sep">·</span>' +
+        '<span><span class="mk-val">' + fmtNum(visitsTotal) + '</span> visitas</span>';
+      document.body.appendChild(miniKpi);
+      var mkTick = false;
+      window.addEventListener('scroll', function () {
+        if (!mkTick) {
+          mkTick = true;
+          requestAnimationFrame(function () {
+            miniKpi.classList.toggle('show', window.scrollY > 320);
+            mkTick = false;
+          });
+        }
+      }, { passive: true });
+
+      /* Botón flotante de WhatsApp al asesor */
+      if (d.broker && d.broker.phone) {
+        var waNum = portalWaNumber(d.broker.phone);
+        if (waNum && !document.getElementById('portalWaFloat')) {
+          var f = document.createElement('a');
+          f.id = 'portalWaFloat';
+          f.className = 'portal-wa-float';
+          f.href = 'https://wa.me/' + waNum + '?text=' + encodeURIComponent('Hola ' + (d.broker.full_name || '') + ', te escribo desde el portal de BIENENHAUS.');
+          f.target = '_blank';
+          f.rel = 'noopener';
+          f.setAttribute('aria-label', 'Hablar por WhatsApp con ' + (d.broker.full_name || 'tu asesor'));
+          f.innerHTML = '<i class="fab fa-whatsapp"></i>';
+          document.body.appendChild(f);
+        }
+      }
+
+      /* Cerrar sesión: limpia el token guardado */
+      var logoutEl = document.getElementById('userBadge');
+      if (logoutEl && !document.getElementById('portalLogoutBtn')) {
+        var lo = document.createElement('button');
+        lo.id = 'portalLogoutBtn';
+        lo.className = 'portal-logout-btn';
+        lo.type = 'button';
+        lo.setAttribute('aria-label', 'Cerrar sesión');
+        lo.title = 'Cerrar sesión';
+        lo.innerHTML = '<i class="fas fa-right-from-bracket"></i>';
+        lo.addEventListener('click', function () {
+          try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {}
+          try { sessionStorage.removeItem(PREFS_KEY); } catch (_) {}
+          location.href = location.pathname;
+        });
+        logoutEl.appendChild(lo);
+      }
+
       /* Marca de tiempo de última actualización al pie */
       var foot = document.createElement('div');
       foot.className = 'portal-footer-meta';
@@ -267,9 +349,8 @@
       var firstName = name.split(' ')[0] || name;
       var hourNow = new Date().getHours();
       var greetWord = hourNow < 12 ? 'Buen día' : (hourNow < 20 ? 'Buenas tardes' : 'Buenas noches');
-      var exclStartRaw0 = owner.exclusive_start ? new Date(owner.exclusive_start) : null;
-      var exclEndRaw = owner.exclusive_end ? new Date(owner.exclusive_end) : null;
-      greetWord += exclState(exclStartRaw0, exclEndRaw).key === 'activa' ? '' : ', ';
+      var exclNowState = exclState(owner.exclusive_start ? new Date(owner.exclusive_start) : null, owner.exclusive_end ? new Date(owner.exclusive_end) : null);
+      var exclSubline = exclNowState.key === 'activa' ? '<div class="wg-excl-sub"><i class="fas fa-handshake"></i> Tu propiedad está en gestión exclusiva.</div>' : '';
       var waBroker = (d.broker && d.broker.phone && portalWaNumber(d.broker.phone)) ? 'https://wa.me/' + portalWaNumber(d.broker.phone) + '?text=' + encodeURIComponent('Hola ' + (d.broker.full_name || '') + ', te escribo desde mi portal de propietario en BIENENHAUS.') : '';
 
       /* ── A2: Resumen de cartera ── */
@@ -309,8 +390,9 @@
             '<div class="welcome-greet">' +
               '<div class="wg-avatar">' + esc(name.charAt(0).toUpperCase()) + '</div>' +
               '<div class="wg-text">' +
-                '<h2>' + esc(greetWord) + ' ' + esc(firstName) + '</h2>' +
+                '<h2>' + esc(greetWord) + ', ' + esc(firstName) + '</h2>' +
                 '<div class="wg-date">' + esc(fmtDateLong(new Date())) + '</div>' +
+                exclSubline +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -640,26 +722,58 @@
 
       /* ── Filtros por estado ── */
       var filters = [
-        { key:'all', label:'Todas', icon:'fas fa-th-large' },
-        { key:'venta', label:'En venta', icon:'fas fa-tag' },
-        { key:'alquiler', label:'En alquiler', icon:'fas fa-key' },
-        { key:'vendidas', label:'Vendidas', icon:'fas fa-check-circle' },
-        { key:'ml', label:'Mercado Libre', icon:'fab fa-envira' }
+        { key:'all', label:'Todas', icon:'fas fa-th-large', tip:'Todas las propiedades' },
+        { key:'venta', label:'En venta', icon:'fas fa-tag', tip:'Solo propiedades en venta' },
+        { key:'alquiler', label:'En alquiler', icon:'fas fa-key', tip:'Solo propiedades en alquiler' },
+        { key:'vendidas', label:'Vendidas', icon:'fas fa-check-circle', tip:'Solo vendidas/alquiladas' },
+        { key:'ml', label:'Mercado Libre', icon:'fas fa-check-circle', tip:'Publicadas en Mercado Libre' },
+        { key:'fav', label:'Favoritas', icon:'fas fa-heart', tip:'Tus propiedades favoritas' }
       ];
       var activeFilter = 'all';
+      var activeSort = 'reciente';
+      var activeQuery = '';
+      var listView = (prefsGet().view === 'list') ? 'list' : 'grid';
       function matchFilter(p, f) {
         switch (f) {
           case 'venta': return p.status === 'venta';
           case 'alquiler': return p.status === 'alquiler';
           case 'vendidas': return (p.status === 'vendida' || p.status === 'alquilada');
           case 'ml': return !!p.ml_item_id;
+          case 'fav': return isFav(p.id);
           default: return true;
         }
       }
+      function matchQuery(p, q) {
+        if (!q) return true;
+        q = q.toLowerCase();
+        var text = [p.title, p.property_code, p.zone, p.address, p.description].filter(Boolean).join(' ').toLowerCase();
+        return text.indexOf(q) !== -1;
+      }
+      function matchSort(a, b) {
+        switch (activeSort) {
+          case 'consultas': return (b.leads_total || 0) - (a.leads_total || 0);
+          case 'visitas': return (b.visits_total || 0) - (a.visits_total || 0);
+          case 'recientes':
+          default: return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+        }
+      }
+      var sortHtml = '<div class="prop-sort">' +
+        '<span class="prop-sort-label">Ordenar:</span>' +
+        '<button class="prop-sort-pill' + (activeSort === 'reciente' ? ' active' : '') + '" data-sort="reciente">Más recientes</button>' +
+        '<button class="prop-sort-pill' + (activeSort === 'consultas' ? ' active' : '') + '" data-sort="consultas">Más consultas</button>' +
+        '<button class="prop-sort-pill' + (activeSort === 'visitas' ? ' active' : '') + '" data-sort="visitas">Más visitas</button>' +
+      '</div>';
       var filtersHtml = '<div class="prop-filters" id="propFilters">' +
         filters.map(function(f){
-          return '<button class="prop-filter' + (f.key === activeFilter ? ' active' : '') + '" data-filter="' + f.key + '"><i class="' + f.icon + '"></i> ' + esc(f.label) + '</button>';
+          return '<button class="prop-filter' + (f.key === activeFilter ? ' active' : '') + '" data-filter="' + f.key + '" title="' + esc(f.tip || '') + '" aria-label="' + esc(f.label) + '"><i class="' + f.icon + '"></i> ' + esc(f.label) + '</button>';
         }).join('') +
+      '</div>';
+      var searchHtml = '<div class="prop-search">' +
+        '<i class="fas fa-search"></i>' +
+        '<input id="propSearchInput" type="text" placeholder="Buscar por título, zona, código…" value="' + esc(activeQuery) + '" aria-label="Buscar propiedad">' +
+        '<button id="propViewToggle" class="prop-view-toggle" title="Cambiar vista" aria-label="Cambiar vista">' +
+          '<i class="fas ' + (listView === 'list' ? 'fa-th-large' : 'fa-list') + '"></i>' +
+        '</button>' +
       '</div>';
 
       function renderList(list) {
@@ -803,18 +917,27 @@
           galleryHtml = '<div class="prop-gallery-empty"><i class="fas fa-image"></i> Todavía no hay fotos de esta propiedad</div>';
         }
 
+        /* Mapa (si hay dirección o zona) */
+        var mapQuery = [p.address, p.zone].filter(Boolean).join(', ');
+        var mapUrl = mapQuery ? 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(mapQuery) + '&zoom=14' : '';
+        var mapHtml = mapUrl ? '<a class="prop-map-link" href="' + esc(mapUrl) + '" target="_blank" rel="noopener" title="Ver ubicación en OpenStreetMap"><i class="fas fa-map-location-dot"></i> Ver en mapa</a>' : '';
+
+        /* Favorito local */
+        var favBtn = '';
+
       /* Badge "Calidad" si la publicación está incompleta */
         var qualBadge = '';
         if (comp < 60) {
           qualBadge = '<div class="prop-quality-warn"><i class="fas fa-triangle-exclamation"></i> La publicación está incompleta. Mejorala con más fotos, video o descripción para recibir más consultas.</div>';
         }
 
-        return '<div class="prop-card" data-id="' + esc(p.id) + '">' +
+        return '<div class="prop-card' + (listView === 'list' ? ' prop-card--list' : '') + '" data-id="' + esc(p.id) + '">' +
           '<div class="prop-card-header">' +
             (img
               ? '<div class="prop-card-thumb-wrap"><img class="prop-card-thumb" src="' + esc(safeImageUrl(img)) + '" alt="' + esc(p.title || '') + '" decoding="async">' + (imgCount > 1 ? '<span class="prop-thumb-count">' + imgCount + ' fotos</span>' : '') + '</div>'
               : '<div class="prop-card-thumb prop-card-thumb--placeholder"><i class="fas fa-home"></i></div>') +
             '<div class="prop-card-body">' +
+              '<button type="button" class="prop-fav-btn' + (isFav(p.id) ? ' is-fav' : '') + '" data-fav="' + esc(p.id) + '" aria-pressed="' + isFav(p.id) + '" aria-label="Marcar favorita" title="' + (isFav(p.id) ? 'Quitar de favoritas' : 'Marcar como favorita') + '"><i class="fas fa-heart"></i></button>' +
               '<div class="prop-card-title">' + esc(p.title || 'Sin título') +
                 (typeLabel && typeLabel !== 'Propiedad' ? '<span class="prop-type-tag">' + esc(typeLabel) + '</span>' : '') +
               '</div>' +
@@ -839,7 +962,10 @@
             (videoHtml || '') +
             (timelineHtml || '') +
             (galleryHtml || '') +
-            (shareBtn || '') +
+            '<div class="prop-card-detail-actions">' +
+              (shareBtn || '') +
+              (mapHtml || '') +
+            '</div>' +
             lightboxData +
           '</div>' +
         '</div>';
@@ -856,21 +982,53 @@
         });
       }
 
+      function sortBinds() {
+        document.querySelectorAll('.prop-sort-pill').forEach(function(b){
+          b.addEventListener('click', function(){
+            activeSort = b.dataset.sort;
+            document.querySelectorAll('.prop-sort-pill').forEach(function(x){ x.classList.remove('active'); });
+            b.classList.add('active');
+            renderListFromFilter();
+          });
+        });
+        var sInput = $('propSearchInput');
+        if (sInput && !sInput.dataset.bind) {
+          sInput.dataset.bind = '1';
+          var sT;
+          sInput.addEventListener('input', function () {
+            clearTimeout(sT);
+            sT = setTimeout(function(){ activeQuery = sInput.value.trim(); renderListFromFilter(); }, 220);
+          });
+        }
+        var vBtn = $('propViewToggle');
+        if (vBtn && !vBtn.dataset.bind) {
+          vBtn.dataset.bind = '1';
+          vBtn.addEventListener('click', function () {
+            listView = listView === 'list' ? 'grid' : 'list';
+            prefsSet({ view: listView });
+            renderListFromFilter();
+          });
+        }
+      }
+
       function renderListFromFilter() {
-        var filtered = props.filter(function(p){ return matchFilter(p, activeFilter); }).sort(matchSort);
-        var countBar = (activeFilter !== 'all' && filtered.length !== props.length)
+        var filtered = props
+          .filter(function(p){ return matchFilter(p, activeFilter) && matchQuery(p, activeQuery); })
+          .sort(matchSort);
+        var countBar = ((activeFilter !== 'all' && filtered.length !== props.length) || activeQuery)
           ? '<div class="prop-count-hint">Mostrando ' + fmtNum(filtered.length) + ' de ' + fmtNum(props.length) + '</div>'
           : '';
         if (!filtered.length) {
-          $('propList').innerHTML = summaryHtml + filtersHtml + sortHtml + countBar +
-            '<div class="empty-msg" style="margin-top:16px;"><i class="fas fa-filter"></i><h3>Sin resultados</h3><p>No hay propiedades en este filtro.</p></div>';
-          bindFilterButtons();
-          sortBinds();
+          $('propList').innerHTML = summaryHtml + filtersHtml + sortHtml + searchHtml + countBar +
+            '<div class="empty-msg" style="margin-top:16px;"><i class="fas fa-filter"></i><h3>Sin resultados</h3><p>No hay propiedades que coincidan con tu búsqueda.</p></div>';
+          bindFilterButtons(); sortBinds();
           return;
         }
-        $('propList').innerHTML = summaryHtml + filtersHtml + sortHtml + countBar + filtered.map(propCardHtml).join('');
-        bindPropEvents(filtered);
-        sortBinds();
+        var cardsHtml = filtered.map(propCardHtml).join('');
+        var listClass = listView === 'list' ? ' prop-list--list' : '';
+        $('propList').innerHTML = summaryHtml + filtersHtml + sortHtml + searchHtml + countBar +
+          '<div class="prop-list' + listClass + '">' + cardsHtml + '</div>';
+        bindPropEvents(filtered); sortBinds();
       }
 
       function bindFilterButtons() {
@@ -885,6 +1043,18 @@
       }
 
       function bindPropEvents(list) {
+        document.querySelectorAll('.prop-fav-btn').forEach(function(b){
+          if (b.dataset.bound) return;
+          b.dataset.bound = '1';
+          b.addEventListener('click', function(e){
+            e.stopPropagation();
+            var id = b.getAttribute('data-fav');
+            var on = toggleFav(id);
+            b.classList.toggle('is-fav', on);
+            b.setAttribute('aria-pressed', String(on));
+            portalToast(on ? 'Marcada como favorita' : 'Quitada de favoritas');
+          });
+        });
         document.querySelectorAll('.prop-card-header').forEach(function(h) {
           h.addEventListener('click', function() {
             h.closest('.prop-card').classList.toggle('expanded');
@@ -1142,6 +1312,10 @@
         dayX = Math.min(dayY, Math.max(0, Math.floor(elapsedMs / (1000*60*60*24)) + 1));
         pct = Math.min(100, Math.max(0, (elapsedMs / (end - start)) * 100));
         var phase = pct >= 80 ? 'danger' : (pct >= 50 ? 'warn' : 'good');
+        var daysLeft = Math.max(0, Math.ceil((end - now) / (1000*60*60*24)));
+        var urgencyNote = '';
+        if (daysLeft <= 7) urgencyNote = '<span class="excl-urgency urgent">Últimos ' + daysLeft + ' días</span>';
+        else if (daysLeft <= 15) urgencyNote = '<span class="excl-urgency soon">Quedan ' + daysLeft + ' días</span>';
         progressHtml =
           '<div class="excl-progress-wrap">' +
             '<div class="excl-progress-label">' +
@@ -1150,7 +1324,7 @@
               '<span>' + fmtDate(end) + '</span>' +
             '</div>' +
             '<div class="excl-progress-track"><div class="excl-progress-fill phase-' + phase + '" style="width:' + pct + '%"></div></div>' +
-            '<div class="excl-progress-days">' + Math.round(pct) + '% del período transcurrido</div>' +
+            '<div class="excl-progress-days">' + Math.round(pct) + '% del período transcurrido' + urgencyNote + '</div>' +
           '</div>';
       }
 
