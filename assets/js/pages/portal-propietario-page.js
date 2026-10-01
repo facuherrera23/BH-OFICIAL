@@ -472,8 +472,6 @@
       var txt = pub ? (op + ' · ' + pub) : op;
       return '<span class="prop-status-badge ' + cls + '"><i class="fas ' + (sold ? 'fa-check-circle' : (p.is_published ? 'fa-circle' : 'fa-pen')) + '"></i> ' + esc(txt) + '</span>';
     }
-    var FMT_ARS = new Intl.NumberFormat('es-AR', { style:'currency', currency:'ARS', maximumFractionDigits:0 });
-    function fmtARS(v) { return v != null ? FMT_ARS.format(v) : ''; }
     function portalWaNumber(phone) {
       var d = String(phone || '').replace(/\D/g, '');
       if (!d) return null;
@@ -816,9 +814,11 @@
 
         /* Swipe en mobile */
         var touchX = 0;
-        box.addEventListener('touchstart', function (e) { touchX = e.touches[0].clientX; }, { passive: true });
+        box.addEventListener('touchstart', function (e) { var t = e.touches && e.touches[0]; if (t) touchX = t.clientX; }, { passive: true });
         box.addEventListener('touchend', function (e) {
-          var dx = e.changedTouches[0].clientX - touchX;
+          var t = e.changedTouches && e.changedTouches[0];
+          if (!t) return;
+          var dx = t.clientX - touchX;
           if (Math.abs(dx) > 40 && imgs.length > 1) show(cur + (dx < 0 ? 1 : -1));
         }, { passive: true });
 
