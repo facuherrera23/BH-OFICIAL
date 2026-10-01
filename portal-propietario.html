@@ -2,8 +2,14 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Portal exclusivo para propietarios de BIENENHAUS. Seguimiento de tus propiedades, consultas, visitas y exclusividad.">
+  <meta name="theme-color" content="#05070A">
   <meta name="robots" content="noindex, nofollow">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Portal del Propietario | BIENENHAUS">
+  <meta property="og:description" content="Seguimiento en tiempo real de tus propiedades y exclusividad.">
+  <meta property="og:image" content="assets/images/pwa-512x512.png">
   <title>Portal Propietario | BIENENHAUS</title>
   <link rel="icon" type="image/x-icon" href="assets/images/favicon.ico">
   <link rel="apple-touch-icon" href="assets/images/pwa-512x512.png">
@@ -42,7 +48,24 @@
       --shadow: 0 16px 40px rgba(0,0,0,0.4);
     }
 
-    html { scroll-behavior: smooth; }
+    html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+
+    /* Accesibilidad: foco visible */
+    .tab-btn:focus-visible,
+    .prop-filter:focus-visible,
+    .quick-action:focus-visible,
+    .prop-share-btn:focus-visible,
+    .lightbox-close:focus-visible,
+    .lightbox-nav:focus-visible,
+    .broker-actions a:focus-visible,
+    .whatsapp-cta:focus-visible,
+    a:focus-visible,
+    button:focus-visible {
+      outline: 2px solid var(--gold);
+      outline-offset: 2px;
+      border-radius: 8px;
+    }
+
 
     body {
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -159,6 +182,23 @@
       display: flex;
       gap: 0;
       border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      scrollbar-width: none;
+      position: sticky;
+      top: 76px;
+      z-index: 90;
+      background: linear-gradient(180deg, rgba(5,7,10,0.95) 0%, rgba(5,7,10,0.0) 100%);
+      backdrop-filter: blur(10px);
+    }
+    .tabs-bar::-webkit-scrollbar { display: none; }
+    .tabs-bar::after {
+      content: '';
+      position: sticky;
+      right: 0;
+      width: 24px;
+      flex-shrink: 0;
+      background: linear-gradient(270deg, var(--bg-dark) 0%, transparent 100%);
+      pointer-events: none;
     }
     .tab-btn {
       background: none;
@@ -174,11 +214,14 @@
       display: flex;
       align-items: center;
       gap: 6px;
+      flex-shrink: 0;
+      border-radius: 8px 8px 0 0;
     }
-    .tab-btn:hover { color: var(--text); }
+    .tab-btn:hover { color: var(--text); background: rgba(31,200,195,0.04); }
     .tab-btn.active {
       color: var(--gold);
       border-bottom-color: var(--gold);
+      background: var(--gold-dim);
     }
     .tab-btn .badge {
       font-size: 11px;
@@ -382,6 +425,14 @@
       border-bottom: 1px solid var(--border);
     }
     .activity-item:last-child { border-bottom: none; }
+    .activity-item--empty {
+      justify-content: center;
+      color: var(--text-dim);
+      font-size: 13px;
+      gap: 8px;
+      padding: 18px 0;
+    }
+    .activity-item--empty i { color: var(--text-muted); }
     .activity-dot {
       width: 8px;
       height: 8px;
@@ -606,9 +657,10 @@
       border-radius: var(--radius);
       overflow: hidden;
       margin-bottom: 16px;
-      transition: border-color 0.2s, box-shadow 0.2s;
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
       backdrop-filter: blur(12px);
       box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+      will-change: transform;
     }
     .prop-card:hover {
       border-color: var(--border-accent);
@@ -626,6 +678,22 @@
       object-fit: cover;
       flex-shrink: 0;
       background: var(--bg-card-hover);
+    }
+    .prop-card-thumb-wrap { position: relative; flex-shrink: 0; }
+    .prop-thumb-count {
+      position: absolute; inset: auto 4px 4px auto;
+      font-size: 9px; font-weight: 700; letter-spacing: 0.3px;
+      background: rgba(5,7,10,0.85); color: var(--gold);
+      padding: 2px 6px; border-radius: 8px;
+      border: 1px solid var(--border-accent);
+      pointer-events: none;
+    }
+    .prop-card-thumb--placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      color: var(--text-muted);
     }
     .prop-card-body {
       flex: 1;
@@ -665,7 +733,7 @@
     .prop-badge.oportunidad { background: var(--green-dim); color: var(--green); }
     .prop-badge.retasada { background: var(--orange-dim); color: var(--orange); }
     .prop-badge.destacada { background: var(--gold-dim); color: var(--gold); }
-    .prop-badge.ml { background: var(--blue-dim); color: var(--blue); }
+    .prop-badge.ml { background: var(--blue-dim); color: var(--blue); font-family: 'Playfair Display', serif; font-style: italic; letter-spacing: 0; }
     .prop-badge-exclusive { background: var(--gold-dim); color: var(--gold); }
     .prop-card-expand {
       width: 44px;
@@ -1230,6 +1298,23 @@
 
     /* Galería ampliada */
     .prop-gallery { margin-top: 14px; }
+    .prop-gallery-item { position: relative; display: block; }
+    .prop-gallery-item .prop-gallery-img { display: block; width: 100%; height: 80px; object-fit: cover; border-radius: var(--radius-sm); }
+    .prop-gallery-count {
+      position: absolute; inset: auto 6px 6px auto;
+      font-size: 10px; font-weight: 700;
+      background: rgba(5,7,10,0.85); color: var(--text);
+      padding: 2px 8px; border-radius: 10px;
+      border: 1px solid var(--border-accent);
+    }
+    .prop-gallery-empty {
+      margin-top: 14px;
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; color: var(--text-muted);
+      background: var(--bg-card-hover); border: 1px dashed var(--border);
+      padding: 14px 16px; border-radius: var(--radius-sm);
+    }
+    .prop-gallery-empty i { font-size: 16px; }
     .prop-gallery-more {
       display: flex;
       align-items: center;
@@ -1244,6 +1329,22 @@
     }
     .prop-gallery-more:hover { background: var(--border); color: var(--text); }
     .prop-lightbox-data { display: none; }
+    .prop-count-hint {
+      font-size: 11px; color: var(--text-muted);
+      margin: -8px 0 10px; text-align: right;
+    }
+    .prop-share-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-top: 14px; padding: 7px 12px;
+      font-size: 12px; font-weight: 600;
+      color: var(--green); background: var(--green-dim);
+      border: 1px solid rgba(16,185,129,0.3); border-radius: 8px;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .prop-share-btn:hover { background: rgba(16,185,129,0.22); }
+    .prop-share-btn i { font-size: 12px; }
+    .broker-contact { word-break: break-all; }
 
     /* ── LIGHTBOX ── */
     .lightbox-overlay {
@@ -1303,10 +1404,14 @@
       text-align: center;
       padding: 48px 24px;
       color: var(--text-dim);
+      border-left: 3px solid var(--gold);
+      background: var(--bg-card);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      text-align: left;
     }
-    .empty-msg i { font-size: 40px; margin-bottom: 12px; color: var(--text-muted); }
-    .empty-msg h3 { font-size: 16px; color: var(--text); margin-bottom: 4px; }
-    .empty-msg p { font-size: 13px; }
+    .empty-msg i { font-size: 40px; margin-bottom: 12px; color: var(--text-muted); display: block; text-align: center; }
+    .empty-msg h3 { font-size: 16px; color: var(--text); margin-bottom: 4px; text-align: center; }
+    .empty-msg p { font-size: 13px; text-align: center; margin-left: auto; margin-right: auto; }
 
     /* ── LOADING ── */
     .portal-loading {
@@ -1316,6 +1421,23 @@
       justify-content: center;
       min-height: 60vh;
       gap: 16px;
+    }
+    .portal-skeleton {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px; width: 100%; max-width: 1100px; padding: 0 24px;
+      margin-top: 24px;
+    }
+    .portal-skeleton .sk-card {
+      height: 88px; border-radius: var(--radius-sm);
+      background: linear-gradient(100deg, var(--bg-card) 30%, var(--bg-card-hover) 50%, var(--bg-card) 70%);
+      background-size: 200% 100%;
+      animation: sk-pulse 1.4s ease-in-out infinite;
+      border: 1px solid var(--border);
+    }
+    @keyframes sk-pulse {
+      0%, 100% { background-position: 100% 50%; }
+      50% { background-position: 0% 50%; }
     }
     .activity-card {
       backdrop-filter: blur(12px);
@@ -1366,7 +1488,7 @@
   <header class="portal-header">
     <div class="portal-header-inner">
       <a href="/" class="portal-logo">
-        <img src="assets/images/pwa-512x512.png" alt="BIENENHAUS" class="portal-logo-icon">
+        <img src="assets/images/pwa-512x512.png" alt="BIENENHAUS — Portal del Propietario" class="portal-logo-icon" width="36" height="36">
         <span class="portal-logo-text">BIENENHAUS</span>
       </a>
       <div class="portal-user-badge" id="userBadge" style="display:none;">
@@ -1380,6 +1502,11 @@
   <div class="portal-loading" id="loadingState">
     <div class="spinner"></div>
     <p>Cargando tu portal...</p>
+    <div class="portal-skeleton" aria-hidden="true">
+      <div class="sk-card"></div>
+      <div class="sk-card"></div>
+      <div class="sk-card"></div>
+    </div>
   </div>
 
   <!-- LOGIN POR TOKEN -->
@@ -1390,7 +1517,7 @@
       <p style="color:var(--text-dim); font-size:14px; margin-bottom:22px;">Ingresá tu código de acceso para ver el estado de tus propiedades.</p>
       <form id="tokenLoginForm" style="display:flex; flex-direction:column; gap:10px;">
         <input type="text" id="tokenInput" placeholder="Tu código de acceso" autocomplete="off" spellcheck="false"
-          style="width:100%; padding:14px 16px; border-radius:10px; border:1px solid var(--border-accent); background:var(--bg-card); color:var(--text); font-size:15px; text-align:center; font-family:ui-monospace,monospace; letter-spacing:1px;" />
+          style="width:100%; padding:14px 16px; border-radius:10px; border:1px solid var(--border-accent); background:var(--bg-card); color:var(--text); font-size:15px; text-align:center; font-family:ui-monospace,monospace; letter-spacing:1px; caret-color:var(--gold);" />
         <button type="submit" class="btn-luxury-action" style="width:100%; padding:14px; border-radius:10px; border:none; cursor:pointer; background:linear-gradient(135deg, var(--gold), #16a09a); color:#06090d; font-weight:700; font-size:14px; letter-spacing:0.5px;">Ingresar</button>
         <p id="tokenError" style="display:none; color:var(--red); font-size:13px; margin-top:4px;">Código incorrecto o expirado. Pedí uno nuevo a tu asesor.</p>
       </form>
@@ -1404,6 +1531,37 @@
     <h2 id="errorTitle">Link inválido</h2>
     <p id="errorMsg">El enlace que utilizaste no es válido o expiró. Pedí a tu asesor un nuevo link de acceso.</p>
   </div>
+
+  <style>
+    #tokenInput { text-transform: uppercase; }
+    @media (max-width: 640px) {
+      .lightbox-nav { width: 48px; height: 48px; font-size: 20px; }
+      .lightbox-nav.prev { left: 12px; }
+      .lightbox-nav.next { right: 12px; }
+      .prop-gallery { grid-template-columns: repeat(3, 1fr); }
+      .prop-gallery-item .prop-gallery-img { height: 70px; }
+      .broker-info p { font-size: 12px; }
+      .portal-header-inner { padding: 0 4px; }
+      .portal-main { padding: 16px 12px; }
+      .excl-banner { padding: 18px 16px; }
+      .excl-benefits { grid-template-columns: 1fr; }
+      .prop-share-btn { width: 100%; justify-content: center; }
+    }
+    @media (max-width: 480px) {
+      .stat-grid { grid-template-columns: repeat(2, 1fr); }
+      .stat-card { padding: 10px; }
+      .stat-card .value { font-size: 18px; }
+    }
+    @media print {
+      .portal-header, .tabs-bar, .quick-actions, .whatsapp-cta, .lightbox-overlay, #quickActionsSlot, #loginState, #errorState, .portal-loading { display: none !important; }
+      body { background: #fff !important; color: #000 !important; }
+      .tab-panel { display: block !important; }
+      .stat-card, .prop-card, .broker-card, .excl-banner, .activity-card, .inicio-empty, .prop-summary-item, .excl-benefit, .excl-delta, .excl-share-card { border: 1px solid #ddd !important; background: #fff !important; box-shadow: none !important; color: #000 !important; page-break-inside: avoid; }
+      .prop-card-detail { display: block !important; }
+      .prop-gallery, .prop-video, .prop-timeline { display: none !important; }
+      .section-title { color: #000 !important; page-break-after: avoid; }
+    }
+  </style>
 
   <!-- CONTENT -->
   <div id="contentState" style="display:none;">
@@ -1450,6 +1608,6 @@
   <script src="assets/js/config.js?v=5"></script>
   <script src="assets/js/utils.js?v=1"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="assets/js/pages/portal-propietario-page.js?v=2"></script>
+  <script src="assets/js/pages/portal-propietario-page.js?v=3"></script>
 </body>
 </html>

@@ -14,11 +14,19 @@
     var FMT_DATE = new Intl.DateTimeFormat('es-AR', { day:'numeric', month:'short', year:'numeric' });
     // react-doctor-disable-next-line js-hoist-intl -- hoisted al tope del módulo
     var FMT_DATETIME = new Intl.DateTimeFormat('es-AR', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+    // react-doctor-disable-next-line js-hoist-intl -- hoisted al tope del módulo
+    var FMT_ARS = new Intl.NumberFormat('es-AR', { style:'currency', currency:'ARS', maximumFractionDigits:0 });
 
     function fmtUSD(v) { return v != null ? FMT_USD.format(v) : '-'; }
     function fmtNum(v) { return v != null ? FMT_NUM.format(v) : '0'; }
     function fmtDate(v) { return v ? FMT_DATE.format(new Date(v)) : ''; }
     function fmtDateTime(v) { return v ? FMT_DATETIME.format(new Date(v)) : ''; }
+    function fmtARS(v) { return v != null ? FMT_ARS.format(v) : ''; }
+    function fmtDateTimeShort(v) {
+      if (!v) return '';
+      var d = new Date(v);
+      return fmtDate(v) + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+    }
     function fmtDateShort(v) {
       if (!v) return '';
       var d = new Date(v);
@@ -34,14 +42,38 @@
       var hrs = Math.floor(mins/60);
       if (hrs < 24) return hrs + 'h';
       var ds = Math.floor(hrs/24);
-      return ds + 'd';
+      if (ds < 14) return ds + 'd';
+      if (ds < 60) return Math.floor(ds/7) + ' sem';
+      return Math.floor(ds/30) + (ds < 60 ? ' mes' : ' meses');
     }
 
     function $(id) { return document.getElementById(id); }
 
+    /* Imágenes que fallan (404/timeout) se ocultan sin romper el layout.
+       Delegado por captura para no violar la CSP (sin inline handlers). */
+    document.addEventListener('error', function (ev) {
+      var t = ev.target;
+      if (t && t.tagName === 'IMG') t.style.display = 'none';
+    }, true);
+
     /* ── Token ── */
     var params = new URLSearchParams(location.search);
     var token = params.get('token');
+
+    /* Sesión corta (4h) por dispositivo: evita re-pedir el código si recarga */
+    var SESSION_KEY = 'bh_portal_token';
+    function sessionGet() {
+      try {
+        var raw = localStorage.getItem(SESSION_KEY);
+        if (!raw) return null;
+        var s = JSON.parse(raw);
+        if (!s || !s.t || !s.exp || s.exp < Date.now()) { localStorage.removeItem(SESSION_KEY); return null; }
+        return s.t;
+      } catch (_) { return null; }
+    }
+    function sessionSave(t) {
+      try { localStorage.setItem(SESSION_KEY, JSON.stringify({ t: t, exp: Date.now() + 4 * 3600 * 1000 })); } catch (_) {}
+    }
 
     function showLogin() {
       $('loadingState').style.display = 'none';
@@ -49,8 +81,13 @@
       $('loginState').style.display = 'flex';
     }
 
-    /* Login por token (solo si no hay token en la URL) */
+    /* Login por token (solo si no hay token en la URL ni sesión guardada) */
     if (!token) {
+      var saved = sessionGet();
+      if (saved) {
+        window.location.replace(location.pathname + '?token=' + encodeURIComponent(saved));
+        return;
+      }
       var form = $('tokenLoginForm');
       if (form) {
         form.addEventListener('submit', async function(ev) {
@@ -58,20 +95,25 @@
           var input = $('tokenInput');
           var errEl = $('tokenError');
           var val = (input && input.value || '').trim();
-          if (!val) return;
           if (errEl) errEl.style.display = 'none';
+          if (!val || val.length < 4) {
+            if (errEl) { errEl.textContent = 'Ingresá tu código de acceso completo.'; errEl.style.display = 'block'; }
+            if (input) input.focus();
+            return;
+          }
           try {
             if (!window.BH_CONFIG) throw new Error('no config');
             var sb = window.supabase.createClient(BH_CONFIG.SUPABASE_URL, BH_CONFIG.SUPABASE_ANON_KEY);
             var { data, error } = await sb.rpc('portal_validate_token', { p_token: val });
             if (error || !data) {
-              if (errEl) errEl.style.display = 'block';
+              if (errEl) { errEl.textContent = 'Código incorrecto o expirado. Pedí uno nuevo a tu asesor.'; errEl.style.display = 'block'; }
               return;
             }
+            sessionSave(val);
             // Token válido: recargamos con él en la URL (persiste en historial/recarga)
             window.location.href = location.pathname + '?token=' + encodeURIComponent(val);
           } catch (e) {
-            if (errEl) errEl.style.display = 'block';
+            if (errEl) { errEl.textContent = 'Código incorrecto o expirado. Pedí uno nuevo a tu asesor.'; errEl.style.display = 'block'; }
           }
         });
       }
@@ -119,15 +161,25 @@
       $('userName').textContent = name;
       $('userAvatar').textContent = name.charAt(0).toUpperCase();
       $('userBadge').style.display = '';
+      document.title = 'Portal — ' + name + ' | BIENENHAUS';
 
-      /* Tab badges */
-      $('propCount').textContent = props.length || '';
+      /* Tab badges: ocultos si vienen en 0 */
+      var pc = $('propCount');
+      if (props.length > 0) { pc.textContent = props.length; pc.style.display = ''; }
+      else pc.style.display = 'none';
 
       renderInicio(d, owner, props);
       renderPropiedades(d, props);
       renderExclusividad(d, owner);
       setupTabs();
       showContent();
+
+      /* Refresco del saludo si la pestaña queda abierta y cambia de día */
+      var lastDay = new Date().getDate();
+      setInterval(function () {
+        var nowD = new Date().getDate();
+        if (nowD !== lastDay) { lastDay = nowD; renderInicio(d, owner, props); }
+      }, 60 * 1000);
     }
 
     /* ── TABS ── */
@@ -140,8 +192,16 @@
           document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
           var panel = $('panel-' + btn.dataset.tab);
           if (panel) panel.classList.add('active');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          btn.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
         });
       });
+      /* Deep-link: si la URL trae #propiedades o #exclusividad, abrir ese tab */
+      var hash = (location.hash || '').replace('#', '');
+      if (hash === 'propiedades' || hash === 'exclusividad' || hash === 'inicio') {
+        var target = document.querySelector('.tab-btn[data-tab="' + hash + '"]');
+        if (target) target.click();
+      }
     }
 
     /* ── INICIO ── */
@@ -159,6 +219,8 @@
       /* ── A1: Saludo y bienvenida personalizada ── */
       var name = owner.full_name || 'Propietario';
       var firstName = name.split(' ')[0] || name;
+      var hourNow = new Date().getHours();
+      var greetWord = hourNow < 12 ? 'Buen día' : (hourNow < 20 ? 'Buenas tardes' : 'Buenas noches');
       var waBroker = (d.broker && d.broker.phone && portalWaNumber(d.broker.phone)) ? 'https://wa.me/' + portalWaNumber(d.broker.phone) + '?text=' + encodeURIComponent('Hola ' + (d.broker.full_name || '') + ', te escribo desde mi portal de propietario en BIENENHAUS.') : '';
 
       /* ── A2: Resumen de cartera ── */
@@ -181,7 +243,7 @@
             '<div class="welcome-greet">' +
               '<div class="wg-avatar">' + esc(name.charAt(0).toUpperCase()) + '</div>' +
               '<div class="wg-text">' +
-                '<h2>Hola, ' + esc(firstName) + ' 👋</h2>' +
+                '<h2>' + greetWord + ', ' + esc(firstName) + '</h2>' +
                 '<div class="wg-date">' + esc(fmtDateLong(new Date())) + '</div>' +
               '</div>' +
             '</div>' +
@@ -204,8 +266,13 @@
       var exclLabelInicio = exclStateLabel(exclStateInicio);
       var quickActions = [];
       if (waBroker) quickActions.push('<a class="quick-action wa" href="' + waBroker + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Contactar a mi asesor</a>');
+      if (props.length > 0) {
+        quickActions.push('<button type="button" class="quick-action" id="btnInicioReporte"><i class="fas fa-print"></i> Imprimir reporte</button>');
+        quickActions.push('<button type="button" class="quick-action" id="btnCompartirPortal"><i class="fas fa-share-alt"></i> Compartir portal</button>');
+      }
       if (exclStateInicio.key === 'por_vencer' || exclStateInicio.key === 'vencida') {
-        quickActions.push('<a class="quick-action primary" href="#exclusividad" data-go-tab="exclusividad"><i class="fas fa-handshake"></i> ' + (exclStateInicio.key === 'por_vencer' ? 'Renovar exclusividad' : 'Reactivar exclusividad') + '</a>');
+        var waRenovar = waBroker || (d.broker && d.broker.phone ? 'https://wa.me/' + portalWaNumber(d.broker.phone) : '');
+        quickActions.push('<a class="quick-action primary" href="' + (waRenovar || '#exclusividad') + '"' + (waRenovar ? ' target="_blank" rel="noopener"' : ' data-go-tab="exclusividad"') + '><i class="fas fa-handshake"></i> ' + (exclStateInicio.key === 'por_vencer' ? 'Renovar exclusividad' : 'Reactivar exclusividad') + '</a>');
       }
       $('quickActionsSlot').innerHTML = quickActions.length
         ? '<div class="quick-actions">' + quickActions.join('') + '</div>'
@@ -214,29 +281,37 @@
       /* ── B1: Próxima visita (siempre visible) ── */
       if (d.next_visit) {
         var nv = d.next_visit;
+        var nvWho = nv.client_name ? esc(nv.client_name) + ' &middot; ' : '';
+        var nvProp = (nv.property_code || nv.property_title)
+          ? esc(nv.property_code || '') + (nv.property_code && nv.property_title ? ' ' : '') + esc(nv.property_title || '')
+          : '';
         $('nextVisitSlot').innerHTML =
           '<div class="next-visit">' +
             '<div class="next-visit-icon"><i class="fas fa-calendar-check"></i></div>' +
             '<div class="next-visit-info">' +
               '<h3>Próxima visita programada</h3>' +
               '<p>' +
-                '<span class="date">' + fmtDateShort(nv.visit_date) + '</span> &middot; ' +
-                esc(nv.client_name || 'Cliente') + ' &middot; ' +
-                esc(nv.property_code || '') + ' ' + esc(nv.property_title || '') +
+                '<span class="date">' + fmtDateShort(nv.visit_date) + '</span>' +
+                (nvWho ? ' &middot; ' + nvWho : '') +
+                (nvProp ? ' ' + nvProp : '') +
               '</p>' +
             '</div>' +
           '</div>';
       } else {
+        var waNext = (d.broker && d.broker.phone && portalWaNumber(d.broker.phone)) ? 'https://wa.me/' + portalWaNumber(d.broker.phone) + '?text=' + encodeURIComponent('Hola ' + (d.broker.full_name || '') + ', ¿cuándo agendamos la próxima visita?') : '';
         $('nextVisitSlot').innerHTML =
           '<div class="inicio-empty">' +
             '<i class="fas fa-calendar-check"></i>' +
-            '<span>No tenés visitas programadas por ahora. Cuando agendes una, la vas a ver acá.</span>' +
+            '<span>No tenés visitas programadas por ahora.' +
+            (waNext ? ' <a href="' + waNext + '" target="_blank" rel="noopener" style="color:var(--green);font-weight:600;text-decoration:none;">Coordiná una por WhatsApp</a>' : ' Cuando agendes una, la vas a ver acá.') +
+            '</span>' +
           '</div>';
       }
 
       /* ── C1: Broker / asesor asignado ── */
       if (d.broker) {
         var b = d.broker;
+        var roleLabel = (b.role && b.role !== 'agente') ? 'Tu broker asignado' : 'Tu asesor asignado';
         var photoHtml = b.photo_url
           ? '<img class="broker-photo" src="' + esc(safeImageUrl(b.photo_url)) + '" alt="' + esc(b.full_name) + '">'
           : '<div class="broker-photo-placeholder">' + esc((b.full_name || '?').charAt(0)) + '</div>';
@@ -250,9 +325,9 @@
           '<div class="broker-card">' +
             photoHtml +
             '<div class="broker-info">' +
-              '<div class="broker-role">Tu asesor asignado</div>' +
+              '<div class="broker-role">' + esc(roleLabel) + '</div>' +
               '<h4>' + esc(b.full_name) + '</h4>' +
-              '<p>' + esc(b.email || '') + (b.phone ? ' · ' + esc(b.phone) : '') + '</p>' +
+              '<p class="broker-contact">' + esc(b.email || '') + (b.phone ? ' · ' + esc(b.phone) : '') + '</p>' +
             '</div>' +
             actionsHtml +
           '</div>';
@@ -295,15 +370,17 @@
         { icon:'fas fa-key', label:'En alquiler', value:fmtNum(nAlquiler), sub: nAlquiler ? 'en cartera' : '', cls:'' },
         { icon:'fas fa-users', label:'Consultas totales', value:fmtNum(d.lead_total), sub: (d.lead_last30 != null && d.lead_last30 > 0) ? (fmtNum(d.lead_last30) + ' en 30 días') : '', cls:'' },
         { icon:'fas fa-calendar', label:'Visitas realizadas', value:fmtNum(visits.completadas || 0), sub: fmtNum(visits.total || 0) + ' totales', cls:'green' },
-        { icon:'fas fa-calendar-plus', label:'Próximas visitas', value:fmtNum(visits.proximas || 0), sub: (visits.confirmadas || 0) + ' confirmadas', cls:'blue' }
+        { icon:'fas fa-calendar-plus', label:'Próximas visitas', value:fmtNum(visits.proximas || 0), sub: (visits.confirmadas || 0) > 0 ? ('+' + fmtNum(visits.confirmadas) + ' confirmadas') : '', cls:'blue' }
       ];
       /* Añadir cards no-nulas solo para enriquecer sin ruido */
-      if (visits.pendientes || visits.canceladas) {
-        stats.push({ icon:'fas fa-hourglass-half', label:'Visitas pendientes', value:fmtNum(visits.pendientes || 0), cls:'' });
-        stats.push({ icon:'fas fa-times-circle', label:'Visitas canceladas', value:fmtNum(visits.canceladas || 0), cls:'gold' });
+      if ((visits.pendientes || 0) > 0) {
+        stats.push({ icon:'fas fa-hourglass-half', label:'Visitas pendientes', value:fmtNum(visits.pendientes), sub:'', cls:'' });
       }
-      stats.push({ icon:'fas fa-dollar-sign', label:'Cotización USD', value: d.usd_rate ? esc(fmtARS(d.usd_rate)) : '—', sub:'referencia', cls:'gold' });
-      var cardHtml = stats.map(function(s) {
+      if ((visits.canceladas || 0) > 0) {
+        stats.push({ icon:'fas fa-times-circle', label:'Visitas canceladas', value:fmtNum(visits.canceladas), sub:'', cls:'gold' });
+      }
+      stats.push({ icon:'fas fa-dollar-sign', label:'Cotización USD', value: (d.usd_rate && d.usd_rate > 0) ? esc(fmtARS(d.usd_rate)) : null, sub: (d.usd_rate && d.usd_rate > 0) ? 'referencia' : null, cls:'gold' });
+      var cardHtml = stats.filter(function(s){ return s.value !== null && s.value !== undefined; }).map(function(s) {
         return '<div class="stat-card">' +
           '<div class="label"><i class="' + esc(s.icon) + '"></i> ' + esc(s.label) + '</div>' +
           '<div class="value ' + esc(s.cls || '') + '">' + esc(s.value) + '</div>' +
@@ -313,7 +390,7 @@
       $('statGrid').innerHTML = cardHtml;
 
       /* ── E1/E2: Origen de consultas (siempre visible) ── */
-      var sourceNames = { landing_page:'Landing', ml:'Mercado Libre', whatsapp:'WhatsApp', portal:'Portal', facebook:'Facebook', instagram:'Instagram', telefono:'Teléfono', email:'Email', walk_in:'Visita directa', zernio:'Chat', otro:'Otro' };
+      var sourceNames = { landing_page:'Landing', ml:'Mercado Libre', whatsapp:'WhatsApp', portal:'Portal', facebook:'Facebook', instagram:'Instagram', telefono:'Teléfono', email:'Email', walk_in:'Visita directa', zernio:'Chat', gvamax:'GvaMax', otro:'Otro' };
       var srcHtml = '<div class="section-title"><i class="fas fa-funnel-dollar"></i> Origen de consultas</div>';
       if (leadsSrc.length === 0) {
         srcHtml += '<div class="inicio-empty"><i class="fas fa-funnel-dollar"></i><span>Todavía no tenés consultas registradas. Cuando lleguen, vas a ver acá de qué canales provienen.</span></div>';
@@ -339,7 +416,7 @@
       /* ── F1: Novedades recientes ── */
       var act = d.activity || [];
       if (act.length === 0) {
-        $('activityList').innerHTML = '<li class="activity-item" style="justify-content:center;color:var(--text-dim);font-size:13px;">Sin novedades recientes</li>';
+        $('activityList').innerHTML = '<li class="activity-item activity-item--empty"><i class="fas fa-clock"></i><span>Sin novedades recientes. Cuando haya movimientos (publicaciones, consultas, visitas), los vas a ver acá.</span></li>';
       } else {
         $('activityList').innerHTML = act.map(function(a) {
           return '<li class="activity-item">' +
@@ -359,6 +436,21 @@
           if (btn) btn.click();
         });
       });
+
+      /* Botón imprimir reporte */
+      var btnRep = $('btnInicioReporte');
+      if (btnRep) btnRep.addEventListener('click', function () { window.print(); });
+
+      /* Compartir: usa Web Share API si existe, sino copia el link */
+      var btnShare = $('btnCompartirPortal');
+      if (btnShare) btnShare.addEventListener('click', function () {
+        var shareData = { title: document.title, text: 'Mirá el seguimiento de mi propiedad en BIENENHAUS', url: location.href };
+        if (navigator.share) {
+          navigator.share(shareData).catch(function () { });
+        } else if (navigator.clipboard) {
+          navigator.clipboard.writeText(location.href).then(function () { }, function () { });
+        }
+      });
     }
 
     /* ── PROPIEDADES ── */
@@ -375,9 +467,9 @@
       var sold = p.status === 'vendida' || p.status === 'alquilada';
       var cls = sold ? 'sold' : (p.is_published === true ? 'live' : 'draft');
       var op = STATUS_LABEL[p.status] || p.status || (p.is_published ? 'Activa' : 'Inactiva');
-      var pub = p.is_published === true ? (sold ? '' : 'Publicada') : 'Borrador';
-      var txt = op;
-      if (pub) txt += ' · ' + pub;
+      /* 'Vendida' / 'Alquilada' van solas; solo venta/alquiler/draft combinan estado+publicación */
+      var pub = sold ? '' : (p.is_published === true ? 'Publicada' : (p.status === 'draft' ? 'Borrador' : 'No publicada'));
+      var txt = pub ? (op + ' · ' + pub) : op;
       return '<span class="prop-status-badge ' + cls + '"><i class="fas ' + (sold ? 'fa-check-circle' : (p.is_published ? 'fa-circle' : 'fa-pen')) + '"></i> ' + esc(txt) + '</span>';
     }
     var FMT_ARS = new Intl.NumberFormat('es-AR', { style:'currency', currency:'ARS', maximumFractionDigits:0 });
@@ -389,10 +481,9 @@
       if (d.indexOf('549') === 0) d = d.slice(3);
       else if (d.indexOf('54') === 0) d = d.slice(2);
       if (d.indexOf('0') === 0) d = d.slice(1);
-      if (d.indexOf('9') === 0) d = d.slice(1);
-      var a3 = d.slice(0, 3), rest = a3 === '351' || a3 === '341' || a3 === '221' || d.slice(0, 2) === '11' ? d.slice(a3 === '11' ? 2 : 3) : d;
-      if (rest.indexOf('15') === 0) { d = d.slice(0, d.length - rest.length) + rest.slice(2); }
-      return d.length >= 8 && d.length <= 12 ? ('549' + d) : null;
+      if (d.indexOf('9') === 0 && d.length > 9) d = '351' + d.slice(1);
+      if (d.indexOf('15') === 0) d = d.slice(2);
+      return d.length >= 8 && d.length <= 13 ? ('549' + d) : null;
     }
     function ownerContactWa(owner) {
       var n = portalWaNumber(owner && owner.phone);
@@ -475,6 +566,7 @@
       /* ── Card HTML ── */
       function propCardHtml(p) {
         var img = (p.image_urls && p.image_urls.length > 0) ? p.image_urls[0] : '';
+        var imgCount = (p.image_urls && p.image_urls.length) || 0;
         var badges = [];
         if (p.is_oportunidad) badges.push('<span class="prop-badge oportunidad"><i class="fas fa-tag"></i> Oportunidad</span>');
         if (p.is_retasada) badges.push('<span class="prop-badge retasada"><i class="fas fa-redo"></i> Retasada</span>');
@@ -499,7 +591,11 @@
           nextBadge = '<span class="prop-next-badge"><i class="fas fa-calendar-check"></i> ' + fmtNum(p.visits_next) + (p.visits_next === 1 ? ' próxima visita' : ' próximas visitas') + '</span>';
         }
 
-        var pubDateHtml = p.created_at ? '<span><i class="fas fa-clock"></i> Publicada: ' + fmtDate(p.created_at) + '</span>' : '';
+        var pubDateHtml = '';
+        if (p.created_at) {
+          var daysPub = Math.floor((Date.now() - new Date(p.created_at).getTime()) / (24*60*60*1000));
+          pubDateHtml = '<span><i class="fas fa-clock"></i> ' + (daysPub === 0 ? 'Cargada hoy' : (daysPub === 1 ? 'Cargada ayer' : 'Cargada hace ' + daysPub + ' días')) + '</span>';
+        }
 
         /* Stats con matiz */
         var stats = [];
@@ -509,7 +605,7 @@
         if (p.visits_total != null) {
           stats.push({ icon:'fas fa-calendar', num: fmtNum(p.visits_total), label:'visitas', sub: (p.visits_done != null && p.visits_done > 0) ? (fmtNum(p.visits_done) + ' realizadas') : null });
         }
-        if (p.visits_next != null) {
+        if (p.visits_next != null && p.visits_next > 0) {
           stats.push({ icon:'fas fa-arrow-right', num: fmtNum(p.visits_next), label:'próximas', sub: null });
         }
         var statsHtml = '';
@@ -520,19 +616,20 @@
           }).join('') + '</div>';
         }
 
-        /* Timeline con created_at */
+        /* Timeline: más reciente arriba; la publicación dice "Publicada" solo si está publicada */
         var timeline = [];
-        if (p.created_at) timeline.push({ date: p.created_at, text: 'Publicada', icon:'fa-home' });
-        if (p.last_lead_at) timeline.push({ date: p.last_lead_at, text: 'Última consulta', icon:'fa-users' });
-        if (p.last_visit_at) timeline.push({ date: p.last_visit_at, text: 'Última visita completada', icon:'fa-check-circle' });
-        if (p.ml_last_sync) timeline.push({ date: p.ml_last_sync, text: 'Última sync ML', icon:'fa-sync' });
+        if (p.created_at) timeline.push({ date: p.created_at, text: p.is_published ? 'Publicada' : 'Cargada', icon:'fa-home' });
+        if (p.last_lead_at) timeline.push({ date: p.last_lead_at, text: 'Última consulta', icon:'fa-users', time: true });
+        if (p.last_visit_at) timeline.push({ date: p.last_visit_at, text: 'Última visita completada', icon:'fa-check-circle', time: true });
+        if (p.ml_last_sync) timeline.push({ date: p.ml_last_sync, text: 'Última sync ML', icon:'fa-sync', time: true });
+        timeline.sort(function(a, b){ return new Date(b.date).getTime() - new Date(a.date).getTime(); });
         var timelineHtml = '';
         if (timeline.length > 0) {
           timelineHtml = '<div class="prop-timeline">' +
             timeline.map(function(t) {
               return '<div class="prop-timeline-item">' +
                 '<i class="fas ' + t.icon + '"></i>' +
-                '<div class="prop-timeline-body"><span class="tl-text">' + esc(t.text) + '</span><span class="tl-date">' + fmtDate(t.date) + '</span></div>' +
+                '<div class="prop-timeline-body"><span class="tl-text">' + esc(t.text) + '</span><span class="tl-date">' + (t.time ? fmtDateTimeShort(t.date) : fmtDate(t.date)) + '</span></div>' +
               '</div>';
             }).join('') +
           '</div>';
@@ -562,29 +659,40 @@
 
         /* Video */
         var videoHtml = '';
-        if (p.video_url && /youtube|youtu\.be|vimeo/ .test(p.video_url)) {
+        if (p.video_url && /youtube|youtu\.be|vimeo/.test(p.video_url)) {
           videoHtml = '<div class="prop-video"><a href="' + esc(safeUrl(p.video_url)) + '" target="_blank" rel="noopener"><i class="fas fa-play-circle"></i> Ver video de la propiedad</a></div>';
         }
 
-        /* Gallery */
+        /* Gallery + botón compartir */
         var imgs = p.image_urls || [];
         var galleryHtml = '';
         var lightboxData = '';
+        var shareBtn = '';
         if (imgs.length) {
+          var shareText = 'Mirá ' + (p.title || 'esta propiedad') + (p.property_code ? ' (' + p.property_code + ')' : '') + ' en BIENENHAUS';
+          var shareHref = 'https://wa.me/?text=' + encodeURIComponent(shareText + ' — ' + location.origin + '/?q=' + encodeURIComponent(p.property_code || p.title || ''));
+          shareBtn = '<a class="prop-share-btn" href="' + shareHref + '" target="_blank" rel="noopener" title="Compartir por WhatsApp"><i class="fab fa-whatsapp"></i> Compartir</a>';
           galleryHtml = '<div class="prop-gallery">' +
-            imgs.slice(0, 6).map(function(u){
-              return '<img class="prop-gallery-img" src="' + esc(safeImageUrl(u)) + '" alt="Foto" loading="lazy">';
+            imgs.slice(0, 6).map(function(u, i){
+              return '<div class="prop-gallery-item">' +
+                '<img class="prop-gallery-img" src="' + esc(safeImageUrl(u)) + '" alt="Foto ' + (i + 1) + ' de ' + esc(p.title || 'propiedad') + '" loading="lazy">' +
+                (i === 0 && imgs.length > 1 ? '<span class="prop-gallery-count">+' + (imgs.length - 1) + '</span>' : '') +
+              '</div>';
             }).join('') +
             (imgs.length > 6 ? '<div class="prop-gallery-more" data-more="' + esc(p.id) + '">+' + (imgs.length - 6) + '</div>' : '') +
           '</div>';
           lightboxData = '<div class="prop-lightbox-data" data-id="' + esc(p.id) + '">' + imgs.map(function(u){
             return '<span data-src="' + esc(safeImageUrl(u)) + '"></span>';
           }).join('') + '</div>';
+        } else {
+          galleryHtml = '<div class="prop-gallery-empty"><i class="fas fa-image"></i> Todavía no hay fotos de esta propiedad</div>';
         }
 
         return '<div class="prop-card" data-id="' + esc(p.id) + '">' +
           '<div class="prop-card-header">' +
-            (img ? '<img class="prop-card-thumb" src="' + esc(safeImageUrl(img)) + '" alt="' + esc(p.title || '') + '">' : '<div class="prop-card-thumb" style="background:var(--bg-card-hover);"></div>') +
+            (img
+              ? '<div class="prop-card-thumb-wrap"><img class="prop-card-thumb" src="' + esc(safeImageUrl(img)) + '" alt="' + esc(p.title || '') + '">' + (imgCount > 1 ? '<span class="prop-thumb-count">' + imgCount + ' fotos</span>' : '') + '</div>'
+              : '<div class="prop-card-thumb prop-card-thumb--placeholder"><i class="fas fa-home"></i></div>') +
             '<div class="prop-card-body">' +
               '<div class="prop-card-title">' + esc(p.title || 'Sin título') +
                 (typeLabel && typeLabel !== 'Propiedad' ? '<span class="prop-type-tag">' + esc(typeLabel) + '</span>' : '') +
@@ -609,6 +717,7 @@
             (videoHtml || '') +
             (timelineHtml || '') +
             (galleryHtml || '') +
+            (shareBtn || '') +
             lightboxData +
           '</div>' +
         '</div>';
@@ -616,13 +725,17 @@
 
       function renderListFromFilter() {
         var filtered = props.filter(function(p){ return matchFilter(p, activeFilter); });
+        var countBar = (activeFilter !== 'all' && filtered.length !== props.length)
+          ? '<div class="prop-count-hint">Mostrando ' + fmtNum(filtered.length) + ' de ' + fmtNum(props.length) + '</div>'
+          : '';
         if (!filtered.length) {
-          $('propList').innerHTML = summaryHtml + filtersHtml +
+          $('propList').innerHTML = summaryHtml + filtersHtml + countBar +
             '<div class="empty-msg" style="margin-top:16px;"><i class="fas fa-filter"></i><h3>Sin resultados</h3><p>No hay propiedades en este filtro.</p></div>';
           bindFilterButtons();
           return;
         }
-        renderList(filtered);
+        $('propList').innerHTML = summaryHtml + filtersHtml + countBar + filtered.map(propCardHtml).join('');
+        bindPropEvents(filtered);
       }
 
       function bindFilterButtons() {
@@ -647,7 +760,7 @@
       }
 
       function bindGalleryLightbox(list) {
-        document.querySelectorAll('.prop-gallery img, .prop-gallery-more').forEach(function(el) {
+        document.querySelectorAll('.prop-gallery-img, .prop-gallery-more').forEach(function(el) {
           el.addEventListener('click', function(e) {
             e.stopPropagation();
             e.preventDefault();
@@ -657,7 +770,7 @@
             var spans = dataEl.querySelectorAll('span');
             var imgs = Array.prototype.map.call(spans, function(s){ return s.getAttribute('data-src'); }).filter(Boolean);
             if (!imgs.length) return;
-            var all = card.querySelectorAll('.prop-gallery img, .prop-gallery-more');
+            var all = card.querySelectorAll('.prop-gallery-img, .prop-gallery-more');
             var clickedIdx = Array.prototype.indexOf.call(all, el);
             var idx = (el.classList && el.classList.contains('prop-gallery-more')) ? 0 : clickedIdx;
             openLightbox(imgs, Math.max(0, idx));
@@ -675,17 +788,40 @@
         box.innerHTML =
           '<div class="lightbox-content">' +
             '<button class="lightbox-close" aria-label="Cerrar"><i class="fas fa-times"></i></button>' +
-            (imgs.length > 1 ? '<button class="lightbox-nav prev"><i class="fas fa-chevron-left"></i></button><button class="lightbox-nav next"><i class="fas fa-chevron-right"></i></button>' : '') +
+            (imgs.length > 1 ? '<button class="lightbox-nav prev" aria-label="Anterior"><i class="fas fa-chevron-left"></i></button><button class="lightbox-nav next" aria-label="Siguiente"><i class="fas fa-chevron-right"></i></button>' : '') +
             '<img class="lightbox-img" src="' + esc(safeImageUrl(imgs[cur])) + '" alt="Foto">' +
             '<div class="lightbox-count">' + (cur + 1) + ' / ' + imgs.length + '</div>' +
           '</div>';
         document.body.appendChild(box);
         box.style.display = 'flex';
+
+        var preloaded = {};
+        function preload(i) {
+          var n = (i + imgs.length) % imgs.length;
+          if (!preloaded[n]) {
+            preloaded[n] = new Image();
+            preloaded[n].src = safeImageUrl(imgs[n]);
+          }
+        }
+        preload(cur + 1);
+        preload(cur - 1);
+
         function show(i) {
           cur = (i + imgs.length) % imgs.length;
           box.querySelector('.lightbox-img').src = safeImageUrl(imgs[cur]);
           box.querySelector('.lightbox-count').textContent = (cur + 1) + ' / ' + imgs.length;
+          preload(cur + 1);
+          preload(cur - 1);
         }
+
+        /* Swipe en mobile */
+        var touchX = 0;
+        box.addEventListener('touchstart', function (e) { touchX = e.touches[0].clientX; }, { passive: true });
+        box.addEventListener('touchend', function (e) {
+          var dx = e.changedTouches[0].clientX - touchX;
+          if (Math.abs(dx) > 40 && imgs.length > 1) show(cur + (dx < 0 ? 1 : -1));
+        }, { passive: true });
+
         box.querySelector('.lightbox-close').addEventListener('click', function(){ box.remove(); });
         box.addEventListener('click', function(e){ if (e.target === box) box.remove(); });
         if (imgs.length > 1) {
@@ -718,17 +854,12 @@
         default:            return { text:'Sin exclusividad', cls:'sin' };
       }
     }
-    function exclCountdownParts(ms, full) {
+    function exclCountdownParts(ms) {
       var seconds = Math.max(0, Math.floor(ms / 1000));
       var days = Math.floor(seconds / 86400);
       var hours = Math.floor((seconds % 86400) / 3600);
       var months = Math.floor(days / 30);
       var remDays = days % 30;
-      if (full) {
-        var yrs = Math.floor(months / 12);
-        months = months % 12;
-        return { yrs:yrs, months:months, days:days, hours:hours };
-      }
       return { yrs:0, months:months, days:remDays, hours:hours };
     }
     function exclContractMonths(start, end) {
@@ -791,9 +922,11 @@
             '<div><h4>' + esc(b.title) + '</h4><p>' + esc(b.desc) + '</p></div>' +
           '</div>';
         }).join('');
-        var phone = portalWaNumber(owner.phone);
-        var waSin = phone
-          ? '<a class="whatsapp-cta" href="https://wa.me/' + esc(phone) + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS. Me interesa conocer la exclusividad.') + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Consultar por exclusividad</a>'
+        var phoneOwner = portalWaNumber(owner.phone);
+        var phoneBroker = d.broker && d.broker.phone ? portalWaNumber(d.broker.phone) : null;
+        var phoneCXA = phoneBroker || phoneOwner;
+        var waSin = phoneCXA
+          ? '<a class="whatsapp-cta" href="https://wa.me/' + esc(phoneCXA) + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS. Me interesa conocer la exclusividad.') + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Consultar por exclusividad</a>'
           : '';
         $('exclContent').innerHTML =
           '<div class="empty-msg">' +
@@ -822,12 +955,16 @@
       /* Countdown (preciso por partes) */
       var countdownHtml = '';
       if (st.key === 'activa' && end) {
-        var parts = exclCountdownParts(end - now, true);
-        var units = '';
-        if (parts.yrs > 0) units += '<div class="excl-countdown-item"><div class="num">' + parts.yrs + '</div><div class="unit">años</div></div>';
-        units += '<div class="excl-countdown-item"><div class="num">' + parts.months + '</div><div class="unit">meses</div></div>';
-        units += '<div class="excl-countdown-item"><div class="num">' + parts.days + '</div><div class="unit">días</div></div>';
-        countdownHtml = '<div class="excl-countdown">' + units + '</div>';
+        var parts = exclCountdownParts(end - now);
+        if (parts.months === 0 && parts.days === 0) {
+          countdownHtml = '<div class="excl-countdown"><div class="excl-countdown-item"><div class="num">' + parts.hours + '</div><div class="unit">horas</div></div></div>';
+        } else {
+          var units = '';
+          if (parts.months > 0) units += '<div class="excl-countdown-item"><div class="num">' + parts.months + '</div><div class="unit">meses</div></div>';
+          units += '<div class="excl-countdown-item"><div class="num">' + parts.days + '</div><div class="unit">días</div></div>';
+          units += '<div class="excl-countdown-item"><div class="num">' + parts.hours + '</div><div class="unit">horas</div></div>';
+          countdownHtml = '<div class="excl-countdown">' + units + '</div>';
+        }
       } else if (st.key === 'por_vencer' && end) {
         var pdays = Math.max(0, Math.ceil((end - now) / (1000*60*60*24)));
         countdownHtml = '<div class="excl-countdown excl-warn">' +
@@ -908,13 +1045,13 @@
 
       /* Comparativa vs resto del portfolio */
       var shareHtml = '';
-      var totalLeads = d.lead_total || 0;
-      var totalVisits = (d.visits && d.visits.total) || 0;
+      var totalLeads = Math.max(d.lead_total || 0, es.leads || 0);
+      var totalVisits = Math.max((d.visits && d.visits.total) || 0, es.visits || 0);
       var exLead = es.leads || 0;
       var exVisit = es.visits || 0;
       if (st.key !== 'sin' && (totalLeads > 0 || totalVisits > 0)) {
-        var ls = totalLeads > 0 ? Math.round((exLead / totalLeads) * 100) : 0;
-        var vs = totalVisits > 0 ? Math.round((exVisit / totalVisits) * 100) : 0;
+        var ls = totalLeads > 0 ? Math.min(100, Math.round((exLead / totalLeads) * 100)) : 0;
+        var vs = totalVisits > 0 ? Math.min(100, Math.round((exVisit / totalVisits) * 100)) : 0;
         shareHtml = '<div class="excl-share">' +
           '<div class="excl-share-card"><span class="excl-share-num">' + ls + '%</span><span class="excl-share-label">de tus consultas llegaron en exclusividad</span></div>' +
           '<div class="excl-share-card"><span class="excl-share-num">' + vs + '%</span><span class="excl-share-label">de tus visitas se dieron en exclusividad</span></div>' +
@@ -924,7 +1061,7 @@
       /* Renovación CTA si por vencer */
       var renewHtml = '';
       if (st.key === 'por_vencer') {
-        var rp = portalWaNumber(owner.phone);
+        var rp = portalWaNumber(owner.phone) || (d.broker && d.broker.phone ? portalWaNumber(d.broker.phone) : null);
         renewHtml = rp
           ? '<a class="whatsapp-cta excl-renew-cta" href="https://wa.me/' + esc(rp) + '?text=' + encodeURIComponent('Hola, me comunico desde el portal de propietario de BIENENHAUS. Mi exclusividad está por vencer y quiero conversar sobre renovarla.') + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> Quiero renovar mi exclusividad</a>'
           : '<div class="excl-renew-note">Tu exclusividad está por vencer. Contactá a tu asesor para renovarla.</div>';
