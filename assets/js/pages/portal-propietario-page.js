@@ -64,15 +64,15 @@
     var SESSION_KEY = 'bh_portal_token';
     function sessionGet() {
       try {
-        var raw = localStorage.getItem(SESSION_KEY);
+        var raw = sessionStorage.getItem(SESSION_KEY);
         if (!raw) return null;
         var s = JSON.parse(raw);
-        if (!s || !s.t || !s.exp || s.exp < Date.now()) { localStorage.removeItem(SESSION_KEY); return null; }
+        if (!s || !s.t || !s.exp || s.exp < Date.now()) { sessionStorage.removeItem(SESSION_KEY); return null; }
         return s.t;
       } catch (_) { return null; }
     }
     function sessionSave(t) {
-      try { localStorage.setItem(SESSION_KEY, JSON.stringify({ t: t, exp: Date.now() + 4 * 3600 * 1000 })); } catch (_) {}
+      try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ t: t, exp: Date.now() + 4 * 3600 * 1000 })); } catch (_) {}
     }
 
     function showLogin() {
