@@ -595,7 +595,7 @@
               '<div style="font-weight:600;">' + esc(fmtDate(v.visit_date)) + ' · ' + esc(v.client_name || 'Cliente') + '</div>' +
               '<div style="font-size:12px; color:var(--text-muted);">' + esc(v.property_title || '') + ' (' + esc(v.property_code || '') + ')</div>' +
               (v.notes ? '<div style="font-size:12px; margin-top:4px; font-style:italic; color:var(--text-dim);">"' + esc(v.notes) + '"</div>' : '') +
-              '<div class="v-status ' + esc(v.status) + '">' + esc(v.status === 'completada' ? 'Completada' : 'Cancelada') + (v.duration_minutes ? ' · ' + v.duration_minutes + ' min' : '') + '</div>' +
+              '<div class="v-status ' + esc(v.status) + '">' + esc(v.status === 'completada' ? 'Completada' : 'Cancelada') + (v.duration_minutes ? ' · ' + v.duration_minutes + ' min' : '') + (v.cancel_reason ? ' · ' + esc(v.cancel_reason) : '') + '</div>' +
             '</div>' +
           '</div>';
         }).join(''));
