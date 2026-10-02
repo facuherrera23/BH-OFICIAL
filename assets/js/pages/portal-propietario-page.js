@@ -637,7 +637,10 @@
       }
     }
     document.addEventListener('bh:portalExtra', function () {
-      if (CURRENT_DATA) renderVisitasExtras(CURRENT_DATA, CURRENT_DATA.owner);
+      if (CURRENT_DATA) {
+        renderVisitasExtras(CURRENT_DATA, CURRENT_DATA.owner);
+        renderRonda5(CURRENT_DATA, CURRENT_DATA.owner, CURRENT_DATA.properties || []);
+      }
     });
 
     /* Pull-to-refresh en mobile */
@@ -2130,6 +2133,12 @@
     function renderRonda5(d, owner, props) {
       var slot = $('welcomeSlot');
       if (!slot) return;
+      var r5 = document.getElementById('ronda5Root');
+      if (r5) r5.remove();
+      slot = document.createElement('div');
+      slot.id = 'ronda5Root';
+      var outer = $('welcomeSlot');
+      outer.appendChild(slot);
 
       var extras = EXTRA_DATA || {};
       var tasaciones = extras.tasaciones || [];
