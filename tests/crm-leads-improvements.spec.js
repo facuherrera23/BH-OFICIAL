@@ -25,7 +25,7 @@ test.describe('CRM — mejoras (rondas 2-4)', () => {
     expect(js).toContain('crm-contact-btn');
     expect(js).toContain('crmMsgTemplate');
     expect(js).toContain('compartir_ficha');
-    expect(js).toContain("'/fichas/'");
+    expect(js).toContain("'https://bienenhaus.com.ar/fichas/'");
     expect(js).toContain('crmTrashToggle');
     expect(js).toContain('restoreLead');
     expect(js).toContain('crmAssignMe');
@@ -38,8 +38,8 @@ test.describe('CRM — mejoras (rondas 2-4)', () => {
     expect(js).toContain("indexOf('549')");
     expect(js).toContain("indexOf('15')");
     // wa.me siempre con 9; tel: nunca con 9:
-    expect(js).toContain("return '549' + d;");
-    expect(js).toContain("return '54' + d;");
+    expect(js).toContain("'549' + d");
+    expect(js).toContain("'54' + d");
   });
 
   test('admin-crm.js: paginación y orden server-side, sin fetch masivo', async ({ request }) => {
@@ -51,8 +51,9 @@ test.describe('CRM — mejoras (rondas 2-4)', () => {
 
   test("admin-crm.js: agendar visita no degrada etapas avanzadas", async ({ request }) => {
     const js = await (await request.get('/assets/js/admin-crm.js')).text();
-    const visitBlock = js.split("d.type === 'visit'")[1] || '';
-    expect(visitBlock).toContain("'nuevo', 'contactado', 'calificado'");
+    const visitBlock = js.split("action === 'visit'")[1] || '';
+    expect(visitBlock).toContain("['nuevo', 'contactado', 'calificado']");
+    expect(visitBlock).toContain(".update({ stage: 'visita_agendada' })");
   });
 
   test('admin-app.js: exportLeadsCSV usa columnas reales y respeta filtros', async ({ request }) => {

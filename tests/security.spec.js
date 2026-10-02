@@ -40,13 +40,14 @@ test.describe('Seguridad — CSP y delegación (regresión guards)', () => {
     expect((cspMeta.match(/font-src/g) || []).length).toBe(1);
   });
 
-  test('admin-app.js: fix de delegación data-action intacto', async ({ request }) => {
+  test('delegación data-action intacta (admin-app.js + módulo supervisión)', async ({ request }) => {
     const js = await (await request.get('/assets/js/admin-app.js')).text();
-    // Export en la IIFE principal (fix de scope ReferenceError).
-    expect(js).toContain('window.exportSupOverviewCSV = exportSupOverviewCSV');
     // Whitelist de acciones + listener delegado.
     expect(js).toContain('dataActionWhitelist');
     expect(js).toContain("document.addEventListener('click'");
+    // Export del overview (fix de scope ReferenceError) vive en el módulo desde la modularización.
+    const sup = await (await request.get('/assets/js/admin-supervision-panel.js')).text();
+    expect(sup).toContain('window.exportSupOverviewCSV = exportSupOverviewCSV');
   });
 
   test('config.js: sin secretos rastreados', async ({ request }) => {

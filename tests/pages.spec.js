@@ -30,8 +30,8 @@ test.describe('Smoke: páginas del sistema', () => {
 
   test('tasacion.html — ACM maneja id inexistente sin crash', async ({ page }) => {
     await page.goto('/tasacion.html?id=00000000-0000-0000-0000-000000000000');
-    const console = trackConsoleErrors(page, ALLOWED_406);
-    // El 406/400 de la query con id inexistente es esperado y manejado (addComparable + no bloquear).
+    // El 406/PGRST116 de la query con id inexistente es esperado y manejado (addComparable + no bloquear).
+    const console = trackConsoleErrors(page, [/status of 406/i, /PGRST116/i]);
     await expect(page.locator('body')).toBeVisible();
     await expect(page.locator('#formFieldset')).toBeVisible();
     await expect(page).toHaveTitle(/Tasaci|Análisis/);

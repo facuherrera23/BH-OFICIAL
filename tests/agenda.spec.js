@@ -16,7 +16,7 @@ test.describe('Agenda/Visitas — estructura del módulo', () => {
   });
 
   test('la agenda carga visitas excluyendo eliminadas y con ventana temporal', async ({ request }) => {
-    const js = await (await request.get('/assets/js/admin-app.js')).text();
+    const js = await (await request.get('/assets/js/admin-agenda.js')).text();
     expect(js).toContain("is('deleted_at', null)");
     expect(js).toContain('loadLeadContextForVisit');
     expect(js).toContain('refreshBrokerSlots');
@@ -42,7 +42,7 @@ test.describe('Agenda/Visitas — estructura del módulo', () => {
   });
 
   test('visitas: drag&drop reprogramación presente', async ({ request }) => {
-    const js = await (await request.get('/assets/js/admin-app.js')).text();
+    const js = await (await request.get('/assets/js/admin-agenda.js')).text();
     expect(js).toContain('rescheduleVisitToDay');
     expect(js).toContain('dataTransfer');
   });

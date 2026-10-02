@@ -5,7 +5,7 @@ const { test, expect } = require('@playwright/test');
 test.describe('CRM — audit post-build (interconexiones)', () => {
   test('tipos de datos: visitas usan notes (no note); soft delete via deleted_at', async ({ request }) => {
     const js = await (await request.get('/assets/js/admin-crm.js')).text();
-    expect(js).toContain("notes: txt || null");     // columna real de visits
+    expect(js).toContain('notes: desc || null');   // columna real de visits (insert de visita del CRM)
     expect(js).not.toContain("note: txt || null"); // bug de property inexistente
     expect(js).toContain("deleted_at");            // soft delete obligatorio
     expect(js).toContain("'is', 'null'");          // sintaxis PostgREST correcta

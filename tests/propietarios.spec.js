@@ -13,8 +13,8 @@ test.describe('Propietarios — módulo (rondas 1-5)', () => {
     expect(html).toContain('data-tab="tab-propietarios"');
   });
 
-  test('admin-app.js: soft-delete, restore, dedupe y validación CUIT', async ({ request }) => {
-    const js = await (await request.get('/assets/js/admin-app.js')).text();
+  test('admin-propietarios.js: soft-delete, restore, dedupe y validación CUIT', async ({ request }) => {
+    const js = await (await request.get('/assets/js/admin-propietarios.js')).text();
     expect(js).toContain('toggleOwnersTrash');
     expect(js).toContain('restoreOwner');
     expect(js).toContain("ilike('dni_cuit'");
@@ -22,8 +22,8 @@ test.describe('Propietarios — módulo (rondas 1-5)', () => {
     expect(js).toContain('dígito verificador');
   });
 
-  test('admin-app.js: dedupe de tareas de propietario y tags de documentos', async ({ request }) => {
-    const js = await (await request.get('/assets/js/admin-app.js')).text();
+  test('admin-propietarios.js: dedupe de tareas de propietario y tags de documentos', async ({ request }) => {
+    const js = await (await request.get('/assets/js/admin-propietarios.js')).text();
     expect(js).toContain('existingTask');
     expect(js).toContain('autoKey');
   });
