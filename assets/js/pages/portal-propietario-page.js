@@ -144,6 +144,23 @@
 
     /* ── Load ── */
     loadPortal();
+    /* Datos extra (próximas visitas, historial, sparklines) en paralelo; no bloquea el render */
+    var EXTRA_DATA = null;
+    supabase.rpc('portal_get_extra_data', { p_token: token })
+      .then(function(r){ if (r && r.data) EXTRA_DATA = r.data; document.dispatchEvent(new Event('bh:portalExtra')); })
+      .catch(function(){ /* opcional */ });
+
+    /* Cuando hay https en la URL, el token queda expuesto en el historial/pestañas.
+       Tras validar correctamente, reemplazamos la URL por una versión limpia
+       (el token ya está en sessionStorage). */
+    function cleanTokenFromUrl() {
+      try {
+        if (params.get('token') && history && history.replaceState) {
+          var clean = location.pathname;
+          history.replaceState(null, document.title, clean);
+        }
+      } catch (_) {}
+    }
 
     async function loadPortal() {
       var attempts = 0;
@@ -157,6 +174,8 @@
           }
           var data = result.data;
           if (!data) { showError('Link inválido o expirado', 'El enlace que utilizaste ya no es válido o expiró. Pedí un nuevo link a tu asesor.'); return; }
+          sessionSave(token);
+          cleanTokenFromUrl();
           renderAll(data);
           return;
         } catch(e) {
@@ -179,7 +198,9 @@
     }
 
     /* ── RENDER ALL ── */
+    var CURRENT_DATA = null;
     function renderAll(d) {
+      CURRENT_DATA = d;
       var owner = d.owner || {};
       var props = d.properties || [];
 
@@ -199,6 +220,12 @@
       try { renderInicio(d, owner, props); } catch (e) { console.error('[portal] inicio:', e); }
       try { renderPropiedades(d, props); } catch (e) { console.error('[portal] propiedades:', e); }
       try { renderExclusividad(d, owner); } catch (e) { console.error('[portal] exclusividad:', e); }
+      try { renderVisitasExtras(d, owner); } catch (e) { console.error('[portal] visitas extras:', e); }
+      try { renderOfflineBanner(); } catch (e) {}
+      try { renderSessionChip(); } catch (e) {}
+      try { renderRefreshButton(); } catch (e) {}
+      try { setupPrintHeader(d); } catch (e) {}
+      try { showTourIfFirst(); } catch (e) {}
       setupTabs();
       showContent();
 
@@ -249,7 +276,7 @@
         }
       }
 
-      /* Cerrar sesión: limpia el token guardado */
+      /* Cerrar sesión: revoca el token y limpia la sesión local */
       var logoutEl = document.getElementById('userBadge');
       if (logoutEl && !document.getElementById('portalLogoutBtn')) {
         var lo = document.createElement('button');
@@ -257,11 +284,13 @@
         lo.className = 'portal-logout-btn';
         lo.type = 'button';
         lo.setAttribute('aria-label', 'Cerrar sesión');
-        lo.title = 'Cerrar sesión';
+        lo.title = 'Cerrar sesión y pedir nuevo link al asesor';
         lo.innerHTML = '<i class="fas fa-right-from-bracket"></i>';
         lo.addEventListener('click', function () {
+          if (!confirm('¿Cerrar sesión? Vas a tener que pedirle un nuevo link a tu asesor si querés volver a entrar.')) return;
           try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {}
           try { sessionStorage.removeItem(PREFS_KEY); } catch (_) {}
+          try { supabase.rpc('portal_revoke_token', { p_token: token }).catch(function(){}); } catch(_) {}
           location.href = location.pathname;
         });
         logoutEl.appendChild(lo);
@@ -291,11 +320,372 @@
       t.id = 'portalToast';
       t.className = 'portal-toast ' + (kind || 'info');
       t.setAttribute('role', 'status');
+      t.setAttribute('aria-live', 'polite');
       t.innerHTML = '<i class="fas ' + (kind === 'error' ? 'fa-exclamation-circle' : 'fa-check-circle') + '"></i> ' + esc(msg);
       document.body.appendChild(t);
       requestAnimationFrame(function(){ t.classList.add('show'); });
       setTimeout(function () { t.classList.remove('show'); setTimeout(function(){ t.remove(); }, 300); }, 2200);
     }
+
+    /* ── OFFLINE / REFRESH / SESSION / TOUR / PRINT ── */
+    function renderOfflineBanner() {
+      var b = $('offlineBanner');
+      if (!b) return;
+      function update() { b.style.display = navigator.onLine ? 'none' : 'block'; }
+      window.addEventListener('online', update);
+      window.addEventListener('offline', update);
+      update();
+    }
+
+    function renderSessionChip() {
+      if (document.getElementById('sessionChip')) return;
+      var saved = null;
+      try { var raw = sessionStorage.getItem(SESSION_KEY); if (raw) saved = JSON.parse(raw); } catch(_) {}
+      if (!saved || !saved.exp) return;
+      var mins = Math.max(0, Math.round((saved.exp - Date.now()) / 60000));
+      var hrs = Math.floor(mins / 60);
+      var rem = mins % 60;
+      var txt = hrs > 0 ? hrs + 'h ' + rem + 'm' : rem + ' min';
+      var chip = document.createElement('div');
+      chip.id = 'sessionChip';
+      chip.className = 'session-chip';
+      chip.title = 'Tu sesión permanece activa por privacidad. Vence en ' + txt + '.';
+      chip.innerHTML = '<i class="fas fa-shield-alt"></i> Sesión: ' + esc(txt);
+      document.body.appendChild(chip);
+    }
+
+    function renderRefreshButton() {
+      if (document.getElementById('headerRefreshBtn')) return;
+      var badge = document.getElementById('userBadge');
+      if (!badge) return;
+      var btn = document.createElement('button');
+      btn.id = 'headerRefreshBtn';
+      btn.className = 'refresh-btn-header';
+      btn.type = 'button';
+      btn.style.display = 'flex';
+      btn.title = 'Actualizar datos';
+      btn.setAttribute('aria-label', 'Actualizar datos del portal');
+      btn.innerHTML = '<i class="fas fa-sync-alt"></i>';
+      btn.addEventListener('click', function () {
+        btn.classList.add('spinning');
+        setTimeout(function(){ btn.classList.remove('spinning'); }, 1000);
+        loadPortal().then(function(){ portalToast('Datos actualizados'); });
+      });
+      badge.insertBefore(btn, badge.firstChild.nextSibling);
+    }
+
+    function setupPrintHeader(d) {
+      var old = document.querySelector('.print-header');
+      if (old) old.remove();
+      var hdr = document.createElement('div');
+      hdr.className = 'print-header';
+      hdr.style.display = 'none';
+      hdr.innerHTML =
+        '<img src="assets/images/pwa-512x512.png" alt="BIENENHAUS">' +
+        '<h2>Portal del Propietario</h2>' +
+        '<p>Reporte para ' + esc(d.owner && d.owner.full_name || 'Propietario') + ' · ' + fmtDateTime(new Date()) + '</p>' +
+        '<p style="color:#999; font-size:10px; margin-top:6px;">Documento confidencial. No compartir públicamente.</p>';
+      var main = document.querySelector('.portal-main');
+      if (main) main.insertBefore(hdr, main.firstChild);
+      /* Solo visible en print (ver @media print). */
+      var style = document.createElement('style');
+      style.textContent = '@media print { .print-header { display:block !important; } }';
+      document.head.appendChild(style);
+    }
+
+    function showTourIfFirst() {
+      try {
+        var k = 'bh_portal_tour_done';
+        if (sessionStorage.getItem(k)) return;
+        sessionStorage.setItem(k, '1');
+        var steps = [
+          { icon:'fa-home', t:'Bienvenido a tu portal', d:'Vas a ver el estado de tus propiedades, consultas y visitas en tiempo real. Todo actualizado desde tu CRM.' },
+          { icon:'fa-building', t:'Mis Propiedades', d:'Cada propiedad muestra su estado, estadísticas de tráfico y próximas visitas. Tocá cada card para ver el detalle completo, incluyendo calidad de publicación y precio por m².' },
+          { icon:'fa-handshake', t:'Exclusividad', d:'Si estás en gestión exclusiva ves el contrato, progreso, resultados y cuenta regresiva. Podés renovarla cuando esté por vencer.' }
+        ];
+        var idx = 0;
+        var overlay = document.createElement('div');
+        overlay.className = 'tour-overlay';
+        function renderStep() {
+          var s = steps[idx];
+          overlay.innerHTML =
+            '<div class="tour-card">' +
+              '<div class="tour-step">Paso ' + (idx+1) + ' de ' + steps.length + '</div>' +
+              '<i class="fas ' + s.icon + '" style="font-size:28px; color:var(--gold); margin-bottom:12px;"></i>' +
+              '<h3>' + esc(s.t) + '</h3>' +
+              '<p>' + esc(s.d) + '</p>' +
+              '<div class="tour-btns">' +
+                '<button type="button" class="tour-skip">Saltar</button>' +
+                '<button type="button" class="tour-next">' + (idx === steps.length - 1 ? 'Entendido' : 'Siguiente') + '</button>' +
+              '</div>' +
+            '</div>';
+        }
+        renderStep();
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', function (e) {
+          if (e.target.classList.contains('tour-skip') || e.target === overlay) overlay.remove();
+          if (e.target.classList.contains('tour-next')) {
+            idx++;
+            if (idx >= steps.length) overlay.remove(); else renderStep();
+          }
+        });
+      } catch(_) {}
+    }
+
+    /* Countdown en vivo para la próxima visita (se re-renderiza cada minuto) */
+    var visitCountdownInterval = null;
+    function renderVisitCountdown(targetIso) {
+      if (visitCountdownInterval) clearInterval(visitCountdownInterval);
+      var slot = $('nextVisitSlot');
+      if (!slot || !targetIso) return;
+      function tick() {
+        var el = document.querySelector('.next-visit .countdown-live');
+        if (!el) { clearInterval(visitCountdownInterval); return; }
+        var diff = new Date(targetIso).getTime() - Date.now();
+        if (diff <= 0) { el.textContent = '¡Es ahora!'; return; }
+        var d = Math.floor(diff / 86400000);
+        var h = Math.floor((diff % 86400000) / 3600000);
+        var m = Math.floor((diff % 3600000) / 60000);
+        el.textContent = 'Faltan ' + (d > 0 ? d + 'd ' : '') + h + 'h ' + m + 'm';
+      }
+      visitCountdownInterval = setInterval(tick, 60000);
+      tick();
+    }
+
+    /* Descarga .ics para la próxima visita */
+    function downloadICS(visit) {
+      if (!visit || !visit.visit_date) return;
+      var d = new Date(visit.visit_date);
+      var pad = function(n){ return String(n).padStart(2,'0'); };
+      var icsStamp = d.getUTCFullYear() + pad(d.getUTCMonth()+1) + pad(d.getUTCDate()) + 'T' + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + '00Z';
+      var icsEnd = new Date(d.getTime() + 60*60000);
+      var icsStampEnd = icsEnd.getUTCFullYear() + pad(icsEnd.getUTCMonth()+1) + pad(icsEnd.getUTCDate()) + 'T' + pad(icsEnd.getUTCHours()) + pad(icsEnd.getUTCMinutes()) + '00Z';
+      var txt = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//BIENENHAUS//ES\r\n' +
+        'BEGIN:VEVENT\r\n' +
+        'UID:' + Date.now() + '@bienenhaus\r\n' +
+        'DTSTAMP:' + icsStamp + '\r\n' +
+        'DTSTART:' + icsStamp + '\r\n' +
+        'DTEND:' + icsStampEnd + '\r\n' +
+        'SUMMARY:Visita ' + (visit.property_title || '') + ' — ' + (visit.property_code || '') + '\r\n' +
+        'DESCRIPTION:Visita programada en tu propiedad ' + (visit.property_code || '') + ' con ' + (visit.client_name || 'cliente') + '\r\n' +
+        'LOCATION:' + (visit.property_title || '') + ', ' + (visit.property_code || '') + '\r\n' +
+        'END:VEVENT\r\nEND:VCALENDAR';
+      var blob = new Blob([txt], { type: 'text/calendar;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'visita-' + (visit.property_code || 'bienenshaus') + '.ics';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function(){ a.remove(); URL.revokeObjectURL(a.href); }, 100);
+      portalToast('Evento descargado — abrilo para agendarlo');
+    }
+
+    /* Compará dos propiedades lado a lado */
+    var compareSelection = [];
+    function toggleCompare(propId) {
+      var i = compareSelection.indexOf(propId);
+      if (i !== -1) compareSelection.splice(i, 1);
+      else if (compareSelection.length < 2) compareSelection.push(propId);
+      else {
+        compareSelection[0] = compareSelection[1];
+        compareSelection[1] = propId;
+      }
+      updateCompareBar();
+    }
+    function updateCompareBar() {
+      var bar = document.getElementById('compareBar');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'compareBar';
+        bar.className = 'compare-bar';
+        document.body.appendChild(bar);
+      }
+      var barHtml = '<span style="font-size:13px; color:var(--text-dim);">' + compareSelection.length + '/2 seleccionadas</span>';
+      if (compareSelection.length === 2) {
+        barHtml += '<button type="button" class="cmp-go"><i class="fas fa-columns"></i> Comparar</button>' +
+          '<button type="button" class="cmp-clear">Limpiar</button>';
+      } else if (compareSelection.length === 1) {
+        barHtml += '<button type="button" class="cmp-clear">Cancelar</button>';
+      }
+      bar.innerHTML = barHtml;
+      bar.classList.toggle('show', compareSelection.length > 0);
+      var goBtn = bar.querySelector('.cmp-go');
+      if (goBtn) goBtn.addEventListener('click', showCompareModal);
+      var clrBtn = bar.querySelector('.cmp-clear');
+      if (clrBtn) clrBtn.addEventListener('click', function () {
+        compareSelection = [];
+        updateCompareBar();
+        document.querySelectorAll('.cmp-check').forEach(function(c){ c.classList.remove('checked'); c.innerHTML = '<i class="fas fa-columns"></i>'; });
+      });
+    }
+    function showCompareModal() {
+      if (!CurrentDataProps || compareSelection.length !== 2) return;
+      var a = CurrentDataProps.filter(function(p){ return p.id === compareSelection[0]; })[0];
+      var b = CurrentDataProps.filter(function(p){ return p.id === compareSelection[1]; })[0];
+      if (!a || !b) return;
+      function cell(v) { return v == null || v === '' ? '<span style="color:var(--text-muted);">—</span>' : esc(String(v)); }
+      function money(v) { return v ? fmtUSD(v) : '—'; }
+      var rows = [
+        { label:'Foto', a: a.image_urls && a.image_urls[0] ? '<img src="' + esc(safeImageUrl(a.image_urls[0])) + '" alt="">' : '—', b: b.image_urls && b.image_urls[0] ? '<img src="' + esc(safeImageUrl(b.image_urls[0])) + '" alt="">' : '—' },
+        { label:'Título', a: a.title || '-', b: b.title || '-' },
+        { label:'Código', a: a.property_code || '-', b: b.property_code || '-' },
+        { label:'Zona', a: a.zone || '-', b: b.zone || '-' },
+        { label:'Precio', a: money(a.price_usd), b: money(b.price_usd) },
+        { label:'Ambientes', a: a.rooms, b: b.rooms },
+        { label:'Dormitorios', a: a.bedrooms, b: b.bedrooms },
+        { label:'Baños', a: a.bathrooms, b: b.bathrooms },
+        { label:'Sup. total', a: a.area_total ? fmtNum(a.area_total) + ' m²' : null, b: b.area_total ? fmtNum(b.area_total) + ' m²' : null },
+        { label:'Sup. cubierta', a: a.area_covered ? fmtNum(a.area_covered) + ' m²' : null, b: b.area_covered ? fmtNum(b.area_covered) + ' m²' : null },
+        { label:'Consultas', a: fmtNum(a.leads_total || 0), b: fmtNum(b.leads_total || 0) },
+        { label:'Visitas', a: fmtNum(a.visits_total || 0), b: fmtNum(b.visits_total || 0) },
+        { label:'Días en mercado', a: a.created_at ? Math.floor((Date.now() - new Date(a.created_at).getTime()) / 86400000) + 'd' : null, b: b.created_at ? Math.floor((Date.now() - new Date(b.created_at).getTime()) / 86400000) + 'd' : null }
+      ];
+      var modal = document.createElement('div');
+      modal.className = 'compare-modal';
+      modal.innerHTML =
+        '<div class="compare-modal-inner">' +
+          '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">' +
+            '<h3 style="font-family:\'Playfair Display\',serif; margin:0;">Comparar propiedades</h3>' +
+            '<button type="button" class="compare-close" style="background:none; border:none; color:var(--text-muted); font-size:22px; cursor:pointer;">&times;</button>' +
+          '</div>' +
+          '<table class="compare-table"><thead><tr><th></th><th>' + esc(a.property_code || a.title || 'A') + '</th><th>' + esc(b.property_code || b.title || 'B') + '</th></tr></thead><tbody>' +
+          rows.map(function(r){ return '<tr><th scope="row">' + esc(r.label) + '</th><td>' + cell(r.a) + '</td><td>' + cell(r.b) + '</td></tr>'; }).join('') +
+          '</tbody></table>' +
+        '</div>';
+      document.body.appendChild(modal);
+      modal.querySelector('.compare-close').addEventListener('click', function(){ modal.remove(); });
+      modal.addEventListener('click', function(e){ if (e.target === modal) modal.remove(); });
+      document.addEventListener('keydown', function esc(e){ if (e.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', esc); } });
+      compareSelection = [];
+      updateCompareBar();
+      document.querySelectorAll('.cmp-check').forEach(function(c){ c.classList.remove('checked'); c.innerHTML = '<i class="fas fa-columns"></i>'; });
+    }
+    var CurrentDataProps = null;
+
+    function renderVisitasExtras(d, owner) {
+      if (!EXTRA_DATA || !owner) return;
+      var ex = EXTRA_DATA;
+      var list = [];
+
+      /* Próximas (más de una) */
+      if (ex.upcoming_visits && ex.upcoming_visits.length > 1) {
+        list.push('<div class="section-title" style="margin-top:20px;"><i class="fas fa-calendar-plus"></i> Agenda de visitas (' + ex.upcoming_visits.length + ')</div>');
+        list.push(ex.upcoming_visits.map(function(v) {
+          var icsBtn = '<button type="button" class="v-ics-btn" data-visit-ics="' + esc(v.visit_date) + '|' + esc(v.property_code || '') + '|' + esc(v.property_title || '') + '|' + esc(v.client_name || '') + '" style="background:none; border:1px solid var(--border-accent); color:var(--gold); border-radius:8px; padding:4px 10px; font-size:11px; cursor:pointer; font-family:inherit;"><i class="fas fa-calendar-alt"></i> Agendar</button>';
+          return '<div class="visit-card-next">' +
+            '<div class="v-icon"><i class="fas fa-calendar-check"></i></div>' +
+            '<div class="v-body">' +
+              '<div style="font-weight:600;">' + esc(fmtDateShort(v.visit_date)) + ' · ' + esc(v.client_name || 'Cliente') + '</div>' +
+              '<div style="font-size:12px; color:var(--text-muted);">' + esc(v.property_title || '') + ' (' + esc(v.property_code || '') + ')</div>' +
+              '<div class="v-status ' + esc(v.status) + '">' + esc(v.status === 'confirmada' ? 'Confirmada' : 'Pendiente') + '</div>' +
+            '</div>' + icsBtn +
+          '</div>';
+        }).join(''));
+      }
+
+      /* Historial */
+      if (ex.visit_history && ex.visit_history.length) {
+        list.push('<div class="section-title" style="margin-top:20px;"><i class="fas fa-history"></i> Historial de visitas</div>');
+        list.push(ex.visit_history.map(function(v) {
+          var icon = v.status === 'completada' ? 'fa-check-circle' : 'fa-times-circle';
+          return '<div class="visit-card-past">' +
+            '<div class="v-icon"><i class="fas ' + icon + '"></i></div>' +
+            '<div class="v-body">' +
+              '<div style="font-weight:600;">' + esc(fmtDate(v.visit_date)) + ' · ' + esc(v.client_name || 'Cliente') + '</div>' +
+              '<div style="font-size:12px; color:var(--text-muted);">' + esc(v.property_title || '') + ' (' + esc(v.property_code || '') + ')</div>' +
+              (v.notes ? '<div style="font-size:12px; margin-top:4px; font-style:italic; color:var(--text-dim);">"' + esc(v.notes) + '"</div>' : '') +
+              '<div class="v-status ' + esc(v.status) + '">' + esc(v.status === 'completada' ? 'Completada' : 'Cancelada') + (v.duration_minutes ? ' · ' + v.duration_minutes + ' min' : '') + '</div>' +
+            '</div>' +
+          '</div>';
+        }).join(''));
+      }
+
+      /* Sparklines semanales */
+      var wl = (ex.weekly_leads || []);
+      var wv = (ex.weekly_visits || []);
+      if (wl.length || wv.length) {
+        var maxL = Math.max.apply(null, wl.map(function(w){ return w.count; }).concat([1]));
+        var maxV = Math.max.apply(null, wv.map(function(w){ return w.count; }).concat([1]));
+        var bars = wl.map(function(w, i) {
+          var h = maxL > 0 ? Math.round((w.count / maxL) * 100) : 0;
+          return '<div class="w-bar' + (i === wl.length - 1 ? ' cur' : '') + '" style="height:' + h + '%" title="' + fmtNum(w.count) + ' consultas semana del ' + fmtDate(w.week) + '"></div>';
+        }).join('');
+        list.push('<div class="section-title" style="margin-top:20px;"><i class="fas fa-chart-column"></i> Evolución semanal</div>' +
+          '<div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px 16px;">' +
+            '<div style="font-size:11px; color:var(--text-muted); margin-bottom:6px;">CONSULTAS POR SEMANA</div>' +
+            '<div class="spark-weekly">' + bars + '</div>' +
+            '<div style="font-size:10px; color:var(--text-muted); margin-top:6px;">Últimas ' + wl.length + ' semanas</div>' +
+          '</div>');
+      }
+
+      var html = list.join('');
+      if (html) {
+        var anchor = $('nextVisitSlot');
+        if (anchor) {
+          var div = document.createElement('div');
+          div.innerHTML = html;
+          anchor.appendChild(div);
+          /* Bind botón ICS */
+          document.querySelectorAll('.v-ics-btn').forEach(function(b){
+            b.addEventListener('click', function() {
+              var parts = b.getAttribute('data-visit-ics').split('|');
+              downloadICS({ visit_date: parts[0], property_code: parts[1], property_title: parts[2], client_name: parts[3] });
+            });
+          });
+        }
+      }
+    }
+    document.addEventListener('bh:portalExtra', function () {
+      if (CURRENT_DATA) renderVisitasExtras(CURRENT_DATA, CURRENT_DATA.owner);
+    });
+
+    /* Pull-to-refresh en mobile */
+    (function setupPullToRefresh() {
+      var startY = 0;
+      var indicator = document.createElement('div');
+      indicator.className = 'pull-to-refresh';
+      indicator.innerHTML = '<i class="fas fa-sync-alt"></i>';
+      document.body.appendChild(indicator);
+      document.addEventListener('touchstart', function (e) {
+        if (window.scrollY === 0 && e.touches) startY = e.touches[0].clientY;
+      }, { passive: true });
+      document.addEventListener('touchmove', function (e) {
+        if (window.scrollY !== 0 || !e.touches) return;
+        var dy = e.touches[0].clientY - startY;
+        if (dy > 90) {
+          indicator.classList.add('visible', 'spinning');
+        }
+      }, { passive: true });
+      document.addEventListener('touchend', function (e) {
+        if (indicator.classList.contains('visible')) {
+          indicator.classList.remove('visible');
+          setTimeout(function(){ indicator.classList.remove('spinning'); }, 600);
+          loadPortal().then(function(){ portalToast('Datos actualizados'); });
+        }
+      }, { passive: true });
+      /* Auto-refresh silencioso cada 5 minutos */
+      setInterval(function () {
+        if (!document.hidden && navigator.onLine && CurrentDataProps) {
+          loadPortal();
+        }
+      }, 5 * 60 * 1000);
+    })();
+
+    /* Header compacto al scrollear */
+    (function setupCompactHeader() {
+      var hdr = document.querySelector('.portal-header');
+      if (!hdr) return;
+      var tick = false;
+      window.addEventListener('scroll', function () {
+        if (!tick) {
+          tick = true;
+          requestAnimationFrame(function () {
+            hdr.classList.toggle('compact', window.scrollY > 60);
+            tick = false;
+          });
+        }
+      }, { passive: true });
+    })();
 
     /* ── TABS ── */
     function setupTabs() {
@@ -436,15 +826,27 @@
         $('nextVisitSlot').innerHTML =
           '<div class="next-visit">' +
             '<div class="next-visit-icon"><i class="fas fa-calendar-check"></i></div>' +
-            '<div class="next-visit-info">' +
+            '<div class="next-visit-info" style="flex:1;">' +
               '<h3>Próxima visita programada</h3>' +
               '<p>' +
                 '<span class="date">' + fmtDateShort(nv.visit_date) + '</span>' +
                 (nvWho ? ' &middot; ' + nvWho : '') +
                 (nvProp ? ' ' + nvProp : '') +
               '</p>' +
+              '<span class="countdown-live"></span>' +
+            '</div>' +
+            '<div style="display:flex; flex-direction:column; gap:6px;">' +
+              '<button type="button" class="v-ics-btn" data-visit-ics="' + esc(nv.visit_date) + '|' + esc(nv.property_code || '') + '|' + esc(nv.property_title || '') + '|' + esc(nv.client_name || '') + '" style="background:none; border:1px solid var(--border-accent); color:var(--gold); border-radius:8px; padding:6px 12px; font-size:11px; cursor:pointer; font-family:inherit; white-space:nowrap;"><i class="fas fa-calendar-alt"></i> Agendar</button>' +
             '</div>' +
           '</div>';
+        /* Countdown en vivo cada minuto */
+        renderVisitCountdown(nv.visit_date);
+        /* Bind ICS */
+        var icsSelf = document.querySelector('.next-visit .v-ics-btn');
+        if (icsSelf) icsSelf.addEventListener('click', function() {
+          var parts = icsSelf.getAttribute('data-visit-ics').split('|');
+          downloadICS({ visit_date: parts[0], property_code: parts[1], property_title: parts[2], client_name: parts[3] });
+        });
       } else {
         var waNext = (d.broker && d.broker.phone && portalWaNumber(d.broker.phone)) ? 'https://wa.me/' + portalWaNumber(d.broker.phone) + '?text=' + encodeURIComponent('Hola ' + (d.broker.full_name || '') + ', ¿cuándo agendamos la próxima visita?') : '';
         $('nextVisitSlot').innerHTML =
@@ -581,18 +983,98 @@
       /* ── F1: Novedades recientes ── */
       var act = d.activity || [];
       var todayIso = new Date().toISOString().slice(0, 10);
-      if (act.length === 0) {
-        var waEmptyAct = waBroker ? '<a href="' + waBroker + '" target="_blank" rel="noopener" class="inicio-empty-cta">Consultar al asesor</a>' : '';
-        $('activityList').innerHTML = '<li class="activity-item activity-item--empty"><i class="fas fa-clock"></i><span>Sin novedades recientes.</span>' + waEmptyAct + '</li>';
-      } else {
-        $('activityList').innerHTML = act.map(function(a) {
-          var isToday = a.at && a.at.slice(0, 10) === todayIso;
-          return '<li class="activity-item">' +
-            '<div class="activity-dot ' + esc(a.type) + (isToday ? ' pulse' : '') + '"></div>' +
-            '<span class="activity-text">' + esc(a.text) + '</span>' +
-            '<span class="activity-time">' + ago(a.at) + '</span>' +
-          '</li>';
-        }).join('');
+      /* Filtro por tipo + ver todas */
+      var actFilterKey = 'all';
+      var actShowAll = false;
+      var actList = act;
+      var ACT_FILTERS = [
+        { k:'all', l:'Todas', i:'fa-list' },
+        { k:'consulta', l:'Consultas', i:'fa-envelope' },
+        { k:'visita_agendada', l:'Agendadas', i:'fa-calendar-plus' },
+        { k:'visita_completada', l:'Completadas', i:'fa-check-circle' },
+        { k:'publicacion', l:'Publicaciones', i:'fa-bullhorn' }
+      ];
+      var actFilterHtml = '';
+      if (act.length > 0) {
+        actFilterHtml = '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;" role="group" aria-label="Filtrar novedades">' +
+          ACT_FILTERS.map(function(f){
+            return '<button type="button" class="act-filter-pill' + (f.k === actFilterKey ? ' active' : '') + '" data-act-filter="' + f.k + '" aria-pressed="' + (f.k === actFilterKey) + '"><i class="fas ' + f.i + '"></i> ' + esc(f.l) + '</button>';
+          }).join('') +
+        '</div>';
+      }
+      function renderActivityList() {
+        actList = actFilterKey === 'all' ? act : act.filter(function(a){ return a.type === actFilterKey; });
+        var visible = actShowAll ? actList : actList.slice(0, 5);
+        var wasNew = prefsGet().read_act || [];
+        var html = '';
+        if (actList.length === 0) {
+          html = '<li class="activity-item activity-item--empty"><i class="fas fa-clock"></i><span>Sin novedades en este filtro.</span></li>';
+        } else {
+          html = visible.map(function(a) {
+            var isToday = a.at && a.at.slice(0, 10) === todayIso;
+            var isUnread = wasNew.indexOf(a.type + '|' + a.at) === -1;
+            return '<li class="activity-item' + (isToday ? ' is-new' : '') + (isUnread ? ' is-new' : '') + '" data-act-key="' + esc(a.type + '|' + a.at) + '">' +
+              '<div class="activity-dot ' + esc(a.type) + (isToday ? ' pulse' : '') + '"></div>' +
+              '<span class="activity-text">' + esc(a.text) + '</span>' +
+              '<span class="activity-time">' + ago(a.at) + '</span>' +
+            '</li>';
+          }).join('');
+        }
+        /* Marcar como leídas al ver */
+        if (actList.length > 0) {
+          setTimeout(function(){
+            var readNow = actList.map(function(a){ return a.type + '|' + a.at; });
+            prefsSet({ read_act: wasNew.concat(readNow.filter(function(k){ return wasNew.indexOf(k) === -1; })) });
+          }, 3000);
+        }
+        return html;
+      }
+      $('activityList').innerHTML = actFilterHtml + '<ul class="activity-list" style="list-style:none; margin:0; padding:0;" role="list" aria-label="Novedades">' + renderActivityList() + '</ul>' +
+        (act.length > 5 ? '<button type="button" class="act-show-all-btn" data-act-show="' + (actShowAll ? '1' : '0') + '">' + (actShowAll ? 'Mostrar menos' : 'Ver las ' + act.length + ' novedades') + '</button>' : '');
+      /* Binds del filtro */
+      document.querySelectorAll('[data-act-filter]').forEach(function(b){
+        b.addEventListener('click', function(){
+          actFilterKey = b.dataset.actFilter;
+          document.querySelectorAll('[data-act-filter]').forEach(function(x){ x.classList.remove('active'); x.setAttribute('aria-pressed', 'false'); });
+          b.classList.add('active'); b.setAttribute('aria-pressed', 'true');
+          document.querySelector('#activityList ul').innerHTML = renderActivityList();
+        });
+      });
+      var showAllBtn = document.querySelector('.act-show-all-btn');
+      if (showAllBtn) showAllBtn.addEventListener('click', function(){
+        actShowAll = !actShowAll;
+        showAllBtn.textContent = actShowAll ? 'Mostrar menos' : 'Ver las ' + act.length + ' novedades';
+        document.querySelector('#activityList ul').innerHTML = renderActivityList();
+        showAllBtn.dataset.actShow = actShowAll ? '1' : '0';
+      });
+
+      /* Digest semanal si hay datos extra */
+      var digestHtml = '';
+      try {
+        var weekly = EXTRA_DATA && EXTRA_DATA.weekly_leads || [];
+        if (weekly.length) {
+          var weekNow = weekly[weekly.length - 1];
+          var weekPrev = weekly.length > 1 ? weekly[weekly.length - 2] : null;
+          if (weekNow && weekNow.count > 0) {
+            digestHtml = '<div class="digest-banner"><i class="fas fa-chart-line"></i> Esta semana: <strong>' + fmtNum(weekNow.count) + ' consultas</strong>' + (weekPrev ? ' (la anterior tuvo ' + fmtNum(weekPrev.count) + ')' : '') + '.</div>';
+            var wv = EXTRA_DATA.weekly_visits || [];
+            var wvNow = wv[wv.length - 1];
+            if (wvNow && wvNow.count > 0) digestHtml = digestHtml.replace('</div>', ' con ' + fmtNum(wvNow.count) + ' visitas.</div>');
+          }
+        }
+      } catch(_){}
+      var welcomeEl = $('welcomeSlot');
+      if (welcomeEl && digestHtml) {
+        var wEl = document.createElement('div');
+        wEl.innerHTML = digestHtml;
+        welcomeEl.appendChild(wEl.firstChild);
+      }
+
+      /* Glow si hay actividad de consulta hoy */
+      var hasTodayConsulta = act.some(function(a){ return a.type === 'consulta' && a.at && a.at.slice(0,10) === todayIso; });
+      if (hasTodayConsulta) {
+        var propCards = document.querySelectorAll('.prop-card');
+        propCards.forEach(function(c){ c.classList.add('glow-new'); });
       }
 
       /* Bind de links que navegan a tabs */
@@ -679,6 +1161,9 @@
     function renderPropiedades(d, props) {
       var owner = d.owner || {};
       var usdRate = d.usd_rate || 0;
+      CurrentDataProps = props;
+      compareSelection = [];
+      updateCompareBar();
 
       if (props.length === 0) {
         var waEmpty = ownerContactWa(owner);
@@ -956,12 +1441,39 @@
           qualBadge = '<div class="prop-quality-warn"><i class="fas fa-triangle-exclamation"></i> La publicación está incompleta. Mejorala con más fotos, video o descripción para recibir más consultas.</div>';
         }
 
+        /* Enlaces rápidos: Mercado Libre + sitio público */
+        var mlLink = p.ml_item_id
+          ? '<a class="prop-link-btn ml-repo" href="https://articulo.mercadolibre.com.ar/' + esc(p.ml_item_id) + '" target="_blank" rel="noopener" title="Ver publicación en Mercado Libre"><i class="fas fa-external-link-alt"></i> ML</a>'
+          : '';
+        var pubLink = p.property_code && p.is_published
+          ? '<a class="prop-link-btn" href="/?q=' + encodeURIComponent(p.property_code) + '" target="_blank" rel="noopener" title="Ver en sitio público"><i class="fas fa-globe"></i> Sitio</a>'
+          : '';
+        var linksHtml = (mlLink || pubLink) ? '<div class="prop-links-row">' + mlLink + pubLink + '</div>' : '';
+
+        /* Alquiler anual estimado si es alquiler */
+        var rentHtml = '';
+        if (p.status === 'alquiler' && p.price_usd && p.price_usd > 0) {
+          var annual = Math.round(p.price_usd * 12);
+          rentHtml = '<div class="lat-annual"><i class="fas fa-calendar-alt"></i> Alquiler anual estimado: ' + fmtUSD(annual) + (usdRate > 0 ? ' ≈ ' + fmtARS(annual * usdRate) : '') + '</div>';
+        }
+
+        /* Sugerencia de mejora si baja calidad */
+        var qualTip = '';
+        if (comp < 60) {
+          var parts = [];
+          if (!(p.image_urls && p.image_urls.length >= 6)) parts.push('agregá fotos (mínimo 6)');
+          if (p.description && String(p.description).length < 100) parts.push('completá la descripción');
+          if (!p.video_url) parts.push('agregá un video');
+          qualTip = '<div class="prop-quality-warn" style="margin-top:10px;"><i class="fas fa-triangle-exclamation"></i> Tu publicación puede recibir más consultas: ' + esc(parts.join(', ')) + '.</div>';
+        }
+
         return '<div class="prop-card' + (listView === 'list' ? ' prop-card--list' : '') + '" data-id="' + esc(p.id) + '">' +
           '<div class="prop-card-header">' +
             (img
               ? '<div class="prop-card-thumb-wrap"><img class="prop-card-thumb" src="' + esc(safeImageUrl(img)) + '" alt="' + esc(p.title || '') + '" decoding="async">' + (imgCount > 1 ? '<span class="prop-thumb-count">' + imgCount + ' fotos</span>' : '') + '</div>'
               : '<div class="prop-card-thumb prop-card-thumb--placeholder"><i class="fas fa-home"></i></div>') +
             '<div class="prop-card-body">' +
+              '<button type="button" class="cmp-check' + (compareSelection.indexOf(p.id) !== -1 ? ' checked' : '') + '" data-cmp="' + esc(p.id) + '" aria-label="Seleccionar para comparar" title="Seleccionar para comparar"><i class="fas fa-columns"></i></button>' +
               '<button type="button" class="prop-fav-btn' + (isFav(p.id) ? ' is-fav' : '') + '" data-fav="' + esc(p.id) + '" aria-pressed="' + isFav(p.id) + '" aria-label="Marcar favorita" title="' + (isFav(p.id) ? 'Quitar de favoritas' : 'Marcar como favorita') + '"><i class="fas fa-heart"></i></button>' +
               '<div class="prop-card-title">' + esc(p.title || 'Sin título') +
                 (typeLabel && typeLabel !== 'Propiedad' ? '<span class="prop-type-tag">' + esc(typeLabel) + '</span>' : '') +
@@ -981,7 +1493,10 @@
           '</div>' +
           '<div class="prop-card-detail">' +
             featsHtml +
+            (linksHtml || '') +
+            (rentHtml || '') +
             (qualBadge || '') +
+            (qualTip || '') +
             (statsHtml || '') +
             (descHtml || '') +
             (videoHtml || '') +
@@ -1068,6 +1583,15 @@
       }
 
       function bindPropEvents(list) {
+        document.querySelectorAll('.cmp-check').forEach(function(b){
+          if (b.dataset.bound) return;
+          b.dataset.bound = '1';
+          b.addEventListener('click', function(e){
+            e.stopPropagation();
+            toggleCompare(b.getAttribute('data-cmp'));
+            b.classList.toggle('checked', compareSelection.indexOf(b.getAttribute('data-cmp')) !== -1);
+          });
+        });
         document.querySelectorAll('.prop-fav-btn').forEach(function(b){
           if (b.dataset.bound) return;
           b.dataset.bound = '1';
@@ -1138,16 +1662,30 @@
         box.id = 'propLightbox';
         box.className = 'lightbox-overlay';
         var cur = Math.max(0, Math.min(idx || 0, imgs.length - 1));
+        var rotation = 0;
+        var scale = 1;
+        var scaleOrigin = { x: 0, y: 0 };
         box.innerHTML =
           '<div class="lightbox-content">' +
+            (cur === 0 ? '<div class="portada-tag">Portada</div>' : '') +
             '<button class="lightbox-close" aria-label="Cerrar"><i class="fas fa-times"></i></button>' +
             (imgs.length > 1 ? '<button class="lightbox-nav prev" aria-label="Anterior"><i class="fas fa-chevron-left"></i></button><button class="lightbox-nav next" aria-label="Siguiente"><i class="fas fa-chevron-right"></i></button>' : '') +
             '<img class="lightbox-img" src="' + esc(safeImageUrl(imgs[cur])) + '" alt="Foto">' +
             '<div class="lightbox-count">' + (cur + 1) + ' / ' + imgs.length + '</div>' +
+            '<div class="lightbox-extra-actions">' +
+              '<button type="button" class="lb-rotate" title="Rotar 90°" aria-label="Rotar imagen"><i class="fas fa-rotate-right"></i></button>' +
+              '<a class="lb-download" href="' + esc(safeImageUrl(imgs[cur])) + '" download="foto.jpg" target="_blank" rel="noopener" title="Descargar foto" aria-label="Descargar foto"><i class="fas fa-download"></i></a>' +
+              '<button type="button" class="lb-share-photo" title="Compartir foto" aria-label="Compartir foto"><i class="fas fa-share-alt"></i></button>' +
+            '</div>' +
+            '<div class="lightbox-thumbs"></div>' +
           '</div>';
         document.body.appendChild(box);
         box.style.display = 'flex';
-
+        box.setAttribute('role', 'dialog');
+        box.setAttribute('aria-modal', 'true');
+        box.setAttribute('aria-label', 'Galería de fotos');
+        var lightboxImg = box.querySelector('.lightbox-img');
+        var thumbsStrip = box.querySelector('.lightbox-thumbs');
         var preloaded = {};
         function preload(i) {
           var n = (i + imgs.length) % imgs.length;
@@ -1159,20 +1697,84 @@
         preload(cur + 1);
         preload(cur - 1);
 
+        /* Pinch zoom (mobile) */
+        var initialDist = 0;
+        function getDist(t) {
+          if (t.touches.length < 2) return 0;
+          var a = t.touches[0], b = t.touches[1];
+          return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+        }
+        box.addEventListener('touchstart', function (e) {
+          if (e.touches.length === 2) { initialDist = getDist(e); }
+        }, { passive: true });
+        box.addEventListener('touchmove', function (e) {
+          if (e.touches.length === 2 && initialDist > 0) {
+            var d = getDist(e);
+            scale = Math.min(3, Math.max(1, scale * (d / initialDist)));
+            initialDist = d;
+            lightboxImg.style.transform = 'scale(' + scale + ') rotate(' + rotation + 'deg)';
+            lightboxImg.style.transition = 'none';
+          }
+        }, { passive: true });
+        box.addEventListener('touchend', function (e) {
+          if (e.touches.length < 2 && initialDist > 0) {
+            initialDist = 0;
+            lightboxImg.style.transition = 'transform 0.3s';
+          }
+        }, { passive: true });
+
         function show(i) {
           cur = (i + imgs.length) % imgs.length;
-          box.querySelector('.lightbox-img').src = safeImageUrl(imgs[cur]);
+          lightboxImg.src = safeImageUrl(imgs[cur]);
           box.querySelector('.lightbox-count').textContent = (cur + 1) + ' / ' + imgs.length;
+          /* Reset zoom/rotación al cambiar */
+          scale = 1; rotation = 0;
+          lightboxImg.style.transform = '';
+          var pb = box.querySelector('.portada-tag');
+          if (pb) pb.remove();
+          if (cur === 0) {
+            var tag = document.createElement('div');
+            tag.className = 'portada-tag';
+            tag.textContent = 'Portada';
+            box.querySelector('.lightbox-content').insertBefore(tag, box.querySelector('.lightbox-close'));
+          }
+          thumbsStrip.querySelectorAll('img').forEach(function(t, ti){ t.classList.toggle('active', ti === cur); });
           preload(cur + 1);
           preload(cur - 1);
         }
 
+        /* Thumbs strip */
+        thumbsStrip.innerHTML = imgs.map(function(u, i){
+          return '<img src="' + esc(safeImageUrl(u)) + '" alt="Thumb ' + (i+1) + '" class="' + (i === cur ? 'active' : '') + '" loading="lazy">';
+        }).join('');
+        thumbsStrip.querySelectorAll('img').forEach(function(t, ti){
+          t.addEventListener('click', function(){ show(ti); });
+        });
+
+        /* Rotar */
+        box.querySelector('.lb-rotate').addEventListener('click', function() {
+          rotation = (rotation + 90) % 360;
+          lightboxImg.style.transform = 'rotate(' + rotation + 'deg)' + (scale !== 1 ? ' scale(' + scale + ')' : '');
+        });
+
+        /* Compartir foto individual */
+        box.querySelector('.lb-share-photo').addEventListener('click', function() {
+          var url = imgs[cur];
+          if (navigator.share) {
+            navigator.share({ title: 'Foto de BIENENHAUS', text: 'Foto de una propiedad en BIENENHAUS', url: url }).then(function(){}, function(){});
+          } else if (navigator.clipboard) {
+            navigator.clipboard.writeText(url).then(function(){ portalToast('Link de foto copiado'); }, function(){ portalToast('No se pudo copiar', 'error'); });
+          } else {
+            portalToast('Compartí la foto copiando el link', 'info');
+          }
+        });
+
         /* Swipe en mobile */
         var touchX = 0;
-        box.addEventListener('touchstart', function (e) { var t = e.touches && e.touches[0]; if (t) touchX = t.clientX; }, { passive: true });
+        box.addEventListener('touchstart', function (e) { var t = e.touches && e.touches[0]; if (t && t.touches && t.touches.length === 1) touchX = t.clientX; }, { passive: true });
         box.addEventListener('touchend', function (e) {
           var t = e.changedTouches && e.changedTouches[0];
-          if (!t) return;
+          if (!t || scale > 1 || e.touches.length > 0) return;
           var dx = t.clientX - touchX;
           if (Math.abs(dx) > 40 && imgs.length > 1) show(cur + (dx < 0 ? 1 : -1));
         }, { passive: true });
@@ -1435,16 +2037,62 @@
       /* Timeline filtrado al período */
       var timelineHtml = exclTimeline(activity, start, end);
 
+      /* Semáforo de estado */
+      var semColor = st.key === 'activa' ? 'verde' : (st.key === 'por_vencer' ? 'ambar' : 'rojo');
+      var semTxt = st.key === 'activa' ? 'Tu exclusividad está en buen estado' : (st.key === 'por_vencer' ? 'Está por vencer — contactá a tu asesor' : (st.key === 'vencida' ? 'Venció — reanudála para mantener beneficios' : 'Sin exclusividad'));
+      var semHtml = '<div class="excl-semaforo"><div class="sem-luz sem-' + semColor + '"></div><div class="sem-txt">' + esc(semTxt) + '</div></div>';
+
+      /* Estimador de honorarios */
+      var calcHtml = '';
+      if (st.key !== 'sin' && props && props.length) {
+        var priceV = 0, priceA = 0;
+        props.forEach(function(p2){
+          if (p2.status === 'venta' && p2.price_usd) priceV += p2.price_usd;
+          if (p2.status === 'alquiler' && p2.price_usd) priceA += p2.price_usd;
+        });
+        var rowsC = [];
+        if (owner.commission_sale != null && priceV > 0) {
+          rowsC.push('<div class="cc-row"><span>Venta (a ' + owner.commission_sale + '%):</span><span class="cc-val">≈ ' + fmtUSD(Math.round(priceV * owner.commission_sale / 100)) + '</span></div>');
+        }
+        if (owner.commission_rent != null && priceA > 0) {
+          rowsC.push('<div class="cc-row"><span>Alquiler mensual (a ' + owner.commission_rent + '%):</span><span class="cc-val">≈ ' + fmtUSD(Math.round(priceA * owner.commission_rent / 100)) + '</span></div>');
+        }
+        if (rowsC.length) {
+          calcHtml = '<div class="com-calc-card"><div style="font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;"><i class="fas fa-calculator"></i> Honorarios estimados</div>' + rowsC.join('') + '<div style="font-size:11px; color:var(--text-muted); margin-top:8px;">*Basado en precios actuales publicados.</div></div>';
+        }
+      }
+
+      /* Hitos del contrato */
+      var hitosHtml = '';
+      if (start && end) {
+        var hitos = [
+          { date: start, label:'Inicio', icon:'fa-play' },
+          { date: new Date(start.getTime() + 30*86400000), label:'Revisión', icon:'fa-chart-line' },
+          { date: end, label:'Vencimiento', icon:'fa-flag' }
+        ];
+        var nxt = hitos.find(function(h){ return h.date > now; });
+        hitosHtml = '<div class="section-title" style="margin-top:20px;"><i class="fas fa-flag-checkered"></i> Hitos</div><div class="hitos-row">' +
+          hitos.map(function(h){
+            var cls = h.date < now ? ' past' : (nxt && h.date.getTime() === nxt.date.getTime() ? ' next' : '');
+            return '<div class="hito-chip' + cls + '"><i class="fas ' + h.icon + '"></i> ' + esc(h.label) + ' · ' + fmtDate(h.date) + '</div>';
+          }).join('') + '</div>';
+      }
+
+      /* Estimador de renovación */
+      var renHtml = '';
+      if (st.key === 'por_vencer' || st.key === 'vencida') {
+        var newEnd = new Date(now.getTime() + ((end - start) || 90*86400000));
+        renHtml = '<div style="margin-top:12px; padding:12px 16px; background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.2); border-radius:10px; font-size:13px; color:var(--text-dim);"><i class="fas fa-info-circle"></i> Si renovás hoy, tu nueva exclusividad iría del <strong style="color:var(--blue);">' + fmtDate(now) + '</strong> al <strong style="color:var(--blue);">' + fmtDate(newEnd) + '</strong>.</div>';
+      }
+
+      var chkBox = (st.key !== 'sin')
+        ? '<div style="margin-top:20px; display:flex; gap:10px; flex-wrap:wrap;"><button type="button" id="btnShareExcl" class="quick-action"><i class="fas fa-share-alt"></i> Copiar resumen</button><button type="button" id="btnPrintExcl" class="quick-action" style="background:var(--purple-dim); border-color:rgba(167,139,250,0.3); color:var(--purple);"><i class="fas fa-file-pdf"></i> Descargar resumen</button></div>'
+        : '';
+    /* Insertar en el banner, antes de cerrarlo */
+      var bannerOpen = '<div class="excl-banner excl-state-' + stLabel.cls + '">' + '<h3><i class="fas fa-handshake"></i> ' + bannerTxt + '<span class="excl-state-badge ' + stLabel.cls + '"><i class="fas ' + (st.key === 'vencida' ? 'fa-times' : (st.key === 'por_vencer' ? 'fa-clock' : 'fa-check-circle')) + '"></i> ' + stLabel.text + '</span></h3>' + '<p>Tu propiedad está bajo gestión exclusiva de BIENENHAUS.' + (start && end ? ' Período: ' + fmtDate(start) + ' — ' + fmtDate(end) : '') + '</p>' + semHtml + countdownHtml + progressHtml + contractHtml + calcHtml + hitosHtml + renHtml + '</div>';
+
       $('exclContent').innerHTML =
-        '<div class="excl-banner excl-state-' + stLabel.cls + '">' +
-          '<h3><i class="fas fa-handshake"></i> ' + bannerTxt +
-            '<span class="excl-state-badge ' + stLabel.cls + '"><i class="fas ' + (st.key === 'vencida' ? 'fa-times' : (st.key === 'por_vencer' ? 'fa-clock' : 'fa-check-circle')) + '"></i> ' + stLabel.text + '</span>' +
-          '</h3>' +
-          '<p>Tu propiedad está bajo gestión exclusiva de BIENENHAUS.' + (start && end ? ' Período: ' + fmtDate(start) + ' — ' + fmtDate(end) : '') + '</p>' +
-          countdownHtml +
-          progressHtml +
-          contractHtml +
-        '</div>' +
+        bannerOpen +
         '<div class="section-title"><i class="fas fa-gift"></i> Beneficios incluidos</div>' +
         '<div class="excl-benefits">' + benefitsHtml + '</div>' +
           (shareHtml ? '<div class="section-title" style="margin-top:24px;"><i class="fas fa-chart-pie"></i> Tu exclusividad en el portfolio</div>' + shareHtml : '') +
@@ -1454,7 +2102,7 @@
         (renewHtml || '') +
         waHtml +
         timelineHtml +
-        (st.key !== 'sin' ? '<div style="margin-top:20px;"><button type="button" id="btnShareExcl" class="quick-action"><i class="fas fa-share-alt"></i> Copiar resumen</button></div>' : '');
+        chkBox;
 
       /* Botón compartir resumen de exclusividad */
       var shareEx = $('btnShareExcl');
@@ -1464,6 +2112,13 @@
         if (navigator.clipboard) {
           navigator.clipboard.writeText(txt).then(function(){ portalToast('Resumen copiado'); }, function(){ portalToast('No se pudo copiar', 'error'); });
         }
+      });
+
+      var pEb = $('btnPrintExcl');
+      if (pEb) pEb.addEventListener('click', function(){
+        document.body.classList.add('print-excl-only');
+        window.print();
+        setTimeout(function(){ document.body.classList.remove('print-excl-only'); }, 500);
       });
     }
 
