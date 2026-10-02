@@ -225,6 +225,7 @@
       try { renderSessionChip(); } catch (e) {}
       try { renderRefreshButton(); } catch (e) {}
       try { setupPrintHeader(d); } catch (e) {}
+      try { renderRonda5(d, owner, props); } catch (e) { console.error('[portal] ronda5:', e); }
       try { showTourIfFirst(); } catch (e) {}
       setupTabs();
       showContent();
@@ -2120,6 +2121,328 @@
         window.print();
         setTimeout(function(){ document.body.classList.remove('print-excl-only'); }, 500);
       });
+
+      /* ── RONDA 5: finanzas, documentos, mercado, comunicación ── */
+      renderRonda5(d, owner, props);
     }
 
-  })();
+    /* ── RONDA 5: módulos nuevos ── */
+    function renderRonda5(d, owner, props) {
+      var slot = $('welcomeSlot');
+      if (!slot) return;
+
+      var extras = EXTRA_DATA || {};
+      var tasaciones = extras.tasaciones || [];
+      var zoneAvg = extras.zone_avg || {};
+
+      /* ── 1. Valorización de la cartera ── */
+      if (tasaciones.length) {
+        var valHtml = tasaciones.map(function(t) {
+          return '<div class="val-row">' +
+            '<span class="val-code">' + esc(t.property_code || '') + '</span>' +
+            '<span class="val-title">' + esc(t.title || 'Tasación') + '</span>' +
+            '<span class="val-usd">' + (t.valuation_usd ? fmtUSD(t.valuation_usd) : '-') + '</span>' +
+            '<span class="val-ars">' + (t.valuation_ars ? fmtARS(t.valuation_ars) : '-') + '</span>' +
+            '<span class="val-status ' + esc(t.status || 'borrador') + '">' + esc(t.status || 'borrador') + '</span>' +
+            '<span class="val-date">' + fmtDate(t.created_at) + '</span>' +
+          '</div>';
+        }).join('');
+        var div = document.createElement('div');
+        div.className = 'module-section';
+        div.innerHTML =
+          '<div class="section-title"><i class="fas fa-chart-line"></i> Historial de tasaciones</div>' +
+          '<div class="val-header">' +
+            '<span>Código</span><span>Título</span><span>USD</span><span>ARS</span><span>Estado</span><span>Fecha</span>' +
+          '</div>' +
+          valHtml;
+        slot.appendChild(div);
+      }
+
+      /* ── 2. Inteligencia de mercado y precios ── */
+      var marketSections = [];
+      var zoneName = props[0] && props[0].zone ? props[0].zone : '';
+      var zoneAvgVal = zoneName && zoneAvg[zoneName] ? zoneAvg[zoneName] : null;
+      props.forEach(function(p) {
+        var perM2 = null;
+        var area = p.area_covered || p.area_total || p.area_m2;
+        if (p.price_usd && area > 0) perM2 = Math.round(p.price_usd / area);
+        if (perM2 && zoneAvgVal) {
+          var diff = Math.round(((perM2 - zoneAvgVal) / zoneAvgVal) * 100);
+          var isCheap = diff < 0;
+          var isExp = diff > 5;
+          if (Math.abs(diff) >= 5) {
+            marketSections.push(
+              '<div class="mkt-tip' + (isCheap ? ' cheap' : (isExp ? ' exp' : '')) + '">' +
+                '<i class="fas fa-' + (isCheap ? 'arrow-down' : 'arrow-up') + '"></i>' +
+                '<span><strong>' + esc(p.property_code || '') + '</strong> ' +
+                (isCheap ? 'está ' + Math.abs(diff) + '% por debajo' : 'está ' + diff + '% por encima') +
+                ' del promedio de ' + esc(zoneName) + ' (' + fmtUSD(zoneAvgVal) + '/m²).</span>' +
+              '</div>'
+            );
+          }
+        }
+        if (tasaciones.length) {
+          var tas = tasaciones.filter(function(t){ return t.property_code === p.property_code; });
+          if (tas.length) {
+            var latest = tas[0];
+            if (latest.valuation_usd && p.price_usd) {
+              var diffPrice = Math.round(((p.price_usd - latest.valuation_usd) / latest.valuation_usd) * 100);
+              if (Math.abs(diffPrice) >= 3) {
+                marketSections.push(
+                  '<div class="mkt-tip' + (diffPrice > 0 ? ' exp' : ' cheap') + '">' +
+                    '<i class="fas fa-' + (diffPrice > 0 ? 'arrow-up' : 'arrow-down') + '"></i>' +
+                    '<span><strong>' + esc(p.property_code || '') + '</strong> ' +
+                    'vale ' + (diffPrice > 0 ? Math.abs(diffPrice) + '% más' : Math.abs(diffPrice) + '% menos') +
+                    ' que su última tasación (' + fmtUSD(latest.valuation_usd) + ').</span>' +
+                  '</div>'
+                );
+              }
+            }
+          }
+        }
+        if (p.ml_last_sync) {
+          var daysSinceSync = Math.floor((Date.now() - new Date(p.ml_last_sync).getTime()) / 86400000);
+          if (daysSinceSync > 7) {
+            marketSections.push(
+              '<div class="mkt-tip warn">' +
+                '<i class="fas fa-exclamation-triangle"></i>' +
+                '<span><strong>' + esc(p.property_code || '') + '</strong> no se sincronizó con Mercado Libre hace ' + daysSinceSync + ' días. Podría estar desactualizada.</span>' +
+              '</div>'
+            );
+          }
+        }
+      });
+      if (marketSections.length) {
+        var mdiv = document.createElement('div');
+        mdiv.className = 'module-section';
+        mdiv.innerHTML = '<div class="section-title"><i class="fas fa-chart-pie"></i> Análisis de mercado</div>' + marketSections.join('');
+        slot.appendChild(mdiv);
+      }
+
+      /* ── 3. Finanzas ── */
+      var commissions = extras.commissions || [];
+      var liquidations = extras.liquidations || [];
+      var payments = extras.payments || [];
+      var finHtml = '';
+
+      var totalGanado = 0;
+      var totalPend = 0;
+      commissions.forEach(function(c) {
+        if (c.status === 'pagada') totalGanado += (c.net_amount_ars || 0);
+        else totalPend += (c.net_amount_ars || 0);
+      });
+      liquidations.forEach(function(l) {
+        if (l.status === 'pagada') totalGanado += (l.net_amount_ars || 0);
+        else totalPend += (l.net_amount_ars || 0);
+      });
+
+      if (commissions.length || totalGanado > 0 || totalPend > 0) {
+        finHtml += '<div class="fin-summary">' +
+          (totalGanado > 0 ? '<div class="fin-card green"><span class="fin-num">' + fmtARS(totalGanado) + '</span><span class="fin-lbl">Cobrado</span></div>' : '') +
+          (totalPend > 0 ? '<div class="fin-card gold"><span class="fin-num">' + fmtARS(totalPend) + '</span><span class="fin-lbl">Pendiente</span></div>' : '') +
+        '</div>';
+      }
+      if (liquidations.length) {
+        finHtml += '<div class="section-title" style="margin-top:16px;"><i class="fas fa-file-invoice-dollar"></i> Liquidaciones</div>';
+        finHtml += liquidations.map(function(l) {
+          return '<div class="fin-liq-card">' +
+            '<div class="fin-liq-period">' + fmtDate(l.period_start) + ' — ' + fmtDate(l.period_end) + '</div>' +
+            '<div class="fin-liq-net">' + fmtARS(l.net_amount_ars) + '</div>' +
+            '<div class="fin-liq-status ' + esc(l.status || 'pendiente') + '">' + esc(l.status) + '</div>' +
+          '</div>';
+        }).join('');
+      }
+      if (payments.length) {
+        finHtml += '<div class="section-title" style="margin-top:16px;"><i class="fas fa-money-bill-wave"></i> Pagos registrados</div>';
+        finHtml += payments.map(function(p) {
+          return '<div class="fin-pay-row">' +
+            '<span class="fin-pay-date">' + fmtDate(p.payment_date) + '</span>' +
+            '<span class="fin-pay-method">' + esc(p.payment_method || '') + '</span>' +
+            '<span class="fin-pay-amt">' + fmtARS(p.amount_ars) + '</span>' +
+            (p.reference ? '<span class="fin-pay-ref">' + esc(p.reference) + '</span>' : '') +
+          '</div>';
+        }).join('');
+      }
+
+      /* ── 4. Documentos ── */
+      var docSections = [];
+      (extras.documents || []).forEach(function(pd) {
+        if (!pd.documents || !pd.documents.length) return;
+        var docsHtml = pd.documents.map(function(doc) {
+          return '<div class="doc-row">' +
+            '<i class="fas fa-' + (doc.type && doc.type.indexOf('image') !== -1 ? 'image' : 'file') + '"></i>' +
+            '<span class="doc-name">' + esc(doc.name || 'Documento') + '</span>' +
+            '<span class="doc-type">' + esc(doc.type || '') + '</span>' +
+            '<span class="doc-date">' + fmtDate(doc.uploaded_at) + '</span>' +
+          '</div>';
+        }).join('');
+        docSections.push('<div class="doc-prop"><div class="doc-prop-code">' + esc(pd.prop_code) + '</div>' + docsHtml + '</div>');
+      });
+
+      var reqMap = {};
+      (extras.requirements || []).forEach(function(r) {
+        if (!reqMap[r.operation_type]) reqMap[r.operation_type] = [];
+        reqMap[r.operation_type].push(r);
+      });
+      Object.keys(reqMap).forEach(function(op) {
+        var items = reqMap[op].map(function(r) {
+          return '<div class="req-item' + (r.is_mandatory ? ' mandatory' : '') + '">' +
+            '<i class="fas fa-' + (r.is_mandatory ? 'lock' : 'unlock') + '"></i>' +
+            '<span>' + esc(r.label) + '</span>' +
+          '</div>';
+        }).join('');
+        docSections.push('<div class="doc-prop"><div class="doc-prop-code">Requisitos ' + esc(op) + '</div><div class="req-grid">' + items + '</div></div>');
+      });
+
+      if (docSections.length) {
+        var ddiv = document.createElement('div');
+        ddiv.className = 'module-section';
+        ddiv.innerHTML = '<div class="section-title"><i class="fas fa-folder-open"></i> Documentación</div>' + docSections.join('');
+        slot.appendChild(ddiv);
+      }
+
+      /* ── 5. Notas al asesor + timeline ── */
+      var notes = extras.timeline || [];
+      var tasks = extras.tasks || [];
+      if (notes.length || tasks.length) {
+        var notesHtml = '';
+        if (notes.length) {
+          notesHtml += '<div class="section-title" style="margin-top:20px;"><i class="fas fa-comments"></i> Comunicaciones del asesor</div>';
+          notesHtml += notes.slice(0, 8).map(function(n) {
+            return '<div class="note-card"><i class="fas fa-comment"></i><div><div class="note-text">' + esc(n.text) + '</div><div class="note-date">' + esc(fmtDateTime(n.created_at)) + '</div></div></div>';
+          }).join('');
+        }
+        var tasksHtml = '';
+        if (tasks.length) {
+          tasksHtml += '<div class="section-title" style="margin-top:20px;"><i class="fas fa-tasks"></i> Tareas asignadas</div>';
+          tasksHtml += tasks.map(function(t) {
+            var isDone = t.status === 'completada';
+            return '<div class="task-card' + (isDone ? ' done' : '') + '" data-task-id="' + esc(t.id) + '">' +
+              '<button type="button" class="task-check' + (isDone ? ' done' : '') + '"><i class="fas fa-' + (isDone ? 'check' : 'circle') + '"></i></button>' +
+              '<div class="task-body">' +
+                '<div class="task-desc">' + esc(t.description) + '</div>' +
+                (t.due_date ? '<div class="task-due">' + fmtDate(t.due_date) + '</div>' : '') +
+                (isDone && t.result_notes ? '<div class="task-result">' + esc(t.result_notes) + '</div>' : '') +
+              '</div>' +
+            '</div>';
+          }).join('');
+        }
+        var tc = document.createElement('div');
+        tc.className = 'module-section';
+        tc.innerHTML = notesHtml + tasksHtml;
+        slot.appendChild(tc);
+
+        /* Bindeo tareas */
+        document.querySelectorAll('.task-card .task-check').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var card = btn.closest('.task-card');
+            var taskId = card.getAttribute('data-task-id');
+            if (card.classList.contains('done')) return;
+            var res = prompt('¿Completaste la tarea? Notas para el asesor:');
+            if (res === null) return;
+            supabase.rpc('portal_complete_task', { p_token: token, p_task_id: taskId, p_result_notes: res || null })
+              .then(function() {
+                card.classList.add('done');
+                btn.classList.add('done');
+                btn.innerHTML = '<i class="fas fa-check"></i>';
+                portalToast('Tarea completada');
+              })
+              .catch(function(){ portalToast('No se pudo completar', 'error'); });
+          });
+        });
+      }
+
+      /* ── 6. Nota directa al asesor ── */
+      if (d.broker && d.broker.phone) {
+        var bWa = portalWaNumber(d.broker.phone);
+        var noteDiv = document.createElement('div');
+        noteDiv.className = 'module-section';
+        noteDiv.innerHTML =
+          '<div class="section-title"><i class="fas fa-envelope"></i> Dejar nota al asesor</div>' +
+          '<div class="note-form">' +
+            '<textarea id="noteText" placeholder="Escribí tu consulta o comentario para tu asesor..." rows="2" maxlength="500"></textarea>' +
+            '<button type="button" id="sendNoteBtn" class="quick-action" style="margin-top:8px;"><i class="fas fa-paper-plane"></i> Enviar nota</button>' +
+          '</div>';
+        slot.appendChild(noteDiv);
+        var sendBtn = $('sendNoteBtn');
+        var noteText = $('noteText');
+        if (sendBtn && noteText) {
+          sendBtn.addEventListener('click', function() {
+            var txt = noteText.value.trim();
+            if (txt.length < 3) { portalToast('Escribí al menos 3 caracteres', 'error'); return; }
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+            supabase.rpc('portal_send_note', { p_token: token, p_text: txt })
+              .then(function(r) {
+                if (r.data && r.data.ok) {
+                  portalToast('Nota enviada');
+                  noteText.value = '';
+                } else {
+                  portalToast('No se pudo enviar', 'error');
+                }
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar nota';
+              })
+              .catch(function() { portalToast('No se pudo enviar', 'error'); sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar nota'; });
+          });
+        }
+      }
+
+      /* ── 7. Accesos al portal ── */
+      var access = extras.access_log || [];
+      if (access.length) {
+        var alc = document.createElement('div');
+        alc.className = 'module-section';
+        var last24h = access.filter(function(a){ return (Date.now() - new Date(a.created_at).getTime()) < 24*60*60000; }).length;
+        alc.innerHTML =
+          '<div class="section-title"><i class="fas fa-shield-alt"></i> Accesos recientes</div>' +
+          '<div class="access-log">' +
+            '<div class="access-item"><i class="fas fa-eye"></i><span>Visitas al portal en las últimas 24h</span><strong>' + last24h + '</strong></div>' +
+            '<div class="access-item"><i class="fas fa-sign-in-alt"></i><span>Último acceso</span><strong>' + (access[0] && fmtDateTime(access[0].created_at) || '-') + '</strong></div>' +
+            '<div class="access-item"><i class="fas fa-history"></i><span>Total de accesos registrados</span><strong>' + access.length + '</strong></div>' +
+          '</div>';
+        slot.appendChild(alc);
+      }
+
+      /* ── 8. Utilidades generales ── */
+      var utilSections = [];
+      if (props.length >= 2) {
+        utilSections.push(
+          '<div class="util-card"><i class="fas fa-copy"></i><div class="util-body"><strong>Códigos rápidos</strong><span>' +
+            props.map(function(p){ return '<button type="button" class="act-copy-btn" data-copy-code="' + esc(p.property_code || '') + '" title="Copiar código"><i class="fas fa-copy"></i> ' + esc(p.property_code || '-') + '</button>'; }).join(' ') +
+          '</span></div></div>'
+        );
+      }
+      if (props.length) {
+        var areas = props.filter(function(p){ var a = p.area_covered || p.area_total || p.area_m2; return a > 0; });
+        if (areas.length) {
+          var totalArea = areas.reduce(function(a,p){ return a + (p.area_covered || p.area_total || p.area_m2 || 0); }, 0);
+          var totalPrice = props.filter(function(p){ return p.price_usd > 0; }).reduce(function(a,p){ return a + p.price_usd; }, 0);
+          var avgPerM2 = totalPrice > 0 && totalArea > 0 ? Math.round(totalPrice / totalArea) : 0;
+          if (avgPerM2 > 0) {
+            utilSections.push('<div class="util-card"><i class="fas fa-ruler-combined"></i><div class="util-body"><strong>Precio promedio de tu cartera</strong><span>≈ ' + fmtUSD(avgPerM2) + ' por m² (basado en ' + areas.length + ' propiedades con datos)</span></div></div>');
+          }
+        }
+      }
+      if (utilSections.length) {
+        var udiv = document.createElement('div');
+        udiv.className = 'module-section';
+        udiv.innerHTML = '<div class="section-title"><i class="fas fa-toolbox"></i> Herramientas</div>' + utilSections.join('');
+        slot.appendChild(udiv);
+      }
+
+      /* ── 9. Log de accesos ── */
+      if (access.length) {
+        var last = access[0];
+        var alDiv = document.createElement('div');
+        alDiv.className = 'module-section access-log-module';
+        alDiv.innerHTML =
+          '<div class="section-title"><i class="fas fa-history"></i> Actividad del portal</div>' +
+          '<div class="access-log" style="margin-top:0;">' +
+            access.slice(0, 5).map(function(a) {
+              return '<div class="access-item"><i class="fas fa-' + (a.event === 'login' ? 'sign-in-alt' : 'eye') + '"></i><span>' + esc(a.event || 'visita') + '</span><strong>' + esc(fmtDateTime(a.created_at)) + '</strong></div>';
+            }).join('') +
+          '</div>';
+        slot.appendChild(alDiv);
+      }
+    }
