@@ -2456,6 +2456,50 @@
       .fin-summary { flex-direction: column; }
     }
     @media print { .access-log-module { display: none !important; } }
+
+    /* ── Ronda 5: componentes faltantes ── */
+    .prep-checklist { margin-top: 8px; }
+    .prep-grid { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+    .prep-btn {
+      padding: 5px 10px; border-radius: 8px; font-size: 11px; font-weight: 600;
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      color: var(--text-dim); cursor: pointer; transition: all 0.2s; font-family: inherit;
+    }
+    .prep-btn:hover { border-color: var(--border-accent); color: var(--text); }
+    .prep-btn.prep-done { background: var(--green-dim); border-color: rgba(16,185,129,0.3); color: var(--green); }
+    .prep-btn.prep-done i { color: var(--green); }
+    .prop-list--table { overflow-x: auto; }
+    .prop-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .prop-table th { text-align: left; padding: 8px 10px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-accent); }
+    .prop-table td { padding: 10px; border-bottom: 1px solid var(--border); }
+    .row-prop { cursor: pointer; transition: background 0.2s; }
+    .row-prop:hover { background: rgba(255,255,255,0.02); }
+    .prop-card.dragging { opacity: 0.4; transform: scale(0.98); }
+    .prop-card[draggable="true"] { touch-action: pan-y; }
+    .prop-card[draggable="true"] .prop-card-header { cursor: grab; }
+    .prop-card[draggable="true"] .prop-card-header:active { cursor: grabbing; }
+
+    /* Tema claro */
+    body.theme-light {
+      --bg-dark: #f5f6f8;
+      --bg-card: rgba(255,255,255,0.9);
+      --bg-card-hover: rgba(255,255,255,0.95);
+      --border: rgba(0,0,0,0.08);
+      --border-accent: rgba(31,200,195,0.5);
+      --text: #1a202c;
+      --text-dim: #4a5568;
+      --text-muted: #718096;
+      --gold-dim: rgba(31,200,195,0.10);
+      --shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
+    body.theme-light { background: #eef0f3 !important; }
+    body.theme-light .portal-header { background: rgba(238,240,243,0.9); }
+    body.theme-light .prop-card, .theme-light .stat-card, .theme-light .module-section,
+    .theme-light .visit-card-next, .theme-light .visit-card-past, .theme-light .task-card,
+    .theme-light .note-card, .theme-light .excl-banner, .theme-light .fin-card { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    body.theme-light .portal-logo-text { color: var(--text); }
+    body.theme-light .prop-card-thumb--placeholder { background: rgba(0,0,0,0.04); }
+    body.theme-light .compare-modal { background: rgba(255,255,255,0.96); }
   </style>
 
   <!-- CONTENT -->

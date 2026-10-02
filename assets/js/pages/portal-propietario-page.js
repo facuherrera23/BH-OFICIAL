@@ -2445,6 +2445,179 @@
           '</div>';
         slot.appendChild(alDiv);
       }
+
+      /* ── 10. Checklist preparar casa (por visita) ── */
+      var upcoming = extras.upcoming_visits || [];
+      upcoming.forEach(function(v) {
+        var target = document.querySelector('[data-visit-ics="' + v.visit_date + '"]');
+        if (target && !target.closest('.visit-card-next')?.querySelector('.prep-checklist')) {
+          var prep = document.createElement('div');
+          prep.className = 'prep-checklist';
+          prep.innerHTML =
+            '<div style="font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-muted); margin-top:8px;">Preparar la casa:</div>' +
+            '<div class="prep-grid">' +
+              '<button type="button" class="prep-btn" data-prep="limpieza"><i class="fas fa-broom"></i> Limpieza</button>' +
+              '<button type="button" class="prep-btn" data-prep="orden"><i class="fas fa-box"></i> Ordenar</button>' +
+              '<button type="button" class="prep-btn" data-prep="luz"><i class="fas fa-lightbulb"></i> Buena luz</button>' +
+              '<button type="button" class="prep-btn" data-prep="mascotas"><i class="fas fa-paw"></i> Mascotas</button>' +
+              '<button type="button" class="prep-btn" data-prep="docs"><i class="fas fa-file-alt"></i> Documentos a mano</button>' +
+            '</div>';
+          target.closest('.visit-card-next').appendChild(prep);
+        }
+      });
+      document.querySelectorAll('.prep-btn').forEach(function(b) {
+        b.addEventListener('click', function(e) {
+          e.stopPropagation();
+          b.classList.toggle('prep-done');
+        });
+      });
+
+      var tableBtn = document.createElement('button');
+      tableBtn.type = 'button';
+      tableBtn.className = 'prop-view-toggle act-copy-btn';
+      tableBtn.style.cssText = 'position:static;margin-left:8px;';
+      tableBtn.title = 'Vista tabla / Tarjetas';
+      tableBtn.innerHTML = '<i class="fas fa-table"></i>';
+      var propSearch = document.querySelector('.prop-search');
+      if (propSearch && !propSearch.querySelector('.fa-table')) propSearch.appendChild(tableBtn);
+      tableBtn.addEventListener('click', function () {
+        var panel = document.querySelector('#panel-propiedades .prop-list');
+        if (!panel) return;
+        var isTable = panel.classList.toggle('panel-as-table');
+        panel.parentElement.classList.toggle('prop-list--list', false);
+        if (isTable) {
+          panel.dataset.savedHtml = panel.innerHTML;
+          var rows = Array.prototype.map.call(panel.querySelectorAll('.prop-card'), function (c) {
+            var title = c.querySelector('.prop-card-title');
+            var meta = c.querySelector('.prop-card-meta');
+            return '<tr class="row-prop">' +
+              '<td>' + esc(title ? title.textContent.trim() : '') + '</td>' +
+              '<td>' + esc(meta ? meta.querySelector('span')?.textContent.trim() : '') + '</td>' +
+              '<td>' + esc(meta ? (meta.querySelector('.prop-price')?.textContent.trim() || '-') : '-') + '</td>' +
+              '</tr>';
+          }).join('');
+          panel.className = 'prop-list prop-list--table';
+          panel.innerHTML = '<table class="prop-table"><thead><tr><th>Propiedad</th><th>Zona</th><th>Precio</th></tr></thead><tbody>' + rows + '</tbody></table>';
+          tableBtn.classList.add('active');
+        } else {
+          panel.className = 'prop-list';
+          panel.innerHTML = panel.dataset.savedHtml;
+          tableBtn.classList.remove('active');
+          renderListFromFilter();
+        }
+      });
+
+      var activasBtn = document.createElement('button');
+      activasBtn.type = 'button';
+      activasBtn.className = 'prop-filter act-copy-btn';
+      activasBtn.style.cssText = 'margin-left:4px;';
+      activasBtn.innerHTML = '<i class="fas fa-toggle-on"></i> Solo activas';
+      activasBtn.title = 'Ocultar vendidas y alquiladas';
+      var filtersRow = document.getElementById('propFilters');
+      if (filtersRow && !filtersRow.querySelector('.act-copy-btn')) filtersRow.appendChild(activasBtn);
+      activasBtn.addEventListener('click', function () {
+        filtersRow && filtersRow.querySelectorAll('.prop-filter').forEach(function(b){ b.classList.remove('active'); });
+        activasBtn.classList.add('active');
+        var panel = document.querySelector('#panel-propiedades .prop-list');
+        if (!panel) return;
+        Array.prototype.forEach.call(panel.querySelectorAll('.prop-card'), function (c) {
+          var st = c.querySelector('.prop-status-badge');
+          var txt = st ? st.textContent.toLowerCase() : '';
+          var hide = txt.indexOf('vendida') !== -1 || txt.indexOf('alquilada') !== -1;
+          c.style.display = hide ? 'none' : '';
+        });
+      });
+
+      var listEl = document.querySelector('#panel-propiedades .prop-list');
+      if (listEl && props.length > 1) {
+        Array.prototype.forEach.call(listEl.querySelectorAll('.prop-card'), function (card) {
+          card.draggable = true;
+          card.addEventListener('dragstart', function (ev) {
+            ev.dataTransfer && ev.dataTransfer.setData('text/plain', card.getAttribute('data-id'));
+            card.classList.add('dragging');
+          });
+          card.addEventListener('dragend', function () { card.classList.remove('dragging'); });
+          card.addEventListener('dragover', function (ev) { ev.preventDefault(); });
+          card.addEventListener('drop', function (ev) {
+            ev.preventDefault();
+            var dragId = ev.dataTransfer && ev.dataTransfer.getData('text/plain');
+            var dragEl = dragId ? listEl.querySelector('[data-id="' + dragId + '"]') : null;
+            if (dragEl && dragEl !== card) {
+              listEl.insertBefore(dragEl, card.nextSibling === dragEl ? card : card.nextSibling);
+            }
+          });
+        });
+      }
+
+      var header = document.querySelector('.portal-header-inner');
+      if (header && !document.getElementById('downloadCsvBtn')) {
+        var csvBtn = document.createElement('button');
+        csvBtn.id = 'downloadCsvBtn';
+        csvBtn.type = 'button';
+        csvBtn.className = 'refresh-btn-header';
+        csvBtn.title = 'Descargar mis propiedades (CSV)';
+        csvBtn.innerHTML = '<i class="fas fa-file-csv"></i>';
+        csvBtn.addEventListener('click', function () {
+          var csv = ['Codigo;Titulo;Zona;Precio USD;Estado;Consultas;Visitas'];
+          props.forEach(function (p) {
+            csv.push([p.property_code || '-', '"' + (p.title || '').replace(/"/g, '""') + '"', p.zone || '-', p.price_usd || '', p.status || '', p.leads_total || 0, p.visits_total || 0].join(';'));
+          });
+          var blob = new Blob(['﻿' + csv.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'mis-propiedades-' + new Date().toISOString().slice(0, 10) + '.csv';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(function () { a.remove(); URL.revokeObjectURL(a.href); }, 100);
+          portalToast('CSV descargado');
+        });
+        header.appendChild(csvBtn);
+      }
+
+      try {
+        if (window.indexedDB) {
+          var req = indexedDB.open('bh_portal_offline', 1);
+          req.onupgradeneeded = function (e) {
+            e.target.result.createObjectStore('snapshot', { keyPath: 'id' });
+          };
+          req.onsuccess = function () {
+            var db = req.result;
+            var tx = db.transaction('snapshot', 'readwrite');
+            tx.objectStore('snapshot').put({ id: 'main', data: d, at: Date.now() });
+          };
+          document.addEventListener('bh:offlineShowCache', function () {
+            if (!window.indexedDB) return;
+            var r2 = indexedDB.open('bh_portal_offline', 1);
+            r2.onsuccess = function () {
+              var tx = r2.result.transaction('snapshot', 'readonly');
+              var get = tx.objectStore('snapshot').get('main');
+              get.onsuccess = function () {
+                if (get.result && get.result.data) {
+                  portalToast('Mostrando datos guardados offline');
+                }
+              };
+            };
+          });
+        }
+      } catch (_) {}
+
+      try {
+        var themeBtn = document.createElement('button');
+        themeBtn.type = 'button';
+        themeBtn.className = 'refresh-btn-header';
+        themeBtn.id = 'themeToggleBtn';
+        themeBtn.title = 'Cambiar tema';
+        themeBtn.innerHTML = '<i class="fas fa-sun"></i>';
+        header && header.appendChild(themeBtn);
+        var saved = null;
+        try { saved = localStorage.getItem('bh_portal_theme'); } catch (_) {}
+        if (saved === 'light') document.body.classList.add('theme-light');
+        themeBtn.addEventListener('click', function () {
+          var isLight = document.body.classList.toggle('theme-light');
+          try { localStorage.setItem('bh_portal_theme', isLight ? 'light' : 'dark'); } catch (_) {}
+          themeBtn.innerHTML = isLight ? '<i class="fas fa-moon"></i>' : '<i class="fas fa-sun"></i>';
+        });
+      } catch (_) {}
     }
 
   })();
