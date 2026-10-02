@@ -330,6 +330,17 @@ function esc(s) {
     return result.data;
   }
 
+  /* La rueda del mouse sobre un <input type=number> enfocado cambia el valor sin
+     intención (ej: precio, superficies). Al girar se quita el foco y la página
+     scrollea normal; se pierde un solo notch de scroll, no el valor ingresado. */
+  document.addEventListener('wheel', (e) => {
+    const el = e.target;
+    if (el instanceof HTMLInputElement && el.type === 'number' && document.activeElement === el) {
+      el.blur();
+      e.preventDefault();
+    }
+  }, { passive: false });
+
   /* ------------------------------------------------
      1. AUTH
      ------------------------------------------------ */

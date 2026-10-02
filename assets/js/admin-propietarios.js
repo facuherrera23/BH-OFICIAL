@@ -1329,50 +1329,6 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     listEl.innerHTML = _pendingPropertyNotes.map(pendingPropertyNoteMarkup).join('');
   }
 
-  async function loadPropertyHistory(propertyId) {
-    const section = $('#propertyHistorySection');
-    const listEl = $('#propertyHistoryList');
-    if (!section || !listEl) return;
-    if (!propertyId) { section.style.display = 'none'; return; }
-    section.style.display = 'block';
-    listEl.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:12px;"><i class="fas fa-spinner fa-spin"></i> Cargando historial...</p>';
-    try {
-      const { data, error } = await window.supabaseClient
-        .from('audit_log')
-        .select('action, changed_fields, status, created_at, user_id')
-        .eq('record_id', propertyId)
-        .order('created_at', { ascending: false })
-        .limit(30);
-      if (error) throw error;
-      if (!data || !data.length) {
-        listEl.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:12px;">Sin cambios registrados</p>';
-        return;
-      }
-      const userIds = [...new Set(data.map(function(a) { return a.user_id; }).filter(Boolean))];
-      let nameMap = {};
-      if (userIds.length) {
-        const pres = await window.supabaseClient.from('profiles').select('id, full_name').in('id', userIds);
-        if (!pres.error && pres.data) nameMap = Object.fromEntries(pres.data.map(function(p) { return [p.id, p.full_name || '']; }));
-      }
-      const VERB = { insert: 'Creó', create: 'Creó', update: 'Editó', delete: 'Eliminó', update_sensitive: 'Modificó (sensible)' };
-      listEl.innerHTML = data.map(function(a) {
-        const who = a.user_id ? (nameMap[a.user_id] || '') : '';
-        const whoTxt = who ? ' · ' + esc(who) : '';
-        const dt = formatDateTimeWithTZ ? formatDateTimeWithTZ(a.created_at) : new Date(a.created_at).toLocaleString('es-AR');
-        const changes = (a.changed_fields || []).filter(function(f) { return f !== 'updated_at'; });
-        const changesTxt = changes.length ? ' <span style="color:var(--text-dim);">(' + esc(changes.join(', ')) + ')</span>' : '';
-        const failed = a.status && a.status !== 'success' && a.status !== 'ok';
-        return '<div style="padding:8px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:6px; font-size:12px; color:#fff;' + (failed ? ' border-left:3px solid var(--danger);' : '') + '">'
-          + '<strong>' + esc(VERB[a.action] || a.action) + '</strong>' + changesTxt
-          + '<div style="color:var(--text-dim); font-size:11px; margin-top:2px;">' + esc(dt) + esc(whoTxt) + '</div>'
-          + '</div>';
-      }).join('');
-    } catch (err) {
-      logError('loadPropertyHistory error:', err);
-      listEl.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:12px;">Historial no disponible</p>';
-    }
-  }
-
   async function loadPropertyNotes(propertyId) {
     const listEl = $('#propertyNotesList');
     if (!listEl) return;
@@ -1913,10 +1869,8 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
   window.__BH.loadOwners = loadOwners;
   window.__BH.loadPropertyDocs = loadPropertyDocs;
   window.__BH.loadPropertyNotes = loadPropertyNotes;
-  window.__BH.loadPropertyHistory = loadPropertyHistory;
   if (!Object.prototype.hasOwnProperty.call(window, 'loadPropertyDocs')) Object.defineProperty(window, 'loadPropertyDocs', { get: () => loadPropertyDocs, configurable: true });
   if (!Object.prototype.hasOwnProperty.call(window, 'loadPropertyNotes')) Object.defineProperty(window, 'loadPropertyNotes', { get: () => loadPropertyNotes, configurable: true });
-  if (!Object.prototype.hasOwnProperty.call(window, 'loadPropertyHistory')) Object.defineProperty(window, 'loadPropertyHistory', { get: () => loadPropertyHistory, configurable: true });
   if (!Object.prototype.hasOwnProperty.call(window, 'loadOwners')) Object.defineProperty(window, 'loadOwners', { get: () => loadOwners, configurable: true });
   window.__BH.loadOwnerTasks = loadOwnerTasks;
   if (!Object.prototype.hasOwnProperty.call(window, 'loadOwnerTasks')) Object.defineProperty(window, 'loadOwnerTasks', { get: () => loadOwnerTasks, configurable: true });

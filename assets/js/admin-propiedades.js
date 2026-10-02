@@ -9,6 +9,19 @@
   /* ------------------------------------------------
      5. PROPERTIES CRUD
      ------------------------------------------------ */
+  const PROP_STATUS_META = {
+    venta: { label: 'Venta', bg: 'rgba(31,200,195,0.15)', color: 'var(--accent)' },
+    alquiler: { label: 'Alquiler', bg: 'rgba(245,158,11,0.15)', color: 'var(--warning)' },
+    vendido: { label: 'Vendido', bg: 'rgba(148,163,184,0.16)', color: '#94a3b8' },
+    alquilado: { label: 'Alquilada', bg: 'rgba(59,130,246,0.15)', color: 'var(--info)' },
+    pausado: { label: 'Pausado', bg: 'rgba(255,255,255,0.06)', color: 'var(--text-dim)' }
+  };
+
+  function propStatusBadge(status) {
+    const meta = PROP_STATUS_META[status] || PROP_STATUS_META.venta;
+    return `<span class="props-badge" style="background:${meta.bg}; color:${meta.color};">${esc(meta.label)}</span>`;
+  }
+
   async function loadProperties() {
     invalidateSearchCache();
     const tbody = $('#propertiesTableBody');
@@ -173,7 +186,7 @@
           <td class="props-num">${p.area_m2 ? p.area_m2 + ' m²' : '—'}</td>
           <td class="props-num">${p.rooms || '—'}</td>
           <td class="props-price">${formatPrice(p.price_usd, p.price_currency)}</td>
-          <td><span class="props-badge" style="background:${p.status === 'venta' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${p.status === 'venta' ? 'var(--accent)' : 'var(--warning)'};">${esc(p.status || 'venta')}</span></td>
+          <td>${propStatusBadge(p.status)}</td>
           <td><span class="props-owner${p.owner_id ? '' : ' is-empty'}" title="${esc(ownerMap[p.owner_id] || '')}">${esc(ownerMap[p.owner_id] || '—')}</span></td>
           <td><div class="props-state">${stateBadges}</div></td>
             <td data-col-actions>
@@ -220,6 +233,7 @@
     resetPropertyForm();
     loadAgentSelect($('#propAgentSelect'));
     openModal('propertyModal');
+    openPropMapRefresh();
   });
 
   /* Topbar create button */
@@ -228,6 +242,7 @@
     resetPropertyForm();
     loadAgentSelect($('#propAgentSelect'));
     openModal('propertyModal');
+    openPropMapRefresh();
   });
 
   function resetPropertyForm() {
@@ -243,10 +258,6 @@
     const docsSection = $('#propertyDocsSection');
 
     if (docsSection) docsSection.style.display = 'none';
-    const histSection = $('#propertyHistorySection');
-    if (histSection) histSection.style.display = 'none';
-    const histList = $('#propertyHistoryList');
-    if (histList) histList.innerHTML = '';
     const notesSection = $('#propertyNotesSection');
     if (notesSection) notesSection.style.display = 'block';
     const notesList = $('#propertyNotesList');
@@ -255,6 +266,11 @@
     if (noteInput) noteInput.value = '';
     _pendingPropertyNotes = [];
     _newImageFiles = [];
+    _propMapPendingCoords = null;
+    clearPropLocation();
+    resetPropMapView();
+    const mapSearch = document.getElementById('propMapSearch');
+    if (mapSearch) mapSearch.value = '';
   }
 
   /* Vista previa inmediata de las imágenes nuevas seleccionadas (antes de guardar) */
@@ -376,6 +392,166 @@
     togglePriceFields();
   }
 
+  /* ------------------------------------------------
+     Mapa de ubicación exacta (Leaflet) del form de propiedades
+     ------------------------------------------------ */
+  const PROP_MAP_HOME = { lat: -34.6037, lng: -58.3816, zoom: 12 };
+  const PROP_MAP_MARKER_HTML = '<svg width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#1FC8C3"/><circle cx="12" cy="9" r="2.6" fill="#020305"/></svg>';
+  let _propMap = null;
+  let _propMapIcon = null;
+  let _propMapMarker = null;
+  let _propLat = null;
+  let _propLng = null;
+  let _propMapPendingCoords = null;
+
+  function ensurePropMap() {
+    if (_propMap) return _propMap;
+    if (!window.L) { logWarn('Leaflet no está cargado (¿CDN bloqueado?) — mapa de ubicación deshabilitado'); return null; }
+    const mapEl = document.getElementById('propMap');
+    if (!mapEl) return null;
+    _propMap = window.L.map(mapEl, { scrollWheelZoom: false, zoomControl: true }).setView([PROP_MAP_HOME.lat, PROP_MAP_HOME.lng], PROP_MAP_HOME.zoom);
+    window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      subdomains: ['a', 'b', 'c'],
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(_propMap);
+    _propMapIcon = window.L.divIcon({ className: 'pf-map-pin', html: PROP_MAP_MARKER_HTML, iconSize: [28, 28], iconAnchor: [14, 28] });
+    _propMap.on('click', (e) => setPropLocation(e.latlng.lat, e.latlng.lng));
+    return _propMap;
+  }
+
+  function setPropLocation(lat, lng) {
+    if (!_propMap || !_propMapIcon) return;
+    _propLat = lat;
+    _propLng = lng;
+    if (_propMapMarker) _propMapMarker.setLatLng([lat, lng]);
+    else _propMapMarker = window.L.marker([lat, lng], { icon: _propMapIcon }).addTo(_propMap);
+    _propMap.panTo([lat, lng]);
+    const coordsEl = document.getElementById('propMapCoords');
+    if (coordsEl) coordsEl.textContent = lat.toFixed(6) + ', ' + lng.toFixed(6);
+    const clearBtn = document.getElementById('propMapClear');
+    if (clearBtn) clearBtn.style.display = '';
+  }
+
+  function clearPropLocation() {
+    _propLat = null;
+    _propLng = null;
+    if (_propMap && _propMapMarker) { _propMap.removeLayer(_propMapMarker); _propMapMarker = null; }
+    const coordsEl = document.getElementById('propMapCoords');
+    if (coordsEl) coordsEl.textContent = 'Sin ubicación marcada — hacé clic en el mapa o buscá una dirección';
+    const clearBtn = document.getElementById('propMapClear');
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+
+  function resetPropMapView() {
+    if (_propMap) _propMap.setView([PROP_MAP_HOME.lat, PROP_MAP_HOME.lng], PROP_MAP_HOME.zoom);
+  }
+
+  function openPropMapRefresh() {
+    // Leaflet mide 0px dentro de un modal cerrado: al abrir hay que invalidar el tamaño
+    setTimeout(() => {
+      if (!ensurePropMap()) return;
+      _propMap.invalidateSize();
+      if (_propMapPendingCoords) {
+        setPropLocation(_propMapPendingCoords.lat, _propMapPendingCoords.lng);
+        _propMap.setZoom(16);
+        _propMapPendingCoords = null;
+      }
+    }, 80);
+  }
+
+  async function propMapGeocode() {
+    if (!window.L) { showToast('Mapa no disponible (Leaflet no cargó)', 'error'); return; }
+    const input = document.getElementById('propMapSearch');
+    const query = input ? input.value.trim() : '';
+    if (!query) { showToast('Escribí una dirección o zona para buscar', 'warning'); return; }
+    const btn = document.getElementById('propMapSearchBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Buscando...'; }
+    try {
+      const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ar&q=' + encodeURIComponent(query), { headers: { Accept: 'application/json' } });
+      if (!res.ok) throw new Error('Nominatim HTTP ' + res.status);
+      const hits = await res.json();
+      if (!hits || !hits.length) { showToast('No se encontró esa dirección', 'warning'); return; }
+      ensurePropMap();
+      setPropLocation(parseFloat(hits[0].lat), parseFloat(hits[0].lon));
+      if (_propMap) _propMap.setZoom(16);
+    } catch (err) {
+      logError('Geocoding error:', err);
+      showToast('Error al buscar la dirección', 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-magnifying-glass"></i> Buscar'; }
+    }
+  }
+
+  const propMapSearchBtnEl = document.getElementById('propMapSearchBtn');
+  if (propMapSearchBtnEl) on(propMapSearchBtnEl, 'click', propMapGeocode);
+  const propMapSearchEl = document.getElementById('propMapSearch');
+  if (propMapSearchEl) propMapSearchEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); propMapGeocode(); } });
+  const propMapClearEl = document.getElementById('propMapClear');
+  if (propMapClearEl) propMapClearEl.addEventListener('click', clearPropLocation);
+
+  /* Preview grande al pasar el puntero sobre una miniatura de la galería */
+  (function initImgHoverPreview() {
+    const grid = document.getElementById('imagePreviewGrid');
+    if (!grid) return;
+    let hoverEl = null;
+    let hoverImg = null;
+    let captionEl = null;
+
+    function build() {
+      hoverEl = document.createElement('div');
+      hoverEl.className = 'img-hover-preview';
+      hoverImg = document.createElement('img');
+      hoverImg.alt = '';
+      captionEl = document.createElement('div');
+      captionEl.className = 'img-hover-caption';
+      hoverEl.appendChild(hoverImg);
+      hoverEl.appendChild(captionEl);
+      document.body.appendChild(hoverEl);
+    }
+
+    function place(e) {
+      if (!hoverEl) return;
+      const margin = 14;
+      let x = e.clientX + 18;
+      let y = e.clientY + 18;
+      if (x + hoverEl.offsetWidth + margin > window.innerWidth) x = Math.max(margin, e.clientX - hoverEl.offsetWidth - 18);
+      if (y + hoverEl.offsetHeight + margin > window.innerHeight) y = Math.max(margin, window.innerHeight - hoverEl.offsetHeight - margin);
+      hoverEl.style.left = x + 'px';
+      hoverEl.style.top = y + 'px';
+    }
+
+    function hide() { if (hoverEl) hoverEl.classList.remove('is-visible'); }
+
+    grid.addEventListener('mouseover', (e) => {
+      const item = e.target.closest('.image-preview-item');
+      if (!item) return;
+      const thumb = item.querySelector('img');
+      if (!thumb) return;
+      const src = thumb.getAttribute('src');
+      if (!src) return;
+      if (!hoverEl) build();
+      // Cloudinary: pedir versión grande; los archivos nuevos usan su objectURL tal cual
+      const big = src.includes('res.cloudinary.com') && src.includes('/upload/')
+        ? src.replace('/upload/', '/upload/w_840,h_600,c_fit,q_auto/')
+        : src;
+      if (hoverImg.getAttribute('src') !== big) hoverImg.setAttribute('src', big);
+      const items = Array.from(grid.querySelectorAll('.image-preview-item'));
+      const idx = items.indexOf(item);
+      captionEl.textContent = 'Foto ' + (idx + 1) + ' de ' + items.length + (idx === 0 ? ' · Portada' : '');
+      hoverEl.classList.add('is-visible');
+      place(e);
+    });
+
+    grid.addEventListener('mousemove', (e) => {
+      if (!hoverEl || !hoverEl.classList.contains('is-visible')) return;
+      const modal = document.getElementById('propertyModal');
+      if (!modal || !modal.classList.contains('is-open')) { hide(); return; }
+      place(e);
+    });
+    grid.addEventListener('mouseleave', hide);
+  })();
+
   /* Save property */
   on($('#propertyForm'), 'submit', async (e) => {
     e.preventDefault();
@@ -419,6 +595,10 @@
       if (validated.is_vendida || validated.is_reservada) {
         data.is_published = false;
       }
+
+      // null explícito: al editar, limpia coordenadas si el usuario quitó el pin
+      data.latitude = _propLat;
+      data.longitude = _propLng;
 
       const previewItems = Array.from(document.querySelectorAll('#imagePreviewGrid .image-preview-item'));
       const orderedExistingUrls = [];
@@ -595,8 +775,11 @@
       loadPropertyDocs(editingPropertyId);
       _pendingPropertyNotes = [];
       loadPropertyNotes(editingPropertyId);
-      loadPropertyHistory(editingPropertyId);
+      _propMapPendingCoords = (data.latitude != null && data.longitude != null)
+        ? { lat: Number(data.latitude), lng: Number(data.longitude) }
+        : null;
       openModal('propertyModal');
+      openPropMapRefresh();
     } catch (err) {
       showToast('Error al cargar propiedad', 'error');
     }
@@ -736,7 +919,11 @@
       if (title) title.textContent = 'Duplicar propiedad (nueva ficha, sin publicar)';
       const notesSection = $('#propertyNotesSection');
       if (notesSection) notesSection.style.display = 'block';
+      _propMapPendingCoords = (data.latitude != null && data.longitude != null)
+        ? { lat: Number(data.latitude), lng: Number(data.longitude) }
+        : null;
       openModal('propertyModal');
+      openPropMapRefresh();
       showToast('Completá y guardá — se crea como borrador con código nuevo', 'info');
     } catch (err) {
       showToast('Error al duplicar: ' + err.message, 'error');

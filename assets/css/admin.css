@@ -45,6 +45,7 @@
    39. Utilidades de layout & espaciado
    40. Responsive (breakpoints consolidados)
    41. Print
+   42. Form de propiedades (secciones, grid denso, chips, mapa, hover preview)
    ================================================================ */
 
 /* ================================================================
@@ -1481,14 +1482,10 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
     color-scheme: dark;
 }
 
-/* Validación nativa */
-.form-field input:invalid:not(:placeholder-shown),
-.form-field textarea:invalid:not(:placeholder-shown) {
-    border-color: rgba(255, 71, 87, 0.5);
-}
-.form-field input:required:valid:not(:placeholder-shown) {
-    border-color: rgba(16, 185, 129, 0.4);
-}
+/* Validación visual: los errores los marca Zod al guardar (toast) y .has-error.
+   No se pinta :invalid/:valid nativo: constraints como step/min/max pintaban
+   de rojo valores perfectamente válidos (ej: precios no múltiplos de step=1000)
+   y el verde permanente en campos required era ruido visual. */
 
 /* Bloques informativos y hints dentro de un form-field */
 .form-field > span {
@@ -5263,3 +5260,137 @@ input[type="range"]::-moz-range-thumb {
 .ag-d-item:last-child{border-bottom:none}
 .ag-d-item span:first-child{color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ag-d-empty{color:var(--text-dim);font-size:12px;padding:6px 0}
+
+/* ================================================================
+   42. FORM DE PROPIEDADES — rediseño (secciones, grid denso, chips)
+   ================================================================ */
+
+/* Estructura densa: solo dentro del modal de propiedades (.pf-dense) */
+.pf-dense .form-grid-2,
+.pf-dense .form-grid-3 { gap: 12px 14px; margin-bottom: 12px; }
+.pf-dense .form-field { margin-bottom: 12px; }
+.pf-dense .form-field label { font-size: 10.5px; letter-spacing: 0.8px; margin-bottom: 6px; }
+.pf-dense .form-field input,
+.pf-dense .form-field select,
+.pf-dense .form-field textarea { padding: 10px 14px; border-radius: 10px; font-size: 13px; }
+.pf-dense .form-field textarea { min-height: 74px; }
+.pf-dense .form-field input[type="file"] { padding: 10px 14px; border-radius: 10px; }
+
+/* Títulos de sección dentro del form */
+.pf-section-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 24px 0 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-main);
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+}
+.pf-section-title i { color: var(--accent); font-size: 12px; }
+#propertyForm .pf-section-title:first-of-type { margin-top: 0; }
+
+/* Grid de 4 columnas para campos numéricos (colapsa solo en pantallas angostas) */
+.form-grid-4 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px 14px;
+    margin-bottom: 12px;
+}
+
+/* Chips de toggles compactos (identidad gold/dark, sin cards de 64px) */
+.pf-chips { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.pf-toggle.pf-toggle--chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0;
+    min-height: 0;
+    padding: 7px 14px 7px 11px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    transition: var(--transition-fast);
+}
+.pf-toggle.pf-toggle--chip:hover { transform: none; box-shadow: 0 0 0 1px var(--glow-soft); }
+.pf-toggle.pf-toggle--chip .toggle-label { flex: 0 0 auto; font-size: 12px; }
+.pf-toggle.pf-toggle--chip input:checked + .toggle-slider + .toggle-label { color: var(--accent); }
+.pf-toggle.pf-toggle--chip .toggle-slider { width: 32px; height: 18px; margin-left: 0; box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.4); }
+.pf-toggle.pf-toggle--chip .toggle-slider::after { top: 2px; left: 2px; width: 12px; height: 12px; }
+.pf-toggle.pf-toggle--chip input:checked + .toggle-slider::after { transform: translateX(14px); }
+.pf-toggle.pf-toggle--chip:active .toggle-slider::after { width: 10px; }
+.pf-toggle.pf-toggle--chip input:checked + .toggle-slider:active::after { transform: translateX(14px) scaleX(0.85); }
+.pf-toggle.pf-toggle--chip:has(input:checked) { border-color: var(--border-accent); }
+
+/* Footer del modal: Cancelar + Guardar a altura compacta */
+.pf-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    margin-top: 22px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-subtle);
+}
+.pf-modal-actions .btn-ghost { height: 36px; padding: 0 16px; font-size: 12px; }
+
+/* Mapa de ubicación exacta (Leaflet) en modo oscuro */
+.pf-map-controls { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
+.pf-map-search-input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-input);
+    border-radius: 10px;
+    padding: 9px 14px;
+    color: var(--text-main);
+    font-size: 13px;
+    outline: none;
+    font-family: var(--font-body);
+    transition: var(--transition-fast);
+}
+.pf-map-search-input:focus { border-color: var(--accent); }
+.pf-map { height: 240px; width: 100%; border-radius: 12px; border: 1px solid var(--border-input); cursor: crosshair; }
+.pf-map.leaflet-container { background: var(--bg-secondary); font-family: var(--font-body); }
+.pf-map .leaflet-tile { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9) saturate(0.7); }
+.pf-map .leaflet-bar a { background: var(--bg-surface); color: var(--text-main); border-color: var(--border-subtle); }
+.pf-map .leaflet-bar a:hover { background: var(--bg-secondary); color: var(--accent); }
+.pf-map .leaflet-control-attribution { background: rgba(2, 3, 5, 0.75); color: var(--text-dim); font-size: 10px; }
+.pf-map .leaflet-control-attribution a { color: var(--text-muted); }
+.pf-map .pf-map-pin { background: transparent; border: none; }
+.pf-map .leaflet-marker-icon { filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5)); }
+.pf-map-coords {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    font-family: monospace;
+}
+.pf-map-coords i { color: var(--accent); }
+
+/* Preview grande al pasar el puntero sobre las miniaturas de la galería */
+.img-hover-preview {
+    position: fixed;
+    z-index: 9999;
+    max-width: 420px;
+    border-radius: 12px;
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.65);
+    background: var(--bg-surface);
+    overflow: hidden;
+    pointer-events: none;
+    display: none;
+}
+.img-hover-preview.is-visible { display: block; }
+.img-hover-preview img { display: block; max-width: 420px; max-height: 300px; width: auto; height: auto; }
+.img-hover-preview .img-hover-caption {
+    padding: 6px 10px;
+    font-size: 11px;
+    color: var(--text-dim);
+    background: rgba(2, 3, 5, 0.85);
+    text-align: center;
+}
