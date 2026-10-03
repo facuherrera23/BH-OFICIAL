@@ -1482,6 +1482,25 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
     color-scheme: dark;
 }
 
+/* Global (no solo .form-field): cubre filtros y side-panels de CRM */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+    color-scheme: dark;
+}
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.85;
+    transition: opacity 0.15s;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
 /* Validación visual: los errores los marca Zod al guardar (toast) y .has-error.
    No se pinta :invalid/:valid nativo: constraints como step/min/max pintaban
    de rojo valores perfectamente válidos (ej: precios no múltiplos de step=1000)

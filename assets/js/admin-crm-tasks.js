@@ -1,4 +1,4 @@
-Ôªø/**
+/**
  * admin-crm-tasks.js - Task management for CRM leads
  * Expone window.CrmTasks
  */
@@ -97,7 +97,7 @@ async function completeTask(taskId, cardEl, panel) {
 }
 
 var OUTCOMES = [
-  { id: 'contactado', label: 'Contact√≥' },
+  { id: 'contactado', label: 'ContactÛ' },
   { id: 'sin_respuesta', label: 'Sin respuesta' },
   { id: 'reprogramar', label: 'Reprogramar' },
   { id: 'no_interesa', label: 'No interesa' }
@@ -111,13 +111,13 @@ function showOutcome(cardEl, taskId, taskTitle, leadId) {
     box.className = 'crm-outcome';
     box.dataset.taskId = taskId;
     box.innerHTML =
-      '<div class="crm-outcome-label">Resultado de ‚Äú' + esc(taskTitle) + '‚Äù (obligatorio):</div>' +
+      '<div class="crm-outcome-label">Resultado de ì' + esc(taskTitle) + 'î (obligatorio):</div>' +
       '<div class="crm-outcome-chips">' +
         OUTCOMES.map(function (o) { return '<button type="button" class="crm-outcome-chip" data-outcome="' + o.label + '">' + o.label + '</button>'; }).join('') +
       '</div>' +
-      '<textarea class="crm-field-input crm-outcome-note" rows="2" placeholder="Describ√≠ brevemente c√≥mo sali√≥ la tarea‚Ä¶"></textarea>' +
+      '<textarea class="crm-field-input crm-outcome-note" rows="2" placeholder="DescribÌ brevemente cÛmo saliÛ la tareaÖ"></textarea>' +
       '<div class="crm-outcome-next">' +
-        '<input type="text" class="crm-field-input crm-outcome-next-input" placeholder="Siguiente acci√≥n (opcional): ej. ‚ÄúLlamar ma√±ana 10:00‚Äù">' +
+        '<input type="text" class="crm-field-input crm-outcome-next-input" placeholder="Siguiente acciÛn (opcional): ej. ìLlamar maÒana 10:00î">' +
         '<button type="button" class="btn-action crm-outcome-next-add" title="Crear siguiente tarea"><i class="fas fa-plus"></i></button>' +
       '</div>' +
       '<div class="crm-outcome-actions">' +
@@ -147,7 +147,7 @@ function showOutcome(cardEl, taskId, taskTitle, leadId) {
 
     async function finish() {
       var text = noteEl.value.trim();
-      if (!text) { toast('Escrib√≠ el resultado de la tarea.', 'error'); noteEl.focus(); return; }
+      if (!text) { toast('EscribÌ el resultado de la tarea.', 'error'); noteEl.focus(); return; }
       try {
         var r = await db().from('lead_tasks').update({ status: 'completada', completed_at: new Date().toISOString() }).eq('id', taskId);
         if (r.error) throw new Error(r.error.message);
@@ -155,7 +155,7 @@ function showOutcome(cardEl, taskId, taskTitle, leadId) {
           await db().from('lead_activities').insert([{
             lead_id: leadId,
             activity_type: 'note',
-            title: '‚úì ' + taskTitle,
+            title: '? ' + taskTitle,
             description: 'Resultado: ' + text
           }]);
           await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', leadId);
@@ -210,10 +210,10 @@ function parseQuickDate(text) {
   var date = null;
   var t = ' ' + text.toLowerCase() + ' ';
   var days = 0;
-  if (t.indexOf('pasado ma√±ana') !== -1 || t.indexOf('pasado manana') !== -1) days = 2;
-  else if (/(^|\s)ma√±ana/.test(t) || /(^|\s)manana/.test(t)) days = 1;
+  if (t.indexOf('pasado maÒana') !== -1 || t.indexOf('pasado manana') !== -1) days = 2;
+  else if (/(^|\s)maÒana/.test(t) || /(^|\s)manana/.test(t)) days = 1;
   else if (/(^|\s)hoy/.test(t)) days = 0;
-  else if (t.indexOf('ma√±ana') !== -1 || t.indexOf('manana') !== -1) days = 1;
+  else if (t.indexOf('maÒana') !== -1 || t.indexOf('manana') !== -1) days = 1;
   var hasDayWord = days > 0 || /(^|\s)hoy/.test(t);
   var timeMatch = t.match(/(\d{1,2})[:h.](\d{2})/) || t.match(/(^|\s)(\d{1,2})(?=\s*(am|pm)?(\s|$))/) ;
   var h = null, m = 0;
@@ -234,9 +234,9 @@ function parseQuickDate(text) {
 
 async function createQuick(leadId, rawText) {
   var text = String(rawText || '').trim();
-  if (!text) { toast('Escrib√≠ la tarea.', 'error'); return null; }
+  if (!text) { toast('EscribÌ la tarea.', 'error'); return null; }
   var due = parseQuickDate(text);
-  var title = text.replace(/^(hoy|ma√±ana|manana|pasado ma√±ana|pasado manana)\s*/i, '').replace(/\s*a?\s*las?\s*\d{1,2}[:h.]\d{0,2}\s*(am|pm)?\s*$/i, '').trim() || text;
+  var title = text.replace(/^(hoy|maÒana|manana|pasado maÒana|pasado manana)\s*/i, '').replace(/\s*a?\s*las?\s*\d{1,2}[:h.]\d{0,2}\s*(am|pm)?\s*$/i, '').trim() || text;
   try {
     var r = await db().from('lead_tasks').insert([{
       lead_id: leadId,
@@ -246,7 +246,7 @@ async function createQuick(leadId, rawText) {
       due_at: due ? due.toISOString() : null
     }]);
     if (r.error) throw new Error(r.error.message);
-    toast(due ? ('Tarea: ' + title + ' ‚Äî ' + due.toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })) : 'Tarea creada.', 'success');
+    toast(due ? ('Tarea: ' + title + ' ó ' + due.toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })) : 'Tarea creada.', 'success');
     return true;
   } catch (e) { toast('Error: ' + e.message, 'error'); return null; }
 }
@@ -257,11 +257,11 @@ function showTaskForm(leadId, taskId, panel) {
   var prioOpts = TASK_PRIORITIES.map(function (p) { return '<option value="' + p + '"' + (p === 'media' ? ' selected' : '') + '>' + TASK_PRIORITY_LABELS[p] + '</option>'; }).join('');
   q.innerHTML = '<div class="crm-quick-panel">' +
     '<span class="crm-quick-panel-label">Nueva tarea</span>' +
-    '<input class="crm-field-input" id="crmTaskTitle" placeholder="T√≠tulo *">' +
-    '<textarea class="crm-field-input" id="crmTaskDesc" rows="2" placeholder="Descripci√≥n (opcional)"></textarea>' +
+    '<input class="crm-field-input" id="crmTaskTitle" placeholder="TÌtulo *">' +
+    '<textarea class="crm-field-input" id="crmTaskDesc" rows="2" placeholder="DescripciÛn (opcional)"></textarea>' +
     '<div class="crm-side-field-row">' +
       '<div><span class="crm-side-field-label">Prioridad</span><select class="crm-field-input" id="crmTaskPriority">' + prioOpts + '</select></div>' +
-      '<div><span class="crm-side-field-label">Vence</span><input class="crm-field-input" id="crmTaskDue" type="datetime-local"></div>' +
+      '<div><span class="crm-side-field-label">Vence</span><input class="crm-field-input" id="crmTaskDue" type="datetime-local" step="600"></div>' +
     '</div>' +
     '<div class="crm-quick-panel-actions">' +
       '<button class="btn-luxury-action" id="crmTaskSave">Crear tarea</button>' +
@@ -269,7 +269,7 @@ function showTaskForm(leadId, taskId, panel) {
   q.querySelector('#crmTaskCancel').addEventListener('click', function () { q.innerHTML = ''; });
   q.querySelector('#crmTaskSave').addEventListener('click', async function () {
     var title = (q.querySelector('#crmTaskTitle') || {}).value.trim();
-    if (!title) { toast('El t√≠tulo es obligatorio.', 'error'); return; }
+    if (!title) { toast('El tÌtulo es obligatorio.', 'error'); return; }
     var data = {
       lead_id: leadId,
       title: title,

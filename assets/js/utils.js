@@ -118,6 +118,34 @@
         l.addEventListener('load', function() { activate(l); });
       });
     })();
+
+    // Horario comercial 08:00-21:00, saltos de 10 min. Los datetime-local no
+    // pueden restringir solo la hora vía HTML, así que se valida acá.
+    (function enforceBusinessHours() {
+      var MIN_MIN = 8 * 60, MAX_MIN = 21 * 60, STEP = 10;
+      function pad(n) { return (n < 10 ? '0' : '') + n; }
+      function clampTime(hh, mm) {
+        var total = hh * 60 + Math.round(mm / STEP) * STEP;
+        if (total < MIN_MIN) total = MIN_MIN;
+        if (total > MAX_MIN) total = MAX_MIN;
+        return pad(Math.floor(total / 60)) + ':' + pad(total % 60);
+      }
+      function fixInput(el) {
+        if (!el.value) return;
+        var m = el.value.match(/T?(\d{1,2}):(\d{2})/);
+        if (!m) return;
+        var total = (+m[1]) * 60 + (+m[2]);
+        if (total < MIN_MIN || total > MAX_MIN || total % STEP !== 0) {
+          var fixed = clampTime(+m[1], +m[2]);
+          el.value = el.type === 'time' ? fixed
+            : el.value.replace(/T\d{1,2}:\d{2}/, 'T' + fixed);
+        }
+      }
+      document.addEventListener('change', function (e) {
+        var el = e.target;
+        if (el && el.matches && el.matches('input[type="time"], input[type="datetime-local"]')) fixInput(el);
+      }, true);
+    })();
   }
 
   if (typeof module !== 'undefined' && module.exports) {
