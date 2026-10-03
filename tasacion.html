@@ -15,8 +15,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="assets/js/utils.js?v=55"></script>
-<script src="assets/js/config.js?v=59"></script>
+<script src="assets/js/utils.js?v=57"></script>
+<script src="assets/js/config.js?v=58"></script>
 <style>
   :root{
     --teal:#14b8a6;
@@ -251,13 +251,23 @@
   }
   .toast.show{opacity:1; bottom:92px;}
 
-  @page{ size: A4; margin: 12mm; }
+  @page{ size: A4; margin: 10mm; }
 
   @media print{
     .action-bar, .toast, .add-btn, .remove{display:none !important;}
     .comp-block[data-included="false"]{display:none !important;}
-    /* Flujo natural: sin saltos forzados; las hojas se llenan solas y los bloques no se cortan a la mitad */
-    #printGroupPropiedad, #printGroupBarrio, #sectionAnalisisComparativo{break-before:auto; page-break-before:auto;}
+    /* Informe por bloques (formato definido por el estudio):
+       B1 · p1: cliente + inmueble + foto · p2: descripción + servicios · p3: barrio + plano
+       B2 · comparables 2 por página; si son impares la media página final queda en blanco
+            (.print-page-break la marca beforeprint sobre los comparables VISIBLES)
+       B3 · análisis comparativo + valuación · B4 · observaciones + plan de marketing */
+    main{max-width:100%;}
+    #printGroupPropiedad, #printGroupBarrio, #sectionComparables,
+    #sectionAnalisisComparativo, #sectionObservaciones{break-before:page; page-break-before:always;}
+    .comp-block.print-page-break{break-before:page; page-break-before:always;}
+    .screen-only{display:none !important;}
+    #sectionComparables:not(:has(.comp-block)){display:none !important;}
+    .comp-block .field:has(.c_url){display:none !important;}
     .comp-block{break-inside:avoid; page-break-inside:avoid;}
     .accordion-arrow{display:none !important;}
     section.card.collapsed .accordion-body{display:block !important;}
@@ -303,7 +313,7 @@
 
     /* Leaflet imprime bien si los paneles recuperan z-index propio: sin esto los
        tiles quedan detrás del placeholder o no se ven en el PDF exportado. */
-    .map-frame{print-color-adjust:exact; -webkit-print-color-adjust:exact; border-radius:6px; overflow:hidden; height:420px; break-inside:avoid; page-break-inside:avoid; border-color:#ccc !important;}
+    .map-frame{print-color-adjust:exact; -webkit-print-color-adjust:exact; border-radius:6px; overflow:hidden; height:300px; break-inside:avoid; page-break-inside:avoid; border-color:#ccc !important;}
     .leaflet-pane{z-index:1 !important;}
     .leaflet-map-pane img.leaflet-tile{position:absolute; visibility:visible !important;}
     .leaflet-marker-pane img, .leaflet-pane svg{display:block !important;}
@@ -312,42 +322,45 @@
     .map-legend{display:flex !important; font-size:11px !important; margin-top:8px;}
     .map-legend .chip{background:#fff !important; border-color:#ccc !important; color:var(--dark) !important; padding:2px 10px !important;}
 
-    /* Equilibrio: suficiente aire para que no quede comprimido, sin tirar hojas */
-    main{padding:18px 16px 22px;}
-    header.top{padding:14px 22px;}
-    .logo-badge img{height:36px;}
-    section.card{padding:18px 20px; margin-bottom:14px;}
-    section.card h2{font-size:12.5px; margin-bottom:12px; padding-bottom:7px;}
-    .grid{gap:10px;}
-    .field input, .field select, .field textarea{padding:6px 9px; font-size:13px;}
-    .field label{margin-bottom:4px; font-size:10.5px;}
-    .comp-block{padding:12px 14px; margin-bottom:10px;}
-    .comp-block h3{font-size:12px; margin-bottom:6px;}
-    .comp-block .photo-box{max-width:300px; aspect-ratio:16/7; margin:6px auto 0; min-height:0;}
-    .comp-block .field input, .comp-block .field select, .comp-block .field textarea{padding:5px 8px; font-size:12.5px;}
-    .comp-block .field label{margin-bottom:3px; font-size:10px;}
-    .comp-block .grid{gap:8px;}
-    .comp-block .char-grid{gap:6px 10px; margin-top:8px;}
-    .comp-block .char-cell .label{font-size:10px;}
-    .comp-block .char-cell select{padding:5px 8px; font-size:12.5px;}
-    .comp-block .coef-box{padding:7px 12px; margin-top:8px;}
-    .comp-block .coef-box span{font-size:11.5px;}
-    .comp-block .coef-box strong{font-size:14px;}
-    .char-grid{gap:8px 12px;}
-    .amb-field{padding:5px 0;}
+    /* Compactación del layout paginado: cada bloque del informe debe entrar en su página */
+    main{padding:12px 14px 16px;}
+    header.top{padding:10px 18px;}
+    .logo-badge img{height:30px;}
+    section.card{padding:13px 15px; margin-bottom:10px;}
+    section.card h2{font-size:11.5px; margin-bottom:9px; padding-bottom:6px;}
+    .grid{gap:7px;}
+    .field input, .field select, .field textarea{padding:5px 8px; font-size:12.5px;}
+    .field label{margin-bottom:2px; font-size:9px;}
+    .field textarea{min-height:50px;}
+    .amb-grid{grid-template-columns:repeat(4,1fr); gap:3px 12px;}
+    .amb-field{padding:3px 0;}
+    .total-cuartos-row{padding:5px 10px; margin:8px 0 2px; break-inside:avoid; page-break-inside:avoid;}
+    .photo-box{max-width:430px; margin-bottom:0; break-inside:avoid; page-break-inside:avoid;}
+    .comp-block{padding:9px 12px; margin-bottom:8px;}
+    .comp-block h3{font-size:11.5px; margin-bottom:5px;}
+    .comp-block .photo-box{max-width:210px; aspect-ratio:16/7; margin:4px auto 0; min-height:0;}
+    .comp-block .field input, .comp-block .field select, .comp-block .field textarea{padding:4px 7px; font-size:12px;}
+    .comp-block .field label{margin-bottom:2px; font-size:9px;}
+    .comp-block .grid{gap:6px;}
+    .comp-block .char-grid{gap:4px 8px; margin-top:5px;}
+    .comp-block .char-cell .label{font-size:9px; margin-bottom:2px;}
+    .comp-block .char-cell select{padding:4px 7px; font-size:12px;}
+    .comp-block .coef-box{padding:5px 10px; margin-top:6px;}
+    .comp-block .coef-box span{font-size:10.5px;}
+    .comp-block .coef-box strong{font-size:13px;}
+    .char-grid{gap:5px 10px;}
     .valor-row{break-inside:avoid; page-break-inside:avoid;}
-    .valor-box{padding:12px 16px;}
-    .valor-input input{font-size:19px;}
-    .valuation-summary .box{padding:12px;}
-    .valuation-summary .box .val{font-size:19px;}
-    .coef-box{padding:10px 14px; margin-top:10px; break-inside:avoid; page-break-inside:avoid;}
-    .total-cuartos-row{padding:7px 12px; margin:10px 0 4px; break-inside:avoid; page-break-inside:avoid;}
-    .photo-box{margin-bottom:0; break-inside:avoid; page-break-inside:avoid;}
-    .marketing-text{font-size:13px; margin-bottom:8px;}
-    .ac-chart-wrap{height:230px; padding:12px; margin-top:14px;}
-    .grid.cols-4 .field label{font-size:10px;}
-    .brand-footer{padding:10px 22px 6px; break-before:avoid; page-break-before:avoid; break-inside:avoid;}
-    .brand-footer img{height:32px; opacity:.85;}
+    .valor-box{padding:10px 14px;}
+    .valor-input input{font-size:18px;}
+    .valuation-summary .box{padding:10px;}
+    .valuation-summary .box .val{font-size:18px;}
+    .coef-box{padding:8px 12px; margin-top:8px; break-inside:avoid; page-break-inside:avoid;}
+    .marketing-text{font-size:12.5px; margin-bottom:6px;}
+    .ac-chart-wrap{height:150px; padding:10px; margin-top:10px;}
+    .grid.cols-4 .field label{font-size:9px;}
+    table.data-table td, table.data-table th{padding:4px 6px; font-size:12px;}
+    .brand-footer{padding:8px 20px 4px; break-before:avoid; page-break-before:avoid; break-inside:avoid;}
+    .brand-footer img{height:28px; opacity:.85;}
   }
 </style>
 </head>
@@ -388,20 +401,6 @@
     </div>
   </section>
 
-  <!-- ============ FOTO DE FACHADA ============ -->
-  <section class="card">
-    <h2>Foto de Fachada</h2>
-    <div class="photo-box" id="photoBox">
-      <input type="file" id="f_fotoFachada" accept="image/*" style="display:none;">
-      <img id="photoPreview" style="display:none;">
-      <div class="photo-placeholder" id="photoPlaceholder">
-        <span>📷 Click para subir foto de la fachada</span>
-        <span class="photo-hint">Tamaño sugerido aprox. 15 cm × 7 cm (horizontal)</span>
-      </div>
-      <button type="button" class="remove" id="photoRemove" style="display:none;">Quitar foto</button>
-    </div>
-  </section>
-
   <!-- ============ DATOS DEL INMUEBLE ============ -->
   <section class="card">
     <h2>Datos del Inmueble</h2>
@@ -436,20 +435,18 @@
     </div>
   </section>
 
-  <!-- ============ UBICACIÓN EN EL MAPA ============ -->
+  <!-- ============ FOTO DE FACHADA ============ -->
   <section class="card">
-    <h2>Plano de Ubicación</h2>
-    <p style="font-size:12.5px; color:var(--muted); margin:-6px 0 12px; font-family:'Poppins',sans-serif;">
-      Muestra la propiedad y todos los comparables juntos en un mismo mapa.
-    </p>
-    <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
-      <button type="button" class="add-btn" id="btnUpdateMap" style="width:auto; padding:10px 18px;">📍 Actualizar mapa con todas las ubicaciones</button>
-      <span id="mapStatus" style="font-size:12px; color:var(--muted); font-family:'Poppins',sans-serif;"></span>
+    <h2>Foto de Fachada</h2>
+    <div class="photo-box" id="photoBox">
+      <input type="file" id="f_fotoFachada" accept="image/*" style="display:none;">
+      <img id="photoPreview" style="display:none;">
+      <div class="photo-placeholder" id="photoPlaceholder">
+        <span>📷 Click para subir foto de la fachada</span>
+        <span class="photo-hint">Tamaño sugerido aprox. 15 cm × 7 cm (horizontal)</span>
+      </div>
+      <button type="button" class="remove" id="photoRemove" style="display:none;">Quitar foto</button>
     </div>
-    <div class="map-frame" id="leafletMap">
-      <div class="map-placeholder" id="mainMapPlaceholder">Cargá la dirección del inmueble y de los comparables, y presioná "Actualizar mapa"</div>
-    </div>
-    <div class="map-legend" id="mapLegend"></div>
   </section>
 
   <!-- ============ DESCRIPCIÓN DE LA PROPIEDAD ============ -->
@@ -626,10 +623,26 @@
       <div class="field"><label>Otro (calculado)</label><input type="text" id="f_usoOtro" readonly style="background:#f2f1ee;"></div>
     </div>
   </section>
+
+  <!-- ============ PLANO DE UBICACIÓN (página 3 del informe) ============ -->
+  <section class="card">
+    <h2>Plano de Ubicación</h2>
+    <p class="screen-only" style="font-size:12.5px; color:var(--muted); margin:-6px 0 12px; font-family:'Poppins',sans-serif;">
+      Muestra la propiedad y todos los comparables juntos en un mismo mapa.
+    </p>
+    <div class="screen-only" style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+      <button type="button" class="add-btn" id="btnUpdateMap" style="width:auto; padding:10px 18px;">📍 Actualizar mapa con todas las ubicaciones</button>
+      <span id="mapStatus" style="font-size:12px; color:var(--muted); font-family:'Poppins',sans-serif;"></span>
+    </div>
+    <div class="map-frame" id="leafletMap">
+      <div class="map-placeholder" id="mainMapPlaceholder">Cargá la dirección del inmueble y de los comparables, y presioná "Actualizar mapa"</div>
+    </div>
+    <div class="map-legend" id="mapLegend"></div>
+  </section>
   </div>
 
   <!-- ============ COMPARABLES ============ -->
-  <section class="card">
+  <section class="card" id="sectionComparables">
     <h2>Comparables — Comparación de Características</h2>
     <div id="comparablesContainer"></div>
     <button type="button" class="add-btn" id="addComparable">+ Agregar comparable</button>
@@ -641,7 +654,7 @@
     <div style="display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
       <label style="font-family:'Poppins',sans-serif; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;">Dispersión (±%)</label>
       <input type="number" id="ac_dispersion" value="10" min="0" max="100" style="width:70px; padding:7px 8px; border:1px solid var(--line); border-radius:5px; background:#fff; color:var(--input-text); font-family:'Poppins',sans-serif; font-weight:700;">
-      <span style="font-size:11.5px; color:var(--muted); font-family:'Poppins',sans-serif;">Tildá los comparables que querés incluir en el promedio final.</span>
+      <span class="screen-only" style="font-size:11.5px; color:var(--muted); font-family:'Poppins',sans-serif;">Tildá los comparables que querés incluir en el promedio final.</span>
     </div>
 
     <table class="data-table ac-table">
@@ -682,7 +695,7 @@
         </tr>
       </tbody>
     </table>
-    <p style="font-size:11.5px; color:var(--muted); margin-top:-10px; font-family:'Poppins',sans-serif;">
+    <p class="screen-only" style="font-size:11.5px; color:var(--muted); margin-top:-10px; font-family:'Poppins',sans-serif;">
       Los m² de Terreno y Superficie Cubierta se completan automáticamente desde "Datos del Inmueble".
     </p>
     <div class="valuation-summary cols-4">
@@ -694,7 +707,7 @@
   </section>
 
   <!-- ============ OBSERVACIONES GENERALES ============ -->
-  <section class="card">
+  <section class="card" id="sectionObservaciones">
     <h2>Observaciones Generales</h2>
     <div class="field"><textarea id="f_observaciones" style="min-height:90px;"></textarea></div>
   </section>
@@ -731,6 +744,6 @@
 </div>
 
 <script src="assets/js/tasacion-calc.js?v=1"></script>
-<script src="assets/js/pages/tasacion-page.js?v=4"></script>
+<script src="assets/js/pages/tasacion-page.js?v=5"></script>
 </body>
 </html>

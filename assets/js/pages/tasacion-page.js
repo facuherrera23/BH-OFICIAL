@@ -581,8 +581,18 @@ function renderAnalisisComparativo(forPrint){
     }
   });
 }
-window.addEventListener('beforeprint', ()=>renderAnalisisComparativo(true));
-window.addEventListener('afterprint', ()=>renderAnalisisComparativo(false));
+window.addEventListener('beforeprint', ()=>{
+  renderAnalisisComparativo(true);
+  /* Bloque 2 del informe: 2 comparables visibles por página. El salto cae antes
+     del 3°, 5°, … comparable VISIBLE (los excluidos no ocupan lugar); si el total
+     es impar, la media página final queda en blanco. */
+  const visibles = Array.from(document.querySelectorAll('.comp-block')).filter(b => b.dataset.included !== 'false');
+  visibles.forEach((b, i) => b.classList.toggle('print-page-break', i > 0 && i % 2 === 0));
+});
+window.addEventListener('afterprint', ()=>{
+  renderAnalisisComparativo(false);
+  document.querySelectorAll('.comp-block.print-page-break').forEach(b => b.classList.remove('print-page-break'));
+});
 document.getElementById('ac_dispersion').addEventListener('input', ()=>renderAnalisisComparativo());
 
 let photoDataUrl = null;
@@ -870,7 +880,7 @@ if (new URLSearchParams(window.location.search).get('print') === '1') {
   const _imgsReady = () => Array.from(document.images).every(im => im.complete);
   const _autoPrintCheck = setInterval(() => {
     const hasData = document.getElementById('comparablesContainer')?.children?.length > 0
-      || document.getElementById('dirDomicilio')?.value;
+      || document.getElementById('f_direccion')?.value;
     if (hasData && _imgsReady()) {
       clearInterval(_autoPrintCheck);
       (async () => {
