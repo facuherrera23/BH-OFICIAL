@@ -219,7 +219,7 @@
       /* Cada panel tiene su propio try para que una falla no tumbe todo */
       try { renderInicio(d, owner, props); } catch (e) { console.error('[portal] inicio:', e); }
       try { renderPropiedades(d, props); } catch (e) { console.error('[portal] propiedades:', e); }
-      try { renderExclusividad(d, owner); } catch (e) { console.error('[portal] exclusividad:', e); }
+      try { renderExclusividad(d, owner, props); } catch (e) { console.error('[portal] exclusividad:', e); }
       try { renderVisitasExtras(d, owner); } catch (e) { console.error('[portal] visitas extras:', e); }
       try { renderOfflineBanner(); } catch (e) {}
       try { renderSessionChip(); } catch (e) {}
@@ -938,7 +938,6 @@
       if ((visits.canceladas || 0) > 0) {
         stats.push({ icon:'fas fa-times-circle', label:'Visitas canceladas', value:fmtNum(visits.canceladas), sub:'', cls:'gold' });
       }
-      stats.push({ icon:'fas fa-dollar-sign', label:'Cotización USD', value: (d.usd_rate && d.usd_rate > 0) ? esc(fmtARS(d.usd_rate)) : null, sub: (d.usd_rate && d.usd_rate > 0) ? 'referencia' : null, cls:'gold' });
       var cardHtml = stats.filter(function(s){ return s.value !== null && s.value !== undefined; }).map(function(s) {
         return '<div class="stat-card' + (s.go ? ' stat-card--link' : '') + '"' + (s.go ? ' data-go-tab="' + s.go + '" role="button" tabindex="0" title="Ver detalle"' : '') + '>' +
           '<div class="label"><i class="' + esc(s.icon) + '"></i> ' + esc(s.label) + '</div>' +
@@ -1164,7 +1163,6 @@
 
     function renderPropiedades(d, props) {
       var owner = d.owner || {};
-      var usdRate = d.usd_rate || 0;
       CurrentDataProps = props;
       compareSelection = [];
       updateCompareBar();
@@ -1311,13 +1309,11 @@
         var location = [p.zone, p.address].filter(Boolean).join(' · ');
         var typeLabel = ptypeLabel(p.property_type);
 
-        /* Precio con moneda */
+        /* Precio con moneda (sin equivalencia USD/ARS) */
         var priceHtml = '';
         if (p.price_usd != null && p.price_usd > 0) {
           var main = p.price_currency === 'ARS' ? fmtARS(p.price_usd) : fmtUSD(p.price_usd);
-          var sec = '';
-          if (p.price_currency !== 'ARS' && usdRate > 0) sec = '<span class="prop-price-sec">' + fmtARS(p.price_usd * usdRate) + '</span>';
-          priceHtml = '<span class="prop-price"><i class="fas fa-dollar-sign"></i> ' + esc(main) + sec + '</span>';
+          priceHtml = '<span class="prop-price"><i class="fas fa-dollar-sign"></i> ' + esc(main) + '</span>';
         }
 
         /* Próxima visita destacada */
@@ -1458,7 +1454,7 @@
         var rentHtml = '';
         if (p.status === 'alquiler' && p.price_usd && p.price_usd > 0) {
           var annual = Math.round(p.price_usd * 12);
-          rentHtml = '<div class="lat-annual"><i class="fas fa-calendar-alt"></i> Alquiler anual estimado: ' + fmtUSD(annual) + (usdRate > 0 ? ' ≈ ' + fmtARS(annual * usdRate) : '') + '</div>';
+          rentHtml = '<div class="lat-annual"><i class="fas fa-calendar-alt"></i> Alquiler anual estimado: ' + fmtUSD(annual) + '</div>';
         }
 
         /* Sugerencia de mejora si baja calidad */
@@ -1865,7 +1861,7 @@
         '<div class="excl-timeline">' + html + '</div>';
     }
 
-    function renderExclusividad(d, owner) {
+    function renderExclusividad(d, owner, props) {
       var es = d.excl_stats || {};
       var activity = d.activity || [];
 
@@ -2151,7 +2147,6 @@
             '<span class="val-code">' + esc(t.property_code || '') + '</span>' +
             '<span class="val-title">' + esc(t.title || 'Tasación') + '</span>' +
             '<span class="val-usd">' + (t.valuation_usd ? fmtUSD(t.valuation_usd) : '-') + '</span>' +
-            '<span class="val-ars">' + (t.valuation_ars ? fmtARS(t.valuation_ars) : '-') + '</span>' +
             '<span class="val-status ' + esc(t.status || 'borrador') + '">' + esc(t.status || 'borrador') + '</span>' +
             '<span class="val-date">' + fmtDate(t.created_at) + '</span>' +
           '</div>';
@@ -2161,71 +2156,10 @@
         div.innerHTML =
           '<div class="section-title"><i class="fas fa-chart-line"></i> Historial de tasaciones</div>' +
           '<div class="val-header">' +
-            '<span>Código</span><span>Título</span><span>USD</span><span>ARS</span><span>Estado</span><span>Fecha</span>' +
+            '<span>Código</span><span>Título</span><span>USD</span><span>Estado</span><span>Fecha</span>' +
           '</div>' +
           valHtml;
         slot.appendChild(div);
-      }
-
-      /* ── 2. Inteligencia de mercado y precios ── */
-      var marketSections = [];
-      var zoneName = props[0] && props[0].zone ? props[0].zone : '';
-      var zoneAvgVal = zoneName && zoneAvg[zoneName] ? zoneAvg[zoneName] : null;
-      props.forEach(function(p) {
-        var perM2 = null;
-        var area = p.area_covered || p.area_total || p.area_m2;
-        if (p.price_usd && area > 0) perM2 = Math.round(p.price_usd / area);
-        if (perM2 && zoneAvgVal) {
-          var diff = Math.round(((perM2 - zoneAvgVal) / zoneAvgVal) * 100);
-          var isCheap = diff < 0;
-          var isExp = diff > 5;
-          if (Math.abs(diff) >= 5) {
-            marketSections.push(
-              '<div class="mkt-tip' + (isCheap ? ' cheap' : (isExp ? ' exp' : '')) + '">' +
-                '<i class="fas fa-' + (isCheap ? 'arrow-down' : 'arrow-up') + '"></i>' +
-                '<span><strong>' + esc(p.property_code || '') + '</strong> ' +
-                (isCheap ? 'está ' + Math.abs(diff) + '% por debajo' : 'está ' + diff + '% por encima') +
-                ' del promedio de ' + esc(zoneName) + ' (' + fmtUSD(zoneAvgVal) + '/m²).</span>' +
-              '</div>'
-            );
-          }
-        }
-        if (tasaciones.length) {
-          var tas = tasaciones.filter(function(t){ return t.property_code === p.property_code; });
-          if (tas.length) {
-            var latest = tas[0];
-            if (latest.valuation_usd && p.price_usd) {
-              var diffPrice = Math.round(((p.price_usd - latest.valuation_usd) / latest.valuation_usd) * 100);
-              if (Math.abs(diffPrice) >= 3) {
-                marketSections.push(
-                  '<div class="mkt-tip' + (diffPrice > 0 ? ' exp' : ' cheap') + '">' +
-                    '<i class="fas fa-' + (diffPrice > 0 ? 'arrow-up' : 'arrow-down') + '"></i>' +
-                    '<span><strong>' + esc(p.property_code || '') + '</strong> ' +
-                    'vale ' + (diffPrice > 0 ? Math.abs(diffPrice) + '% más' : Math.abs(diffPrice) + '% menos') +
-                    ' que su última tasación (' + fmtUSD(latest.valuation_usd) + ').</span>' +
-                  '</div>'
-                );
-              }
-            }
-          }
-        }
-        if (p.ml_last_sync) {
-          var daysSinceSync = Math.floor((Date.now() - new Date(p.ml_last_sync).getTime()) / 86400000);
-          if (daysSinceSync > 7) {
-            marketSections.push(
-              '<div class="mkt-tip warn">' +
-                '<i class="fas fa-exclamation-triangle"></i>' +
-                '<span><strong>' + esc(p.property_code || '') + '</strong> no se sincronizó con Mercado Libre hace ' + daysSinceSync + ' días. Podría estar desactualizada.</span>' +
-              '</div>'
-            );
-          }
-        }
-      });
-      if (marketSections.length) {
-        var mdiv = document.createElement('div');
-        mdiv.className = 'module-section';
-        mdiv.innerHTML = '<div class="section-title"><i class="fas fa-chart-pie"></i> Análisis de mercado</div>' + marketSections.join('');
-        slot.appendChild(mdiv);
       }
 
       /* ── 3. Finanzas ── */
@@ -2273,128 +2207,45 @@
         }).join('');
       }
 
-      /* ── 4. Documentos ── */
+      /* ── 4. Documentos: visible solo con exclusividad vigente (decisión del dueño) ── */
+      var docExcl = exclState(owner.exclusive_start ? new Date(owner.exclusive_start) : null, owner.exclusive_end ? new Date(owner.exclusive_end) : null);
+      var exclVigente = docExcl.key === 'activa' || docExcl.key === 'por_vencer';
       var docSections = [];
-      (extras.documents || []).forEach(function(pd) {
-        if (!pd.documents || !pd.documents.length) return;
-        var docsHtml = pd.documents.map(function(doc) {
-          return '<div class="doc-row">' +
-            '<i class="fas fa-' + (doc.type && doc.type.indexOf('image') !== -1 ? 'image' : 'file') + '"></i>' +
-            '<span class="doc-name">' + esc(doc.name || 'Documento') + '</span>' +
-            '<span class="doc-type">' + esc(doc.type || '') + '</span>' +
-            '<span class="doc-date">' + fmtDate(doc.uploaded_at) + '</span>' +
-          '</div>';
-        }).join('');
-        docSections.push('<div class="doc-prop"><div class="doc-prop-code">' + esc(pd.prop_code) + '</div>' + docsHtml + '</div>');
-      });
+      if (exclVigente) {
+        (extras.documents || []).forEach(function(pd) {
+          if (!pd.documents || !pd.documents.length) return;
+          var docsHtml = pd.documents.map(function(doc) {
+            return '<div class="doc-row">' +
+              '<i class="fas fa-' + (doc.type && doc.type.indexOf('image') !== -1 ? 'image' : 'file') + '"></i>' +
+              '<span class="doc-name">' + esc(doc.name || 'Documento') + '</span>' +
+              '<span class="doc-type">' + esc(doc.type || '') + '</span>' +
+              '<span class="doc-date">' + fmtDate(doc.uploaded_at) + '</span>' +
+            '</div>';
+          }).join('');
+          docSections.push('<div class="doc-prop"><div class="doc-prop-code">' + esc(pd.prop_code) + '</div>' + docsHtml + '</div>');
+        });
 
-      var reqMap = {};
-      (extras.requirements || []).forEach(function(r) {
-        if (!reqMap[r.operation_type]) reqMap[r.operation_type] = [];
-        reqMap[r.operation_type].push(r);
-      });
-      Object.keys(reqMap).forEach(function(op) {
-        var items = reqMap[op].map(function(r) {
-          return '<div class="req-item' + (r.is_mandatory ? ' mandatory' : '') + '">' +
-            '<i class="fas fa-' + (r.is_mandatory ? 'lock' : 'unlock') + '"></i>' +
-            '<span>' + esc(r.label) + '</span>' +
-          '</div>';
-        }).join('');
-        docSections.push('<div class="doc-prop"><div class="doc-prop-code">Requisitos ' + esc(op) + '</div><div class="req-grid">' + items + '</div></div>');
-      });
+        var reqMap = {};
+        (extras.requirements || []).forEach(function(r) {
+          if (!reqMap[r.operation_type]) reqMap[r.operation_type] = [];
+          reqMap[r.operation_type].push(r);
+        });
+        Object.keys(reqMap).forEach(function(op) {
+          var items = reqMap[op].map(function(r) {
+            return '<div class="req-item' + (r.is_mandatory ? ' mandatory' : '') + '">' +
+              '<i class="fas fa-' + (r.is_mandatory ? 'lock' : 'unlock') + '"></i>' +
+              '<span>' + esc(r.label) + '</span>' +
+            '</div>';
+          }).join('');
+          docSections.push('<div class="doc-prop"><div class="doc-prop-code">Requisitos ' + esc(op) + '</div><div class="req-grid">' + items + '</div></div>');
+        });
+      }
 
       if (docSections.length) {
         var ddiv = document.createElement('div');
         ddiv.className = 'module-section';
         ddiv.innerHTML = '<div class="section-title"><i class="fas fa-folder-open"></i> Documentación</div>' + docSections.join('');
         slot.appendChild(ddiv);
-      }
-
-      /* ── 5. Notas al asesor + timeline ── */
-      var notes = extras.timeline || [];
-      var tasks = extras.tasks || [];
-      if (notes.length || tasks.length) {
-        var notesHtml = '';
-        if (notes.length) {
-          notesHtml += '<div class="section-title" style="margin-top:20px;"><i class="fas fa-comments"></i> Comunicaciones del asesor</div>';
-          notesHtml += notes.slice(0, 8).map(function(n) {
-            return '<div class="note-card"><i class="fas fa-comment"></i><div><div class="note-text">' + esc(n.text) + '</div><div class="note-date">' + esc(fmtDateTime(n.created_at)) + '</div></div></div>';
-          }).join('');
-        }
-        var tasksHtml = '';
-        if (tasks.length) {
-          tasksHtml += '<div class="section-title" style="margin-top:20px;"><i class="fas fa-tasks"></i> Tareas asignadas</div>';
-          tasksHtml += tasks.map(function(t) {
-            var isDone = t.status === 'completada';
-            return '<div class="task-card' + (isDone ? ' done' : '') + '" data-task-id="' + esc(t.id) + '">' +
-              '<button type="button" class="task-check' + (isDone ? ' done' : '') + '"><i class="fas fa-' + (isDone ? 'check' : 'circle') + '"></i></button>' +
-              '<div class="task-body">' +
-                '<div class="task-desc">' + esc(t.description) + '</div>' +
-                (t.due_date ? '<div class="task-due">' + fmtDate(t.due_date) + '</div>' : '') +
-                (isDone && t.result_notes ? '<div class="task-result">' + esc(t.result_notes) + '</div>' : '') +
-              '</div>' +
-            '</div>';
-          }).join('');
-        }
-        var tc = document.createElement('div');
-        tc.className = 'module-section';
-        tc.innerHTML = notesHtml + tasksHtml;
-        slot.appendChild(tc);
-
-        /* Bindeo tareas */
-        document.querySelectorAll('.task-card .task-check').forEach(function(btn) {
-          btn.addEventListener('click', function() {
-            var card = btn.closest('.task-card');
-            var taskId = card.getAttribute('data-task-id');
-            if (card.classList.contains('done')) return;
-            var res = prompt('¿Completaste la tarea? Notas para el asesor:');
-            if (res === null) return;
-            supabase.rpc('portal_complete_task', { p_token: token, p_task_id: taskId, p_result_notes: res || null })
-              .then(function() {
-                card.classList.add('done');
-                btn.classList.add('done');
-                btn.innerHTML = '<i class="fas fa-check"></i>';
-                portalToast('Tarea completada');
-              })
-              .catch(function(){ portalToast('No se pudo completar', 'error'); });
-          });
-        });
-      }
-
-      /* ── 6. Nota directa al asesor ── */
-      if (d.broker && d.broker.phone) {
-        var bWa = portalWaNumber(d.broker.phone);
-        var noteDiv = document.createElement('div');
-        noteDiv.className = 'module-section';
-        noteDiv.innerHTML =
-          '<div class="section-title"><i class="fas fa-envelope"></i> Dejar nota al asesor</div>' +
-          '<div class="note-form">' +
-            '<textarea id="noteText" placeholder="Escribí tu consulta o comentario para tu asesor..." rows="2" maxlength="500"></textarea>' +
-            '<button type="button" id="sendNoteBtn" class="quick-action" style="margin-top:8px;"><i class="fas fa-paper-plane"></i> Enviar nota</button>' +
-          '</div>';
-        slot.appendChild(noteDiv);
-        var sendBtn = $('sendNoteBtn');
-        var noteText = $('noteText');
-        if (sendBtn && noteText) {
-          sendBtn.addEventListener('click', function() {
-            var txt = noteText.value.trim();
-            if (txt.length < 3) { portalToast('Escribí al menos 3 caracteres', 'error'); return; }
-            sendBtn.disabled = true;
-            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
-            supabase.rpc('portal_send_note', { p_token: token, p_text: txt })
-              .then(function(r) {
-                if (r.data && r.data.ok) {
-                  portalToast('Nota enviada');
-                  noteText.value = '';
-                } else {
-                  portalToast('No se pudo enviar', 'error');
-                }
-                sendBtn.disabled = false;
-                sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar nota';
-              })
-              .catch(function() { portalToast('No se pudo enviar', 'error'); sendBtn.disabled = false; sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar nota'; });
-          });
-        }
       }
 
       /* ── 7. Accesos al portal ── */
@@ -2411,33 +2262,6 @@
             '<div class="access-item"><i class="fas fa-history"></i><span>Total de accesos registrados</span><strong>' + access.length + '</strong></div>' +
           '</div>';
         slot.appendChild(alc);
-      }
-
-      /* ── 8. Utilidades generales ── */
-      var utilSections = [];
-      if (props.length >= 2) {
-        utilSections.push(
-          '<div class="util-card"><i class="fas fa-copy"></i><div class="util-body"><strong>Códigos rápidos</strong><span>' +
-            props.map(function(p){ return '<button type="button" class="act-copy-btn" data-copy-code="' + esc(p.property_code || '') + '" title="Copiar código"><i class="fas fa-copy"></i> ' + esc(p.property_code || '-') + '</button>'; }).join(' ') +
-          '</span></div></div>'
-        );
-      }
-      if (props.length) {
-        var areas = props.filter(function(p){ var a = p.area_covered || p.area_total || p.area_m2; return a > 0; });
-        if (areas.length) {
-          var totalArea = areas.reduce(function(a,p){ return a + (p.area_covered || p.area_total || p.area_m2 || 0); }, 0);
-          var totalPrice = props.filter(function(p){ return p.price_usd > 0; }).reduce(function(a,p){ return a + p.price_usd; }, 0);
-          var avgPerM2 = totalPrice > 0 && totalArea > 0 ? Math.round(totalPrice / totalArea) : 0;
-          if (avgPerM2 > 0) {
-            utilSections.push('<div class="util-card"><i class="fas fa-ruler-combined"></i><div class="util-body"><strong>Precio promedio de tu cartera</strong><span>≈ ' + fmtUSD(avgPerM2) + ' por m² (basado en ' + areas.length + ' propiedades con datos)</span></div></div>');
-          }
-        }
-      }
-      if (utilSections.length) {
-        var udiv = document.createElement('div');
-        udiv.className = 'module-section';
-        udiv.innerHTML = '<div class="section-title"><i class="fas fa-toolbox"></i> Herramientas</div>' + utilSections.join('');
-        slot.appendChild(udiv);
       }
 
       /* ── 9. Log de accesos ── */
