@@ -132,7 +132,8 @@
 
         if (mlInfo && mlInfo.status !== 'closed') {
           const mlStatusColor = mlInfo.status === 'active' ? 'var(--success)' : mlInfo.status === 'paused' ? 'var(--warning)' : 'var(--text-dim)';
-          const mlStatusText = esc(mlInfo.status === 'active' ? 'En ML' : mlInfo.status === 'paused' ? 'Pausado' : mlInfo.status || 'ML');
+          const mlStatusLabels = { active: 'En ML', paused: 'Pausado', not_yet_active: 'Pendiente ML', under_review: 'En revisión', payment_required: 'Pago pendiente', inactive: 'Inactivo' };
+          const mlStatusText = esc(mlStatusLabels[mlInfo.status] || mlInfo.status || 'ML');
           mlBadge = `<span class="nav-badge status-pill ${mlInfo.status === 'active' ? 'active' : 'paused'}" style="font-size:10px; margin-left:4px;">${mlStatusText}</span>`;
           /* Security: ml_listing_id es texto externo (API de ML): viaja en data-* + delegacion, NUNCA dentro de onclick */
           mlButtons = `
