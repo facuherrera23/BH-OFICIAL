@@ -2274,15 +2274,17 @@
 <form id="propertyForm" class="pf-dense" novalidate>
 <input type="hidden" id="propId" />
 <h4 class="pf-section-title"><i class="fas fa-id-card"></i>Ficha</h4>
+<div class="form-grid-2">
 <div class="form-field">
 <label>Título del Inmueble *</label>
 <input type="text" name="title" required placeholder="Ej: Departamento en Palermo" />
 </div>
-<div class="form-grid-3">
 <div class="form-field">
 <label>Código</label>
 <input type="text" id="propCode" name="property_code" readonly placeholder="Se genera automáticamente" style="background:rgba(255,255,255,0.03); color:var(--accent); font-weight:600; font-family:monospace; font-size:12.5px;" title="Se genera automáticamente al guardar. Formato: FH-P0001 (iniciales + secuencia) / ML-P0001 (Mercado Libre)" />
 </div>
+</div>
+<div class="form-grid-2">
 <div class="form-field">
 <label>Tipo de Propiedad *</label>
 <select name="property_type" required>
@@ -2307,15 +2309,8 @@
 <option value="pausado">Pausado</option>
 </select>
 </div>
-<div class="form-field">
-<label>Moneda</label>
-<select name="price_currency" id="priceCurrencySelect">
-<option value="USD">USD (Dólares)</option>
-<option value="ARS">ARS (Pesos Argentinos)</option>
-</select>
 </div>
-</div>
-<div class="form-grid-3" id="priceFieldsContainer">
+<div class="form-grid-2" id="priceFieldsContainer">
 <div class="form-field" id="priceUsdField">
 <label>Precio en USD *</label>
 <input type="number" name="price_usd" required placeholder="150000" />
@@ -2325,12 +2320,11 @@
 <input type="number" name="price_ars" required placeholder="150000000" />
 </div>
 <div class="form-field">
-<label>Zona / Barrio</label>
-<input type="text" name="zone" placeholder="Palermo, Villa Belgrano..." />
-</div>
-<div class="form-field">
-<label>Localidad</label>
-<input type="text" name="locality" placeholder="Córdoba Capital, Villa Carlos Paz..." />
+<label>Moneda</label>
+<select name="price_currency" id="priceCurrencySelect">
+<option value="USD">USD (Dólares)</option>
+<option value="ARS">ARS (Pesos Argentinos)</option>
+</select>
 </div>
 </div>
 <div class="form-grid-2">
@@ -2360,6 +2354,16 @@
 <label>Dirección</label>
 <input type="text" name="address" placeholder="Av. Santa Fe 1234" />
 </div>
+<div class="form-grid-2">
+<div class="form-field">
+<label>Zona / Barrio</label>
+<input type="text" name="zone" placeholder="Palermo, Villa Belgrano..." />
+</div>
+<div class="form-field">
+<label>Localidad</label>
+<input type="text" name="locality" placeholder="Córdoba Capital, Villa Carlos Paz..." />
+</div>
+</div>
 <div class="form-field">
 <label>Ubicación exacta en el mapa</label>
 <div class="pf-map-controls">
@@ -2373,43 +2377,44 @@
 <button type="button" class="btn-action" id="propMapClear" title="Quitar ubicación marcada" style="display:none; width:26px; height:26px; font-size:11px;"><i class="fas fa-xmark"></i></button>
 </div>
 </div>
-<h4 class="pf-section-title"><i class="fas fa-ruler-combined"></i>Características</h4>
-<div class="form-grid-4">
-<div class="form-field">
-<label>Superficie Cubierta (m²)</label>
-<input type="number" name="surface_covered" placeholder="75" />
-</div>
-<div class="form-field">
-<label>Superficie Terreno (m²)</label>
-<input type="number" name="surface_total" placeholder="200" />
-</div>
-<div class="form-field">
-<label>Ambientes</label>
-<input type="number" name="rooms" placeholder="3" min="0" />
-</div>
-<div class="form-field">
-<label>Dormitorios</label>
-<input type="number" name="bedrooms" placeholder="2" min="0" />
-</div>
-</div>
-<div class="form-grid-4">
-<div class="form-field">
-<label>Baños</label>
-<input type="number" name="bathrooms" placeholder="1" min="0" />
-</div>
-<div class="form-field">
-<label>Cocheras</label>
-<input type="number" name="garage_spaces" placeholder="1" min="0" />
-</div>
-<div class="form-field">
-<label>Año de construcción</label>
-<input type="number" name="year_built" placeholder="2005" />
-</div>
-<div class="form-field">
-<label>Expensas (mensual)</label>
-<input type="number" name="maintenance_fee" placeholder="0" min="0" />
-</div>
-</div>
+<h4 class="pf-section-title"><i class="fas fa-ruler-combined"></i>Características principales</h4>
+      <div class="form-grid-4">
+        <div class="form-field">
+          <label>Ambientes</label>
+          <input type="number" name="rooms" placeholder="3" min="0" />
+        </div>
+        <div class="form-field">
+          <label>Dormitorios</label>
+          <input type="number" name="bedrooms" placeholder="2" min="0" />
+        </div>
+        <div class="form-field">
+          <label>Baños</label>
+          <input type="number" name="bathrooms" placeholder="1" min="0" />
+        </div>
+        <div class="form-field">
+          <label>Cocheras</label>
+          <input type="number" name="garage_spaces" placeholder="1" min="0" />
+        </div>
+      </div>
+      <h4 class="pf-section-title"><i class="fas fa-ruler-combined"></i>Superficies y datos adicionales</h4>
+      <div class="form-grid-4">
+        <div class="form-field">
+          <label>Superficie Cubierta (m²)</label>
+          <input type="number" name="surface_covered" placeholder="75" />
+        </div>
+        <div class="form-field">
+          <label>Superficie Terreno (m²)</label>
+          <input type="number" name="surface_total" placeholder="200" />
+        </div>
+        <div class="form-field">
+          <label>Año de construcción</label>
+          <input type="number" name="year_built" placeholder="2005" />
+        </div>
+        <div class="form-field">
+          <label>Expensas (mensual)</label>
+          <input type="number" name="maintenance_fee" placeholder="0" min="0" />
+        </div>
+      </div>
 <div class="form-grid-2">
 <div class="form-field">
 <label>N° de inscripción / matrícula</label>
@@ -3347,7 +3352,7 @@
 <script src="assets/js/admin-supervision-panel.js?v=3"></script>
 <script src="assets/js/admin-ficha.js?v=2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="assets/js/admin-propiedades.js?v=12"></script>
+<script src="assets/js/admin-propiedades.js?v=13"></script>
 <script src="assets/js/tasacion-calc.js?v=1"></script>
 <script src="assets/js/admin-agenda.js?v=13"></script>
 <script src="assets/js/admin-supervision.js?v=17"></script></body>

@@ -394,6 +394,75 @@
   }
 
   /* ------------------------------------------------
+     Validación de precio en vivo: rojo solo si valor inválido (≤0 o no numérico).
+     No pinta en foco ni en vacío — solo tras blur con dato inválido.
+     ------------------------------------------------ */
+  function validatePriceField(input) {
+    if (!input) return true;
+    const val = input.value.trim();
+    const field = input.closest('.form-field');
+    const isArs = input.name === 'price_ars';
+    const currency = document.getElementById('priceCurrencySelect')?.value || 'USD';
+    const shouldValidate = (currency === 'ARS' && isArs) || (currency === 'USD' && !isArs);
+    if (!shouldValidate) {
+      clearFieldError(input);
+      return true;
+    }
+    if (val === '') {
+      clearFieldError(input);
+      return true; // vacío no es error (required lo maneja el submit)
+    }
+    const num = parseFloat(val.replace(/[.,]/g, ''));
+    if (isNaN(num) || num <= 0) {
+      showFieldError(input, 'El precio debe ser un número mayor a 0');
+      return false;
+    }
+    clearFieldError(input);
+    return true;
+  }
+
+  function showFieldError(input, msg) {
+    const field = input.closest('.form-field');
+    if (!field) return;
+    input.classList.add('has-error');
+    let errEl = field.querySelector('.field-error');
+    if (!errEl) {
+      errEl = document.createElement('span');
+      errEl.className = 'field-error';
+      field.appendChild(errEl);
+    }
+    errEl.textContent = msg;
+  }
+
+  function clearFieldError(input) {
+    const field = input.closest('.form-field');
+    if (!field) return;
+    input.classList.remove('has-error');
+    const errEl = field.querySelector('.field-error');
+    if (errEl) errEl.remove();
+  }
+
+  // Bind validación en blur para ambos inputs de precio
+  const usdInput = document.querySelector('#priceUsdField input[name="price_usd"]');
+  const arsInput = document.querySelector('#priceArsField input[name="price_ars"]');
+  [usdInput, arsInput].forEach(inp => {
+    if (inp) {
+      inp.addEventListener('blur', () => validatePriceField(inp));
+      inp.addEventListener('input', () => {
+        // Limpiar error mientras escribe si ya era inválido
+        if (inp.classList.contains('has-error')) validatePriceField(inp);
+      });
+    }
+  });
+
+  // Re-validar al cambiar moneda
+  if (currencySelBind) {
+    currencySelBind.addEventListener('change', () => {
+      [usdInput, arsInput].forEach(inp => inp && validatePriceField(inp));
+    });
+  }
+
+  /* ------------------------------------------------
      Mapa de ubicación exacta (Leaflet) del form de propiedades
      ------------------------------------------------ */
   const PROP_MAP_HOME = { lat: -34.6037, lng: -58.3816, zoom: 12 };
