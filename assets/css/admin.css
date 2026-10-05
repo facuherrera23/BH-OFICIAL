@@ -5006,6 +5006,19 @@ input[type="range"]::-moz-range-thumb {
   margin:6px 0 10px;padding:10px 12px;border-radius:10px;
   border:1px solid rgba(31,200,195,0.3);background:rgba(31,200,195,0.05);
 }
+.crm-outcome-overlay{
+  position:fixed;inset:0;z-index:calc(var(--z-modal) + 10);
+  display:flex;align-items:center;justify-content:center;padding:20px;
+  background:rgba(2,3,5,0.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+}
+.crm-outcome--modal{
+  width:min(560px,100%);max-height:85vh;overflow-y:auto;margin:0;
+  padding:16px 18px;border-radius:14px;
+  background:var(--bg-secondary);border-color:rgba(31,200,195,0.4);
+  box-shadow:0 24px 60px rgba(0,0,0,0.55);
+}
+.crm-outcome--modal .crm-outcome-note{font-size:13.5px;min-height:60px}
+.crm-outcome--modal .crm-outcome-chip{font-size:12.5px;padding:8px 14px}
 .crm-outcome-label{font-size:11px;color:var(--text-dim);margin-bottom:8px}
 .crm-outcome-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .crm-outcome-chip{
@@ -5136,6 +5149,8 @@ input[type="range"]::-moz-range-thumb {
   background:rgba(255,255,255,0.06);color:var(--text-dim);
 }
 .crm-tl-status--done{background:var(--success-bg);color:var(--success)}
+.crm-tl-completed-note{margin-top:6px;padding:8px 12px;background:rgba(16,185,129,0.08);border-left:3px solid var(--success);border-radius:4px;font-size:12px;color:var(--success)}
+.crm-tl-completed-note i{margin-right:4px}
 .crm-tl-vencida{color:var(--danger);font-weight:600;font-size:11px}
 .crm-tl-inline-actions{display:flex;gap:6px;margin-top:8px}
 .crm-tl-inline-actions .crm-visit-btn{width:28px;height:28px;font-size:12px}

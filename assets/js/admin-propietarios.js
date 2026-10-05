@@ -646,7 +646,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
     try {
       const { data, error } = await window.supabaseClient
         .from('owner_tasks')
-        .select('id, type, contact_type, description, due_date, status, priority, assigned_to, result_notes, agent:agents!assigned_to(full_name)')
+        .select('id, type, contact_type, description, due_date, status, priority, assigned_to, result_notes, updated_at, agent:agents!assigned_to(full_name)')
         .eq('owner_id', ownerId)
         .order('due_date', { ascending: true });
 
@@ -658,8 +658,9 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
       }
 
       data.sort((a, b) => {
-        const done = t => ['completada', 'cancelada'].includes(t.status) ? 1 : 0;
-        return done(a) - done(b) || new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+        const ra = new Date(a.updated_at || a.due_date || 0).getTime();
+        const rb = new Date(b.updated_at || b.due_date || 0).getTime();
+        return rb - ra;
       });
 
       list.innerHTML = data.map(t => {
@@ -832,7 +833,7 @@ $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateO
       const task = await mutate('owner_tasks', async () => {
         const { data, error } = await window.supabaseClient
           .from('owner_tasks')
-          .update({ status: 'completada', result_notes: resultNotes || null })
+          .update({ status: 'completada', result_notes: resultNotes || null, updated_at: new Date().toISOString() })
           .eq('id', taskId)
           .select()
           .single();

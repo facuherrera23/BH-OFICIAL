@@ -1,5 +1,5 @@
 /**
- * admin-crm-tasks.js - Task management for CRM leads
+ * admin-crm-tasks.js - GestiÃ³n de tareas para leads CRM
  * Expone window.CrmTasks
  */
 (function () {
@@ -47,6 +47,8 @@ function renderTaskCard(t) {
   var checked = t.status === 'completada' ? ' checked' : '';
   var disabled = isDone ? ' disabled' : '';
   var dueStr = t.due_at ? fmtDate(t.due_at) : '';
+  var noteHtml = t.completed_note ? '<div class="crm-task-completed-note" style="margin-top:6px; padding:8px 12px; background:rgba(16,185,129,0.08); border-left:3px solid var(--success); border-radius:4px; font-size:12px; color:var(--success);">' +
+    '<i class="fas fa-check-circle" style="margin-right:4px;"></i>' + esc(t.completed_note) + '</div>' : '';
   return '<div class="crm-task-card' + (isDone ? ' crm-task-card--done' : '') + '" data-task-id="' + t.id + '">' +
     '<label class="crm-task-check">' +
       '<input type="checkbox" class="crm-task-checkbox"' + checked + disabled + '>' +
@@ -58,6 +60,7 @@ function renderTaskCard(t) {
         '<span class="crm-task-priority ' + taskPriorityClass(t.priority) + '">' + (TASK_PRIORITY_LABELS[t.priority] || 'Media') + '</span>' +
         (dueStr ? '<span class="crm-task-due' + (isFollowupDue(t.due_at) && !isDone ? ' crm-task-due--overdue' : '') + '">' + dueStr + '</span>' : '') +
       '</div>' +
+      noteHtml +
     '</div>' +
     '<button class="btn-action danger crm-task-delete" aria-label="Eliminar"><i class="fas fa-trash"></i></button></div>';
 }
@@ -84,8 +87,8 @@ function bindTaskCardEvents(panel) {
   });
 }
 
-// Completar una tarea exige registrar una nota de resultado. La DB solo se
-// actualiza cuando el usuario confirma la nota; cancelar deja la tarea pendiente.
+// Completar una tarea exige escribir el resultado. La DB solo se actualiza cuando
+// el usuario confirma; cancelar deja la tarea pendiente.
 async function completeTask(taskId, cardEl, panel) {
   var cb = cardEl && cardEl.querySelector('.crm-task-checkbox');
   if (cb) { cb.checked = false; cb.disabled = false; }
@@ -97,34 +100,44 @@ async function completeTask(taskId, cardEl, panel) {
 }
 
 var OUTCOMES = [
-  { id: 'contactado', label: 'Contactó' },
+  { id: 'contactado', label: 'ContactÃ³' },
   { id: 'sin_respuesta', label: 'Sin respuesta' },
   { id: 'reprogramar', label: 'Reprogramar' },
   { id: 'no_interesa', label: 'No interesa' }
 ];
 
+// El formulario de resultado abre como modal centrado en pantalla (no inline en el
+// panel), para que el usuario lo vea completo sin tener que hacer scroll.
 function showOutcome(cardEl, taskId, taskTitle, leadId) {
   return new Promise(function (resolve) {
-    var old = cardEl.parentElement.querySelector('.crm-outcome[data-task-id="' + taskId + '"]');
+    var old = document.querySelector('.crm-outcome-overlay[data-task-id="' + taskId + '"]');
     if (old) old.remove();
+    var overlay = document.createElement('div');
+    overlay.className = 'crm-outcome-overlay';
+    overlay.dataset.taskId = taskId;
     var box = document.createElement('div');
-    box.className = 'crm-outcome';
-    box.dataset.taskId = taskId;
+    box.className = 'crm-outcome crm-outcome--modal';
     box.innerHTML =
-      '<div class="crm-outcome-label">Resultado de “' + esc(taskTitle) + '” (obligatorio):</div>' +
+      '<div class="crm-outcome-label">Resultado de "' + esc(taskTitle) + '" (obligatorio):</div>' +
       '<div class="crm-outcome-chips">' +
         OUTCOMES.map(function (o) { return '<button type="button" class="crm-outcome-chip" data-outcome="' + o.label + '">' + o.label + '</button>'; }).join('') +
       '</div>' +
-      '<textarea class="crm-field-input crm-outcome-note" rows="2" placeholder="Describí brevemente cómo salió la tarea…"></textarea>' +
-      '<div class="crm-outcome-next">' +
-        '<input type="text" class="crm-field-input crm-outcome-next-input" placeholder="Siguiente acción (opcional): ej. “Llamar mañana 10:00”">' +
-        '<button type="button" class="btn-action crm-outcome-next-add" title="Crear siguiente tarea"><i class="fas fa-plus"></i></button>' +
-      '</div>' +
+      '<textarea class="crm-field-input crm-outcome-note" rows="2" placeholder="DescribÃ­ brevemente cÃ³mo saliÃ³ la tarea"></textarea>' +
       '<div class="crm-outcome-actions">' +
         '<button type="button" class="btn-action btn-action-labeled crm-outcome-cancel">Cancelar</button>' +
         '<button type="button" class="btn-luxury-action crm-outcome-save"><i class="fas fa-check"></i> Guardar resultado</button>' +
       '</div>';
-    cardEl.parentElement.insertBefore(box, cardEl.nextSibling);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    function close(result) {
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+      resolve(result);
+    }
+    function onKey(e) { if (e.key === 'Escape') close(false); }
+    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) close(false); });
 
     var noteEl = box.querySelector('.crm-outcome-note');
     box.querySelectorAll('[data-outcome]').forEach(function (btn) {
@@ -134,45 +147,42 @@ function showOutcome(cardEl, taskId, taskTitle, leadId) {
         noteEl.focus();
       });
     });
-    box.querySelector('.crm-outcome-cancel').addEventListener('click', function () { box.remove(); resolve(false); });
+    box.querySelector('.crm-outcome-cancel').addEventListener('click', function () { close(false); });
     box.querySelector('.crm-outcome-save').addEventListener('click', function () { finish(); });
-    box.querySelector('.crm-outcome-next-add').addEventListener('click', function () {
-      var inp = box.querySelector('.crm-outcome-next-input');
-      if (inp && inp.value.trim() && window.CrmTasks && window.CrmTasks.createQuick) {
-        window.CrmTasks.createQuick(leadId, inp.value.trim());
-        inp.value = '';
-      }
-    });
     if (noteEl.focus) noteEl.focus();
 
     async function finish() {
       var text = noteEl.value.trim();
-      if (!text) { toast('Escribí el resultado de la tarea.', 'error'); noteEl.focus(); return; }
+      if (!text) { toast('EscribÃ­ el resultado de la tarea.', 'error'); noteEl.focus(); return; }
       try {
-        var r = await db().from('lead_tasks').update({ status: 'completada', completed_at: new Date().toISOString() }).eq('id', taskId);
+        var r = await db().from('lead_tasks').update({ status: 'completada', completed_at: new Date().toISOString(), completed_note: text }).eq('id', taskId);
         if (r.error) throw new Error(r.error.message);
         if (leadId) {
           await db().from('lead_activities').insert([{
             lead_id: leadId,
             activity_type: 'note',
-            title: '? ' + taskTitle,
+            title: '"' + taskTitle + '"',
             description: 'Resultado: ' + text
           }]);
           await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', leadId);
         }
       } catch (e) { toast('Error: ' + e.message, 'error'); return; }
-      var nextInp = box.querySelector('.crm-outcome-next-input');
-      if (nextInp && nextInp.value.trim() && window.CrmTasks && window.CrmTasks.createQuick) {
-        await window.CrmTasks.createQuick(leadId, nextInp.value.trim());
-      }
       cardEl.classList.add('crm-task-card--done', 'crm-tl-task--done');
       var cb = cardEl.querySelector('.crm-task-checkbox');
       if (cb) { cb.checked = true; cb.disabled = true; }
       var chip = cardEl.querySelector('.crm-tl-status');
       if (chip) { chip.textContent = 'Completada'; chip.classList.add('crm-tl-status--done'); }
+      var bodyEl = cardEl.querySelector('.crm-task-body') || cardEl.querySelector('.crm-interaction-body');
+      if (bodyEl && !bodyEl.querySelector('.crm-task-completed-note') && !bodyEl.querySelector('.crm-tl-completed-note')) {
+        var noteDiv = document.createElement('div');
+        noteDiv.className = 'crm-tl-completed-note';
+        noteDiv.innerHTML = '<i class="fas fa-check-circle" style="margin-right:4px;"></i>' + esc(text);
+        var metaEl = bodyEl.querySelector('.crm-tl-task-meta');
+        if (metaEl) bodyEl.insertBefore(noteDiv, metaEl);
+        else bodyEl.appendChild(noteDiv);
+      }
       toast('Resultado registrado. Tarea completada.', 'success');
-      box.remove();
-      resolve(true);
+      close(true);
     }
   });
 }
@@ -191,7 +201,7 @@ async function loadLeadTasks(leadId, panel) {
   if (!wrap) return;
   wrap.innerHTML = '<div class="crm-loading">Cargando tareas...</div>';
   try {
-    var r = await db().from('lead_tasks').select('*').eq('lead_id', leadId).order('due_at', { ascending: true });
+    var r = await db().from('lead_tasks').select('*').eq('lead_id', leadId).order('completed_at', { ascending: false, nullsLast: true }).order('due_at', { ascending: true });
     if (r.error) throw new Error(r.error.message);
     var tasks = r.data || [];
     if (!tasks.length) {
@@ -210,10 +220,10 @@ function parseQuickDate(text) {
   var date = null;
   var t = ' ' + text.toLowerCase() + ' ';
   var days = 0;
-  if (t.indexOf('pasado mañana') !== -1 || t.indexOf('pasado manana') !== -1) days = 2;
-  else if (/(^|\s)mañana/.test(t) || /(^|\s)manana/.test(t)) days = 1;
+  if (t.indexOf('pasado manana') !== -1) days = 2;
+  else if (/(^|\s)manana/.test(t) || /(^|\s)ma\u00f1ana/.test(t)) days = 1;
   else if (/(^|\s)hoy/.test(t)) days = 0;
-  else if (t.indexOf('mañana') !== -1 || t.indexOf('manana') !== -1) days = 1;
+  else if (t.indexOf('ma\u00f1ana') !== -1 || t.indexOf('manana') !== -1) days = 1;
   var hasDayWord = days > 0 || /(^|\s)hoy/.test(t);
   var timeMatch = t.match(/(\d{1,2})[:h.](\d{2})/) || t.match(/(^|\s)(\d{1,2})(?=\s*(am|pm)?(\s|$))/) ;
   var h = null, m = 0;
@@ -234,9 +244,9 @@ function parseQuickDate(text) {
 
 async function createQuick(leadId, rawText) {
   var text = String(rawText || '').trim();
-  if (!text) { toast('Escribí la tarea.', 'error'); return null; }
+  if (!text) { toast('EscribÃ­ la tarea.', 'error'); return null; }
   var due = parseQuickDate(text);
-  var title = text.replace(/^(hoy|mañana|manana|pasado mañana|pasado manana)\s*/i, '').replace(/\s*a?\s*las?\s*\d{1,2}[:h.]\d{0,2}\s*(am|pm)?\s*$/i, '').trim() || text;
+  var title = text.replace(/^(hoy|ma\u00f1ana|manana|pasado ma\u00f1ana|pasado manana)\s*/i, '').replace(/\s*a?\s*las?\s*\d{1,2}[:h.]\d{0,2}\s*(am|pm)?\s*$/i, '').trim() || text;
   try {
     var r = await db().from('lead_tasks').insert([{
       lead_id: leadId,
@@ -246,7 +256,7 @@ async function createQuick(leadId, rawText) {
       due_at: due ? due.toISOString() : null
     }]);
     if (r.error) throw new Error(r.error.message);
-    toast(due ? ('Tarea: ' + title + ' — ' + due.toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })) : 'Tarea creada.', 'success');
+    toast(due ? ('Tarea: ' + title + ' Â· ' + due.toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })) : 'Tarea creada.', 'success');
     return true;
   } catch (e) { toast('Error: ' + e.message, 'error'); return null; }
 }
@@ -257,8 +267,8 @@ function showTaskForm(leadId, taskId, panel) {
   var prioOpts = TASK_PRIORITIES.map(function (p) { return '<option value="' + p + '"' + (p === 'media' ? ' selected' : '') + '>' + TASK_PRIORITY_LABELS[p] + '</option>'; }).join('');
   q.innerHTML = '<div class="crm-quick-panel">' +
     '<span class="crm-quick-panel-label">Nueva tarea</span>' +
-    '<input class="crm-field-input" id="crmTaskTitle" placeholder="Título *">' +
-    '<textarea class="crm-field-input" id="crmTaskDesc" rows="2" placeholder="Descripción (opcional)"></textarea>' +
+    '<input class="crm-field-input" id="crmTaskTitle" placeholder="TÃ­tulo *">' +
+    '<textarea class="crm-field-input" id="crmTaskDesc" rows="2" placeholder="DescripciÃ³n (opcional)"></textarea>' +
     '<div class="crm-side-field-row">' +
       '<div><span class="crm-side-field-label">Prioridad</span><select class="crm-field-input" id="crmTaskPriority">' + prioOpts + '</select></div>' +
       '<div><span class="crm-side-field-label">Vence</span><input class="crm-field-input" id="crmTaskDue" type="datetime-local" step="600"></div>' +
@@ -269,7 +279,7 @@ function showTaskForm(leadId, taskId, panel) {
   q.querySelector('#crmTaskCancel').addEventListener('click', function () { q.innerHTML = ''; });
   q.querySelector('#crmTaskSave').addEventListener('click', async function () {
     var title = (q.querySelector('#crmTaskTitle') || {}).value.trim();
-    if (!title) { toast('El título es obligatorio.', 'error'); return; }
+    if (!title) { toast('El tÃ­tulo es obligatorio.', 'error'); return; }
     var data = {
       lead_id: leadId,
       title: title,
@@ -299,6 +309,7 @@ window.CrmTasks = {
   createQuick: createQuick,
   completeTask: completeTask,
   deleteTask: deleteTask,
+  renderTaskCard: renderTaskCard,
   priorityLabels: TASK_PRIORITY_LABELS,
   statusLabels: TASK_STATUS_LABELS,
   priorityClass: taskPriorityClass

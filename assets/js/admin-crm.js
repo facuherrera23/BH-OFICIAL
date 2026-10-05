@@ -2170,6 +2170,7 @@ function buildUnifiedTimeline(activities, visits, tasks) {
             '</span>' +
           '</div>' +
           (t.description ? '<div class="crm-interaction-text">' + esc(t.description) + '</div>' : '') +
+          (t.completed_note ? '<div class="crm-tl-completed-note"><i class="fas fa-check-circle"></i> ' + esc(t.completed_note) + '</div>' : '') +
           '<div class="crm-tl-task-meta">' +
             (typeLbl ? '<span class="crm-task-priority crm-task-priority--media" style="background:rgba(255,255,255,0.06); color:var(--text-secondary);">' + typeLbl + '</span>' : '') +
             (contactLbl ? '<span class="crm-task-priority crm-task-priority--media" style="background:rgba(255,255,255,0.06); color:var(--text-secondary);">' + contactLbl + '</span>' : '') +
