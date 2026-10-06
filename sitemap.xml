@@ -61,12 +61,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://bienenhaus.com.ar/fichas/DA-P0011.html</loc>
-    <lastmod>2026-10-06</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://bienenhaus.com.ar/fichas/DA-P0014.html</loc>
     <lastmod>2026-10-06</lastmod>
     <changefreq>weekly</changefreq>
@@ -121,13 +115,13 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://bienenhaus.com.ar/fichas/DA-P0024.html</loc>
+    <loc>https://bienenhaus.com.ar/fichas/DA-P0009.html</loc>
     <lastmod>2026-10-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://bienenhaus.com.ar/fichas/DA-P0009.html</loc>
+    <loc>https://bienenhaus.com.ar/fichas/DA-P0024.html</loc>
     <lastmod>2026-10-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -170,6 +164,12 @@
   </url>
   <url>
     <loc>https://bienenhaus.com.ar/fichas/DA-P0020.html</loc>
+    <lastmod>2026-10-06</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bienenhaus.com.ar/fichas/DA-P0011.html</loc>
     <lastmod>2026-10-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
