@@ -845,9 +845,11 @@
       loadPropertyDocs(editingPropertyId);
       _pendingPropertyNotes = [];
       loadPropertyNotes(editingPropertyId);
+      clearPropLocation();
       _propMapPendingCoords = (data.latitude != null && data.longitude != null)
         ? { lat: Number(data.latitude), lng: Number(data.longitude) }
         : null;
+      if (_propMapPendingCoords) { _propLat = _propMapPendingCoords.lat; _propLng = _propMapPendingCoords.lng; }
       openModal('propertyModal');
       openPropMapRefresh();
     } catch (err) {
@@ -989,9 +991,11 @@
       if (title) title.textContent = 'Duplicar propiedad (nueva ficha, sin publicar)';
       const notesSection = $('#propertyNotesSection');
       if (notesSection) notesSection.style.display = 'block';
+      clearPropLocation();
       _propMapPendingCoords = (data.latitude != null && data.longitude != null)
         ? { lat: Number(data.latitude), lng: Number(data.longitude) }
         : null;
+      if (_propMapPendingCoords) { _propLat = _propMapPendingCoords.lat; _propLng = _propMapPendingCoords.lng; }
       openModal('propertyModal');
       openPropMapRefresh();
       showToast('Completá y guardá — se crea como borrador con código nuevo', 'info');
