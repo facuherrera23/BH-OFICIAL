@@ -10,7 +10,7 @@ import {
     fetchWithTimeout,
     ML_API,
 } from '../_shared/ml.ts';
-import { decrypt } from '../_shared/crypto.ts';
+import { getMlAccessToken } from '../_shared/auto_reply.ts';
 
 const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -100,32 +100,35 @@ Deno.serve(async (req) => {
 
     let user: { id: number; nickname: string; email: string; site_id: string } | null = null;
     let userError: string | null = null;
+    /* getMlAccessToken auto-refresca el token (CAS) — el decrypt manual usaba el
+       token guardado aunque hubiera expirado, rompiendo getMe y el estado de
+       webhooks del panel ("Token ML vencido" que se arregla solo al refrescar). */
+    let accessToken: string | null = null;
     try {
-        const accessToken = await decrypt(
-            (conn as ActiveConnection).access_token_encrypted,
-            (conn as ActiveConnection).access_token_iv,
-        );
-        const meResult = await runMlApiCallWithRetry(
-            accessToken,
-            () => getMe(accessToken),
-            'getMe',
-        );
-        if (meResult.ok) {
-            user = meResult.data;
-        } else {
-            userError = meResult.error;
-        }
+        accessToken = await getMlAccessToken(supabase);
     } catch (err) {
         userError = (err as Error).message;
     }
+    if (accessToken) {
+        try {
+            const meResult = await runMlApiCallWithRetry(
+                accessToken,
+                () => getMe(accessToken),
+                'getMe',
+            );
+            if (meResult.ok) {
+                user = meResult.data;
+            } else {
+                userError = meResult.error;
+            }
+        } catch (err) {
+            userError = (err as Error).message;
+        }
+    }
 
     let webhooks: Record<string, boolean | string> | null = null;
-    if (includeWebhooks && user) {
+    if (includeWebhooks && user && accessToken) {
         try {
-            const accessToken = await decrypt(
-                (conn as ActiveConnection).access_token_encrypted,
-                (conn as ActiveConnection).access_token_iv,
-            );
             webhooks = await getRegisteredMlWebhookTopics(accessToken, user.id);
         } catch (err) {
             webhooks = { error: (err as Error).message.slice(0, 100) } as unknown as Record<string, boolean | string>;
@@ -136,12 +139,8 @@ Deno.serve(async (req) => {
        vendedor -> questions/search por lotes de 20 item_ids). Base para backfill
        y para validar el webhook con datos reales. */
     let recentQuestions: MlRecentQuestion[] | null = null;
-    if (includeQuestions && user) {
+    if (includeQuestions && user && accessToken) {
         try {
-            const accessToken = await decrypt(
-                (conn as ActiveConnection).access_token_encrypted,
-                (conn as ActiveConnection).access_token_iv,
-            );
             const itemsRes = await fetchWithTimeout(
                 `${ML_API}/users/${(conn as ActiveConnection).user_id}/items/search`,
                 { headers: { authorization: `Bearer ${accessToken}` } },

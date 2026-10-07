@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { encrypt } from '../_shared/crypto.ts';
+import { getMlAccessToken } from '../_shared/auto_reply.ts';
 import {
     exchangeCode,
     getMe,
@@ -97,20 +98,17 @@ Deno.serve(async (req) => {
             const adminId = userData?.user?.id;
             if (!adminId) return respond(401, { error: 'No autorizado' });
 
-            // Obtener conexión activa para tokens
-            const { data: conn } = await supabase
-                .from('ml_connection')
-                .select('id, access_token_encrypted, access_token_iv')
-                .eq('is_active', true)
-                .eq('provider', 'mercadolibre')
-                .order('updated_at', { ascending: false })
-                .limit(1)
-                .maybeSingle();
-            if (!conn) return respond(400, { error: 'No hay conexión ML activa' });
-
-            // Importar decrypt dinámicamente
-            const { decrypt } = await import('../_shared/crypto.ts');
-            const accessToken = await decrypt(conn.access_token_encrypted, conn.access_token_iv);
+            /* getMlAccessToken refresca el token vía CAS si está vencido: el
+               decrypt manual usaba el token guardado aunque hubiera expirado
+               (getMe 401 → completionPage con variable inexistente → 500 sin
+               CORS). Sin token renovado el registro no puede funcionar. */
+            let accessToken: string | null = null;
+            try {
+                accessToken = await getMlAccessToken(supabase);
+            } catch (err) {
+                return respond(400, { error: `No se pudo renovar el token de ML: ${(err as Error).message}` });
+            }
+            if (!accessToken) return respond(400, { error: 'No hay conexión ML activa' });
 
             const callbackUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/ml-webhook`;
             const { webhookSecret } = await getMlCredentials(supabase);
@@ -118,8 +116,8 @@ Deno.serve(async (req) => {
 
             // Obtener user_id de ML
             const userResult = await runMlApiCallWithRetry(accessToken, () => getMe(accessToken), 'getMe');
-if (!userResult.ok)
-            return completionPage({ ok: false, adminUrl: validatedAdminUrl, message: `No se pudo obtener el usuario de Mercado Libre: ${userResult.error}` });
+            if (!userResult.ok)
+                return respond(502, { error: `No se pudo obtener el usuario de ML: ${userResult.error}` });
             const user = userResult.data;
 
             const results = await registerMlWebhooks(accessToken, user.id, `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/ml-webhook`, webhookSecret);
@@ -182,18 +180,15 @@ if (!userResult.ok)
         const token = await requireAdmin(req, supabase);
         if (!token) return respond(401, { error: 'No autorizado' });
 
-        const { data: conn } = await supabase
-            .from('ml_connection')
-            .select('id, access_token_encrypted, access_token_iv')
-            .eq('is_active', true)
-            .eq('provider', 'mercadolibre')
-            .order('updated_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-        if (!conn) return respond(400, { error: 'No hay conexión ML activa' });
-
-        const { decrypt } = await import('../_shared/crypto.ts');
-        const accessToken = await decrypt(conn.access_token_encrypted, conn.access_token_iv);
+        /* getMlAccessToken auto-refresca el token (el decrypt manual usaba el
+           token expirado y getMe fallaba con 401). */
+        let accessToken: string | null = null;
+        try {
+            accessToken = await getMlAccessToken(supabase);
+        } catch (err) {
+            return respond(400, { error: `No se pudo renovar el token de ML: ${(err as Error).message}` });
+        }
+        if (!accessToken) return respond(400, { error: 'No hay conexión ML activa' });
 
         const userResult = await runMlApiCallWithRetry(accessToken, () => getMe(accessToken), 'getMe');
         if (!userResult.ok) return respond(429, { error: userResult.error, retry_after: 60 });
