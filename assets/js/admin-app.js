@@ -197,10 +197,6 @@ function esc(s) {
     is_reservada: z.boolean().default(false),
     owner_id: z.string().uuid('ID de propietario inválido').optional().nullable(),
     agent_id: z.string().uuid('ID de broker inválido').optional().nullable(),
-  }).superRefine((v, ctx) => {
-    if (v.surface_total > 0 && v.surface_covered > 0 && v.surface_covered > v.surface_total) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['surface_covered'], message: 'La superficie cubierta no puede superar la superficie del terreno' });
-    }
   });
 
   // Lead validation

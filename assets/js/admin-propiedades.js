@@ -4,7 +4,7 @@
    ============================================================ */
 (function () {
   'use strict';
-  const { logError, logWarn, on, PropertySchema, validateForm, getAuthedClient, loadAgentSelect, openModal, closeModal, showToast, invalidateSearchCache, updateSidebarBadges, formatPrice, esc, mutate } = window.__BH || {};
+  const { logError, logWarn, on, PropertySchema, validateForm, getAuthedClient, loadAgentSelect, openModal, closeModal, showConfirmDialog, showToast, invalidateSearchCache, updateSidebarBadges, formatPrice, esc, mutate } = window.__BH || {};
 
   /* ------------------------------------------------
      5. PROPERTIES CRUD
@@ -632,7 +632,23 @@
 
     try {
       const formData = new FormData(e.target);
-      
+
+      /* Superficie cubierta > terreno es válido en edificios de más de una
+         planta (ej. HS-P0002: galpón + departamento). Antes esto bloqueaba el
+         guardado con Zod y impedía editar propiedades existentes correctas;
+         ahora se advierte y se deja guardar si confirman. */
+      const cubiertaIn = parseFloat(formData.get('surface_covered')) || 0;
+      const terrenoIn = parseFloat(formData.get('surface_total')) || 0;
+      if (terrenoIn > 0 && cubiertaIn > 0 && cubiertaIn > terrenoIn) {
+        const continuar = await showConfirmDialog({
+          title: 'Superficie cubierta mayor al terreno',
+          message: `La superficie cubierta (${cubiertaIn} m²) supera la del terreno (${terrenoIn} m²). ¿Es un edificio de más de una planta?`,
+          icon: 'fas fa-ruler-combined',
+          confirmText: 'Guardar igualmente',
+        });
+        if (!continuar) return;
+      }
+
       // Zod validation
       const validated = validateForm(PropertySchema, formData);
       // price_ars se excluye del payload: es columna generada a partir de price_usd + price_currency (enviarla da error)
