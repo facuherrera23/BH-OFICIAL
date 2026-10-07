@@ -708,7 +708,7 @@ try {
         if (failed.length && failed.every(f => /retir[oó] el registro por API/i.test(f.error || ''))) {
           await showConfirmDialog({
             title: 'Suscripción manual en Mercado Libre',
-            message: 'Mercado Libre retiró el registro automático por API. Se configura a mano: entrá a applications.mercadolibre.com.ar, editá la aplicación, en notificaciones pegá la callback URL que está en la card de Mercado Libre (abajo) y tildá VIS Leads (es el tópico de las consultas de inmuebles; Questions/Items no aplican a inmuebles).',
+            message: 'Mercado Libre retiró el registro automático por API. Se configura a mano: entrá a applications.mercadolibre.com.ar, editá la aplicación, en notificaciones pegá la callback URL que está en la card de Mercado Libre (abajo) y tildá VIS Leads (es el tópico de las consultas de inmuebles; Questions/Items no aplican a inmuebles). OJO: tildar el tópico solo hace que ML avise; para que lleguen nombre/teléfono/email del interesado ML tiene que habilitar LECTURA de leads a la aplicación — se pide al soporte de integraciones de ML (app 6473600664555938). Si las consultas entran sin datos de contacto, falta esa habilitación.',
             icon: 'fas fa-bell',
             confirmText: 'Entendido',
           });
