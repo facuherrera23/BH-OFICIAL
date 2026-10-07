@@ -226,13 +226,21 @@ export const MlMetricsResponseSchema = z.object({
 // ============================================================
 
 export const MlWebhookPayloadSchema = z.object({
-    user_id: z.number().int().positive(),
-    resource: z.string(),
-    topic: z.enum(['questions', 'orders', 'orders_v2', 'items', 'payments', 'shipments']),
-    application_id: z.number().int().positive(),
-    attempts: z.number().int().nonnegative(),
+    user_id: z.coerce.number().int().positive(),
+    resource: z.string().min(1),
+    /* Sin enum de tópicos: los inmuebles notifican con 'vis_leads' (fuera del
+       enum clásico) y ML agrega tópicos nuevos sin aviso. Un tópico desconocido
+       cae al default del switch: evento registrado y visible.
+       Bug real 2026-10-07: el enum rechazaba las notificaciones de inmuebles con
+       400 'Invalid JSON' antes de dejar rastro — las consultas llegaban al
+       webhook pero nunca al CRM. */
+    topic: z.string().min(1),
+    application_id: z.coerce.number().int().nonnegative(),
+    attempts: z.coerce.number().int().nonnegative(),
     sent: z.string(),
     received: z.string(),
+    /* vis_leads trae el subtópico (question/whatsapp/call/...) en actions. */
+    actions: z.array(z.string()).optional(),
 });
 
 // ============================================================

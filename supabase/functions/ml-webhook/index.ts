@@ -40,7 +40,7 @@ interface LogEntry {
     topic?: string;
     resource?: string;
     user_id?: number;
-    status:
+    status?:
         | 'received'
         | 'processed'
         | 'failed'
@@ -139,6 +139,44 @@ async function logWebhookEvent(
             .eq('id', existing.id);
     } else {
         await supabase.from('ml_webhook_events').insert(row);
+    }
+}
+
+/* Registro de notificaciones rechazadas por parse/validación: NUNCA más un 400
+   silencioso. Bug real 2026-10-07: 6 notificaciones vis_leads de inmuebles
+   fueron rechazadas con 400 sin dejar rastro en ml_webhook_events. */
+async function logRejectedPayload(rawBody: string, errorMessage: string): Promise<void> {
+    const nowIso = new Date().toISOString();
+    let userId = '0';
+    let resource = 'unknown';
+    let topic = 'parse_error';
+    let applicationId: string | null = null;
+    let payloadJson: unknown = rawBody.slice(0, 4000);
+    try {
+        const parsed = JSON.parse(rawBody) as Record<string, unknown>;
+        userId = String(parsed.user_id ?? '0');
+        if (typeof parsed.resource === 'string' && parsed.resource) resource = parsed.resource;
+        if (typeof parsed.topic === 'string' && parsed.topic) topic = parsed.topic;
+        if (parsed.application_id != null) applicationId = String(parsed.application_id);
+        payloadJson = parsed;
+    } catch {
+        /* body no-JSON: queda guardado como string truncado */
+    }
+    try {
+        await supabase.from('ml_webhook_events').insert({
+            user_id: userId,
+            resource,
+            topic,
+            application_id: applicationId,
+            attempts: 0,
+            sent_at: nowIso,
+            received_at: nowIso,
+            status: 'failed',
+            error: errorMessage.slice(0, 500),
+            payload: payloadJson,
+        });
+    } catch (dbErr) {
+        console.error('[ml-webhook] logRejectedPayload DB:', (dbErr as Error).message);
     }
 }
 
@@ -340,6 +378,207 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
             question_id: questionId,
             error: (err as Error).message,
         });
+    }
+}
+
+const VIS_CONTACT_LABELS: Record<string, string> = {
+    whatsapp: 'WhatsApp',
+    call: 'Llamada',
+    question: 'Pregunta',
+    visit_request: 'Solicitud de visita',
+    contact_request: 'Solicitud de contacto',
+    reservation: 'Reserva',
+    quotation: 'Cotización',
+    quotations: 'Cotización',
+    schedule: 'Agenda de visita',
+};
+
+/* Leads de inmuebles (VIS): la notificación trae el id del lead en el resource
+   (/vis/leads/{uuid}); el detalle — comprador, contacto, item — se consulta
+   con el token del vendedor. Cada contacto crea un lead en el CRM con toda la
+   info de conversión disponible. El dedup definitivo es ml_lead_id (índice
+   único): ML re-notifica cambios de estado del MISMO lead (reservas/agendas)
+   y el backfill re-inyecta leads ya procesados. */
+async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
+    const leadId = payload.resource.split('/').pop();
+    if (!leadId) return;
+
+    let token: string | null = null;
+    try {
+        token = await getMlAccessToken(supabase);
+    } catch (err) {
+        throw new Error(`ML token: ${(err as Error).message}`);
+    }
+    if (!token) throw new Error('ML token: no hay conexión ML activa');
+
+    const res = await fetch(`${ML_API}/vis/leads/${leadId}`, {
+        headers: { authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`ML vis lead ${leadId} HTTP ${res.status}`);
+
+    const lead = (await res.json()) as {
+        item_id?: unknown;
+        contact_type?: unknown;
+        external_id?: unknown;
+        status?: unknown;
+        buyer_id?: unknown;
+        name?: unknown;
+        email?: unknown;
+        phone?: unknown;
+        created_at?: unknown;
+    };
+
+    const itemId = typeof lead.item_id === 'string' ? lead.item_id : null;
+    const contactType =
+        typeof lead.contact_type === 'string' && lead.contact_type ? lead.contact_type : 'contacto';
+    const externalId =
+        typeof lead.external_id === 'string' && lead.external_id ? lead.external_id : null;
+    const buyerId = typeof lead.buyer_id === 'number' ? lead.buyer_id : null;
+    const buyerName = typeof lead.name === 'string' && lead.name ? lead.name : null;
+    const buyerEmail = typeof lead.email === 'string' && lead.email ? lead.email : null;
+    const buyerPhone = typeof lead.phone === 'string' && lead.phone ? lead.phone : null;
+    const createdAt = typeof lead.created_at === 'string' ? lead.created_at : null;
+
+    /* Preguntas de inmuebles: el texto NO está en el lead — se consulta con el
+       external_id (id de pregunta clásico de ML). Dedup compartido con el flujo
+       clásico (handleQuestions): si ml_questions ya tiene lead_id, la pregunta
+       ya generó su lead y no se duplica. */
+    const isQuestion = contactType === 'question' && !!externalId;
+    let questionText = '';
+    if (isQuestion) {
+        const { data: existingQ } = await supabase
+            .from('ml_questions')
+            .select('lead_id')
+            .eq('question_id', externalId)
+            .maybeSingle();
+        if (existingQ?.lead_id) return;
+
+        try {
+            const qRes = await fetch(`${ML_API}/questions/${externalId}?api_version=4`, {
+                headers: { authorization: `Bearer ${token}` },
+            });
+            if (qRes.ok) {
+                const q = (await qRes.json()) as { text?: unknown };
+                questionText = typeof q.text === 'string' ? q.text : '';
+            }
+        } catch {
+            /* fail-soft: el lead sigue con el resto del contexto */
+        }
+    }
+
+    let propertyId: string | null = null;
+    let mlPermalink: string | null = null;
+    if (itemId) {
+        const { data: meta } = await supabase
+            .from('property_ml_meta')
+            .select('property_id, ml_item_id, permalink')
+            .eq('ml_item_id', itemId)
+            .maybeSingle();
+        if (meta) {
+            propertyId = meta.property_id;
+            mlPermalink = typeof meta.permalink === 'string' ? meta.permalink : null;
+        }
+        if (!propertyId) {
+            const { data: listing } = await supabase
+                .from('ml_listings')
+                .select('property_id')
+                .eq('ml_item_id', itemId)
+                .maybeSingle();
+            if (listing?.property_id) propertyId = listing.property_id;
+        }
+    }
+    if (!mlPermalink && itemId && token) {
+        try {
+            const itemRes = await fetch(`${ML_API}/items/${itemId}`, {
+                headers: { authorization: `Bearer ${token}` },
+            });
+            if (itemRes.ok) {
+                const item = (await itemRes.json()) as { permalink?: string };
+                if (typeof item.permalink === 'string' && item.permalink) mlPermalink = item.permalink;
+            }
+        } catch {
+            /* fail-soft: el lead sigue sin link al aviso */
+        }
+    }
+
+    let propContext = '';
+    if (propertyId) {
+        const { data: prop } = await supabase
+            .from('properties')
+            .select('property_code, title')
+            .eq('id', propertyId)
+            .maybeSingle();
+        if (prop?.property_code) {
+            propContext += `\nPropiedad: ${prop.property_code}${prop.title ? ' · ' + prop.title : ''}`;
+        }
+    }
+    if (mlPermalink) propContext += `\nAviso ML: ${mlPermalink}`;
+    if (buyerId) propContext += `\nUsuario ML: ${buyerId}`;
+
+    const contactLabel = VIS_CONTACT_LABELS[contactType] ?? contactType;
+    const { data: newLead, error: leadErr } = await supabase
+        .from('leads')
+        .insert({
+            full_name: buyerName ?? `Interesado ML (user ${buyerId ?? 'desconocido'})`,
+            email: buyerEmail,
+            phone: buyerPhone,
+            source: 'ml',
+            stage: 'nuevo',
+            property_id: propertyId,
+            ml_lead_id: leadId,
+            notes: `[Contacto Mercado Libre · ${contactLabel}] ${
+                questionText || `Interesado vía ${contactLabel}`
+            }${propContext}`,
+        })
+        .select('id')
+        .single();
+
+    if (leadErr) {
+        if ((leadErr as { code?: string }).code === '23505') return; // lead ya procesado
+        throw new Error(`lead_create vis: ${leadErr.message}`);
+    }
+    if (!newLead?.id) throw new Error('lead_create vis: sin id devuelto');
+
+    /* Preguntas de inmuebles: registro en ml_questions (ledger compartido con el
+       flujo clásico, con lead_id vinculado) + auto-reply con plantilla activa. */
+    if (isQuestion && externalId) {
+        await supabase.from('ml_questions').upsert(
+            {
+                question_id: externalId,
+                property_id: propertyId,
+                ml_item_id: itemId,
+                lead_id: newLead.id,
+                received_at: new Date().toISOString(),
+                question_text: questionText || null,
+                from_user_id: buyerId,
+                from_user_nickname: buyerName,
+                date_created: createdAt,
+                status: 'unanswered',
+            },
+            { onConflict: 'question_id' },
+        );
+
+        const template = await getActiveTemplate(supabase, 'new_question');
+        if (template) {
+            try {
+                await sendQuestionAnswer(supabase, externalId, template.message, token);
+                await supabase
+                    .from('ml_questions')
+                    .update({
+                        status: 'answered',
+                        answer_text: template.message,
+                        date_updated: new Date().toISOString(),
+                    })
+                    .eq('question_id', externalId);
+            } catch (err) {
+                logWarn({
+                    function: 'ml-webhook',
+                    topic: 'vis_leads',
+                    question_id: externalId,
+                    error: 'auto_reply: ' + (err as Error).message,
+                });
+            }
+        }
     }
 }
 
@@ -558,7 +797,12 @@ Deno.serve(async (req) => {
     let payload: MlWebhookPayload;
     try {
         payload = parseMlResponse(MlWebhookPayloadSchema, JSON.parse(rawBody), 'ml-webhook');
-    } catch {
+    } catch (err) {
+        /* El rechazo queda registrado en ml_webhook_events con el payload crudo:
+           nunca más un 400 invisible (bug de las 6 notificaciones vis_leads). */
+        const msg = (err as Error).message;
+        console.error('[ml-webhook] parse rechazado:', msg);
+        await logRejectedPayload(rawBody, msg);
         return respond(400, { error: 'Invalid JSON' });
     }
 
@@ -603,6 +847,9 @@ Deno.serve(async (req) => {
             switch (payload.topic) {
                 case 'questions':
                     await handleQuestions(payload);
+                    break;
+                case 'vis_leads':
+                    await handleVisLeads(payload);
                     break;
                 case 'orders':
                 case 'orders_v2':

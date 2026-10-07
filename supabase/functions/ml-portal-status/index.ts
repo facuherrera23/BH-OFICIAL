@@ -39,6 +39,24 @@ interface MlRecentQuestion {
     answer_text_head: string | null;
 }
 
+interface VisLeadRow {
+    id: string;
+    contact_type: string;
+    created_at: string;
+    external_id: string | null;
+    item_id: string | null;
+    buyer_name: string | null;
+    buyer_email: string | null;
+    buyer_phone: string | null;
+}
+
+interface VisLeadsImportSummary {
+    total: number;
+    imported: number;
+    failed: number;
+    errors: string[];
+}
+
 Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') return optionsResponse(req);
     const respond = (status: number, body: Record<string, unknown>): Response =>
@@ -53,6 +71,9 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const includeWebhooks = url.searchParams.get('webhooks') === '1';
     const includeQuestions = url.searchParams.get('questions') === '1';
+    const includeLeads = url.searchParams.get('leads') === '1';
+    const importLeads = url.searchParams.get('import') === '1';
+    const leadsDays = Math.min(Math.max(Number(url.searchParams.get('days')) || 7, 1), 90);
 
     const [{ data: conn }, { data: counts }, { data: recentListings }, settings] = await Promise.all([
         supabase
@@ -195,6 +216,158 @@ Deno.serve(async (req) => {
         }
     }
 
+    /* Contactos de inmuebles (VIS leads): listado paginado desde ML y, con
+       import=1, re-inyección de cada lead como notificación vis_leads al webhook.
+       Así entran al CRM por el camino productivo (mismo dedup ml_lead_id, mismo
+       enriquecimiento). Recupera las consultas que el webhook anterior rechazaba
+       con 400 'Invalid JSON' cuando el tópico vis_leads no estaba en el enum. */
+    let visLeads: VisLeadRow[] | null = null;
+    let visLeadsImport: VisLeadsImportSummary | null = null;
+    if (includeLeads && accessToken) {
+        try {
+            const dateFrom = new Date(Date.now() - leadsDays * 86_400_000).toISOString().slice(0, 10);
+            const collected: VisLeadRow[] = [];
+            let total = 0;
+            for (let offset = 0; offset < 300; offset += 50) {
+                const buyersRes = await fetchWithTimeout(
+                    `${ML_API}/vis/users/${(conn as ActiveConnection).user_id}/leads/buyers?offset=${offset}&limit=50&date_from=${dateFrom}&include_guest=true`,
+                    { headers: { authorization: `Bearer ${accessToken}` } },
+                );
+                if (!buyersRes.ok) break;
+                const data = (await buyersRes.json()) as {
+                    results?: Array<{
+                        item_id?: string;
+                        name?: string | null;
+                        email?: string | null;
+                        phone?: string | null;
+                        leads?: Array<{
+                            id?: string;
+                            contact_type?: string;
+                            created_at?: string;
+                            external_id?: string | null;
+                            item_id?: string;
+                        }>;
+                    }>;
+                    guest?: Array<{
+                        item_id?: string;
+                        leads?: Array<{ id?: string; contact_type?: string; created_at?: string }>;
+                    }>;
+                    paging?: { total?: number };
+                };
+                let added = 0;
+                for (const buyer of data.results ?? []) {
+                    for (const l of buyer.leads ?? []) {
+                        if (!l.id) continue;
+                        collected.push({
+                            id: l.id,
+                            contact_type: l.contact_type ?? 'contacto',
+                            created_at: l.created_at ?? new Date().toISOString(),
+                            external_id: l.external_id ?? null,
+                            item_id: l.item_id ?? buyer.item_id ?? null,
+                            buyer_name: buyer.name ?? null,
+                            buyer_email: buyer.email ?? null,
+                            buyer_phone: buyer.phone ?? null,
+                        });
+                        added++;
+                    }
+                }
+                for (const g of data.guest ?? []) {
+                    for (const l of g.leads ?? []) {
+                        if (!l.id) continue;
+                        collected.push({
+                            id: l.id,
+                            contact_type: l.contact_type ?? 'contacto',
+                            created_at: l.created_at ?? new Date().toISOString(),
+                            external_id: null,
+                            item_id: g.item_id ?? null,
+                            buyer_name: null,
+                            buyer_email: null,
+                            buyer_phone: null,
+                        });
+                        added++;
+                    }
+                }
+                total = data.paging?.total ?? collected.length;
+                if (added === 0 || collected.length >= total) break;
+            }
+            const seen = new Set<string>();
+            visLeads = collected
+                .filter((l) => (seen.has(l.id) ? false : (seen.add(l.id), true)))
+                .sort((a, b) => b.created_at.localeCompare(a.created_at))
+                .slice(0, 300);
+
+            if (importLeads && visLeads.length) {
+                const webhookUrl = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1/ml-webhook`;
+                const summary: VisLeadsImportSummary = {
+                    total: visLeads.length,
+                    imported: 0,
+                    failed: 0,
+                    errors: [],
+                };
+                for (const l of visLeads) {
+                    let ok = false;
+                    let errMsg = '';
+                    for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+                        try {
+                            const wRes = await fetch(webhookUrl, {
+                                method: 'POST',
+                                headers: { 'content-type': 'application/json' },
+                                body: JSON.stringify({
+                                    topic: 'vis_leads',
+                                    resource: `/vis/leads/${l.id}`,
+                                    user_id: Number((conn as ActiveConnection).user_id),
+                                    application_id: Number(settings.clientId),
+                                    attempts: 0,
+                                    sent: l.created_at,
+                                    received: new Date().toISOString(),
+                                    actions: [l.contact_type],
+                                }),
+                            });
+                            if (wRes.ok) {
+                                ok = true;
+                                break;
+                            }
+                            if (wRes.status === 429) {
+                                await new Promise((r) =>
+                                    setTimeout(
+                                        r,
+                                        (Number(wRes.headers.get('retry-after')) || 5) * 1000,
+                                    ),
+                                );
+                                errMsg = 'rate_limited';
+                                continue;
+                            }
+                            errMsg = `HTTP ${wRes.status}: ${(await wRes.text()).slice(0, 120)}`;
+                            break;
+                        } catch (err) {
+                            errMsg = (err as Error).message;
+                        }
+                    }
+                    if (ok) {
+                        summary.imported++;
+                    } else {
+                        summary.failed++;
+                        if (summary.errors.length < 10) summary.errors.push(`${l.id}: ${errMsg}`);
+                    }
+                    /* Pausa para no apilar demasiadas tareas background del webhook
+                       (cada una pega la API de ML con el token del vendedor). */
+                    await new Promise((r) => setTimeout(r, 300));
+                }
+                visLeadsImport = summary;
+            }
+        } catch (err) {
+            visLeads = null;
+            if (importLeads) {
+                visLeadsImport = {
+                    total: 0,
+                    imported: 0,
+                    failed: 0,
+                    errors: [(err as Error).message.slice(0, 200)],
+                };
+            }
+        }
+    }
+
     return respond(200, {
         connected: true,
         has_credentials: hasCredentials,
@@ -210,6 +383,8 @@ Deno.serve(async (req) => {
         listings_by_status: listingsByStatus,
         webhooks,
         questions: recentQuestions,
+        vis_leads: visLeads,
+        vis_leads_import: visLeadsImport,
         last_connected_at: (conn as { updated_at?: string }).updated_at ?? null,
     });
 });
