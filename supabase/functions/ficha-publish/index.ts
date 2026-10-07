@@ -101,14 +101,26 @@ function buildFichaHtml(p: Record<string, any>): string {
   const zonePart = rawZone && !rawTitle.toLowerCase().includes(rawZone.toLowerCase()) ? rawZone : '';
   const metaDescription = buildMetaDescription(p.description);
 
-  const chips: string[] = [];
-  if (p.property_type) chips.push(TYPE_LABELS[p.property_type] ?? p.property_type);
-  if (p.rooms) chips.push(`${p.rooms} amb.`);
-  if (p.bedrooms) chips.push(`${p.bedrooms} dorm.`);
-  if (p.bathrooms) chips.push(`${p.bathrooms} baño${p.bathrooms === 1 ? '' : 's'}`);
+  const TYPE_ICONS: Record<string, string> = {
+    casa: 'fa-house', departamento: 'fa-building', terreno: 'fa-map', local: 'fa-store',
+    oficina: 'fa-briefcase', galpon: 'fa-warehouse', quinta: 'fa-tree', otro: 'fa-building',
+  };
   const sup = p.surface_total && p.surface_total > 0 ? p.surface_total : (p.surface_covered ?? p.area_m2);
-  if (sup) chips.push(`${sup} m²`);
-  if (p.garage_spaces) chips.push(`${p.garage_spaces} coch.`);
+  const supCub = p.surface_covered && p.surface_covered > 0 ? p.surface_covered : null;
+
+  /* Ficha premium: grilla de características con íconos (reemplaza a los chips) */
+  const specs: Array<{ icon: string; label: string; value: string }> = [];
+  specs.push({ icon: TYPE_ICONS[p.property_type] || 'fa-building', label: 'Tipo de propiedad', value: TYPE_LABELS[p.property_type] ?? p.property_type });
+  if (p.rooms) specs.push({ icon: 'fa-door-open', label: 'Ambientes', value: String(p.rooms) });
+  if (p.bedrooms) specs.push({ icon: 'fa-bed', label: 'Dormitorios', value: String(p.bedrooms) });
+  if (p.bathrooms) specs.push({ icon: 'fa-bath', label: 'Baños', value: String(p.bathrooms) });
+  if (sup) specs.push({ icon: 'fa-ruler-combined', label: 'Superficie total', value: `${sup} m²` });
+  if (supCub) specs.push({ icon: 'fa-vector-square', label: 'Superficie cubierta', value: `${supCub} m²` });
+  if (p.garage_spaces) specs.push({ icon: 'fa-car', label: 'Cocheras', value: String(p.garage_spaces) });
+  if (p.year_built) specs.push({ icon: 'fa-calendar', label: 'Año de construcción', value: String(p.year_built) });
+
+  /* Galería: hasta 3 fotos adicionales a la del hero */
+  const gallery = imgs.slice(1, 4);
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -131,52 +143,93 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
-  /* Identidad visual del sitio (landing.css): teal #1FC8C3 sobre #020305,
+  /* Ficha con la identidad visual del sitio (landing.css): teal #1FC8C3,
      Playfair Display en títulos y Plus Jakarta Sans en el cuerpo. */
-  :root { --bg:#020305; --card:rgba(13,17,23,0.92); --card2:#0A0D12; --line:rgba(255,255,255,0.08); --accent:#1FC8C3; --accent-deep:#159a95; --text:#F8FAFC; --text2:#CBD5E1; --text3:#94A3B8; }
+  :root { --bg:#020305; --bg2:#05070A; --card:rgba(13,17,23,0.94); --card2:#0A0D12; --line:rgba(255,255,255,0.08); --accent:#1FC8C3; --accent-deep:#159a95; --text:#F8FAFC; --text2:#CBD5E1; --text3:#94A3B8; }
   * { box-sizing: border-box; }
-  body { margin:0; font-family:'Plus Jakarta Sans', system-ui, sans-serif; background:var(--bg); color:var(--text); }
-  .hero { position:relative; width:100%; height:62vh; min-height:340px; background:#000 center/cover no-repeat; }
-  .hero::after { content:''; position:absolute; inset:0; background:linear-gradient(to top, rgba(2,3,5,0.94) 0%, rgba(2,3,5,0.25) 55%, transparent); }
-  .hero-head { position:absolute; top:0; left:0; right:0; display:flex; justify-content:space-between; align-items:center; padding:22px 8%; color:#fff; }
-  .brand { letter-spacing:3px; font-weight:300; font-size:13px; text-transform:uppercase; }
-  .brand b { font-weight:700; }
-  .code { font-size:12px; letter-spacing:1px; opacity:0.8; }
-  .hero-foot { position:absolute; left:8%; right:8%; bottom:26px; }
-  .badge { display:inline-block; background:linear-gradient(135deg, var(--accent), var(--accent-deep)); color:#020305; font-weight:700; font-size:12px; letter-spacing:2px; padding:7px 16px; border-radius:999px; text-transform:uppercase; }
-  h1 { margin:14px 0 6px; font-family:'Playfair Display', Georgia, serif; font-size:34px; font-weight:700; line-height:1.15; color:var(--text); }
-  .loc { color:var(--text2); margin:0 0 10px; font-size:15px; }
-  .price { font-size:32px; color:var(--accent); font-weight:700; margin-top:6px; }
-  .sheet { max-width:960px; margin:-30px auto 60px; background:var(--card); border:1px solid var(--line); border-radius:26px; padding:34px 6%; box-shadow:0 24px 60px rgba(0,0,0,0.45); position:relative; z-index:2; }
-  .chips { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:22px; }
-  .chip { border:1px solid var(--line); background:var(--card2); color:var(--text2); padding:9px 18px; border-radius:999px; font-size:14px; }
-  h2 { font-size:15px; text-transform:uppercase; letter-spacing:2px; color:var(--accent); border-bottom:1px solid var(--line); padding-bottom:10px; margin:30px 0 16px; }
-  .desc { line-height:1.75; color:var(--text2); white-space:pre-line; font-size:15.5px; }
-  .cta { display:inline-flex; align-items:center; gap:10px; margin-top:26px; background:linear-gradient(135deg, var(--accent), var(--accent-deep)); color:#020305; padding:15px 30px; border-radius:60px; font-weight:700; text-decoration:none; }
-  footer { text-align:center; color:var(--text3); font-size:12px; padding:34px 0 26px; }
-  @media (max-width:720px){ .hero{height:52vh} h1{font-size:26px} .sheet{margin:-24px 12px 48px; padding:26px 20px} }
+  body { margin:0; font-family:'Plus Jakarta Sans', system-ui, sans-serif; background:
+    radial-gradient(1100px 480px at 50% -120px, rgba(31,200,195,0.08), transparent 65%), var(--bg);
+    color:var(--text); -webkit-font-smoothing:antialiased; }
+  .hero { position:relative; width:100%; height:54vh; min-height:400px; max-height:640px; background:#000 center/cover no-repeat; }
+  .hero::after { content:''; position:absolute; inset:0; background:linear-gradient(to top, var(--bg) 0%, rgba(2,3,5,0.62) 34%, rgba(2,3,5,0.16) 58%, rgba(2,3,5,0.42) 100%); }
+  .hero-top { position:absolute; top:18px; left:4%; right:4%; display:flex; justify-content:space-between; align-items:center; gap:12px; z-index:2; }
+  .glass { background:rgba(2,3,5,0.55); border:1px solid rgba(255,255,255,0.14); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-radius:999px; color:#fff; }
+  .brand-pill { padding:10px 20px; font-size:12px; letter-spacing:2.5px; font-weight:300; text-transform:uppercase; white-space:nowrap; }
+  .brand-pill b { font-weight:700; color:var(--accent); }
+  .ref-chip { padding:10px 16px; font-size:12px; letter-spacing:1px; opacity:0.95; white-space:nowrap; }
+  .hero-foot { position:absolute; left:6%; right:6%; bottom:28px; z-index:2; }
+  .badge { display:inline-block; background:linear-gradient(135deg, var(--accent), var(--accent-deep)); color:#020305; font-weight:700; font-size:11.5px; letter-spacing:2.5px; padding:8px 18px; border-radius:999px; text-transform:uppercase; box-shadow:0 6px 20px rgba(31,200,195,0.35); }
+  h1 { font-family:'Playfair Display', Georgia, serif; font-size:clamp(30px, 4.8vw, 46px); font-weight:700; line-height:1.12; margin:18px 0 10px; color:var(--text); text-wrap:balance; }
+  .loc { display:flex; align-items:center; gap:9px; color:var(--text2); font-size:15px; margin:0 0 22px; }
+  .loc i { color:var(--accent); font-size:13px; }
+  .price-block { display:flex; flex-direction:column; gap:3px; }
+  .price-label { font-size:11px; letter-spacing:3px; text-transform:uppercase; color:var(--accent); font-weight:700; }
+  .price { font-family:'Playfair Display', Georgia, serif; font-size:clamp(28px, 4vw, 38px); font-weight:700; color:var(--text); line-height:1.1; }
+  .sheet { max-width:1000px; margin:-36px auto 0; position:relative; z-index:3; background:var(--card); border:1px solid var(--line); border-radius:26px; padding:38px 6% 46px; box-shadow:0 30px 80px rgba(0,0,0,0.5); overflow:hidden; }
+  .sheet::before { content:''; position:absolute; top:0; left:28px; right:28px; height:2px; background:linear-gradient(90deg, transparent, var(--accent), transparent); opacity:0.65; }
+  .gallery { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-bottom:38px; }
+  .gallery-item { width:100%; aspect-ratio:16/10; object-fit:cover; border-radius:16px; border:1px solid var(--line); }
+  h2 { display:flex; align-items:center; gap:12px; font-size:13px; letter-spacing:3px; text-transform:uppercase; color:var(--text); font-weight:700; margin:0 0 22px; }
+  .h2-mark { width:24px; height:2px; background:var(--accent); border-radius:2px; flex:none; }
+  .specs { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; margin-bottom:44px; }
+  .spec { display:flex; align-items:center; gap:14px; padding:16px 18px; background:var(--card2); border:1px solid var(--line); border-radius:16px; }
+  .spec-icon { flex:none; width:42px; height:42px; display:flex; align-items:center; justify-content:center; border-radius:12px; background:rgba(31,200,195,0.12); color:var(--accent); font-size:16px; }
+  .spec-body { display:flex; flex-direction:column; gap:3px; min-width:0; }
+  .spec-label { font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase; color:var(--text3); font-weight:600; }
+  .spec-value { font-size:15.5px; font-weight:700; color:var(--text); }
+  .desc { margin:0 0 44px; line-height:1.85; color:var(--text2); white-space:pre-line; font-size:16px; }
+  .cta-row { display:flex; flex-wrap:wrap; gap:14px; }
+  .cta { display:inline-flex; align-items:center; gap:11px; background:linear-gradient(135deg, var(--accent), var(--accent-deep)); color:#020305; padding:16px 32px; border-radius:60px; font-weight:700; font-size:15px; text-decoration:none; box-shadow:0 10px 30px rgba(31,200,195,0.25); }
+  .cta i { font-size:17px; }
+  .cta:hover { transform:translateY(-1px); }
+  .foot { text-align:center; padding:46px 20px 40px; }
+  .foot-brand { font-size:13px; letter-spacing:3px; text-transform:uppercase; color:var(--text2); font-weight:300; margin-bottom:10px; }
+  .foot-brand b { font-weight:700; color:var(--accent); }
+  .foot-meta { font-size:12px; color:var(--text3); }
+  .foot-meta a { color:var(--text3); text-decoration:none; border-bottom:1px solid rgba(148,163,184,0.4); }
+  @media (max-width:720px){
+    .hero { height:56vh; }
+    .brand-pill { font-size:10px; padding:8px 14px; letter-spacing:2px; }
+    .ref-chip { font-size:10.5px; padding:8px 12px; }
+    .sheet { margin:-28px 12px 0; padding:28px 20px 36px; }
+    .specs { grid-template-columns:1fr 1fr; }
+    .gallery { grid-template-columns:repeat(3, 1fr); gap:8px; }
+    .gallery-item { aspect-ratio:4/3; border-radius:12px; }
+    .cta { width:100%; justify-content:center; }
+  }
 </style>
 </head>
 <body>
   <header class="hero" style="background-image:url('${esc(hero)}')">
-    <div class="hero-head">
-      <span class="brand"><b>BIENENHAUS</b> PROPIEDADES</span>
-      ${p.property_code ? `<span class="code">${esc(p.property_code)}</span>` : ''}
+    <div class="hero-top">
+      <span class="glass brand-pill"><b>BIENENHAUS</b> PROPIEDADES</span>
+      ${p.property_code ? `<span class="glass ref-chip">Ref. ${esc(p.property_code)}</span>` : ''}
     </div>
     <div class="hero-foot">
       <span class="badge">${esc(STATUS_LABELS[p.status] ?? p.status)}</span>
       <h1>${esc(rawTitle)}</h1>
-      <p class="loc">${esc([rawZone, p.address].filter(Boolean).join(' - '))}</p>
-      <div class="price">${esc(price)}</div>
+      ${[rawZone, p.address].some(Boolean) ? `<p class="loc"><i class="fas fa-location-dot" aria-hidden="true"></i>${esc([rawZone, p.address].filter(Boolean).join(' · '))}</p>` : ''}
+      <div class="price-block">
+        <span class="price-label">Precio de ${p.status === 'alquiler' ? 'alquiler' : 'venta'}</span>
+        <span class="price">${esc(price)}</span>
+      </div>
     </div>
   </header>
   <main class="sheet">
-    ${chips.length ? `<div class="chips">${chips.map((c) => `<span class="chip">${esc(c)}</span>`).join('')}</div>` : ''}
-    ${String(p.description || '').trim() ? `<h2>Descripción</h2><p class="desc">${esc(p.description)}</p>` : ''}
-    <a class="cta" href="${siteUrl}" target="_blank" rel="noopener">Ver más en bienenhaus.com.ar</a>
+    ${gallery.length ? `<div class="gallery">${gallery.map((g: string) => `<img class="gallery-item" src="${esc(g)}" alt="${esc(rawTitle)}" loading="lazy">`).join('')}</div>` : ''}
+    ${specs.length ? `<h2><span class="h2-mark" aria-hidden="true"></span>Características</h2>
+    <div class="specs">${specs.map((s) => `<div class="spec"><span class="spec-icon"><i class="fas ${s.icon}" aria-hidden="true"></i></span><span class="spec-body"><span class="spec-label">${s.label}</span><span class="spec-value">${esc(s.value)}</span></span></div>`).join('')}</div>` : ''}
+    ${String(p.description || '').trim() ? `<h2><span class="h2-mark" aria-hidden="true"></span>Sobre esta propiedad</h2><p class="desc">${esc(p.description)}</p>` : ''}
+    <div class="cta-row">
+      <a class="cta" href="${siteUrl}" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i>Ver más en bienenhaus.com.ar</a>
+    </div>
   </main>
-  <footer>Bienenhaus Propiedades - CPI 1834</footer>
+  <footer class="foot">
+    <div class="foot-brand"><b>BIENENHAUS</b> PROPIEDADES</div>
+    <div class="foot-meta">CPI 1834 · <a href="${siteUrl}/" rel="noopener">bienenhaus.com.ar</a></div>
+  </footer>
 </body>
 </html>`;
 }
