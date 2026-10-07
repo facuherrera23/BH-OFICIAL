@@ -41,7 +41,7 @@ function buildMetaDescription(text) {
   return cut.slice(0, lastSpace > 100 ? lastSpace : 155).trim() + '…';
 }
 
-function buildHtml(p) {
+function buildHtml(p, allProps) {
   const imgs = (p.image_urls || []).filter((u) => /^https?:\/\//.test(u));
   const hero = imgs[0] || '';
   const ogThumb = hero.includes('res.cloudinary.com') && hero.includes('/upload/')
@@ -63,6 +63,30 @@ function buildHtml(p) {
   const availability = (p.status === 'vendido' || p.status === 'alquilado')
     ? 'https://schema.org/SoldOut'
     : 'https://schema.org/InStock';
+
+  /* Mapa: 27/29 propiedades tienen coordenadas */
+  const hasCoords = typeof p.latitude === 'number' && typeof p.longitude === 'number';
+  const mapBbox = hasCoords
+    ? `${p.longitude - 0.008},${p.latitude - 0.004},${p.longitude + 0.008},${p.latitude + 0.004}`
+    : '';
+  const gmapsUrl = hasCoords ? `https://maps.google.com/?q=${p.latitude},${p.longitude}` : '';
+
+  /* Broker asignado (si tiene nombre) */
+  const broker = p.agents && p.agents.full_name
+    ? { name: p.agents.full_name, phone: p.agents.phone || '', photo: p.agents.photo_url || '' }
+    : null;
+
+  /* Propiedades relacionadas: misma zona, con foto, hasta 3 */
+  const related = (allProps || [])
+    .filter((x) => x.id !== p.id && rawZone && x.zone === rawZone && (x.image_urls || []).some((u) => /^https?:\/\//.test(u)))
+    .slice(0, 3)
+    .map((x) => ({
+      code: x.property_code,
+      title: String(x.title || '').trim(),
+      zone: (x.zone || '').trim(),
+      price: x.price_usd ? `${x.price_currency === 'ARS' ? '$' : 'USD'} ${Number(x.price_usd).toLocaleString('es-AR')}` : 'Consultar',
+      img: (x.image_urls || []).find((u) => /^https?:\/\//.test(u)) || '',
+    }));
 
   const sup = p.surface_total && p.surface_total > 0 ? p.surface_total : (p.surface_covered ?? p.area_m2);
   const supCub = p.surface_covered && p.surface_covered > 0 ? p.surface_covered : null;
@@ -179,7 +203,9 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
   .ref-chip { padding:10px 16px; font-size:12px; letter-spacing:1px; opacity:0.95; white-space:nowrap; }
   .hero-foot { pointer-events:none; position:absolute; left:6%; right:6%; bottom:28px; z-index:2; }
   .badge { display:inline-block; background:linear-gradient(135deg, var(--accent), var(--accent-deep)); color:#020305; font-weight:700; font-size:11.5px; letter-spacing:2.5px; padding:8px 18px; border-radius:999px; text-transform:uppercase; box-shadow:0 6px 20px rgba(31,200,195,0.35); }
-  h1 { font-family:'Playfair Display', Georgia, serif; font-size:clamp(30px, 4.8vw, 46px); font-weight:700; line-height:1.12; margin:18px 0 10px; color:var(--text); text-wrap:balance; }
+  .kicker { display:flex; align-items:center; gap:9px; margin:16px 0 0; font-size:11.5px; letter-spacing:3px; text-transform:uppercase; color:var(--accent); font-weight:700; }
+  .kicker::after { content:''; flex:none; width:32px; height:1.5px; background:linear-gradient(90deg, var(--accent), transparent); }
+  h1 { font-family:'Playfair Display', Georgia, serif; font-size:clamp(30px, 4.8vw, 46px); font-weight:700; line-height:1.12; margin:8px 0 10px; color:var(--text); text-wrap:balance; }
   .loc { display:flex; align-items:center; gap:9px; color:var(--text2); font-size:15px; margin:0 0 22px; }
   .loc i { color:var(--accent); font-size:13px; }
   .price-block { display:flex; flex-direction:column; gap:3px; }
@@ -230,6 +256,26 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
   .lb-close { top:22px; right:22px; }
   .lb-prev { left:18px; top:50%; transform:translateY(-50%); }
   .lb-next { right:18px; top:50%; transform:translateY(-50%); }
+  .lb-count { position:absolute; bottom:24px; left:50%; transform:translateX(-50%); background:rgba(2,3,5,0.6); border:1px solid rgba(255,255,255,0.16); backdrop-filter:blur(6px); color:#fff; font-size:13px; font-weight:600; padding:8px 18px; border-radius:999px; letter-spacing:1px; }
+  .map-wrap { border:1px solid var(--line); border-radius:16px; overflow:hidden; }
+  .map-wrap iframe { display:block; width:100%; height:340px; }
+  .map-links { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-top:14px; }
+  .map-addr { display:flex; align-items:center; gap:9px; color:var(--text2); font-size:14px; }
+  .map-addr i { color:var(--accent); font-size:13px; }
+  .gmaps-chip { display:inline-flex; align-items:center; gap:9px; background:rgba(31,200,195,0.1); border:1px solid rgba(31,200,195,0.35); color:var(--accent); font-size:13.5px; font-weight:600; padding:11px 20px; border-radius:999px; text-decoration:none; transition:background .2s ease; }
+  .gmaps-chip:hover { background:rgba(31,200,195,0.18); }
+  .broker { display:flex; align-items:center; gap:16px; }
+  .broker-avatar { flex:none; width:56px; height:56px; border-radius:999px; object-fit:cover; border:2px solid rgba(31,200,195,0.4); }
+  .broker-avatar--init { display:flex; align-items:center; justify-content:center; background:rgba(31,200,195,0.14); color:var(--accent); font-family:'Playfair Display', Georgia, serif; font-size:24px; font-weight:700; }
+  .broker-info strong { display:block; font-family:'Playfair Display', Georgia, serif; font-size:21px; color:var(--text); font-weight:700; }
+  .rel-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; }
+  .rel-card { display:flex; flex-direction:column; background:var(--card2); border:1px solid var(--line); border-radius:18px; overflow:hidden; text-decoration:none; transition:border-color .25s ease, transform .25s ease; }
+  .rel-card:hover { border-color:var(--line-accent); transform:translateY(-3px); }
+  .rel-img { width:100%; aspect-ratio:16/10; object-fit:cover; display:block; }
+  .rel-body { display:flex; flex-direction:column; gap:6px; padding:16px 18px 18px; }
+  .rel-title { font-size:14.5px; font-weight:600; color:var(--text); line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .rel-meta { font-size:12.5px; color:var(--text3); }
+  .rel-meta b { color:var(--accent); font-weight:700; }
   .foot { text-align:center; padding:46px 20px 40px; }
   .foot-brand { font-size:13px; letter-spacing:3px; text-transform:uppercase; color:var(--text2); font-weight:300; margin-bottom:10px; }
   .foot-brand b { font-weight:700; color:var(--accent); }
@@ -244,7 +290,9 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
     .gallery { gap:8px; }
     .gallery-item { aspect-ratio:4/3; border-radius:12px; }
     .contact-strip { flex-direction:column; align-items:stretch; text-align:center; }
+    .broker { justify-content:center; }
     .cta { width:100%; justify-content:center; }
+    .rel-grid { grid-template-columns:1fr; }
     .lb-btn { width:42px; height:42px; }
   }
   @media print {
@@ -279,20 +327,36 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
     .cta { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
     .cta--outline { color:#0e7a76 !important; border-color:#0e7a76 !important; }
     .lb { display:none !important; }
-    .cta-row, .cta, .spec, .gallery, .contact-strip { break-inside:avoid; }
+    .map-wrap iframe { display:none !important; }
+    .map-wrap { border-color:#dfe5e5 !important; }
+    .gmaps-chip { color:#0e7a76 !important; border-color:#0e7a76 !important; background:transparent !important; }
+    .map-addr { color:#556070 !important; }
+    .map-addr i { color:#0e7a76 !important; }
+    .broker-avatar { border-color:#0e7a76 !important; }
+    .broker-avatar--init { background:rgba(14,122,118,0.12) !important; color:#0e7a76 !important; }
+    .broker-info strong { color:#1a1d21 !important; }
+    .rel-card { background:#f6f8f8 !important; border-color:#dfe5e5 !important; }
+    .rel-title { color:#1a1d21 !important; }
+    .rel-meta { color:#6a7280 !important; }
+    .rel-meta b { color:#0e7a76 !important; }
+    .cta-row, .cta, .spec, .gallery, .contact-strip, .rel-card, .map-wrap { break-inside:avoid; }
     .foot-brand, .foot-meta, .foot-meta a { color:#6a7280 !important; }
     .foot-meta a { border-bottom-color:#b8c0c8 !important; }
   }
 </style>
 </head>
 <body>
-  <header class="hero" style="background-image:url('${esc(hero)}')" data-zoom="${esc(hero)}">
+  <header class="hero" style="background-image:url('${esc(hero)}')" data-zoom="${esc(hero)}" data-idx="0">
     <div class="hero-top">
       <span class="glass brand-pill"><b>BIENENHAUS</b> PROPIEDADES</span>
-      ${code ? `<span class="glass ref-chip">Ref. ${esc(code)}</span>` : ''}
+      <div style="display:flex; gap:8px; align-items:center;">
+        ${code ? `<span class="glass ref-chip">Ref. ${esc(code)}</span>` : ''}
+        ${imgs.length > 1 ? `<span class="glass ref-chip"><i class="fas fa-camera" aria-hidden="true" style="color:var(--accent); margin-right:6px;"></i>${imgs.length} fotos</span>` : ''}
+      </div>
     </div>
     <div class="hero-foot">
       <span class="badge">${esc(STATUS_LABELS[p.status] ?? p.status)}</span>
+      ${[TYPE_LABELS[p.property_type], rawZone].filter(Boolean).length ? `<p class="kicker">${esc([TYPE_LABELS[p.property_type], rawZone].filter(Boolean).join(' · '))}</p>` : ''}
       <h1>${esc(rawTitle)}</h1>
       ${[p.zone, p.address].some(Boolean) ? `<p class="loc"><i class="fas fa-location-dot" aria-hidden="true"></i>${esc([p.zone, p.address].filter(Boolean).join(' · '))}</p>` : ''}
       <div class="price-block">
@@ -312,7 +376,7 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
       const isLastWithMore = remaining > 0 && i === gallery.length - 1;
       const img = isLastWithMore
         ? `<img class="gallery-item" src="${esc(g)}" alt="${esc(rawTitle)}" loading="lazy">`
-        : `<img class="gallery-item" src="${esc(g)}" alt="${esc(rawTitle)}" loading="lazy" data-zoom="${esc(g)}">`;
+        : `<img class="gallery-item" src="${esc(g)}" alt="${esc(rawTitle)}" loading="lazy" data-idx="${i + 1}">`;
       return isLastWithMore
         ? `<a class="gallery-more" href="${SITE_URL}/#prop=${encodeURIComponent(code)}" target="_blank" rel="noopener">${img}<span class="more-badge">+${remaining} fotos <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></span></a>`
         : img;
@@ -325,17 +389,46 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
       <h2><i class="fas fa-align-left" aria-hidden="true"></i>Sobre esta propiedad</h2>
       ${descBlocks.map((b, i) => `<p class="desc${i === 0 && descBlocks.length > 1 ? ' desc--lead' : ''}">${esc(b)}</p>`).join('')}
     </section>` : ''}
+    ${hasCoords ? `<section class="sec">
+      <h2><i class="fas fa-map-location-dot" aria-hidden="true"></i>Ubicación</h2>
+      <div class="map-wrap">
+        <iframe src="https://www.openstreetmap.org/export/embed.html?bbox=${esc(mapBbox)}&layer=mapnik&marker=${esc(String(p.latitude))},${esc(String(p.longitude))}" loading="lazy" title="Mapa de la ubicación" style="border:0;"></iframe>
+      </div>
+      <div class="map-links">
+        ${[p.zone, p.address].some(Boolean) ? `<span class="map-addr"><i class="fas fa-location-dot" aria-hidden="true"></i>${esc([p.zone, p.address].filter(Boolean).join(' · '))}</span>` : ''}
+        <a class="gmaps-chip" href="${esc(gmapsUrl)}" target="_blank" rel="noopener"><i class="fas fa-diamond-turn-right" aria-hidden="true"></i>Abrir en Google Maps</a>
+      </div>
+    </section>` : ''}
     <div class="contact-strip">
       <div class="contact-copy">
-        <strong>¿Te interesa esta propiedad?</strong>
-        <span>Respondemos en el día por WhatsApp.</span>
+        ${broker ? `<div class="broker">
+          ${broker.photo ? `<img class="broker-avatar" src="${esc(broker.photo)}" alt="${esc(broker.name)}" loading="lazy">` : `<span class="broker-avatar broker-avatar--init">${esc(broker.name.trim().charAt(0).toUpperCase())}</span>`}
+          <div class="broker-info">
+            <strong>${esc(broker.name)}</strong>
+            <span>${broker.phone ? `Broker asignado · ${esc(broker.phone)}` : 'Broker asignado'}</span>
+          </div>
+        </div>` : `<div>
+          <strong>¿Te interesa esta propiedad?</strong>
+          <span>Respondemos en el día por WhatsApp.</span>
+        </div>`}
       </div>
       <div class="cta-row">
         <a class="cta" href="https://wa.me/${WHATSAPP_CANONICAL}?text=${waText}" target="_blank" rel="noopener"><i class="fab fa-whatsapp" aria-hidden="true"></i>Consultar por WhatsApp</a>
         <button type="button" class="cta cta--outline" data-copy="${esc(fichaUrl)}"><i class="fas fa-link" aria-hidden="true"></i><span>Copiar link</span></button>
+        <button type="button" class="cta cta--outline" id="btnPrint"><i class="fas fa-file-pdf" aria-hidden="true"></i>Descargar PDF</button>
         <a class="cta cta--outline" href="${SITE_URL}/#prop=${encodeURIComponent(code)}" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i>Ver en el sitio</a>
       </div>
     </div>
+    ${related.length ? `<section class="sec">
+      <h2><i class="fas fa-compass" aria-hidden="true"></i>Te puede interesar${rawZone ? ` en ${esc(rawZone)}` : ''}</h2>
+      <div class="rel-grid">${related.map((r) => `<a class="rel-card" href="${SITE_URL}/fichas/${esc(r.code)}.html">
+        <img class="rel-img" src="${esc(r.img)}" alt="${esc(r.title)}" loading="lazy">
+        <div class="rel-body">
+          <span class="rel-title">${esc(r.title)}</span>
+          <span class="rel-meta">${esc(r.zone)} · <b>${esc(r.price)}</b></span>
+        </div>
+      </a>`).join('')}</div>
+    </section>` : ''}
   </main>
   <footer class="foot">
     <div class="foot-brand"><b>BIENENHAUS</b> PROPIEDADES</div>
@@ -346,26 +439,30 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
     <button type="button" id="lbClose" class="lb-btn lb-close" aria-label="Cerrar"><i class="fas fa-xmark" aria-hidden="true"></i></button>
     <button type="button" id="lbPrev" class="lb-btn lb-prev" aria-label="Foto anterior"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
     <button type="button" id="lbNext" class="lb-btn lb-next" aria-label="Foto siguiente"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
+    <span class="lb-count" id="lbCount"></span>
   </dialog>
   <script>
   (function () {
-    var items = [].map.call(document.querySelectorAll('[data-zoom]'), function (el) { return el.getAttribute('data-zoom'); });
-    var dlg = document.getElementById('lb'), lbImg = document.getElementById('lbImg');
+    var allImgs = ${JSON.stringify(imgs.map(String))};
+    var dlg = document.getElementById('lb'), lbImg = document.getElementById('lbImg'), lbCount = document.getElementById('lbCount');
     var cur = 0;
     function openLb(i) {
-      if (!items.length) return;
-      cur = (i + items.length) % items.length;
-      lbImg.src = items[cur];
+      if (!allImgs.length) return;
+      cur = ((i + allImgs.length) % allImgs.length);
+      lbImg.src = allImgs[cur];
+      lbCount.textContent = (cur + 1) + ' / ' + allImgs.length;
       dlg.showModal();
     }
     document.addEventListener('click', function (e) {
       if (e.target.closest('#lbClose')) { dlg.close(); return; }
-      var zoom = e.target.closest('[data-zoom]');
-      if (zoom) { e.preventDefault(); openLb(items.indexOf(zoom.getAttribute('data-zoom'))); return; }
+      var zoom = e.target.closest('[data-idx]');
+      if (zoom) { e.preventDefault(); openLb(parseInt(zoom.getAttribute('data-idx'), 10) || 0); return; }
       if (e.target.closest('#lbPrev')) { openLb(cur - 1); return; }
       if (e.target.closest('#lbNext')) { openLb(cur + 1); }
     });
     dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+    var printBtn = document.getElementById('btnPrint');
+    if (printBtn) printBtn.addEventListener('click', function () { window.print(); });
     var copyBtn = document.querySelector('[data-copy]');
     if (copyBtn) {
       copyBtn.addEventListener('click', function () {
@@ -415,7 +512,7 @@ function buildSitemap(props) {
 
 async function main() {
   const url = new URL(`${SUPABASE_URL}/rest/v1/properties`);
-  url.searchParams.set('select', 'id,property_code,title,description,property_type,status,zone,address,price_usd,price_currency,area_m2,surface_covered,surface_total,rooms,bedrooms,bathrooms,garage_spaces,year_built,image_urls');
+  url.searchParams.set('select', 'id,property_code,title,description,property_type,status,zone,address,price_usd,price_currency,area_m2,surface_covered,surface_total,rooms,bedrooms,bathrooms,garage_spaces,year_built,latitude,longitude,image_urls,agents(full_name,phone,photo_url)');
   url.searchParams.set('is_published', 'eq.true');
   url.searchParams.set('deleted_at', 'is.null');
   if (onlyCode) url.searchParams.set('property_code', `eq.${onlyCode}`);
@@ -428,7 +525,7 @@ async function main() {
   const published = props.filter((p) => p.property_code);
   let count = 0;
   for (const p of published) {
-    writeFileSync(`fichas/${p.property_code}.html`, buildHtml(p), 'utf8');
+    writeFileSync(`fichas/${p.property_code}.html`, buildHtml(p, published), 'utf8');
     count++;
   }
 
