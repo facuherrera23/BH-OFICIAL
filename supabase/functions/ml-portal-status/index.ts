@@ -223,6 +223,7 @@ Deno.serve(async (req) => {
        con 400 'Invalid JSON' cuando el tópico vis_leads no estaba en el enum. */
     let visLeads: VisLeadRow[] | null = null;
     let visLeadsImport: VisLeadsImportSummary | null = null;
+    let visLeadsDebug: string | null = null;
     if (includeLeads && accessToken) {
         try {
             const dateFrom = new Date(Date.now() - leadsDays * 86_400_000).toISOString().slice(0, 10);
@@ -233,7 +234,10 @@ Deno.serve(async (req) => {
                     `${ML_API}/vis/users/${(conn as ActiveConnection).user_id}/leads/buyers?offset=${offset}&limit=50&date_from=${dateFrom}&include_guest=true`,
                     { headers: { authorization: `Bearer ${accessToken}` } },
                 );
-                if (!buyersRes.ok) break;
+                if (!buyersRes.ok) {
+                    visLeadsDebug = `buyers HTTP ${buyersRes.status}: ${(await buyersRes.text()).slice(0, 300)}`;
+                    break;
+                }
                 const data = (await buyersRes.json()) as {
                     results?: Array<{
                         item_id?: string;
@@ -357,6 +361,7 @@ Deno.serve(async (req) => {
             }
         } catch (err) {
             visLeads = null;
+            visLeadsDebug = (err as Error).message.slice(0, 300);
             if (importLeads) {
                 visLeadsImport = {
                     total: 0,
@@ -385,6 +390,7 @@ Deno.serve(async (req) => {
         questions: recentQuestions,
         vis_leads: visLeads,
         vis_leads_import: visLeadsImport,
+        vis_leads_debug: visLeadsDebug,
         last_connected_at: (conn as { updated_at?: string }).updated_at ?? null,
     });
 });
