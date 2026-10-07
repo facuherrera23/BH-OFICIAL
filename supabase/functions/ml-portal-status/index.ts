@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
         userError = (err as Error).message;
     }
 
-    let webhooks: Record<string, boolean> | null = null;
+    let webhooks: Record<string, boolean | string> | null = null;
     if (includeWebhooks && user) {
         try {
             const accessToken = await decrypt(
@@ -114,10 +114,7 @@ Deno.serve(async (req) => {
             );
             webhooks = await getRegisteredMlWebhookTopics(accessToken, user.id);
         } catch (err) {
-            webhooks = { error: (err as Error).message.slice(0, 100) } as unknown as Record<
-                string,
-                boolean
-            >;
+            webhooks = { error: (err as Error).message.slice(0, 100) } as unknown as Record<string, boolean | string>;
         }
     }
 

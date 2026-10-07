@@ -797,7 +797,13 @@ export async function registerMlWebhookTopic(
         });
         const text = await res.text();
         if (!res.ok) {
-            return { ok: false, topic, error: `ML ${topic} webhook falló (${res.status}): ${text.slice(0, 300)}` };
+            // ML retiró el registro per-user por API (404): la suscripción se
+            // configura en el gestor de aplicaciones (callback URL + tópicos).
+            const hint =
+                res.status === 404
+                    ? 'ML retiró el registro por API: configurar la callback URL y los tópicos en https://applications.mercadolibre.com.ar (editar la aplicación)'
+                    : '';
+            return { ok: false, topic, error: `ML ${topic} webhook falló (${res.status}): ${hint || text.slice(0, 300)}` };
         }
         return { ok: true, topic };
     } catch (err) {
@@ -826,24 +832,29 @@ export async function registerMlWebhooks(
 /**
  * Verifica qué tópicos están registrados para un usuario.
  * GET /users/{user_id}/topics/{topic}
+ * ML retiró este endpoint (responde 404): devuelve 'gone' para que el panel
+ * muestre la guía de configuración manual en el gestor de aplicaciones.
  */
+export type MlWebhookTopicState = boolean | 'gone';
+
 export async function getRegisteredMlWebhookTopics(
     accessToken: string,
     userId: number,
-): Promise<Record<MlWebhookTopic, boolean>> {
+): Promise<Record<MlWebhookTopic, MlWebhookTopicState>> {
     const results = await Promise.all(
         ML_WEBHOOK_TOPICS.map(async (topic) => {
             try {
                 const res = await fetchWithTimeout(`${ML_API}/users/${userId}/topics/${topic}`, {
                     headers: { authorization: `Bearer ${accessToken}` },
                 });
+                if (res.status === 404) return [topic, 'gone'] as const;
                 return [topic, res.ok] as const;
             } catch {
                 return [topic, false] as const;
             }
         }),
     );
-    return Object.fromEntries(results) as Record<MlWebhookTopic, boolean>;
+    return Object.fromEntries(results) as Record<MlWebhookTopic, MlWebhookTopicState>;
 }
 
 // ============================================================

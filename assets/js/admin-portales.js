@@ -90,7 +90,13 @@
         ];
         let webhooksHtml = '';
         if (ml_connected) {
-          if (ml_webhooks && !ml_webhooks.error) {
+          /* 'gone' = ML retiró el endpoint de suscripción por API (404): la
+             configuración es manual en el gestor de aplicaciones de ML. */
+          const gone = ml_webhooks && !ml_webhooks.error && ML_WEBHOOK_TOPICS.some(([k]) => ml_webhooks[k] === 'gone');
+          if (gone) {
+            webhooksHtml = '<p style="font-size:10px; color:var(--warning); margin-top:8px;">Suscripción de notificaciones: se configura en el <a href="https://applications.mercadolibre.com.ar" target="_blank" rel="noopener" style="color:var(--warning); text-decoration:underline;">panel de aplicaciones de ML</a> (editar la app &rarr; notificaciones &rarr; pegar esta URL y tildar Questions/Items):</p>'
+              + '<p style="font-size:10px; color:var(--text-dim); margin-top:2px; word-break:break-all; user-select:all;">' + esc(ML_FUNCTIONS_BASE + '/ml-webhook') + '</p>';
+          } else if (ml_webhooks && !ml_webhooks.error) {
             webhooksHtml = '<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:4px; justify-content:center;" title="Tópicos de notificación registrados ante Mercado Libre (sin esto las consultas de ML no llegan al CRM)">'
               + ML_WEBHOOK_TOPICS.map(([k, label]) => {
                   const on = ml_webhooks[k] === true;
@@ -695,7 +701,9 @@ try {
         const results = Array.isArray(json) ? json : [];
         const failed = results.filter(r => !r.ok);
         if (failed.length) {
-          showToast(`Webhooks: ${results.length - failed.length}/${results.length} OK — fallaron: ${failed.map(f => f.topic).join(', ')}`, 'error');
+          /* Incluir el primer error: sin esto el toast no explica el 404 de ML. */
+          const firstErr = failed[0]?.error ? ' — ' + failed[0].error.slice(0, 160) : '';
+          showToast(`Webhooks: ${results.length - failed.length}/${results.length} OK — fallaron: ${failed.map(f => f.topic).join(', ')}${firstErr}`, 'error');
         } else if (results.length) {
           showToast(`Webhooks registrados (${results.length} tópicos)`, 'success');
         } else {
