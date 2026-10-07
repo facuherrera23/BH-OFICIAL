@@ -95,48 +95,46 @@ function buildHtml(p) {
 
   const jsonLd = {
     '@context': 'https://schema.org',
-    '@graph': [
-      {
-        '@type': 'RealEstateListing',
-        name: p.title,
-        url: fichaUrl,
-        provider: {
-          '@type': 'RealEstateAgent',
-          '@id': 'https://bienenhaus.com.ar/#organization',
-          name: 'Bienenhaus Propiedades',
-          url: 'https://bienenhaus.com.ar/',
-          telephone: '+54-9-3516-37-9651',
-        },
-        ...(metaDescription ? { description: metaDescription } : {}),
-        ...(rawZone ? {
-          address: { '@type': 'PostalAddress', addressLocality: rawZone, addressRegion: 'Córdoba', addressCountry: 'AR' },
-        } : {}),
-        ...(hero ? { image: [hero] } : {}),
-        ...(p.rooms ? { numberOfRooms: p.rooms } : {}),
-        ...(sup ? { floorSize: { '@type': 'QuantitativeValue', value: sup, unitCode: 'MTK' } } : {}),
-        ...(p.price_usd ? {
-          offers: {
-            '@type': 'Offer',
-            price: Number(p.price_usd),
-            priceCurrency: currency,
-            availability,
-          },
-        } : {}),
+    '@type': 'RealEstateListing',
+    name: p.title,
+    url: fichaUrl,
+    provider: {
+      '@type': 'RealEstateAgent',
+      '@id': 'https://bienenhaus.com.ar/#organization',
+      name: 'Bienenhaus Propiedades',
+      url: 'https://bienenhaus.com.ar/',
+      telephone: '+54-9-3516-37-9651',
+    },
+    ...(metaDescription ? { description: metaDescription } : {}),
+    ...(rawZone ? {
+      address: { '@type': 'PostalAddress', addressLocality: rawZone, addressRegion: 'Córdoba', addressCountry: 'AR' },
+    } : {}),
+    ...(hero ? { image: [hero] } : {}),
+    ...(p.rooms ? { numberOfRooms: p.rooms } : {}),
+    ...(sup ? { floorSize: { '@type': 'QuantitativeValue', value: sup, unitCode: 'MTK' } } : {}),
+    ...(p.price_usd ? {
+      offers: {
+        '@type': 'Offer',
+        price: Number(p.price_usd),
+        priceCurrency: currency,
+        availability,
       },
-      {
-        '@type': 'BreadcrumbList',
-        'itemListElement': [
-          { '@type': 'ListItem', position: 1, name: 'Inicio', item: `${SITE_URL}/` },
-          { '@type': 'ListItem', position: 2, name: 'Propiedades', item: `${SITE_URL}/#propiedades` },
-          { '@type': 'ListItem', position: 3, name: code || 'Ficha', item: fichaUrl },
-        ],
-      },
+    } : {}),
+  };
+  const jsonLdBreadcrumb = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Inicio', item: `${SITE_URL}/` },
+      { '@type': 'ListItem', position: 2, name: 'Propiedades', item: `${SITE_URL}/#propiedades` },
+      { '@type': 'ListItem', position: 3, name: code || 'Ficha', item: fichaUrl },
     ],
   };
 
   // En <script> el contenido es texto crudo (no se decodifican entidades):
   // escapar < como \u003c evita el cierre prematuro de la etiqueta y mantiene JSON válido.
   const jsonLdText = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
+  const jsonLdBreadcrumbText = JSON.stringify(jsonLdBreadcrumb).replace(/</g, '\\u003c');
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -159,6 +157,7 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
 <meta name="twitter:image" content="${esc(ogThumb)}">` : ''}
 <meta property="og:url" content="${esc(fichaUrl)}">
 <script type="application/ld+json">${jsonLdText}</script>
+<script type="application/ld+json">${jsonLdBreadcrumbText}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
