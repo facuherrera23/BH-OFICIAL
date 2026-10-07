@@ -215,6 +215,24 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
         }
     }
 
+    /* property_ml_meta.permalink viene NULL en las filas actuales: el link real
+       del aviso se resuelve contra la API de items con el token del vendedor
+       (mismo acceso que usa ml-metrics). Fail-soft: sin link el lead sigue
+       sirviendo con pregunta + propiedad + perfil. */
+    if (!mlPermalink && mlItemId && token) {
+        try {
+            const itemRes = await fetch(`${ML_API}/items/${mlItemId}`, {
+                headers: { authorization: `Bearer ${token}` },
+            });
+            if (itemRes.ok) {
+                const item = (await itemRes.json()) as { permalink?: string };
+                if (typeof item.permalink === 'string' && item.permalink) mlPermalink = item.permalink;
+            }
+        } catch {
+            /* sin link al aviso: el lead conserva el resto del contexto */
+        }
+    }
+
     /* Contexto de conversión para el broker: código y nombre de la propiedad,
        link directo al aviso de ML y perfil público del interesado (reputación). */
     let propContext = '';
@@ -471,11 +489,15 @@ async function handleItems(payload: MlWebhookPayload): Promise<void> {
         .maybeSingle();
 
     if (meta) {
-        await supabase.rpc('ml_enqueue', {
+        const { error: enqueueErr } = await supabase.rpc('ml_enqueue', {
             p_property_id: meta.property_id,
             p_operation: 'update',
-            p_internal: true,
+            p_ml_item_id: meta.ml_item_id,
         });
+        /* Se lanza para que el evento quede 'failed' (visible): antes se pasaba
+           un parámetro inexistente (p_internal) y el error de PostgREST se
+           tragaba en silencio con el evento marcado 'processed'. */
+        if (enqueueErr) throw new Error(`ml_enqueue: ${enqueueErr.message}`);
     }
 }
 

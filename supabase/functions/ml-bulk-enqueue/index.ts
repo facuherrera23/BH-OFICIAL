@@ -45,18 +45,16 @@ Deno.serve(async (req) => {
         return respond(400, { error: 'operation debe ser publish, update o delete' });
     }
 
-    const { data, error } = await supabase.rpc('ml_enqueue_batch', {
-        p_property_ids: propertyIds,
-        p_operation: operation,
-        p_internal: true,
-    });
+    /* ml_enqueue_batch espera p_jobs: array JSON de {property_id, operation} y
+       devuelve bigint[] (ids de queue). El contrato anterior con p_property_ids /
+       p_operation / p_internal nunca existió en el RPC y fallaba con 500 siempre. */
+    const jobs = propertyIds.map((id) => ({ property_id: id, operation }));
+    const { data, error } = await supabase.rpc('ml_enqueue_batch', { p_jobs: jobs });
 
     if (error) {
         return respond(500, { error: error.message });
     }
-    if (data && typeof data === 'object' && 'error' in data) {
-        return respond(400, { error: data.error as string });
-    }
 
-    return respond(200, { enqueued: data?.enqueued ?? 0, skipped: data?.skipped ?? 0 });
+    const ids = Array.isArray(data) ? (data as unknown[]) : [];
+    return respond(200, { enqueued: ids.length, skipped: propertyIds.length - ids.length });
 });
