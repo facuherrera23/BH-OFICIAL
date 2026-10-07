@@ -23,7 +23,9 @@
     if (!container) return;
     if (!window.supabaseClient) return;
 
-    mlCheckStatus(false).catch(() => {});
+    /* Await: sin esto la card renderiza "No configurado" con el estado ML aún
+       sin cargar y no se vuelve a renderizar cuando la respuesta llega. */
+    await mlCheckStatus(false).catch(() => {});
     updatePortalsBadge();
 
     const canManagePortals = ['super_admin', 'broker'].includes(currentProfile?.role);
