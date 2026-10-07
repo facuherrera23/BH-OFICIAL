@@ -96,7 +96,7 @@
              configuración es manual en el gestor de aplicaciones de ML. */
           const gone = ml_webhooks && !ml_webhooks.error && ML_WEBHOOK_TOPICS.some(([k]) => ml_webhooks[k] === 'gone');
           if (gone) {
-            webhooksHtml = '<p style="font-size:10px; color:var(--warning); margin-top:8px;">Suscripción de notificaciones: se configura en el <a href="https://applications.mercadolibre.com.ar" target="_blank" rel="noopener" style="color:var(--warning); text-decoration:underline;">panel de aplicaciones de ML</a> (editar la app &rarr; notificaciones &rarr; pegar esta URL y tildar Questions/Items):</p>'
+            webhooksHtml = '<p style="font-size:10px; color:var(--warning); margin-top:8px;">Suscripción de notificaciones: se configura en el <a href="https://applications.mercadolibre.com.ar" target="_blank" rel="noopener" style="color:var(--warning); text-decoration:underline;">panel de aplicaciones de ML</a> (editar la app &rarr; notificaciones &rarr; pegar esta URL y tildar <strong>VIS Leads</strong> — es el que trae las consultas de inmuebles; Questions/Items no aplican a inmuebles):</p>'
               + '<p style="font-size:10px; color:var(--text-dim); margin-top:2px; word-break:break-all; user-select:all;">' + esc(ML_FUNCTIONS_BASE + '/ml-webhook') + '</p>';
           } else if (ml_webhooks && !ml_webhooks.error) {
             webhooksHtml = '<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:4px; justify-content:center;" title="Tópicos de notificación registrados ante Mercado Libre (sin esto las consultas de ML no llegan al CRM)">'
@@ -708,7 +708,7 @@ try {
         if (failed.length && failed.every(f => /retir[oó] el registro por API/i.test(f.error || ''))) {
           await showConfirmDialog({
             title: 'Suscripción manual en Mercado Libre',
-            message: 'Mercado Libre retiró el registro automático por API. Se configura a mano: entrá a applications.mercadolibre.com.ar, editá la aplicación, en notificaciones pegá la callback URL que está en la card de Mercado Libre (abajo) y tildá Questions e Items.',
+            message: 'Mercado Libre retiró el registro automático por API. Se configura a mano: entrá a applications.mercadolibre.com.ar, editá la aplicación, en notificaciones pegá la callback URL que está en la card de Mercado Libre (abajo) y tildá VIS Leads (es el tópico de las consultas de inmuebles; Questions/Items no aplican a inmuebles).',
             icon: 'fas fa-bell',
             confirmText: 'Entendido',
           });
