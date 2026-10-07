@@ -247,7 +247,9 @@
   window.deleteTasacion = _deleteTasacion;
 
   function _openTasacionPDF(id) {
-    const url = 'tasacion.html?id=' + encodeURIComponent(id) + '&print=1&token=' + encodeURIComponent(window.__bhAdminToken || '');
+    /* La pestaña de PDF hereda la sesión de localStorage (mismo origen); el token por
+       URL nunca se leyó y quedaba en el historial del navegador — removido. */
+    const url = 'tasacion.html?id=' + encodeURIComponent(id) + '&print=1';
     window.open(url, '_blank', 'noopener');
   }
 

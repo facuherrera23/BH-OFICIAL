@@ -4,6 +4,11 @@ const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 
 let _authToken = null;
+/* Estado de sesión reactivo: se confirma por el postMessage del admin (iframe) o por
+   la sesión real que este cliente hereda de localStorage (mismo origen; aplica igual
+   al iframe y a la pestaña suelta del PDF). Si la confirmación llega tarde, el banner
+   de "Sin sesión" se limpia solo; si no hay sesión en ningún lado, se muestra. */
+let _sessionOk = false;
 // Security: validate event.origin for postMessage
 const ALLOWED_ORIGINS = [
   window.location.origin,
@@ -17,6 +22,32 @@ const ALLOWED_ORIGINS = [
   'http://127.0.0.1:3000'
 ];
 
+/* Limpia el aviso de "Sin sesión" (aunque ya se haya mostrado) y normaliza la barra. */
+function _setSessionOk(){
+  _sessionOk = true;
+  const statusBar = document.getElementById('statusBar');
+  const statusText = document.getElementById('statusText');
+  if (statusBar) {
+    statusBar.style.background = '';
+    statusBar.style.display = '';
+  }
+  /* Solo repara el texto si estaba en el aviso de sin-sesión; no pisa el estado
+     "Documento finalizado (solo lectura)" que setea setLocked(). */
+  if (statusText && statusText.textContent.indexOf('Sin sesión') !== -1) {
+    statusText.textContent = finalized ? 'Documento finalizado (solo lectura)' : 'Documento en edición';
+  }
+}
+
+function _showNoSessionBanner(){
+  const statusBar = document.getElementById('statusBar');
+  if (statusBar) {
+    statusBar.style.background = '#7f1d1d';
+    statusBar.style.display = 'block';
+  }
+  const statusText = document.getElementById('statusText');
+  if (statusText) statusText.textContent = '⚠ Sin sesión — Abrí desde el panel de administración';
+}
+
 window.addEventListener('message', (e) => {
   // Validate origin
   if (!ALLOWED_ORIGINS.includes(e.origin)) {
@@ -25,6 +56,7 @@ window.addEventListener('message', (e) => {
   }
   if (e.data?.type === 'auth-session' && e.data?.token) {
     _authToken = e.data.token;
+    _setSessionOk();
   }
 });
 
@@ -32,6 +64,7 @@ window.addEventListener('message', (e) => {
 const urlParams = new URLSearchParams(window.location.search);
 
 let TASACION_ID = urlParams.get('id');
+const _isPrintMode = urlParams.get('print') === '1';
 
 /* Último valor final calculado por recalcAll() (USD), para persistir en valuation_usd */
 let _lastValorFinalUSD = null;
@@ -394,7 +427,9 @@ function setLocked(locked){
 
 async function saveToSupabase(finalize){
   if(_saving) return false;
-  if(!_authToken){
+  /* _sessionOk = sesión real del propio cliente (localStorage mismo-origen), cubre
+     también la pestaña suelta del PDF; _authToken = confirmación del admin vía iframe. */
+  if(!_authToken && !_sessionOk){
     showToast('Sesión no válida. Volvé al panel y abrí de nuevo.');
     return false;
   }
@@ -838,17 +873,17 @@ async function init(){
   document.querySelectorAll('.field label').forEach(l=>{ l.title = l.textContent; });
   renderServicios();
 
-  setTimeout(() => {
-    if(!_authToken){
-      const statusBar = document.getElementById('statusBar');
-      if(statusBar){
-        statusBar.style.background = '#7f1d1d';
-        statusBar.style.display = 'block';
-      }
-      const statusText = document.getElementById('statusText');
-      if(statusText) statusText.textContent = '⚠ Sin sesión — Abrí desde el panel de administración';
-    }
-  }, 2000);
+  /* Sesión REAL desde el propio cliente: hereda la de localStorage (mismo origen que
+     el admin), cubre el iframe y la pestaña suelta del PDF. El banner solo se muestra
+     si de verdad no hay sesión (antes bastaba con que el postMessage tardara >2s y el
+     aviso quedaba para siempre). En modo print no se muestra: la barra ya está oculta
+     en el papel, el auto-print es efímero y el error de carga queda en consola. */
+  _supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session) { _setSessionOk(); return; }
+    if (!_isPrintMode && !_sessionOk) _showNoSessionBanner();
+  }).catch(() => {
+    if (!_isPrintMode && !_sessionOk) _showNoSessionBanner();
+  });
 
   if(TASACION_ID){
     try{
@@ -876,7 +911,7 @@ async function init(){
 init();
 
 /* Auto-print when opened with ?print=1 (PDF export from admin) */
-if (new URLSearchParams(window.location.search).get('print') === '1') {
+if (_isPrintMode) {
   const _imgsReady = () => Array.from(document.images).every(im => im.complete);
   const _autoPrintCheck = setInterval(() => {
     const hasData = document.getElementById('comparablesContainer')?.children?.length > 0

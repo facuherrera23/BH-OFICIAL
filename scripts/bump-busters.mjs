@@ -25,7 +25,10 @@ if (changed.size === 0) {
 }
 
 const htmlFiles = readdirSync(root).filter(f => f.endsWith('.html'));
-const refRe = /((?:assets\/(?:js|css)\/[A-Za-z0-9._-]+\.(?:js|css)))(\?v=(\d+))?/g;
+/* Matchea assets locales en js/css INCLUSO en subcarpetas (assets/js/pages/*.js);
+   sin el "\/" en la clase, los scripts de pages/ jamas recibian bump y produccion
+   servia la version vieja cacheada (bug real con tasacion-page.js). */
+const refRe = /((?:assets\/(?:js|css)\/[A-Za-z0-9._\/-]+\.(?:js|css)))(\?v=(\d+))?/g;
 let bumped = [];
 
 for (const html of htmlFiles) {
