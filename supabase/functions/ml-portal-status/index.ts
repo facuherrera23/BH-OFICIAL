@@ -7,6 +7,8 @@ import {
     getMe,
     getRegisteredMlWebhookTopics,
     runMlApiCallWithRetry,
+    fetchWithTimeout,
+    ML_API,
 } from '../_shared/ml.ts';
 import { decrypt } from '../_shared/crypto.ts';
 
@@ -26,6 +28,17 @@ interface ActiveConnection {
     access_token_iv: string;
 }
 
+interface MlRecentQuestion {
+    id: string;
+    item_id: string;
+    status: string;
+    date_created: string | null;
+    from_nickname: string | null;
+    text_head: string | null;
+    answered: boolean;
+    answer_text_head: string | null;
+}
+
 Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') return optionsResponse(req);
     const respond = (status: number, body: Record<string, unknown>): Response =>
@@ -39,6 +52,7 @@ Deno.serve(async (req) => {
 
     const url = new URL(req.url);
     const includeWebhooks = url.searchParams.get('webhooks') === '1';
+    const includeQuestions = url.searchParams.get('questions') === '1';
 
     const [{ data: conn }, { data: counts }, { data: recentListings }, settings] = await Promise.all([
         supabase
@@ -118,6 +132,70 @@ Deno.serve(async (req) => {
         }
     }
 
+    /* Preguntas reales recibidas en ML (mismo patrón que ml-metrics: items del
+       vendedor -> questions/search por lotes de 20 item_ids). Base para backfill
+       y para validar el webhook con datos reales. */
+    let recentQuestions: MlRecentQuestion[] | null = null;
+    if (includeQuestions && user) {
+        try {
+            const accessToken = await decrypt(
+                (conn as ActiveConnection).access_token_encrypted,
+                (conn as ActiveConnection).access_token_iv,
+            );
+            const itemsRes = await fetchWithTimeout(
+                `${ML_API}/users/${(conn as ActiveConnection).user_id}/items/search`,
+                { headers: { authorization: `Bearer ${accessToken}` } },
+            );
+            if (itemsRes.ok) {
+                const itemsData = (await itemsRes.json()) as { results?: string[] };
+                const itemIds = itemsData.results ?? [];
+                const batches: string[][] = [];
+                for (let i = 0; i < itemIds.length && batches.length < 3; i += 20) {
+                    batches.push(itemIds.slice(i, i + 20));
+                }
+                const collected: MlRecentQuestion[] = [];
+                await Promise.allSettled(
+                    batches.map(async (batch) => {
+                        const qRes = await fetchWithTimeout(
+                            `${ML_API}/questions/search?item_ids=${batch.join(',')}&limit=50`,
+                            { headers: { authorization: `Bearer ${accessToken}` } },
+                        );
+                        if (!qRes.ok) return;
+                        const qData = (await qRes.json()) as {
+                            questions?: Array<{
+                                id?: number | string;
+                                item_id?: string;
+                                from?: { nickname?: string } | null;
+                                text?: string | null;
+                                status?: string;
+                                date_created?: string;
+                                answer?: { text?: string } | null;
+                            }>;
+                        };
+                        for (const q of qData.questions ?? []) {
+                            collected.push({
+                                id: String(q.id ?? ''),
+                                item_id: String(q.item_id ?? ''),
+                                status: String(q.status ?? ''),
+                                date_created: typeof q.date_created === 'string' ? q.date_created : null,
+                                from_nickname: q.from?.nickname ?? null,
+                                text_head: typeof q.text === 'string' ? q.text.slice(0, 140) : null,
+                                answered: !!q.answer,
+                                answer_text_head:
+                                    typeof q.answer?.text === 'string' ? q.answer.text.slice(0, 140) : null,
+                            });
+                        }
+                    }),
+                );
+                recentQuestions = collected
+                    .sort((a, b) => (b.date_created ?? '').localeCompare(a.date_created ?? ''))
+                    .slice(0, 20);
+            }
+        } catch {
+            recentQuestions = null;
+        }
+    }
+
     return respond(200, {
         connected: true,
         has_credentials: hasCredentials,
@@ -132,6 +210,7 @@ Deno.serve(async (req) => {
         listings_count: (counts ?? []).length,
         listings_by_status: listingsByStatus,
         webhooks,
+        questions: recentQuestions,
         last_connected_at: (conn as { updated_at?: string }).updated_at ?? null,
     });
 });
