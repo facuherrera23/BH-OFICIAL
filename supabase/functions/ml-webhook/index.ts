@@ -66,19 +66,40 @@ function logError(entry: Omit<LogEntry, 'timestamp' | 'level'>): void {
     console.log(JSON.stringify({ timestamp: new Date().toISOString(), level: 'error', ...entry }));
 }
 
-async function verifySignature(req: Request): Promise<boolean> {
+async function hmacSha256Hex(secret: string, message: string): Promise<string> {
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+        'raw',
+        enc.encode(secret),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign'],
+    );
+    const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message));
+    return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function verifySignature(req: Request, rawBody: string): Promise<boolean> {
     const secret = (await getMlCredentials(supabase)).webhookSecret;
     // Sin secreto configurado no hay nada contra qué comparar: la barrera real es
     // validateNotificationBinding (el user_id debe ser el de la cuenta conectada).
     if (!secret) return true;
     const signature = req.headers.get('x-meli-signature');
-    if (!signature) return false;
-    if (timingSafeEqual(signature, secret)) return true;
-
-    // Formato HMAC nativo de Mercado Libre: x-meli-signature = ts=...,v1=...
+    // ML (marketplace) no firma las notificaciones de tópicos de usuario: no hay
+    // header de firma documentado y la autenticidad se valida re-consultando el
+    // recurso con el token del vendedor. Sin header se confía en binding + rate
+    // limit. La versión anterior rechazaba todo lo sin firma Y comparaba el HMAC
+    // contra el secreto en plano (matemáticamente imposible): mataba toda
+    // notificación real de ML.
+    if (!signature) return true;
+    // Si ML empieza a firmar algún día (formato ts=...,v1=...): verificar el
+    // HMAC-SHA256 correcto sobre los bytes crudos del body — nunca contra el secreto.
     const match = signature.match(/ts=(\d+),v1=([a-f0-9]+)/);
     if (!match) return false;
-    return timingSafeEqual(match[2], secret);
+    const tsHmac = await hmacSha256Hex(secret, match[1] + rawBody);
+    if (timingSafeEqual(match[2], tsHmac)) return true;
+    const bodyHmac = await hmacSha256Hex(secret, rawBody);
+    return timingSafeEqual(match[2], bodyHmac);
 }
 
 async function logWebhookEvent(
@@ -486,14 +507,22 @@ Deno.serve(async (req) => {
         return respond(429, { error: 'Rate limited', retry_after: rlResult.retryAfter });
     }
 
+    // Body crudo leído UNA sola vez antes de verificar: la firma (si viene) se
+    // computa sobre exactamente los bytes recibidos.
+    let rawBody = '';
+    try {
+        rawBody = await req.text();
+    } catch {
+        return respond(400, { error: 'Invalid body' });
+    }
+
     // Verify signature (secret se lee dinamicamente en verifySignature)
-    const verified = await verifySignature(req);
+    const verified = await verifySignature(req, rawBody);
     if (!verified) return respond(401, { error: 'Invalid signature' });
 
     let payload: MlWebhookPayload;
     try {
-        const raw = await req.json();
-        payload = parseMlResponse(MlWebhookPayloadSchema, raw, 'ml-webhook');
+        payload = parseMlResponse(MlWebhookPayloadSchema, JSON.parse(rawBody), 'ml-webhook');
     } catch {
         return respond(400, { error: 'Invalid JSON' });
     }
@@ -526,48 +555,63 @@ Deno.serve(async (req) => {
         return respond(200, { ok: true, deduplicated: true });
     }
 
-    await logWebhookEvent(payload, 'received');
-
-    try {
-        switch (payload.topic) {
-            case 'questions':
-                await handleQuestions(payload);
-                break;
-            case 'orders':
-            case 'orders_v2':
-                await handleOrders(payload);
-                break;
-            case 'items':
-                await handleItems(payload);
-                break;
-            case 'payments':
-                await handlePayments(payload);
-                break;
-            case 'shipments':
-                await handleShipments(payload);
-                break;
-            default:
-                logWarn({ function: 'ml-webhook', topic: payload.topic, status: 'unhandled' });
+    // ML desactiva los tópicos ("fall back") si el callback no responde 200 en
+    // ~500ms, y reintenta 5 veces durante 1 hora antes de darla por perdida. El
+    // procesamiento (fetch a la API de ML + upserts) tarda más que ese margen:
+    // se responde 200 inmediatamente y se procesa en background con
+    // EdgeRuntime.waitUntil. Los errores de procesamiento quedan como
+    // status='failed' en ml_webhook_events (ya no hay retry de ML — el trade-off
+    // que recomienda la propia doc de notificaciones de ML).
+    const task = (async () => {
+        await logWebhookEvent(payload, 'received');
+        try {
+            switch (payload.topic) {
+                case 'questions':
+                    await handleQuestions(payload);
+                    break;
+                case 'orders':
+                case 'orders_v2':
+                    await handleOrders(payload);
+                    break;
+                case 'items':
+                    await handleItems(payload);
+                    break;
+                case 'payments':
+                    await handlePayments(payload);
+                    break;
+                case 'shipments':
+                    await handleShipments(payload);
+                    break;
+                default:
+                    logWarn({ function: 'ml-webhook', topic: payload.topic, status: 'unhandled' });
+            }
+            await logWebhookEvent(payload, 'processed');
+            log({
+                function: 'ml-webhook',
+                topic: payload.topic,
+                resource: payload.resource,
+                duration_ms: Date.now() - start,
+                status: 'processed',
+            });
+        } catch (err) {
+            logError({
+                function: 'ml-webhook',
+                topic: payload.topic,
+                resource: payload.resource,
+                duration_ms: Date.now() - start,
+                status: 'failed',
+                error: (err as Error).message,
+            });
+            await logWebhookEvent(payload, 'failed', (err as Error).message);
         }
-        await logWebhookEvent(payload, 'processed');
-        log({
-            function: 'ml-webhook',
-            topic: payload.topic,
-            resource: payload.resource,
-            duration_ms: Date.now() - start,
-            status: 'processed',
-        });
-        return respond(200, { ok: true });
-    } catch (err) {
-        logError({
-            function: 'ml-webhook',
-            topic: payload.topic,
-            resource: payload.resource,
-            duration_ms: Date.now() - start,
-            status: 'failed',
-            error: (err as Error).message,
-        });
-        await logWebhookEvent(payload, 'failed', (err as Error).message);
-        return respond(500, { error: (err as Error).message });
+    })();
+
+    const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
+        .EdgeRuntime;
+    if (edgeRuntime?.waitUntil) {
+        edgeRuntime.waitUntil(task);
+    } else {
+        await task; // fuera del edge runtime (tests locales): procesar sincrónico
     }
+    return respond(200, { ok: true });
 });

@@ -52,18 +52,18 @@ Deno.serve(async (req) => {
             .maybeSingle(),
         supabase
             .from('ml_listings')
-            .select('status', { count: 'exact', head: false }),
+            .select('ml_status', { count: 'exact', head: false }),
         supabase
             .from('ml_listings')
-            .select('id, property_id, ml_item_id, status, permalink, price, last_synced_at')
-            .order('last_synced_at', { ascending: false, nullsFirst: false })
+            .select('id, property_id, ml_item_id, ml_status, last_sync')
+            .order('last_sync', { ascending: false, nullsFirst: false })
             .limit(20),
         getMlCredentials(supabase),
     ]);
 
     const listingsByStatus: Record<string, number> = {};
     (counts ?? []).forEach((row) => {
-        const s = String((row as { status?: string }).status ?? 'unknown');
+        const s = String((row as { ml_status?: string }).ml_status ?? 'unknown');
         listingsByStatus[s] = (listingsByStatus[s] ?? 0) + 1;
     });
 

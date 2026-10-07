@@ -36,7 +36,8 @@
         : window.supabaseClient.from('portal_settings').select('portal_name, is_active'),
       window.supabaseClient.from('ml_connection').select('token_expires_at, nickname').limit(1).maybeSingle().then(r => r).catch(() => ({ data: null })),
       ml_connected
-        ? window.supabaseClient.from('ml_questions').select('id', { count: 'exact', head: true }).eq('status', 'UNANSWERED').then(r => r).catch(() => ({ count: null }))
+        /* el webhook escribe los estados en minúsculas ('unanswered'/'answered') */
+      ? window.supabaseClient.from('ml_questions').select('id', { count: 'exact', head: true }).eq('status', 'unanswered').then(r => r).catch(() => ({ count: null }))
         : Promise.resolve({ count: null }),
     ]);
     if (propsRes.error) logWarn('portals: error contando publicados: ' + propsRes.error.message);
@@ -63,7 +64,8 @@
           : ml_configured
             ? `<button class="btn-action" style="font-size:11px; padding:6px 12px; background:rgba(255,230,0,0.15); color:#FFE600; border:1px solid rgba(255,230,0,0.3);" onclick="window.adminApp.mlConnect()"><i class="fas fa-link"></i> Conectar ML</button>`
             : '';
-        const activeListings = ml_connected ? ml_listings.filter(l => l.status === 'active').length : 0;
+        /* ml_listings guarda el estado en la columna ml_status */
+        const activeListings = ml_connected ? ml_listings.filter(l => l.ml_status === 'active').length : 0;
         const listingsHtml = ml_connected
           ? `<p style="color:var(--text-dim); font-size:11px; margin-top:2px;">${activeListings} aviso${activeListings !== 1 ? 's' : ''} activo${activeListings !== 1 ? 's' : ''} en ML</p>`
           : '';
@@ -77,8 +79,28 @@
             })()
           : '';
         const userInfoHtml = ml_connected && ml_user
-          ? `<p style="color:var(--text-muted); font-size:11px; margin-top:6px;"><i class="fas fa-user" style="margin-right:4px;"></i>${esc(ml_user.ml_nickname || ml_user.ml_email || '')}</p>`
+          ? `<p style="color:var(--text-muted); font-size:11px; margin-top:6px;"><i class="fas fa-user" style="margin-right:4px;"></i>${esc(ml_user.nickname || ml_user.email || '')}</p>`
           : '';
+        const ML_WEBHOOK_TOPICS = [
+          ['questions', 'Consultas'],
+          ['orders', 'Órdenes'],
+          ['items', 'Avisos'],
+          ['payments', 'Pagos'],
+          ['shipments', 'Envíos'],
+        ];
+        let webhooksHtml = '';
+        if (ml_connected) {
+          if (ml_webhooks && !ml_webhooks.error) {
+            webhooksHtml = '<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:4px; justify-content:center;" title="Tópicos de notificación registrados ante Mercado Libre (sin esto las consultas de ML no llegan al CRM)">'
+              + ML_WEBHOOK_TOPICS.map(([k, label]) => {
+                  const on = ml_webhooks[k] === true;
+                  return `<span style="font-size:10px; padding:2px 8px; border-radius:999px; background:${on ? 'rgba(74,222,128,.12)' : 'rgba(248,113,113,.12)'}; color:${on ? 'var(--success)' : 'var(--danger)'};">${on ? '●' : '○'} ${label}</span>`;
+                }).join('')
+              + '</div>';
+          } else {
+            webhooksHtml = '<p style="font-size:10px; color:var(--text-dim); margin-top:8px;">Webhooks ML: estado desconocido</p>';
+          }
+        }
         const configPanelHtml = !ml_configured ? `
           <div id="mlConfigPanel" class="ml-config-panel" style="display:none; margin-top:12px; text-align:left;">
             <div class="ml-config-field">
@@ -108,8 +130,10 @@
         ${listingsHtml}
         ${questionsHtml}
         ${expiryHtml}
+        ${webhooksHtml}
         <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-top:12px; flex-wrap:wrap; ${canManagePortals ? '' : 'opacity:.5; pointer-events:none;'}">
           ${mlBtnHtml}
+          ${ml_connected ? `<button class="btn-action" title="Re-registrar notificaciones (consultas) ante Mercado Libre" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlRegisterWebhooks()"><i class="fas fa-bell"></i></button>` : ''}
           ${!ml_configured ? `<button class="btn-action" title="Configurar credenciales" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlToggleConfig()"><i class="fas fa-cog"></i></button>` : ''}
           ${ml_connected ? `<button class="btn-action" title="Importar desde ML" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlImportFromML()"><i class="fas fa-file-import"></i></button>` : ''}
         </div>
@@ -175,7 +199,7 @@
             <span>${q.date_created ? new Date(q.date_created).toLocaleString('es-AR') : '—'}</span>
           </div>
           <div style="color:#fff; font-size:13px; margin-bottom:8px;">${esc(q.question_text || '')}</div>
-          ${q.status === 'ANSWERED'
+          ${q.status === 'answered'
             ? `<div style="font-size:12px; color:var(--success);"><i class="fas fa-check"></i> ${esc(q.answer_text || 'Respondida')}</div>`
             : `<div style="margin-top:10px; display:flex; gap:8px;">
                  <input type="text" data-ml-answer-input="${q.id}" placeholder="Escribir respuesta..." style="flex:1; padding:8px 12px; background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:8px; color:#fff; font-size:12px;" />
@@ -191,7 +215,8 @@
           btn.disabled = true;
           btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
           try {
-            await mlApiCall('answer-question', { question_id: btn.dataset.mlAnswer, text });
+            /* ml-answer-question exige {question_id, answer} (la key vieja 'text' daba 400) */
+            await mlApiCall('answer-question', { question_id: btn.dataset.mlAnswer, answer: text });
             showToast('Respuesta enviada a ML', 'success');
             loadMlQuestionsPanel();
           }
@@ -460,7 +485,9 @@ try {
   // tokens en texto plano de portal_settings — camino roto desde la migración a ml_connection.)
   const ML_FUNCTION_PATHS = {
     'publish': 'ml-publish',
-    'portal-status': 'ml-portal-status',
+    /* ?webhooks=1 pide el estado real de los tópicos registrados ante ML —
+       sin esto el panel no puede saber si las notificaciones (consultas) llegan. */
+    'portal-status': 'ml-portal-status?webhooks=1',
     'disconnect': 'ml-disconnect',
 
     'update': 'ml-publish',
@@ -468,6 +495,8 @@ try {
     'remove': 'ml-publish',
 
     'sync-import': 'ml-sync-import',
+
+    'answer-question': 'ml-answer-question',
 
   };
   async function mlApiCall(action, body = {}) {
@@ -519,6 +548,8 @@ try {
   }
 
   let _mlStatusFetchedAt = 0;
+  /* Tópicos de webhook registrados ante ML ({questions: true, ...} | {error} | null) */
+  let ml_webhooks = null;
   const ML_STATUS_TTL_MS = 60_000;
   async function mlCheckStatus(force = false) {
     if (!force && _mlStatusFetchedAt && (Date.now() - _mlStatusFetchedAt) < ML_STATUS_TTL_MS) return;
@@ -529,6 +560,7 @@ try {
       ml_configured = !!result.configured;
       ml_user = result.user || null;
       ml_listings = Array.isArray(result.listings) ? result.listings : [];
+      ml_webhooks = result.webhooks || null;
       updatePortalsBadge();
       updatePropBulkBar();
     } catch (err) {
@@ -538,6 +570,7 @@ try {
       ml_configured = false;
       ml_user = null;
       ml_listings = [];
+      ml_webhooks = null;
       updatePortalsBadge();
     }
   }
@@ -633,6 +666,48 @@ try {
       loadPortals();
     } catch (err) {
       showToast('Error al desconectar: ' + err.message, 'error');
+    }
+  };
+
+  /* Re-registrar los tópicos de notificación ante ML (consultas, órdenes, etc.)
+     sin pasar por el OAuth completo. Usa el action 'register_webhooks' de ml-oauth. */
+  window.adminApp.mlRegisterWebhooks = async function () {
+    if (!ml_connected) { showToast('No hay una cuenta de Mercado Libre conectada', 'warning'); return; }
+    try {
+      showToast('Re-registrando notificaciones de Mercado Libre...', 'info');
+      const { data: { session } } = await window.supabaseClient.auth.getSession();
+      if (!session) throw new Error('No hay sesión activa');
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), ML_API_TIMEOUT_MS);
+      try {
+        const res = await fetch(`${ML_FUNCTIONS_BASE}/ml-oauth`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ action: 'register_webhooks' }),
+          signal: controller.signal,
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error || `Error (${res.status})`);
+        const results = Array.isArray(json) ? json : [];
+        const failed = results.filter(r => !r.ok);
+        if (failed.length) {
+          showToast(`Webhooks: ${results.length - failed.length}/${results.length} OK — fallaron: ${failed.map(f => f.topic).join(', ')}`, 'error');
+        } else if (results.length) {
+          showToast(`Webhooks registrados (${results.length} tópicos)`, 'success');
+        } else {
+          showToast('ml-oauth no devolvió resultados de registro', 'warning');
+        }
+      } finally {
+        clearTimeout(timer);
+      }
+      await mlCheckStatus(true);
+      loadPortals();
+    } catch (err) {
+      showToast('Error re-registrando webhooks: ' + (err.name === 'AbortError' ? 'tiempo de espera agotado' : err.message), 'error');
     }
   };
 
