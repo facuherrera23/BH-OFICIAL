@@ -777,7 +777,7 @@ async function runJob(
             // Auditoría: actualización en Mercado Libre
             await auditSensitiveAction(
                 supabase,
-                new Request('internal', { method: 'POST' }),
+                new Request('http://internal', { method: 'POST' }),
                 'ml_update',
                 'portales',
                 'property',
@@ -824,7 +824,7 @@ async function runJob(
             // Auditoría: despublicación en Mercado Libre
             await auditSensitiveAction(
                 supabase,
-                new Request('internal', { method: 'POST' }),
+                new Request('http://internal', { method: 'POST' }),
                 'ml_delete',
                 'portales',
                 'property',

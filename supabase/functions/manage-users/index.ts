@@ -118,7 +118,7 @@ async function actionInvite(
   // Auditoría: invitación de usuario
   await auditSensitiveAction(
     supabaseClient,
-    new Request('internal', { method: 'POST' }),
+    new Request('http://internal', { method: 'POST' }),
     'invite',
     'users',
     'user',
@@ -193,7 +193,7 @@ async function actionSetRole(
   // Auditoría: cambio de rol
   await auditSensitiveAction(
     supabaseClient,
-    new Request('internal', { method: 'POST' }),
+    new Request('http://internal', { method: 'POST' }),
     'change_role',
     'users',
     'user',
@@ -269,7 +269,7 @@ async function actionCreateDirect(
   // Auditoría: creación directa de usuario
   await auditSensitiveAction(
     supabaseClient,
-    new Request('internal', { method: 'POST' }),
+    new Request('http://internal', { method: 'POST' }),
     'create',
     'users',
     'user',
@@ -440,7 +440,7 @@ async function actionUpdateUser(
   if (changed.length) {
     await auditSensitiveAction(
       supabaseClient,
-      new Request('internal', { method: 'POST' }),
+      new Request('http://internal', { method: 'POST' }),
       'update_sensitive',
       'users',
       'user',
