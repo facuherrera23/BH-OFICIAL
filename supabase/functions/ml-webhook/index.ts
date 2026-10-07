@@ -806,6 +806,12 @@ Deno.serve(async (req) => {
         return respond(400, { error: 'Invalid JSON' });
     }
 
+    /* ML envía el typo "recieved" y a veces omite sent/received: sent_at es la
+       clave de dedup y received_at es NOT NULL — ambos se completan acá. */
+    const nowIso = new Date().toISOString();
+    payload.sent = payload.sent ?? payload.recieved ?? nowIso;
+    payload.received = payload.received ?? payload.recieved ?? payload.sent;
+
     const start = Date.now();
 
     if (!(await validateNotificationBinding(payload))) {

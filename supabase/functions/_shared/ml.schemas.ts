@@ -237,19 +237,15 @@ export const MlWebhookPayloadSchema = z.object({
     topic: z.string().min(1),
     application_id: z.coerce.number().int().nonnegative(),
     attempts: z.coerce.number().int().nonnegative(),
-    /* Los payloads REALES de ML traen el typo "recieved" (sin 'received'): el
-       webhook seguiría rechazando el tráfico real con 400 si 'received' fuera
-       requerido. Se acepta cualquiera de los dos y se normaliza en transform. */
+    /* Los payloads REALES de ML traen el typo "recieved" (sin 'received'): si
+       'received' fuera requerido, el webhook seguiría rechazando el tráfico
+       real con 400. Quedan los tres opcionales; el webhook los normaliza. */
     sent: z.string().optional(),
     received: z.string().optional(),
     recieved: z.string().optional(),
     /* vis_leads trae el subtópico (question/whatsapp/call/...) en actions. */
     actions: z.array(z.string()).optional(),
-}).transform((p) => ({
-    ...p,
-    sent: p.sent ?? p.recieved ?? new Date().toISOString(),
-    received: p.received ?? p.recieved ?? p.sent ?? new Date().toISOString(),
-}));
+});
 
 // ============================================================
 // Sync Queue / History Schemas (para DB)
