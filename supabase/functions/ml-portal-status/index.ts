@@ -72,6 +72,7 @@ Deno.serve(async (req) => {
     const includeWebhooks = url.searchParams.get('webhooks') === '1';
     const includeQuestions = url.searchParams.get('questions') === '1';
     const includeLeads = url.searchParams.get('leads') === '1';
+    const includeFeeds = url.searchParams.get('feeds') === '1';
     const importLeads = url.searchParams.get('import') === '1';
     const leadsDays = Math.min(Math.max(Number(url.searchParams.get('days')) || 7, 1), 90);
 
@@ -213,6 +214,31 @@ Deno.serve(async (req) => {
             }
         } catch {
             recentQuestions = null;
+        }
+    }
+
+    /* Notificaciones que ML falló en entregar (reintentos agotados, ~48h de
+       retención): recupera los payloads exactos de las entregas rechazadas con
+       400 para re-inyectarlas al webhook y crear los leads perdidos. */
+    let missedFeeds: unknown = null;
+    if (includeFeeds && accessToken && settings.clientId) {
+        try {
+            const fRes = await fetchWithTimeout(
+                `${ML_API}/missed_feeds?app_id=${encodeURIComponent(settings.clientId)}`,
+                { headers: { authorization: `Bearer ${accessToken}` } },
+            );
+            const body = (await fRes.text()).slice(0, 8000);
+            if (!fRes.ok) {
+                missedFeeds = { error: `HTTP ${fRes.status}`, body: body.slice(0, 1000) };
+            } else {
+                try {
+                    missedFeeds = JSON.parse(body);
+                } catch {
+                    missedFeeds = { raw: body };
+                }
+            }
+        } catch (err) {
+            missedFeeds = { error: (err as Error).message };
         }
     }
 
@@ -391,6 +417,7 @@ Deno.serve(async (req) => {
         vis_leads: visLeads,
         vis_leads_import: visLeadsImport,
         vis_leads_debug: visLeadsDebug,
+        missed_feeds: missedFeeds,
         last_connected_at: (conn as { updated_at?: string }).updated_at ?? null,
     });
 });
