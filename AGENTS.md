@@ -29,6 +29,13 @@ Sistema CRM inmobiliario **en producción real** (bienenhaus.com.ar) con datos d
 
 Cada HTML tiene su meta CSP propia. Al agregar cualquier recurso externo (API, tiles, imágenes, fonts) hay que actualizar `connect-src`/`img-src` en **cada página afectada**. Caso real: el mapa Leaflet de tasaciones quedó mudo porque faltaban Nominatim (`connect-src`) y tiles OSM (`img-src`).
 
+## ML / Mercado Libre (gotchas de peso)
+
+- Las notificaciones de tópicos de ML **no vienen firmadas** (no hay header documentado): la barrera real del webhook es el binding (`application_id` + `user_id` de `ml_connection`) + el re-fetch del recurso con el token del vendedor. `ML_WEBHOOK_SECRET` se pasa como `auth_token` al registrar los tópicos y solo verificaría un hipotético `x-meli-signature` con HMAC del body — nunca contra el secreto en plano (bug real 2026-10-07: mataba toda notificación).
+- El registro de tópicos **solo ocurre en el OAuth** o con el botón 🔔 del panel (Portales → ML → action `register_webhooks` de `ml-oauth`). Si "las consultas de ML no llegan al CRM": primera sospecha = tópicos sin registrar; verificar los chips del panel (`ml-portal-status?webhooks=1` consulta el estado real a la API de ML).
+- `ml-webhook` responde 200 **inmediato** y procesa en background con `EdgeRuntime.waitUntil`: ML desactiva los tópicos ("fall back") si el callback no responde en ~500ms, y reintenta 5 veces en 1 hora.
+- Estados de `ml_questions` en **minúsculas** (`unanswered`/`answered`); `ml_listings` usa `ml_status`/`last_sync` (usar `status`/`last_synced_at` rompía el estado del panel en silencio).
+
 ## Supabase (proyecto único = producción)
 
 - Proyecto `rnldqiwwzhjnurkguihu`. Migraciones vía MCP `supabase_apply_migration` (quedan en `supabase/migrations/`).
@@ -52,5 +59,6 @@ JSONB con fotos base64 embebidas. Las tasaciones nuevas comprimen client-side (`
 
 - **Leaked Password Protection** (Supabase Auth): activación manual en Dashboard → Auth. Avisar al dueño si sigue off.
 - **ML**: cerrar publicaciones huérfanas DA-P0019/21/22/03 en el panel de Mercado Libre antes de republicar; "Importar desde ML" **duplica propiedades** — no usar para esas.
-- Edge Functions ML desplegadas sin fuente en el repo (drift).
+- Edge Functions: el CI deploya TODAS desde el repo en cada push a `main` (`.github/workflows/deploy.yml`, con flags verify_jwt por función); deploy manual vía MCP solo para hotfixes urgentes.
+- **Borrar del dashboard las funciones de debug `tmp-gen-jwt` (P0: genera magic-links sin auth) y `cta-test`** — leftovers de /tmp con verify_jwt OFF.
 - Codegraph index disponible (`.codegraph/`, no versionado) — útil antes de editar.

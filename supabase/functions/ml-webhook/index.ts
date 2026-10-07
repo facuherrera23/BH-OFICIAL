@@ -167,11 +167,12 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
     try {
         token = await getMlAccessToken(supabase);
     } catch (err) {
-        logWarn({ function: 'ml-webhook', topic: 'questions', error: (err as Error).message });
-        return;
+        // Sin token no se puede procesar nada: el evento queda 'failed' (visible)
+        // en ml_webhook_events en vez de 'processed' mentiroso.
+        throw new Error(`ML token: ${(err as Error).message}`);
     }
 
-    if (!token) return;
+    if (!token) throw new Error('ML token: no hay conexión ML activa');
 
     let q: { item_id?: unknown; text?: unknown; from?: { user_id?: unknown; nickname?: unknown }; date_created?: unknown } | null = null;
     try {
@@ -179,37 +180,29 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
             headers: { authorization: `Bearer ${token}` },
         });
         if (!res.ok) {
-            logWarn({
-                function: 'ml-webhook',
-                topic: 'questions',
-                question_id: questionId,
-                status: res.status,
-            });
-            return;
+            // Pregunta eliminada/bloqueada por moderación antes del fetch: el evento
+            // queda 'failed' (visible) en vez de 'processed' mentiroso.
+            throw new Error(`ML question ${questionId} HTTP ${res.status}`);
         }
         q = await res.json();
     } catch (err) {
-        logWarn({
-            function: 'ml-webhook',
-            topic: 'questions',
-            question_id: questionId,
-            error: (err as Error).message,
-        });
-        return;
+        throw new Error(`ML question fetch: ${(err as Error).message}`);
     }
 
     const itemId: unknown = q?.item_id;
     let propertyId: string | null = null;
+    let mlPermalink: string | null = null;
     const mlItemId: string | null = typeof itemId === 'string' ? itemId : null;
 
     if (itemId != null) {
         const { data: meta } = await supabase
             .from('property_ml_meta')
-            .select('property_id, ml_item_id')
+            .select('property_id, ml_item_id, permalink')
             .eq('ml_item_id', itemId)
             .maybeSingle();
         if (meta) {
             propertyId = meta.property_id;
+            mlPermalink = typeof meta.permalink === 'string' ? meta.permalink : null;
         }
         // Fallback: si la publicación se hizo a mano en ML y no está en property_ml_meta
         if (!propertyId) {
@@ -220,6 +213,25 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
                 .maybeSingle();
             if (listing?.property_id) propertyId = listing.property_id;
         }
+    }
+
+    /* Contexto de conversión para el broker: código y nombre de la propiedad,
+       link directo al aviso de ML y perfil público del interesado (reputación). */
+    let propContext = '';
+    const fromNickname = typeof q?.from?.nickname === 'string' ? q.from.nickname : '';
+    if (propertyId) {
+        const { data: prop } = await supabase
+            .from('properties')
+            .select('property_code, title')
+            .eq('id', propertyId)
+            .maybeSingle();
+        if (prop?.property_code) {
+            propContext += `\nPropiedad: ${prop.property_code}${prop.title ? ' · ' + prop.title : ''}`;
+        }
+    }
+    if (mlPermalink) propContext += `\nAviso ML: ${mlPermalink}`;
+    if (fromNickname) {
+        propContext += `\nPerfil del interesado: https://www.mercadolibre.com.ar/perfil/${encodeURIComponent(fromNickname)}`;
     }
 
     // Cada pregunta nueva en ML crea un lead en el CRM. El dedupe por question_id
@@ -245,9 +257,9 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
                     source: 'ml',
                     stage: 'nuevo',
                     property_id: propertyId,
-                    notes: questionText
-                        ? `[Pregunta Mercado Libre] ${questionText}`
-                        : 'Consulta desde Mercado Libre',
+                    /* El lead nace con TODO el contexto de conversión: pregunta +
+                       propiedad vinculada + link al aviso + perfil del interesado. */
+                    notes: `[Pregunta Mercado Libre] ${questionText || 'Consulta desde Mercado Libre'}${propContext}`,
                 })
                 .select('id')
                 .single();
@@ -285,6 +297,7 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
             question_id: questionId,
             property_id: propertyId,
             ml_item_id: mlItemId,
+            received_at: new Date().toISOString(),
             question_text: typeof q?.text === 'string' ? q.text : null,
             from_user_id: typeof q?.from?.user_id === 'number' ? q.from.user_id : null,
             from_user_nickname: typeof q?.from?.nickname === 'string' ? q.from.nickname : null,
