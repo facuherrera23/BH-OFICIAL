@@ -702,8 +702,18 @@ try {
         if (!res.ok) throw new Error(json.error || `Error (${res.status})`);
         const results = Array.isArray(json) ? json : [];
         const failed = results.filter(r => !r.ok);
-        if (failed.length) {
-          /* Incluir el primer error: sin esto el toast no explica el 404 de ML. */
+        /* Si TODOS fallaron por el retiro de la suscripción por API (404): no es un
+           error, es la guía necesaria — mostrarla como info con los pasos exactos
+           (el toast de error se leía como si el botón estuviera roto). */
+        if (failed.length && failed.every(f => /retir[oó] el registro por API/i.test(f.error || ''))) {
+          await showConfirmDialog({
+            title: 'Suscripción manual en Mercado Libre',
+            message: 'Mercado Libre retiró el registro automático por API. Se configura a mano: entrá a applications.mercadolibre.com.ar, editá la aplicación, en notificaciones pegá la callback URL que está en la card de Mercado Libre (abajo) y tildá Questions e Items.',
+            icon: 'fas fa-bell',
+            confirmText: 'Entendido',
+          });
+        } else if (failed.length) {
+          /* Incluir el primer error: sin esto el toast no explica el fallo real. */
           const firstErr = failed[0]?.error ? ' — ' + failed[0].error.slice(0, 160) : '';
           showToast(`Webhooks: ${results.length - failed.length}/${results.length} OK — fallaron: ${failed.map(f => f.topic).join(', ')}${firstErr}`, 'error');
         } else if (results.length) {
