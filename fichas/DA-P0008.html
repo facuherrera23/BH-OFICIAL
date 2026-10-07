@@ -10,13 +10,13 @@
 <meta property="og:site_name" content="Bienenhaus Propiedades">
 <meta property="og:title" content="Terreno en Venta Villa Ciudad Parque Valle de Calamuchita">
 <meta property="og:description" content="Oportunidad única de inversión en un entorno natural privilegiado. El desarrollo El Cedrón cuenta con ingreso directo desde Ruta Provincial N5 y el…">
-<meta property="og:image" content="https://res.cloudinary.com/jpyigjrh/image/upload/w_1200,h_630,c_fill,f_jpg,q_75/f_auto,q_auto/v1787676830/bienenhaus/properties/ekjo1fyj1ivn0n7riy3q.jpg">
-<meta property="og:image:secure_url" content="https://res.cloudinary.com/jpyigjrh/image/upload/w_1200,h_630,c_fill,f_jpg,q_75/f_auto,q_auto/v1787676830/bienenhaus/properties/ekjo1fyj1ivn0n7riy3q.jpg">
+<meta property="og:image" content="https://res.cloudinary.com/jpyigjrh/image/upload/w_1200,h_630,c_fill,q_70,f_jpg/v1787676830/bienenhaus/properties/ekjo1fyj1ivn0n7riy3q.jpg">
+<meta property="og:image:secure_url" content="https://res.cloudinary.com/jpyigjrh/image/upload/w_1200,h_630,c_fill,q_70,f_jpg/v1787676830/bienenhaus/properties/ekjo1fyj1ivn0n7riy3q.jpg">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://res.cloudinary.com/jpyigjrh/image/upload/w_1200,h_630,c_fill,f_jpg,q_75/f_auto,q_auto/v1787676830/bienenhaus/properties/ekjo1fyj1ivn0n7riy3q.jpg">
+<meta name="twitter:image" content="https://res.cloudinary.com/jpyigjrh/image/upload/w_1200,h_630,c_fill,q_70,f_jpg/v1787676830/bienenhaus/properties/ekjo1fyj1ivn0n7riy3q.jpg">
 <meta property="og:url" content="https://bienenhaus.com.ar/fichas/DA-P0008.html">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"RealEstateListing","name":"Terreno en Venta Villa Ciudad Parque Valle de Calamuchita","url":"https://bienenhaus.com.ar/fichas/DA-P0008.html","provider":{"@type":"RealEstateAgent","@id":"https://bienenhaus.com.ar/#organization","name":"Bienenhaus Propiedades","url":"https://bienenhaus.com.ar/","telephone":"+54-9-3516-37-9651"},"description":"Oportunidad única de inversión en un entorno natural privilegiado. El desarrollo El Cedrón cuenta con ingreso directo desde Ruta Provincial N5 y el…","address":{"@type":"PostalAddress","addressLocality":"El Cedrón","addressRegion":"Córdoba","addressCountry":"AR"},"image":["https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787676830/bienenhaus/properties/ekjo1fyj1ivn0n7riy3q.jpg"],"floorSize":{"@type":"QuantitativeValue","value":750,"unitCode":"MTK"},"offers":{"@type":"Offer","price":13000,"priceCurrency":"USD","availability":"https://schema.org/InStock"}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Inicio","item":"https://bienenhaus.com.ar/"},{"@type":"ListItem","position":2,"name":"Propiedades","item":"https://bienenhaus.com.ar/#propiedades"},{"@type":"ListItem","position":3,"name":"DA-P0008","item":"https://bienenhaus.com.ar/fichas/DA-P0008.html"}]}</script>
@@ -121,6 +121,8 @@
   .foot-meta a { color:var(--text3); text-decoration:none; border-bottom:1px solid rgba(148,163,184,0.4); }
   @media (max-width:720px){
     .hero { height:56vh; }
+    .hero-top { flex-wrap:wrap; align-items:flex-start; }
+    .hero-top .glass { max-width:100%; }
     .brand-pill { font-size:10px; padding:8px 14px; letter-spacing:2px; }
     .ref-chip { font-size:10.5px; padding:8px 12px; }
     .sheet { margin:-28px 12px 0; padding:28px 20px 36px; }
@@ -237,7 +239,7 @@ CPI. 1834</p>
       </div>
     </section>
     <div class="contact-strip">
-      <div class="contact-copy">
+      <div class="contact-copy" id="fichaContact">
         <div class="broker">
           <img class="broker-avatar" src="https://res.cloudinary.com/jpyigjrh/image/upload/v1787350942/gvuxtorvjhjnbt1fc9yd.jpg" alt="Danilo Arbo" loading="lazy">
           <div class="broker-info">
@@ -331,6 +333,37 @@ CPI. 1834</p>
           document.body.removeChild(ta); done();
         }
       });
+    }
+    /* Contacto del que compartió el link (parámetros ?de=Nombre&tel=549... en la URL):
+       un agente que no es el broker asignado igual debe aparecer como contacto. */
+    var qp = new URLSearchParams(location.search);
+    var contactoNombre = qp.get('de');
+    var contactoTel = qp.get('tel') || qp.get('wa');
+    if (contactoNombre && contactoNombre.trim().length > 1) {
+      var box = document.getElementById('fichaContact');
+      if (box) {
+        box.innerHTML = '';
+        var st = document.createElement('strong');
+        st.textContent = 'Tu contacto: ' + contactoNombre.trim();
+        box.appendChild(st);
+        var sp = document.createElement('span');
+        sp.textContent = contactoTel ? ('Escribime por WhatsApp: ' + contactoTel) : 'Respondemos en el día por WhatsApp.';
+        box.appendChild(sp);
+      }
+      var digits = (contactoTel || '').replace(/[^0-9]/g, '');
+      if (digits.length >= 8) {
+        document.querySelectorAll('a[href*="wa.me"]').forEach(function (a) {
+          var qi = a.href.indexOf('?');
+          a.href = 'https://wa.me/' + digits + (qi === -1 ? '' : a.href.slice(qi));
+        });
+      }
+      var copyIt = document.querySelector('[data-copy]');
+      if (copyIt) {
+        var withParams = copyIt.getAttribute('data-copy')
+          + '?de=' + encodeURIComponent(contactoNombre.trim())
+          + (contactoTel ? '&tel=' + encodeURIComponent(contactoTel) : '');
+        copyIt.setAttribute('data-copy', withParams);
+      }
     }
   })();
   </script>

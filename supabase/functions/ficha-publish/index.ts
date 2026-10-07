@@ -89,9 +89,12 @@ async function ensureBucket(supabase: ReturnType<typeof createClient>) {
 function buildFichaHtml(p: Record<string, any>): string {
   const imgs = (p.image_urls || []).filter((u: string) => /^https?:\/\//.test(u));
   const hero = imgs[0] ?? '';
-  const ogThumb = hero.includes('res.cloudinary.com') && hero.includes('/upload/')
-    ? hero.replace('/upload/', '/upload/w_1200,h_630,c_fill,f_jpg,q_75/')
-    : hero;
+  /* og:image: WhatsApp no previsualiza imágenes >300KB; colapsar la cadena de
+     transformaciones previa (ej. /upload/f_auto,q_auto/) antes de agregar la nuestra */
+  const heroClean = hero.includes('/upload/') ? hero.replace(/\/upload\/[^/]*\/(v\d+\/)/, '/upload/$1') : hero;
+  const ogThumb = heroClean.includes('res.cloudinary.com') && heroClean.includes('/upload/')
+    ? heroClean.replace('/upload/', '/upload/w_1200,h_630,c_fill,q_70,f_jpg/')
+    : heroClean;
   const price = p.price_usd
     ? `${p.price_currency === 'ARS' ? '$' : 'USD'} ${Number(p.price_usd).toLocaleString('es-AR')}`
     : 'Consultar';
@@ -228,6 +231,8 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
   .foot-meta a { color:var(--text3); text-decoration:none; border-bottom:1px solid rgba(148,163,184,0.4); }
   @media (max-width:720px){
     .hero { height:56vh; }
+    .hero-top { flex-wrap:wrap; align-items:flex-start; }
+    .hero-top .glass { max-width:100%; }
     .brand-pill { font-size:10px; padding:8px 14px; letter-spacing:2px; }
     .ref-chip { font-size:10.5px; padding:8px 12px; }
     .sheet { margin:-28px 12px 0; padding:28px 20px 36px; }
@@ -281,7 +286,7 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
       ${descBlocks.map((b: string, i: number) => `<p class="desc${i === 0 && descBlocks.length > 1 ? ' desc--lead' : ''}">${esc(b)}</p>`).join('')}
     </section>` : ''}
     <div class="contact-strip">
-      <div class="contact-copy">
+      <div class="contact-copy" id="fichaContact">
         <strong>¿Te interesa esta propiedad?</strong>
         <span>Respondemos en el día por WhatsApp.</span>
       </div>
@@ -343,6 +348,37 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
           document.body.removeChild(ta); done();
         }
       });
+    }
+    /* Contacto de quien compartió el link (parámetros ?de=Nombre&tel=549...):
+       un agente que no es el broker asignado igual debe aparecer como contacto. */
+    var qp = new URLSearchParams(location.search);
+    var contactoNombre = qp.get('de');
+    var contactoTel = qp.get('tel') || qp.get('wa');
+    if (contactoNombre && contactoNombre.trim().length > 1) {
+      var box = document.getElementById('fichaContact');
+      if (box) {
+        box.innerHTML = '';
+        var st = document.createElement('strong');
+        st.textContent = 'Tu contacto: ' + contactoNombre.trim();
+        box.appendChild(st);
+        var sp = document.createElement('span');
+        sp.textContent = contactoTel ? ('Escribime por WhatsApp: ' + contactoTel) : 'Respondemos en el día por WhatsApp.';
+        box.appendChild(sp);
+      }
+      var digits = (contactoTel || '').replace(/[^0-9]/g, '');
+      if (digits.length >= 8) {
+        document.querySelectorAll('a[href*="wa.me"]').forEach(function (a) {
+          var qi = a.href.indexOf('?');
+          a.href = 'https://wa.me/' + digits + (qi === -1 ? '' : a.href.slice(qi));
+        });
+      }
+      var copyIt = document.querySelector('[data-copy]');
+      if (copyIt) {
+        var withParams = copyIt.getAttribute('data-copy')
+          + '?de=' + encodeURIComponent(contactoNombre.trim())
+          + (contactoTel ? '&tel=' + encodeURIComponent(contactoTel) : '');
+        copyIt.setAttribute('data-copy', withParams);
+      }
     }
   })();
   </script>
