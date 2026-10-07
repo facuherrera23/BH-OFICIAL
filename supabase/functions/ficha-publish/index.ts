@@ -119,8 +119,18 @@ function buildFichaHtml(p: Record<string, any>): string {
   if (p.garage_spaces) specs.push({ icon: 'fa-car', label: 'Cocheras', value: String(p.garage_spaces) });
   if (p.year_built) specs.push({ icon: 'fa-calendar', label: 'Año de construcción', value: String(p.year_built) });
 
-  /* Galería: hasta 3 fotos adicionales a la del hero */
-  const gallery = imgs.slice(1, 4);
+  /* Galería: hasta 6 fotos adicionales a la del hero; si sobran, el último tile
+     linkea al sitio con "+N fotos" */
+  const gallery = imgs.slice(1, 7);
+  const remaining = Math.max(0, imgs.length - 7);
+  const pricePerM2 = p.price_usd && sup
+    ? `${p.price_currency === 'ARS' ? '$' : 'USD'} ${Math.round(p.price_usd / sup).toLocaleString('es-AR')}/m²`
+    : '';
+  const descBlocks = String(p.description || '').trim()
+    ? String(p.description).trim().split(/\n{2,}/).map((b: string) => b.trim()).filter(Boolean)
+    : [];
+  const WHATSAPP_CANONICAL = '5493516379651';
+  const waText = encodeURIComponent(`Hola, me interesa la propiedad ${p.property_code ?? ''} (${p.title}) que vi en bienenhaus.com.ar`);
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -145,21 +155,21 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <style>
-  /* Ficha con la identidad visual del sitio (landing.css): teal #1FC8C3,
-     Playfair Display en títulos y Plus Jakarta Sans en el cuerpo. */
-  :root { --bg:#020305; --bg2:#05070A; --card:rgba(13,17,23,0.94); --card2:#0A0D12; --line:rgba(255,255,255,0.08); --accent:#1FC8C3; --accent-deep:#159a95; --text:#F8FAFC; --text2:#CBD5E1; --text3:#94A3B8; }
+  /* Ficha v3 con la identidad visual del sitio (landing.css) — espejo del
+     generador scripts/generate-ficha.mjs para evitar drift entre templates. */
+  :root { --bg:#020305; --bg2:#05070A; --card:rgba(13,17,23,0.94); --card2:#0A0D12; --line:rgba(255,255,255,0.08); --line-accent:rgba(31,200,195,0.38); --accent:#1FC8C3; --accent-deep:#159a95; --text:#F8FAFC; --text2:#CBD5E1; --text3:#94A3B8; }
   * { box-sizing: border-box; }
   body { margin:0; font-family:'Plus Jakarta Sans', system-ui, sans-serif; background:
     radial-gradient(1100px 480px at 50% -120px, rgba(31,200,195,0.08), transparent 65%), var(--bg);
     color:var(--text); -webkit-font-smoothing:antialiased; }
-  .hero { position:relative; width:100%; height:54vh; min-height:400px; max-height:640px; background:#000 center/cover no-repeat; }
+  .hero { position:relative; width:100%; height:54vh; min-height:400px; max-height:640px; background:#000 center/cover no-repeat; cursor:zoom-in; }
   .hero::after { content:''; position:absolute; inset:0; background:linear-gradient(to top, var(--bg) 0%, rgba(2,3,5,0.62) 34%, rgba(2,3,5,0.16) 58%, rgba(2,3,5,0.42) 100%); }
-  .hero-top { position:absolute; top:18px; left:4%; right:4%; display:flex; justify-content:space-between; align-items:center; gap:12px; z-index:2; }
+  .hero-top { position:absolute; top:18px; left:4%; right:4%; display:flex; justify-content:space-between; align-items:center; gap:12px; z-index:2; pointer-events:none; }
   .glass { background:rgba(2,3,5,0.55); border:1px solid rgba(255,255,255,0.14); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-radius:999px; color:#fff; }
   .brand-pill { padding:10px 20px; font-size:12px; letter-spacing:2.5px; font-weight:300; text-transform:uppercase; white-space:nowrap; }
   .brand-pill b { font-weight:700; color:var(--accent); }
   .ref-chip { padding:10px 16px; font-size:12px; letter-spacing:1px; opacity:0.95; white-space:nowrap; }
-  .hero-foot { position:absolute; left:6%; right:6%; bottom:28px; z-index:2; }
+  .hero-foot { pointer-events:none; position:absolute; left:6%; right:6%; bottom:28px; z-index:2; }
   .badge { display:inline-block; background:linear-gradient(135deg, var(--accent), var(--accent-deep)); color:#020305; font-weight:700; font-size:11.5px; letter-spacing:2.5px; padding:8px 18px; border-radius:999px; text-transform:uppercase; box-shadow:0 6px 20px rgba(31,200,195,0.35); }
   h1 { font-family:'Playfair Display', Georgia, serif; font-size:clamp(30px, 4.8vw, 46px); font-weight:700; line-height:1.12; margin:18px 0 10px; color:var(--text); text-wrap:balance; }
   .loc { display:flex; align-items:center; gap:9px; color:var(--text2); font-size:15px; margin:0 0 22px; }
@@ -167,23 +177,50 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
   .price-block { display:flex; flex-direction:column; gap:3px; }
   .price-label { font-size:11px; letter-spacing:3px; text-transform:uppercase; color:var(--accent); font-weight:700; }
   .price { font-family:'Playfair Display', Georgia, serif; font-size:clamp(28px, 4vw, 38px); font-weight:700; color:var(--text); line-height:1.1; }
+  .price-m2 { font-size:13px; color:var(--text2); font-weight:500; letter-spacing:.5px; margin-top:4px; }
   .sheet { max-width:1000px; margin:-36px auto 0; position:relative; z-index:3; background:var(--card); border:1px solid var(--line); border-radius:26px; padding:38px 6% 46px; box-shadow:0 30px 80px rgba(0,0,0,0.5); overflow:hidden; }
   .sheet::before { content:''; position:absolute; top:0; left:28px; right:28px; height:2px; background:linear-gradient(90deg, transparent, var(--accent), transparent); opacity:0.65; }
-  .gallery { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-bottom:38px; }
-  .gallery-item { width:100%; aspect-ratio:16/10; object-fit:cover; border-radius:16px; border:1px solid var(--line); }
+  .crumbs { display:flex; align-items:center; gap:10px; font-size:12px; letter-spacing:1px; color:var(--text3); margin-bottom:30px; flex-wrap:wrap; }
+  .crumbs a { color:var(--accent); text-decoration:none; }
+  .crumbs a:hover { text-decoration:underline; }
+  .crumbs .sep { opacity:.5; }
+  .gallery { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
+  .gallery-item { width:100%; aspect-ratio:16/10; object-fit:cover; border-radius:16px; border:1px solid var(--line); cursor:zoom-in; display:block; transition:transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+  .gallery-item:hover { transform:translateY(-2px); box-shadow:0 12px 28px rgba(0,0,0,0.4); border-color:var(--line-accent); }
+  .gallery-more { position:relative; display:block; }
+  .gallery-more .more-badge { position:absolute; right:10px; bottom:10px; display:inline-flex; align-items:center; gap:6px; background:rgba(2,3,5,0.72); border:1px solid rgba(255,255,255,0.16); backdrop-filter:blur(8px); color:#fff; font-size:12px; font-weight:600; padding:6px 12px; border-radius:999px; text-decoration:none; }
+  .sec { margin-top:38px; padding-top:38px; border-top:1px solid var(--line); }
   h2 { display:flex; align-items:center; gap:12px; font-size:13px; letter-spacing:3px; text-transform:uppercase; color:var(--text); font-weight:700; margin:0 0 22px; }
-  .h2-mark { width:24px; height:2px; background:var(--accent); border-radius:2px; flex:none; }
-  .specs { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; margin-bottom:44px; }
-  .spec { display:flex; align-items:center; gap:14px; padding:16px 18px; background:var(--card2); border:1px solid var(--line); border-radius:16px; }
-  .spec-icon { flex:none; width:42px; height:42px; display:flex; align-items:center; justify-content:center; border-radius:12px; background:rgba(31,200,195,0.12); color:var(--accent); font-size:16px; }
+  h2 i { color:var(--accent); font-size:13px; }
+  .specs { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; }
+  .spec { display:flex; align-items:center; gap:14px; padding:16px 18px; background:var(--card2); border:1px solid var(--line); border-radius:16px; transition:border-color .25s ease, transform .25s ease; }
+  .spec:hover { border-color:var(--line-accent); transform:translateY(-2px); }
+  .spec-icon { flex:none; width:44px; height:44px; display:flex; align-items:center; justify-content:center; border-radius:13px; background:rgba(31,200,195,0.12); color:var(--accent); font-size:17px; }
   .spec-body { display:flex; flex-direction:column; gap:3px; min-width:0; }
   .spec-label { font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase; color:var(--text3); font-weight:600; }
   .spec-value { font-size:15.5px; font-weight:700; color:var(--text); }
-  .desc { margin:0 0 44px; line-height:1.85; color:var(--text2); white-space:pre-line; font-size:16px; }
+  .desc { margin:0; line-height:1.85; color:var(--text2); white-space:pre-line; font-size:16px; }
+  .desc + .desc { margin-top:18px; }
+  .desc--lead { font-size:18px; line-height:1.7; color:var(--text); }
+  .contact-strip { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:18px; background:var(--card2); border:1px solid var(--line); border-radius:22px; padding:26px 28px; margin-top:38px; }
+  .contact-copy { display:flex; flex-direction:column; gap:4px; }
+  .contact-copy strong { font-family:'Playfair Display', Georgia, serif; font-size:21px; color:var(--text); font-weight:700; }
+  .contact-copy span { font-size:13.5px; color:var(--text2); }
   .cta-row { display:flex; flex-wrap:wrap; gap:14px; }
-  .cta { display:inline-flex; align-items:center; gap:11px; background:linear-gradient(135deg, var(--accent), var(--accent-deep)); color:#020305; padding:16px 32px; border-radius:60px; font-weight:700; font-size:15px; text-decoration:none; box-shadow:0 10px 30px rgba(31,200,195,0.25); }
-  .cta i { font-size:17px; }
+  .cta { display:inline-flex; align-items:center; gap:11px; background:linear-gradient(135deg, var(--accent), var(--accent-deep)); color:#020305; padding:15px 28px; border-radius:60px; font-weight:700; font-size:14.5px; text-decoration:none; border:0; cursor:pointer; box-shadow:0 10px 30px rgba(31,200,195,0.25); font-family:inherit; }
+  .cta i { font-size:16px; }
   .cta:hover { transform:translateY(-1px); }
+  .cta--outline { background:transparent; border:1.5px solid rgba(31,200,195,0.55); color:var(--accent); box-shadow:none; }
+  .cta--outline:hover { background:rgba(31,200,195,0.08); }
+  .cta.is-copied { background:linear-gradient(135deg, var(--accent-deep), var(--accent)); }
+  .lb { border:0; padding:0; background:transparent; width:100vw; height:100vh; max-width:none; max-height:none; position:fixed; inset:0; }
+  .lb::backdrop { background:rgba(2,3,5,0.92); backdrop-filter:blur(4px); }
+  .lb img { position:absolute; inset:0; margin:auto; max-width:92vw; max-height:86vh; object-fit:contain; border-radius:12px; }
+  .lb-btn { position:absolute; z-index:2; width:48px; height:48px; border-radius:999px; border:1px solid rgba(255,255,255,0.16); background:rgba(2,3,5,0.6); color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:18px; backdrop-filter:blur(6px); }
+  .lb-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .lb-close { top:22px; right:22px; }
+  .lb-prev { left:18px; top:50%; transform:translateY(-50%); }
+  .lb-next { right:18px; top:50%; transform:translateY(-50%); }
   .foot { text-align:center; padding:46px 20px 40px; }
   .foot-brand { font-size:13px; letter-spacing:3px; text-transform:uppercase; color:var(--text2); font-weight:300; margin-bottom:10px; }
   .foot-brand b { font-weight:700; color:var(--accent); }
@@ -195,14 +232,16 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
     .ref-chip { font-size:10.5px; padding:8px 12px; }
     .sheet { margin:-28px 12px 0; padding:28px 20px 36px; }
     .specs { grid-template-columns:1fr 1fr; }
-    .gallery { grid-template-columns:repeat(3, 1fr); gap:8px; }
+    .gallery { gap:8px; }
     .gallery-item { aspect-ratio:4/3; border-radius:12px; }
+    .contact-strip { flex-direction:column; align-items:stretch; text-align:center; }
     .cta { width:100%; justify-content:center; }
+    .lb-btn { width:42px; height:42px; }
   }
 </style>
 </head>
 <body>
-  <header class="hero" style="background-image:url('${esc(hero)}')">
+  <header class="hero" style="background-image:url('${esc(hero)}')" data-zoom="${esc(hero)}">
     <div class="hero-top">
       <span class="glass brand-pill"><b>BIENENHAUS</b> PROPIEDADES</span>
       ${p.property_code ? `<span class="glass ref-chip">Ref. ${esc(p.property_code)}</span>` : ''}
@@ -214,22 +253,99 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
       <div class="price-block">
         <span class="price-label">Precio de ${p.status === 'alquiler' ? 'alquiler' : 'venta'}</span>
         <span class="price">${esc(price)}</span>
+        ${pricePerM2 ? `<span class="price-m2">≈ ${esc(pricePerM2)}</span>` : ''}
       </div>
     </div>
   </header>
   <main class="sheet">
-    ${gallery.length ? `<div class="gallery">${gallery.map((g: string) => `<img class="gallery-item" src="${esc(g)}" alt="${esc(rawTitle)}" loading="lazy">`).join('')}</div>` : ''}
-    ${specs.length ? `<h2><span class="h2-mark" aria-hidden="true"></span>Características</h2>
-    <div class="specs">${specs.map((s) => `<div class="spec"><span class="spec-icon"><i class="fas ${s.icon}" aria-hidden="true"></i></span><span class="spec-body"><span class="spec-label">${s.label}</span><span class="spec-value">${esc(s.value)}</span></span></div>`).join('')}</div>` : ''}
-    ${String(p.description || '').trim() ? `<h2><span class="h2-mark" aria-hidden="true"></span>Sobre esta propiedad</h2><p class="desc">${esc(p.description)}</p>` : ''}
-    <div class="cta-row">
-      <a class="cta" href="${siteUrl}" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i>Ver más en bienenhaus.com.ar</a>
+    <nav class="crumbs" aria-label="Ruta">
+      <a href="${siteUrl}/">Inicio</a><span class="sep">/</span>
+      <a href="${siteUrl}/#propiedades">Propiedades</a><span class="sep">/</span>
+      <span>Ref. ${esc(p.property_code ?? '')}</span>
+    </nav>
+    ${gallery.length ? `<div class="gallery">${gallery.map((g: string, i: number) => {
+      const isLastWithMore = remaining > 0 && i === gallery.length - 1;
+      const img = isLastWithMore
+        ? `<img class="gallery-item" src="${esc(g)}" alt="${esc(rawTitle)}" loading="lazy">`
+        : `<img class="gallery-item" src="${esc(g)}" alt="${esc(rawTitle)}" loading="lazy" data-zoom="${esc(g)}">`;
+      return isLastWithMore
+        ? `<a class="gallery-more" href="${siteUrl}/#prop=${encodeURIComponent(p.property_code ?? '')}" target="_blank" rel="noopener">${img}<span class="more-badge">+${remaining} fotos <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></span></a>`
+        : img;
+    }).join('')}</div>` : ''}
+    ${specs.length ? `<section class="sec">
+      <h2><i class="fas fa-list-check" aria-hidden="true"></i>Características</h2>
+      <div class="specs">${specs.map((s) => `<div class="spec"><span class="spec-icon"><i class="fas ${s.icon}" aria-hidden="true"></i></span><span class="spec-body"><span class="spec-label">${s.label}</span><span class="spec-value">${esc(s.value)}</span></span></div>`).join('')}</div>
+    </section>` : ''}
+    ${descBlocks.length ? `<section class="sec">
+      <h2><i class="fas fa-align-left" aria-hidden="true"></i>Sobre esta propiedad</h2>
+      ${descBlocks.map((b: string, i: number) => `<p class="desc${i === 0 && descBlocks.length > 1 ? ' desc--lead' : ''}">${esc(b)}</p>`).join('')}
+    </section>` : ''}
+    <div class="contact-strip">
+      <div class="contact-copy">
+        <strong>¿Te interesa esta propiedad?</strong>
+        <span>Respondemos en el día por WhatsApp.</span>
+      </div>
+      <div class="cta-row">
+        <a class="cta" href="https://wa.me/${WHATSAPP_CANONICAL}?text=${waText}" target="_blank" rel="noopener"><i class="fab fa-whatsapp" aria-hidden="true"></i>Consultar por WhatsApp</a>
+        <button type="button" class="cta cta--outline" data-copy="${esc(`${siteUrl}/fichas/${esc(p.property_code ?? '')}.html`)}"><i class="fas fa-link" aria-hidden="true"></i><span>Copiar link</span></button>
+        <a class="cta cta--outline" href="${siteUrl}/#prop=${encodeURIComponent(p.property_code ?? '')}" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i>Ver en el sitio</a>
+      </div>
     </div>
   </main>
   <footer class="foot">
     <div class="foot-brand"><b>BIENENHAUS</b> PROPIEDADES</div>
     <div class="foot-meta">CPI 1834 · <a href="${siteUrl}/" rel="noopener">bienenhaus.com.ar</a></div>
   </footer>
+  <dialog id="lb" class="lb">
+    <img id="lbImg" alt="">
+    <button type="button" id="lbClose" class="lb-btn lb-close" aria-label="Cerrar"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+    <button type="button" id="lbPrev" class="lb-btn lb-prev" aria-label="Foto anterior"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
+    <button type="button" id="lbNext" class="lb-btn lb-next" aria-label="Foto siguiente"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
+  </dialog>
+  <script>
+  (function () {
+    var items = [].map.call(document.querySelectorAll('[data-zoom]'), function (el) { return el.getAttribute('data-zoom'); });
+    var dlg = document.getElementById('lb'), lbImg = document.getElementById('lbImg');
+    var cur = 0;
+    function openLb(i) {
+      if (!items.length) return;
+      cur = (i + items.length) % items.length;
+      lbImg.src = items[cur];
+      dlg.showModal();
+    }
+    document.addEventListener('click', function (e) {
+      if (e.target.closest('#lbClose')) { dlg.close(); return; }
+      var zoom = e.target.closest('[data-zoom]');
+      if (zoom) { e.preventDefault(); openLb(items.indexOf(zoom.getAttribute('data-zoom'))); return; }
+      if (e.target.closest('#lbPrev')) { openLb(cur - 1); return; }
+      if (e.target.closest('#lbNext')) { openLb(cur + 1); }
+    });
+    dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+    var copyBtn = document.querySelector('[data-copy]');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', function () {
+        var url = copyBtn.getAttribute('data-copy');
+        var label = copyBtn.querySelector('span');
+        function done() {
+          copyBtn.classList.add('is-copied');
+          if (label) label.textContent = '¡Link copiado!';
+          setTimeout(function () {
+            copyBtn.classList.remove('is-copied');
+            if (label) label.textContent = 'Copiar link';
+          }, 2000);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(done, done);
+        } else {
+          var ta = document.createElement('textarea');
+          ta.value = url; document.body.appendChild(ta); ta.select();
+          try { document.execCommand('copy'); } catch (err) {}
+          document.body.removeChild(ta); done();
+        }
+      });
+    }
+  })();
+  </script>
 </body>
 </html>`;
 }
