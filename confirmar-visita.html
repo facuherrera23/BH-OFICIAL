@@ -41,30 +41,6 @@
     .status-cancelada { background: rgba(239,68,68,0.2); color: #ef4444; }
     .error-state { color: #ef4444; }
     .loading { color: var(--text-dim); }
-
-    /* ── Encuesta (HOJA DE VISITA digital) ── */
-    .confirm-card.survey-mode { max-width: 560px; text-align: left; }
-    .confirm-card.survey-mode .confirm-icon { margin-bottom: 16px; }
-    .survey-welcome { color: var(--text-muted); font-size: 14px; margin-bottom: 22px; text-align: center; line-height: 1.5; }
-    .survey-q { margin-bottom: 16px; }
-    .sq-label { display: block; font-size: 13px; font-weight: 600; color: #fff; margin-bottom: 8px; }
-    .sq-label .sq-num { color: var(--text-dim); font-weight: 500; }
-    .sq-pills { display: flex; flex-wrap: wrap; gap: 6px; }
-    .sq-pill { flex: 1 1 0; min-width: 30px; max-width: 46px; padding: 8px 0; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: var(--text-dim); font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; text-align: center; font-family: inherit; }
-    .sq-pill:hover { border-color: #1fc8c3; color: #fff; }
-    .sq-pill.is-active { background: linear-gradient(135deg, #1fc8c3 0%, #17a398 100%); color: #04211f; border-color: transparent; }
-    .sq-pill.pill-si.is-active { background: linear-gradient(135deg, #00c878 0%, #00a664 100%); color: #03210f; }
-    .sq-pill.pill-no.is-active { background: linear-gradient(135deg, #ef4444 0%, #c53030 100%); color: #fff; }
-    .sq-pill.pill-wide { max-width: none; flex: 1 1 120px; padding: 10px 0; font-size: 13px; }
-    .sq-text { width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; color: #fff; padding: 10px 12px; font-size: 13px; font-family: inherit; resize: vertical; min-height: 58px; }
-    .sq-text:focus { outline: none; border-color: #1fc8c3; }
-    .sq-autosave { font-size: 11px; color: var(--text-dim); min-height: 16px; text-align: right; margin-top: 4px; }
-    #btnSaveSurvey { display: block; width: 100%; margin-top: 14px; padding: 14px 32px; font-size: 15px; }
-    .t-score-grid { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 18px 0; }
-    .t-score { background: rgba(31,200,195,0.08); border: 1px solid rgba(31,200,195,0.25); border-radius: 10px; padding: 8px 12px; text-align: center; min-width: 64px; }
-    .t-score .ts-v { font-size: 18px; font-weight: 700; color: #1fc8c3; }
-    .t-score .ts-l { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.4px; }
-    @media (max-width: 420px) { .sq-pill { min-width: 26px; padding: 7px 0; font-size: 11px; } }
   </style>
 </head>
 <body>
@@ -114,9 +90,6 @@
         </a>
       </div>
 
-      <div id="surveySection" style="display:none;"></div>
-      <div id="surveyThanks" style="display:none;"></div>
-
       <p style="margin-top:24px; font-size:12px; color:var(--text-dim);">
         ¿No eres tú? Ignora este mensaje.
       </p>
@@ -125,7 +98,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="assets/js/config.js?v=1"></script>
-  <script src="assets/js/pages/confirmar-visita-page.js?v=4"></script>
+  <script src="assets/js/pages/confirmar-visita-page.js?v=5"></script>
   <style>
     @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
   </style>

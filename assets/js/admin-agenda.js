@@ -291,7 +291,6 @@
       (addr ? '<button class="btn-action" data-vd="copyaddr" style="font-size:11px;"><i class="fas fa-location-dot"></i> Dirección</button>' : '') +
       '<button class="btn-action" data-vd="dup" style="font-size:11px;"><i class="fas fa-copy"></i> Duplicar</button>' +
       (v.confirmation_token ? '<button class="btn-action" data-vd="link" style="font-size:11px;"><i class="fas fa-link"></i> Link</button>' : '') +
-      (v.confirmation_token && surveyCanAnswer(v) ? '<button class="btn-action" data-vd="survey" style="font-size:11px; background:rgba(37,211,102,0.15); color:#25D366;"><i class="fab fa-whatsapp"></i> Encuesta</button>' : '') +
       '</div>';
     document.body.appendChild(pop);
     pop.style.position = 'fixed';
@@ -309,7 +308,6 @@
       else if (act === 'checkout') window.adminApp.checkoutVisit(v.id);
       else if (act === 'dup') window.adminApp.duplicateVisit(v.id, false);
       else if (act === 'link') window.adminApp.copyVisitLink(v.id);
-      else if (act === 'survey') window.adminApp.sendVisitSurvey(v.id);
       else if (act === 'copyaddr') await navigator.clipboard.writeText(addr).catch(() => prompt('Copiá la dirección:', addr)).then(() => showToast('Dirección copiada.', 'success'));
     }));
     setTimeout(() => document.addEventListener('click', function closer(e2) {
@@ -1121,7 +1119,6 @@
         <td>
           <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
             ${v.confirmation_token && v.client_email ? '<button class="btn-action" title="Copiar link de confirmacion" onclick="window.adminApp.copyVisitLink(\'${v.id}\')"><i class="fas fa-link"></i></button>' : ''}
-            ${v.confirmation_token && surveyCanAnswer(v) ? `<button class="btn-action" title="Enviar encuesta por WhatsApp" onclick="window.adminApp.sendVisitSurvey('${v.id}')" style="background:rgba(37,211,102,0.15); color:#25d366;"><i class="fab fa-whatsapp"></i></button>` : ''}
             <button class="btn-action" title="Editar" onclick="window.adminApp.editVisit('${v.id}')"><i class="fas fa-pen"></i></button>
             ${checkinHtml}
             ${checkinTimeHtml}
@@ -1519,9 +1516,7 @@
     editingVisitId = null;
     const form = $('#visitForm');
     if (form) form.reset();
-    ['visitCopyLinkBtn', 'visitQrBtn', 'visitDuplicateBtn', 'visitReagendarBtn', 'visitSurveyWaBtn'].forEach(bid => { const b = $('#' + bid); if (b) b.style.display = 'none'; });
-    const sbox = $('#visitSurveyBox');
-    if (sbox) { sbox.style.display = 'none'; sbox.innerHTML = ''; }
+    ['visitCopyLinkBtn', 'visitQrBtn', 'visitDuplicateBtn', 'visitReagendarBtn'].forEach(bid => { const b = $('#' + bid); if (b) b.style.display = 'none'; });
 
     loadAgentSelect($('#visitBrokerSelect'));
     loadVisitLeadSelect(prefill.lead_id || null);
@@ -1921,88 +1916,7 @@
   } catch (err) { showToast('Error: ' + err.message, 'error'); }
 };
 
-  /* Hoja de visita (encuesta): respuesta del visitante + envío por WhatsApp.
-     El link es el mismo de confirmación — después de la visita muestra la encuesta. */
-  const SURVEY_FIELDS = [
-    ['ubicacion', 'Ubicación'], ['tamano', 'Tamaño'], ['distribucion', 'Distribución'],
-    ['calidad', 'Calidad'], ['precio', 'Precio'], ['conservacion', 'Conservación'],
-    ['general', 'Valoración general']
-  ];
-
-  function surveyCanAnswer(v) {
-    if (!v) return false;
-    const st = String(v.status || '');
-    const past = v.visit_date && new Date(v.visit_date).getTime() < Date.now();
-    return st === 'completada' || (past && st !== 'cancelada' && st !== 'no_show');
-  }
-
-  async function renderVisitSurveyBox(v) {
-    const box = $('#visitSurveyBox');
-    const waBtn = $('#visitSurveyWaBtn');
-    if (!box || !editingVisitId) return;
-    box.style.display = 'none';
-    box.innerHTML = '';
-    if (waBtn) waBtn.style.display = 'none';
-
-    let survey = null;
-    try {
-      const { data } = await window.supabaseClient.from('visit_surveys')
-        .select('answers, finalized, submitted_at')
-        .eq('visit_id', editingVisitId)
-        .maybeSingle();
-      survey = data || null;
-    } catch (_) { /* sin encuesta cargable: caja oculta */ }
-
-    const canAnswer = surveyCanAnswer(v);
-    if (!canAnswer && !survey) return;
-
-    const showWa = !!v.confirmation_token && !!v.client_phone && canAnswer && (!survey || !survey.finalized);
-    if (waBtn && showWa) {
-      waBtn.style.display = 'inline-flex';
-      waBtn.onclick = (e) => {
-        e.preventDefault();
-        const propSel = $('#visitPropertySelect');
-        const propTitle = propSel && propSel.selectedOptions[0] ? propSel.selectedOptions[0].textContent.trim() : 'la propiedad';
-        const url = `${window.location.origin}/confirmar-visita.html?token=${v.confirmation_token}`;
-        const msg = `Hola ${v.client_name || ''}! Gracias por visitar ${propTitle}. ¿Nos contás qué te pareció? Tu opinión nos ayuda mucho: ${url}`;
-        const phone = String(v.client_phone).replace(/\D/g, '');
-        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
-      };
-    }
-
-    if (!survey) {
-      box.innerHTML = '<div style="border:1px dashed var(--border); border-radius:10px; padding:12px 14px; font-size:12px; color:var(--text-muted); margin-bottom:8px;">' +
-        '<i class="fas fa-clipboard-check" style="color:var(--accent);"></i> Hoja de visita: el visitante todavía no respondió. Envíasela por WhatsApp con el botón verde.</div>';
-      box.style.display = 'block';
-      return;
-    }
-
-    const a = survey.answers || {};
-    const chips = SURVEY_FIELDS.filter(([k]) => a[k] != null)
-      .map(([k, label]) => `<span style="display:inline-block; background:rgba(31,200,195,0.1); border:1px solid rgba(31,200,195,0.3); color:var(--accent); border-radius:8px; padding:3px 9px; font-size:11px; font-weight:600; margin:2px;">${esc(label)}: ${esc(String(a[k]))}/10</span>`)
-      .join('');
-    const compraria = a.compraria
-      ? `<span style="display:inline-block; background:${a.compraria === 'si' ? 'rgba(0,200,120,0.12); color:#00c878' : 'rgba(239,68,68,0.12); color:#ef4444'}; border:1px solid ${a.compraria === 'si' ? 'rgba(0,200,120,0.35)' : 'rgba(239,68,68,0.35)'}; border-radius:8px; padding:3px 9px; font-size:11px; font-weight:700; margin:2px;">Compraría: ${a.compraria === 'si' ? 'SÍ' : 'NO'}</span>`
-      : '';
-    const texts = [
-      ['mas_gusto', 'Lo que MÁS le gustó'],
-      ['menos_gusto', 'Lo que MENOS le gustó'],
-      ['por_que', 'Por qué (no) la compraría']
-    ].filter(([k]) => a[k])
-      .map(([k, label]) => `<div style="margin-top:8px;"><span style="font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px;">${esc(label)}</span><div style="font-size:12px; color:#fff; background:rgba(0,0,0,0.25); border-radius:8px; padding:8px 10px; margin-top:3px;">${esc(String(a[k]))}</div></div>`)
-      .join('');
-    const stateLabel = survey.finalized
-      ? '<span style="font-size:10px; font-weight:700; color:#00c878;">FINALIZADA' + (survey.submitted_at ? ' · ' + new Date(survey.submitted_at).toLocaleString('es-AR') : '') + '</span>'
-      : '<span style="font-size:10px; font-weight:700; color:#FFB800;">EN PROGRESO (sin tocar Guardar)</span>';
-
-    box.innerHTML = '<div style="border:1px solid rgba(31,200,195,0.3); border-radius:12px; padding:14px; margin-bottom:8px; background:rgba(31,200,195,0.04);">' +
-      `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;"><span style="font-size:13px; font-weight:700; color:#fff;"><i class="fas fa-clipboard-check" style="color:var(--accent);"></i> Hoja de visita</span>${stateLabel}</div>` +
-      (chips || compraria ? `<div style="line-height:1.8;">${chips}${compraria}</div>` : '<div style="font-size:12px; color:var(--text-muted);">Sin puntuaciones todavía.</div>') +
-      texts + '</div>';
-    box.style.display = 'block';
-  }
-
-  window.adminApp.editVisit = async function (id) {
+window.adminApp.editVisit = async function (id) {
     try {
       const { data, error } = await window.supabaseClient
         .from('visits')
@@ -2078,7 +1992,6 @@
         if (data.lead_id) { leadSelect.dispatchEvent(new Event('change')); }
       }
 
-      renderVisitSurveyBox(data);
       openModal('visitModal');
     } catch (err) {
       logError('Error al cargar visita:', err);
@@ -2391,67 +2304,6 @@
     } catch (err) { showToast('Error al registrar el resultado: ' + err.message, 'error'); }
   }
 
-  /* Encuesta: envío por WhatsApp a un toque desde la fila o justo después del check-out */
-  window.adminApp.sendVisitSurvey = async function (id) {
-    try {
-      const { data: v, error } = await window.supabaseClient.from('visits')
-        .select('client_name, client_phone, confirmation_token, status, visit_date, properties(title, property_code)')
-        .eq('id', id).single();
-      if (error) throw error;
-      if (!v?.confirmation_token) { showToast('Esta visita no tiene link de encuesta.', 'error'); return; }
-      if (!surveyCanAnswer({ status: v.status, visit_date: v.visit_date })) { showToast('La encuesta se habilita pasada la hora de la visita.', 'warning'); return; }
-      const phone = String(v.client_phone || '').replace(/\D/g, '');
-      if (!phone) { showToast('La visita no tiene teléfono del cliente.', 'error'); return; }
-      const url = `${window.location.origin}/confirmar-visita.html?token=${v.confirmation_token}`;
-      const propTitle = v.properties?.title
-        ? v.properties.title + (v.properties.property_code ? ' [' + v.properties.property_code + ']' : '')
-        : 'la propiedad';
-      const msg = `Hola ${v.client_name || ''}! Gracias por visitar ${propTitle}. ¿Nos contás qué te pareció? Tu opinión nos ayuda mucho: ${url}`;
-      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
-    } catch (err) { showToast('Error: ' + err.message, 'error'); }
-  };
-
-  /* Tras el check-out aparece la oferta de enviar la encuesta — el momento natural */
-  async function offerSurveyAfterCheckout(id) {
-    try {
-      const { data: v } = await window.supabaseClient.from('visits')
-        .select('client_name, client_phone, confirmation_token')
-        .eq('id', id).single();
-      if (!v?.confirmation_token || !String(v.client_phone || '').replace(/\D/g, '')) return;
-      document.querySelectorAll('.survey-offer').forEach(el => el.remove());
-      const card = document.createElement('div');
-      card.className = 'survey-offer';
-      card.style.cssText = 'position:fixed; bottom:20px; right:20px; z-index:12000; background:#141a22; border:1px solid rgba(37,211,102,0.4); border-radius:14px; padding:14px 16px; max-width:320px; box-shadow:0 12px 40px rgba(0,0,0,0.5); display:flex; flex-direction:column; gap:10px;';
-      const head = document.createElement('div');
-      head.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:8px;';
-      const strong = document.createElement('strong');
-      strong.style.cssText = 'font-size:13px; color:#fff;';
-      strong.innerHTML = '<i class="fas fa-clipboard-check" style="color:#25d366;"></i> Visita completada';
-      const close = document.createElement('button');
-      close.type = 'button';
-      close.innerHTML = '&times;';
-      close.style.cssText = 'background:none; border:none; color:#8b93a1; cursor:pointer; font-size:16px; padding:0 4px;';
-      close.addEventListener('click', () => card.remove());
-      head.appendChild(strong); head.appendChild(close);
-      const ask = document.createElement('div');
-      ask.style.cssText = 'font-size:12px; color:#aab2c0;';
-      const nameSpan = document.createElement('span');
-      nameSpan.style.color = '#fff';
-      nameSpan.textContent = v.client_name || 'el visitante';
-      ask.appendChild(document.createTextNode('¿Le enviamos la encuesta a '));
-      ask.appendChild(nameSpan);
-      ask.appendChild(document.createTextNode(' por WhatsApp?'));
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.innerHTML = '<i class="fab fa-whatsapp"></i> Enviar encuesta';
-      btn.style.cssText = 'background:linear-gradient(135deg,#25d366,#1da851); color:#04210f; border:none; border-radius:10px; padding:10px 14px; font-weight:700; font-size:13px; cursor:pointer; font-family:inherit;';
-      btn.addEventListener('click', () => { card.remove(); window.adminApp.sendVisitSurvey(id); });
-      card.appendChild(head); card.appendChild(ask); card.appendChild(btn);
-      document.body.appendChild(card);
-      setTimeout(() => card.remove(), 90 * 1000);
-    } catch (_) { /* oferta opcional: falla silenciosa */ }
-  }
-
   window.adminApp.checkoutVisit = async function (id) {
     try {
       const { data: v } = await window.supabaseClient.from('visits').select('lead_id, client_name').eq('id', id).single();
@@ -2463,7 +2315,6 @@
       if (v?.lead_id) await logVisitOutcome(v.lead_id, note);
       showToast('Salida registrada', 'success');
       loadAgenda();
-      offerSurveyAfterCheckout(id);
     } catch (err) { showToast('Error: ' + err.message, 'error'); }
   };
 

@@ -604,13 +604,12 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
         list.push('<div class="section-title" style="margin-top:20px;"><i class="fas fa-history"></i> Historial de visitas</div>');
         list.push(ex.visit_history.map(function(v) {
           var icon = v.status === 'completada' ? 'fa-check-circle' : 'fa-times-circle';
-          /* Pedido del dueño 2026-10-08: historial solo con fecha y estado (+ valoración si respondió la hoja de visita) */
+          /* Pedido del dueño 2026-10-08: historial solo con fecha y estado */
           return '<div class="visit-card-past">' +
             '<div class="v-icon"><i class="fas ' + icon + '"></i></div>' +
             '<div class="v-body">' +
               '<div style="font-weight:600;">' + esc(fmtDate(v.visit_date)) + '</div>' +
               '<div class="v-status ' + esc(v.status) + '">' + esc(v.status === 'completada' ? 'Completada' : 'Cancelada') + '</div>' +
-              (v.survey_general != null ? '<div class="v-survey-chip"><i class="fas fa-star"></i> ' + esc(String(v.survey_general)) + '/10 de valoración</div>' : '') +
             '</div>' +
           '</div>';
         }).join(''));
@@ -651,78 +650,10 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
         }
       }
     }
-    /* Hojas de visita (encuestas finalizadas): chips en las cards + bloque de hojas en el detalle.
-       Se inyectan por parche directo cuando llega EXTRA_DATA — el listado ya está renderizado
-       y renderListFromFilter vive en el closure de loadPortal. Solo puntuaciones: los textos
-       libres no viajan desde portal_get_extra_data (decisión del empleador pendiente). */
-    var SURVEY_SHEET_FIELDS = [
-      ['Ubicación', 'ubicacion'], ['Tamaño', 'tamano'], ['Distribución', 'distribucion'],
-      ['Calidad', 'calidad'], ['Precio', 'precio'], ['Conservación', 'conservacion'],
-      ['Valoración', 'general']
-    ];
-
-    function surveyAvgOf(sheets) {
-      var vals = sheets.filter(function(s){ return s.answers && s.answers.general != null; })
-        .map(function(s){ return Number(s.answers.general); })
-        .filter(function(n){ return n >= 1 && n <= 10; });
-      if (!vals.length) return null;
-      var sum = 0; vals.forEach(function(v){ sum += v; });
-      return { avg: (Math.round((sum / vals.length) * 10) / 10).toString().replace('.', ','), n: vals.length };
-    }
-
-    function sheetsBlockHtml(sheets) {
-      var rows = sheets.map(function(s) {
-        var a = s.answers || {};
-        var chips = SURVEY_SHEET_FIELDS.filter(function(f){ return a[f[1]] != null; })
-          .map(function(f){ return '<span class="hv-chip">' + esc(f[0]) + ' <b>' + esc(String(a[f[1]])) + '</b></span>'; })
-          .join('');
-        var comp = a.compraria
-          ? '<span class="hv-compra ' + (a.compraria === 'si' ? 'si' : 'no') + '">' + (a.compraria === 'si' ? 'Compraría' : 'No compraría') + '</span>'
-          : '';
-        return '<div class="hoja-visita">' +
-          '<div class="hv-head"><i class="fas fa-clipboard-check"></i><span>' + esc(fmtDate(s.visit_date)) + '</span>' + comp + '</div>' +
-          (chips ? '<div class="hv-chips">' + chips + '</div>' : '') +
-        '</div>';
-      }).join('');
-      return '<div class="hoja-visita-block">' +
-        '<div class="section-title" style="margin-top:0; margin-bottom:10px;"><i class="fas fa-clipboard-check"></i> Hojas de visita (' + sheets.length + ')</div>' +
-        rows + '</div>';
-    }
-
-    function patchSurveyChips() {
-      var surveys = (EXTRA_DATA && EXTRA_DATA.visit_surveys) || [];
-      if (!surveys.length) return;
-      var byProp = {};
-      surveys.forEach(function(s){ (byProp[s.property_id] = byProp[s.property_id] || []).push(s); });
-      document.querySelectorAll('.prop-card').forEach(function(card) {
-        var list = byProp[card.getAttribute('data-id')];
-        if (!list) return;
-        if (!card.querySelector('.prop-badge.visita')) {
-          var avg = surveyAvgOf(list);
-          if (avg) {
-            var chip = '<span class="prop-badge visita" title="Promedio de la valoración general de los visitantes (1 a 10)"><i class="fas fa-star"></i> ' + avg.avg + '/10 · ' + avg.n + (avg.n === 1 ? ' opinión' : ' opiniones') + '</span>';
-            var badges = card.querySelector('.prop-card-badges');
-            if (badges) badges.insertAdjacentHTML('beforeend', chip);
-            else {
-              var row = card.querySelector('.prop-card-row');
-              if (row) row.insertAdjacentHTML('afterend', '<div class="prop-card-badges">' + chip + '</div>');
-            }
-          }
-        }
-        var detail = card.querySelector('.prop-card-detail');
-        if (detail && !detail.querySelector('.hoja-visita-block')) {
-          var anchor = detail.querySelector('.prop-detail-grid');
-          if (anchor) anchor.insertAdjacentHTML('afterend', sheetsBlockHtml(list));
-          else detail.insertAdjacentHTML('afterbegin', sheetsBlockHtml(list));
-        }
-      });
-    }
-
     document.addEventListener('bh:portalExtra', function () {
       if (CURRENT_DATA) {
         renderVisitasExtras(CURRENT_DATA, CURRENT_DATA.owner);
         renderRonda5(CURRENT_DATA, CURRENT_DATA.owner, CURRENT_DATA.properties || []);
-        patchSurveyChips();
       }
     });
 
