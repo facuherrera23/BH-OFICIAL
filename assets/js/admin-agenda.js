@@ -291,6 +291,7 @@
       (addr ? '<button class="btn-action" data-vd="copyaddr" style="font-size:11px;"><i class="fas fa-location-dot"></i> Dirección</button>' : '') +
       '<button class="btn-action" data-vd="dup" style="font-size:11px;"><i class="fas fa-copy"></i> Duplicar</button>' +
       (v.confirmation_token ? '<button class="btn-action" data-vd="link" style="font-size:11px;"><i class="fas fa-link"></i> Link</button>' : '') +
+      (v.confirmation_token && surveyCanAnswer(v) ? '<button class="btn-action" data-vd="survey" style="font-size:11px; background:rgba(37,211,102,0.15); color:#25D366;"><i class="fab fa-whatsapp"></i> Encuesta</button>' : '') +
       '</div>';
     document.body.appendChild(pop);
     pop.style.position = 'fixed';
@@ -308,6 +309,7 @@
       else if (act === 'checkout') window.adminApp.checkoutVisit(v.id);
       else if (act === 'dup') window.adminApp.duplicateVisit(v.id, false);
       else if (act === 'link') window.adminApp.copyVisitLink(v.id);
+      else if (act === 'survey') window.adminApp.sendVisitSurvey(v.id);
       else if (act === 'copyaddr') await navigator.clipboard.writeText(addr).catch(() => prompt('Copiá la dirección:', addr)).then(() => showToast('Dirección copiada.', 'success'));
     }));
     setTimeout(() => document.addEventListener('click', function closer(e2) {
