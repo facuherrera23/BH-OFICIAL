@@ -157,12 +157,38 @@ Deno.serve(async (req) => {
         }
     }
 
-    /* Preguntas reales recibidas en ML (mismo patrón que ml-metrics: items del
-       vendedor -> questions/search por lotes de 20 item_ids). Base para backfill
-       y para validar el webhook con datos reales. */
+    /* Preguntas reales recibidas en ML. Dos estrategias: por item_ids (patrón
+       ml-metrics) y, si da vacío, por seller_id (las de inmuebles no siempre
+       salen por items/search). Base para backfill y validación del webhook. */
     let recentQuestions: MlRecentQuestion[] | null = null;
+    let questionsDebug: string | null = null;
     if (includeQuestions && user && accessToken) {
         try {
+            const collected = new Map<string, MlRecentQuestion>();
+            const addQuestion = (q: {
+                id?: number | string;
+                item_id?: string;
+                from?: { nickname?: string } | null;
+                text?: string | null;
+                status?: string;
+                date_created?: string;
+                answer?: { text?: string } | null;
+            }) => {
+                const id = String(q.id ?? '');
+                if (!id || collected.has(id)) return;
+                collected.set(id, {
+                    id,
+                    item_id: String(q.item_id ?? ''),
+                    status: String(q.status ?? ''),
+                    date_created: typeof q.date_created === 'string' ? q.date_created : null,
+                    from_nickname: q.from?.nickname ?? null,
+                    text_head: typeof q.text === 'string' ? q.text.slice(0, 140) : null,
+                    answered: !!q.answer,
+                    answer_text_head:
+                        typeof q.answer?.text === 'string' ? q.answer.text.slice(0, 140) : null,
+                });
+            };
+
             const itemsRes = await fetchWithTimeout(
                 `${ML_API}/users/${(conn as ActiveConnection).user_id}/items/search`,
                 { headers: { authorization: `Bearer ${accessToken}` } },
@@ -174,7 +200,6 @@ Deno.serve(async (req) => {
                 for (let i = 0; i < itemIds.length && batches.length < 3; i += 20) {
                     batches.push(itemIds.slice(i, i + 20));
                 }
-                const collected: MlRecentQuestion[] = [];
                 await Promise.allSettled(
                     batches.map(async (batch) => {
                         const qRes = await fetchWithTimeout(
@@ -182,36 +207,29 @@ Deno.serve(async (req) => {
                             { headers: { authorization: `Bearer ${accessToken}` } },
                         );
                         if (!qRes.ok) return;
-                        const qData = (await qRes.json()) as {
-                            questions?: Array<{
-                                id?: number | string;
-                                item_id?: string;
-                                from?: { nickname?: string } | null;
-                                text?: string | null;
-                                status?: string;
-                                date_created?: string;
-                                answer?: { text?: string } | null;
-                            }>;
-                        };
-                        for (const q of qData.questions ?? []) {
-                            collected.push({
-                                id: String(q.id ?? ''),
-                                item_id: String(q.item_id ?? ''),
-                                status: String(q.status ?? ''),
-                                date_created: typeof q.date_created === 'string' ? q.date_created : null,
-                                from_nickname: q.from?.nickname ?? null,
-                                text_head: typeof q.text === 'string' ? q.text.slice(0, 140) : null,
-                                answered: !!q.answer,
-                                answer_text_head:
-                                    typeof q.answer?.text === 'string' ? q.answer.text.slice(0, 140) : null,
-                            });
-                        }
+                        const qData = (await qRes.json()) as { questions?: Array<Parameters<typeof addQuestion>[0]> };
+                        for (const q of qData.questions ?? []) addQuestion(q);
                     }),
                 );
-                recentQuestions = collected
-                    .sort((a, b) => (b.date_created ?? '').localeCompare(a.date_created ?? ''))
-                    .slice(0, 20);
             }
+            if (collected.size === 0) {
+                const sRes = await fetchWithTimeout(
+                    `${ML_API}/questions/search?seller_id=${(conn as ActiveConnection).user_id}&limit=50`,
+                    { headers: { authorization: `Bearer ${accessToken}` } },
+                );
+                if (sRes.ok) {
+                    const sData = (await sRes.json()) as {
+                        questions?: Array<Parameters<typeof addQuestion>[0]>;
+                    };
+                    for (const q of sData.questions ?? []) addQuestion(q);
+                    questionsDebug = `seller_id 200: ${sData.questions?.length ?? 0} preguntas`;
+                } else {
+                    questionsDebug = `seller_id HTTP ${sRes.status}`;
+                }
+            }
+            recentQuestions = [...collected.values()]
+                .sort((a, b) => (b.date_created ?? '').localeCompare(a.date_created ?? ''))
+                .slice(0, 20);
         } catch {
             recentQuestions = null;
         }
@@ -414,6 +432,7 @@ Deno.serve(async (req) => {
         listings_by_status: listingsByStatus,
         webhooks,
         questions: recentQuestions,
+        questions_debug: questionsDebug,
         vis_leads: visLeads,
         vis_leads_import: visLeadsImport,
         vis_leads_debug: visLeadsDebug,
