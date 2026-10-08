@@ -321,10 +321,24 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
                 .single();
 
             if (!leadErr && newLead?.id) {
-                await supabase
-                    .from('ml_questions')
-                    .update({ lead_id: newLead.id })
-                    .eq('question_id', questionId);
+                /* Vincular el lead al ledger ml_questions: si la fila todavía no
+                   existe, un UPDATE toca 0 filas y el flujo vis_leads creería que la
+                   pregunta no generó lead → la duplicaba. Bug real 2026-10-08. */
+                if (existing) {
+                    await supabase
+                        .from('ml_questions')
+                        .update({ lead_id: newLead.id })
+                        .eq('question_id', questionId);
+                } else {
+                    await supabase.from('ml_questions').insert({
+                        question_id: questionId,
+                        property_id: propertyId,
+                        ml_item_id: mlItemId,
+                        lead_id: newLead.id,
+                        received_at: new Date().toISOString(),
+                        status: 'unanswered',
+                    });
+                }
             }
         }
     } catch (err) {
@@ -440,18 +454,20 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
     const createdAt = typeof lead.created_at === 'string' ? lead.created_at : null;
 
     /* Preguntas de inmuebles: el texto NO está en el lead — se consulta con el
-       external_id (id de pregunta clásico de ML). Dedup compartido con el flujo
-       clásico (handleQuestions): si ml_questions ya tiene lead_id, la pregunta
-       ya generó su lead y no se duplica. */
+       external_id (id de pregunta clásico de ML). Dedup cruzado con el flujo
+       clásico (handleQuestions): si la pregunta ya creó su lead O ya fue
+       respondida, no crear un segundo lead. Antes solo miraba lead_id — si el
+       ledger tenía la fila sin lead_id, se duplicaba (bug real 2026-10-08: las
+       2 preguntas de prueba entraron dos veces al CRM). */
     const isQuestion = contactType === 'question' && !!externalId;
     let questionText = '';
     if (isQuestion) {
         const { data: existingQ } = await supabase
             .from('ml_questions')
-            .select('lead_id')
+            .select('lead_id, status')
             .eq('question_id', externalId)
             .maybeSingle();
-        if (existingQ?.lead_id) return;
+        if (existingQ && (existingQ.lead_id || existingQ.status === 'answered')) return;
 
         try {
             const qRes = await fetch(`${ML_API}/questions/${externalId}?api_version=4`, {
