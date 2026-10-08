@@ -1064,7 +1064,7 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
             digestHtml = '<div class="digest-banner"><i class="fas fa-chart-line"></i> Esta semana: <strong>' + fmtNum(weekNow.count) + ' consultas</strong>' + (weekPrev ? ' (la anterior tuvo ' + fmtNum(weekPrev.count) + ')' : '') + '.</div>';
             var wv = EXTRA_DATA.weekly_visits || [];
             var wvNow = wv[wv.length - 1];
-            if (wvNow && wvNow.count > 0) digestHtml = digestHtml.replace('</div>', ' con ' + fmtNum(wvNow.count) + ' visitas.</div>');
+            if (wvNow && wvNow.count > 0) digestHtml = digestHtml.replace('</div>', ' con ' + fmtNum(wvNow.count) + (wvNow.count === 1 ? ' visita' : ' visitas') + '.</div>');
           }
         }
       } catch(_){}
@@ -1550,6 +1550,10 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
       }
 
       function renderListFromFilter() {
+        /* El buscador se re-renderiza con cada lista: conservar foco y caret al final. */
+        var oldInput = $('propSearchInput');
+        var keepFocus = oldInput && document.activeElement === oldInput;
+        var caret = keepFocus && typeof oldInput.selectionStart === 'number' ? oldInput.selectionStart : null;
         var filtered = props
           .filter(function(p){ return matchFilter(p, activeFilter) && matchQuery(p, activeQuery); })
           .sort(matchSort);
@@ -1584,6 +1588,13 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
         $('propList').innerHTML = summaryHtml + filtersHtml + sortHtml + searchHtml() + countBar +
           '<div class="prop-list">' + cardsHtml + '</div>';
         bindPropEvents(filtered); sortBinds();
+        if (keepFocus) {
+          var ni = $('propSearchInput');
+          if (ni) {
+            ni.focus();
+            if (caret !== null) { try { ni.setSelectionRange(caret, caret); } catch (_) {} }
+          }
+        }
       }
 
       /* Vista tabla: compacta, una fila por propiedad */
