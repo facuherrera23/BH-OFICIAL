@@ -60,23 +60,15 @@
     var params = new URLSearchParams(location.search);
     var token = params.get('token');
 
-    /* Preferencias locales (favoritos, vista) — sessionStorage, no persistente */
+    /* Preferencias locales (vista) — sessionStorage, no persistente */
     var PREFS_KEY = 'bh_portal_prefs';
     function prefsGet() {
       try { var raw = sessionStorage.getItem(PREFS_KEY); return raw ? JSON.parse(raw) : {}; } catch (_) { return {}; }
     }
-    function prefsSet(patch) {
-      try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch (_) {}
-    }
-    function toggleFav(id) {
-      var p = prefsGet();
-      if (!p.favs) p.favs = [];
-      var i = p.favs.indexOf(id);
-      if (i === -1) p.favs.push(id); else p.favs.splice(i, 1);
-      prefsSet({ favs: p.favs });
-      return p.favs.indexOf(id) !== -1;
-    }
-    function isFav(id) { var p = prefsGet(); return (p.favs || []).indexOf(id) !== -1; }
+function prefsSet(patch) {
+try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch (_) {}
+}
+
 
     var SESSION_KEY = 'bh_portal_token';
     function sessionGet() {
@@ -231,6 +223,8 @@
       showContent();
 
       /* Breadcrumb en mobile */
+      var bcOld = document.querySelector('.portal-breadcrumb');
+      if (bcOld) bcOld.remove();
       var bc = document.createElement('div');
       bc.className = 'portal-breadcrumb';
       bc.innerHTML = '<span>Inicio</span><i class="fas fa-chevron-right"></i><span class="current">' + esc(name) + '</span>';
@@ -241,6 +235,8 @@
       var leadsTotal = d.lead_total || 0;
       var visitsTotal = (d.visits && d.visits.total) || 0;
       var propsCount = props.length;
+      var mkOld = document.querySelector('.mini-kpi');
+      if (mkOld) mkOld.remove();
       var miniKpi = document.createElement('div');
       miniKpi.className = 'mini-kpi';
       miniKpi.innerHTML =
@@ -250,16 +246,20 @@
         '<span class="mk-sep">·</span>' +
         '<span><span class="mk-val">' + fmtNum(visitsTotal) + '</span> visitas</span>';
       document.body.appendChild(miniKpi);
-      var mkTick = false;
-      window.addEventListener('scroll', function () {
-        if (!mkTick) {
-          mkTick = true;
-          requestAnimationFrame(function () {
-            miniKpi.classList.toggle('show', window.scrollY > 320);
-            mkTick = false;
-          });
-        }
-      }, { passive: true });
+      if (!window.__portalMiniKpiBound) {
+        window.__portalMiniKpiBound = true;
+        var mkTick = false;
+        window.addEventListener('scroll', function () {
+          if (!mkTick) {
+            mkTick = true;
+            requestAnimationFrame(function () {
+              var el = document.querySelector('.mini-kpi');
+              if (el) el.classList.toggle('show', window.scrollY > 320);
+              mkTick = false;
+            });
+          }
+        }, { passive: true });
+      }
 
       /* Botón flotante de WhatsApp al asesor */
       if (d.broker && d.broker.phone) {
@@ -298,6 +298,8 @@
       }
 
       /* Marca de tiempo de última actualización al pie */
+      var footOld = document.querySelector('.portal-footer-meta');
+      if (footOld) footOld.remove();
       var foot = document.createElement('div');
       foot.className = 'portal-footer-meta';
       foot.textContent = 'Actualizado: ' + fmtDateTimeShort(new Date());
@@ -1213,20 +1215,18 @@
         { key:'venta', label:'En venta', icon:'fas fa-tag', tip:'Solo propiedades en venta' },
         { key:'alquiler', label:'En alquiler', icon:'fas fa-key', tip:'Solo propiedades en alquiler' },
         { key:'vendidas', label:'Vendidas', icon:'fas fa-check-circle', tip:'Solo vendidas/alquiladas' },
-        { key:'ml', label:'Mercado Libre', icon:'fas fa-check-circle', tip:'Publicadas en Mercado Libre' },
-        { key:'fav', label:'Favoritas', icon:'fas fa-heart', tip:'Tus propiedades favoritas' }
+        { key:'ml', label:'Mercado Libre', icon:'fas fa-check-circle', tip:'Publicadas en Mercado Libre' }
       ];
       var activeFilter = 'all';
       var activeSort = 'reciente';
       var activeQuery = '';
-      var listView = (prefsGet().view === 'list') ? 'list' : 'grid';
+      var listView = (prefsGet().view === 'table') ? 'table' : 'grid';
       function matchFilter(p, f) {
         switch (f) {
           case 'venta': return p.status === 'venta';
           case 'alquiler': return p.status === 'alquiler';
           case 'vendidas': return (p.status === 'vendida' || p.status === 'alquilada');
           case 'ml': return !!p.ml_item_id;
-          case 'fav': return isFav(p.id);
           default: return true;
         }
       }
@@ -1280,13 +1280,15 @@
           return '<button class="prop-filter' + (f.key === activeFilter ? ' active' : '') + '" data-filter="' + f.key + '" title="' + esc(f.tip || '') + '" aria-label="' + esc(f.label) + '"><i class="' + f.icon + '"></i> ' + esc(f.label) + '</button>';
         }).join('') +
       '</div>';
-      var searchHtml = '<div class="prop-search">' +
-        '<i class="fas fa-search"></i>' +
-        '<input id="propSearchInput" type="text" placeholder="Buscar por título, zona, código…" value="' + esc(activeQuery) + '" aria-label="Buscar propiedad">' +
-        '<button id="propViewToggle" class="prop-view-toggle" title="Cambiar vista" aria-label="Cambiar vista">' +
-          '<i class="fas ' + (listView === 'list' ? 'fa-th-large' : 'fa-list') + '"></i>' +
-        '</button>' +
-      '</div>';
+      function searchHtml() {
+        return '<div class="prop-search">' +
+          '<i class="fas fa-search"></i>' +
+          '<input id="propSearchInput" type="text" placeholder="Buscar por título, zona, código…" value="' + esc(activeQuery) + '" aria-label="Buscar propiedad">' +
+          '<button id="propViewToggle" class="prop-view-toggle" title="Cambiar vista" aria-label="Cambiar vista">' +
+            '<i class="fas ' + (listView === 'table' ? 'fa-th-large' : 'fa-table') + '"></i> ' + (listView === 'table' ? 'Tarjetas' : 'Tabla') +
+          '</button>' +
+        '</div>';
+      }
 
       function renderList(list) {
         $('propList').innerHTML = summaryHtml + filtersHtml + list.map(propCardHtml).join('');
@@ -1432,9 +1434,6 @@
         var mapUrl = mapQuery ? 'https://www.openstreetmap.org/search?query=' + encodeURIComponent(mapQuery) + '&zoom=14' : '';
         var mapHtml = mapUrl ? '<a class="prop-map-link" href="' + esc(mapUrl) + '" target="_blank" rel="noopener" title="Ver ubicación en OpenStreetMap"><i class="fas fa-map-location-dot"></i> Ver en mapa</a>' : '';
 
-        /* Favorito local */
-        var favBtn = '';
-
       /* Badge "Calidad" si la publicación está incompleta */
         var qualBadge = '';
         if (comp < 60) {
@@ -1467,14 +1466,13 @@
           qualTip = '<div class="prop-quality-warn" style="margin-top:10px;"><i class="fas fa-triangle-exclamation"></i> Tu publicación puede recibir más consultas: ' + esc(parts.join(', ')) + '.</div>';
         }
 
-        return '<div class="prop-card' + (listView === 'list' ? ' prop-card--list' : '') + '" data-id="' + esc(p.id) + '">' +
+        return '<div class="prop-card" data-id="' + esc(p.id) + '">' +
           '<div class="prop-card-header">' +
             (img
               ? '<div class="prop-card-thumb-wrap"><img class="prop-card-thumb" src="' + esc(safeImageUrl(img)) + '" alt="' + esc(p.title || '') + '" decoding="async">' + (imgCount > 1 ? '<span class="prop-thumb-count">' + imgCount + ' fotos</span>' : '') + '</div>'
               : '<div class="prop-card-thumb prop-card-thumb--placeholder"><i class="fas fa-home"></i></div>') +
             '<div class="prop-card-body">' +
               '<button type="button" class="cmp-check' + (compareSelection.indexOf(p.id) !== -1 ? ' checked' : '') + '" data-cmp="' + esc(p.id) + '" aria-label="Seleccionar para comparar" title="Seleccionar para comparar"><i class="fas fa-columns"></i></button>' +
-              '<button type="button" class="prop-fav-btn' + (isFav(p.id) ? ' is-fav' : '') + '" data-fav="' + esc(p.id) + '" aria-pressed="' + isFav(p.id) + '" aria-label="Marcar favorita" title="' + (isFav(p.id) ? 'Quitar de favoritas' : 'Marcar como favorita') + '"><i class="fas fa-heart"></i></button>' +
               '<div class="prop-card-title">' + esc(p.title || 'Sin título') +
                 (typeLabel && typeLabel !== 'Propiedad' ? '<span class="prop-type-tag">' + esc(typeLabel) + '</span>' : '') +
               '</div>' +
@@ -1544,7 +1542,7 @@
         if (vBtn && !vBtn.dataset.bind) {
           vBtn.dataset.bind = '1';
           vBtn.addEventListener('click', function () {
-            listView = listView === 'list' ? 'grid' : 'list';
+            listView = listView === 'table' ? 'grid' : 'table';
             prefsSet({ view: listView });
             renderListFromFilter();
           });
@@ -1559,16 +1557,63 @@
           ? '<div class="prop-count-hint">Mostrando ' + fmtNum(filtered.length) + ' de ' + fmtNum(props.length) + '</div>'
           : '';
         if (!filtered.length) {
-          $('propList').innerHTML = summaryHtml + filtersHtml + sortHtml + searchHtml + countBar +
+          $('propList').innerHTML = summaryHtml + filtersHtml + sortHtml + searchHtml() + countBar +
             '<div class="empty-msg" style="margin-top:16px;"><i class="fas fa-filter"></i><h3>Sin resultados</h3><p>No hay propiedades que coincidan con tu búsqueda.</p></div>';
           bindFilterButtons(); sortBinds();
           return;
         }
+        if (listView === 'table') {
+          $('propList').innerHTML = summaryHtml + filtersHtml + sortHtml + searchHtml() + countBar +
+            propTableHtml(filtered);
+          bindFilterButtons(); sortBinds();
+          document.querySelectorAll('.prop-table-row').forEach(function (row) {
+            row.addEventListener('click', function () {
+              listView = 'grid';
+              prefsSet({ view: 'grid' });
+              renderListFromFilter();
+              var card = document.querySelector('.prop-card[data-id="' + row.getAttribute('data-id') + '"]');
+              if (card) {
+                card.classList.add('expanded');
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+            });
+          });
+          return;
+        }
         var cardsHtml = filtered.map(propCardHtml).join('');
-        var listClass = listView === 'list' ? ' prop-list--list' : '';
-        $('propList').innerHTML = summaryHtml + filtersHtml + sortHtml + searchHtml + countBar +
-          '<div class="prop-list' + listClass + '">' + cardsHtml + '</div>';
+        $('propList').innerHTML = summaryHtml + filtersHtml + sortHtml + searchHtml() + countBar +
+          '<div class="prop-list">' + cardsHtml + '</div>';
         bindPropEvents(filtered); sortBinds();
+      }
+
+      /* Vista tabla: compacta, una fila por propiedad */
+      function propTableHtml(list) {
+        var rows = list.map(function (p) {
+          var img = (p.image_urls && p.image_urls.length > 0) ? p.image_urls[0] : '';
+          var loc = [p.zone, p.address].filter(Boolean).join(' · ');
+          var price = (p.price_usd != null && p.price_usd > 0)
+            ? 'US$ ' + fmtNum(p.price_usd)
+            : ((p.price_ars != null && p.price_ars > 0) ? 'AR$ ' + fmtNum(p.price_ars) : 'A convenir');
+          var typeLabel = ptypeLabel(p.property_type);
+          return '<tr class="prop-table-row" data-id="' + esc(p.id) + '">' +
+            '<td class="pt-name"><div class="pt-name-row">' +
+              (img ? '<img class="pt-thumb" src="' + esc(safeImageUrl(img)) + '" alt="" loading="lazy">' : '<span class="pt-thumb pt-thumb--ph"><i class="fas fa-home"></i></span>') +
+              '<div><div class="pt-title">' + esc(p.title || 'Sin título') + '</div>' +
+              (p.property_code ? '<div class="pt-code">' + esc(p.property_code) + '</div>' : '') + '</div>' +
+            (typeLabel && typeLabel !== 'Propiedad' ? '<span class="prop-type-tag">' + esc(typeLabel) + '</span>' : '') +
+            '</div></td>' +
+            '<td>' + esc(loc || '—') + '</td>' +
+            '<td class="pt-price">' + esc(price) + '</td>' +
+            '<td>' + statusBadge(p) + '</td>' +
+            '<td class="pt-meta">' + fmtNum(p.leads_total || 0) + '</td>' +
+            '<td class="pt-meta">' + fmtNum(p.visits_total || 0) + '</td>' +
+            '<td class="pt-meta">' + (p.created_at ? fmtDate(p.created_at) : '—') + '</td>' +
+            '</tr>';
+        }).join('');
+        return '<div class="prop-table-wrap prop-list--table">' +
+          '<table class="prop-table"><thead><tr>' +
+          '<th>Propiedad</th><th>Zona</th><th>Precio</th><th>Estado</th><th>Consultas</th><th>Visitas</th><th>Cargada</th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table></div>';
       }
 
       function bindFilterButtons() {
@@ -1590,18 +1635,6 @@
             e.stopPropagation();
             toggleCompare(b.getAttribute('data-cmp'));
             b.classList.toggle('checked', compareSelection.indexOf(b.getAttribute('data-cmp')) !== -1);
-          });
-        });
-        document.querySelectorAll('.prop-fav-btn').forEach(function(b){
-          if (b.dataset.bound) return;
-          b.dataset.bound = '1';
-          b.addEventListener('click', function(e){
-            e.stopPropagation();
-            var id = b.getAttribute('data-fav');
-            var on = toggleFav(id);
-            b.classList.toggle('is-fav', on);
-            b.setAttribute('aria-pressed', String(on));
-            portalToast(on ? 'Marcada como favorita' : 'Quitada de favoritas');
           });
         });
         document.querySelectorAll('.prop-card-header').forEach(function(h) {
@@ -2303,41 +2336,6 @@
           e.stopPropagation();
           b.classList.toggle('prep-done');
         });
-      });
-
-      var tableBtn = document.createElement('button');
-      tableBtn.type = 'button';
-      tableBtn.className = 'prop-view-toggle act-copy-btn';
-      tableBtn.style.cssText = 'position:static;margin-left:8px;';
-      tableBtn.title = 'Vista tabla / Tarjetas';
-      tableBtn.innerHTML = '<i class="fas fa-table"></i>';
-      var propSearch = document.querySelector('.prop-search');
-      if (propSearch && !propSearch.querySelector('.fa-table')) propSearch.appendChild(tableBtn);
-      tableBtn.addEventListener('click', function () {
-        var panel = document.querySelector('#panel-propiedades .prop-list');
-        if (!panel) return;
-        var isTable = panel.classList.toggle('panel-as-table');
-        panel.parentElement.classList.toggle('prop-list--list', false);
-        if (isTable) {
-          panel.dataset.savedHtml = panel.innerHTML;
-          var rows = Array.prototype.map.call(panel.querySelectorAll('.prop-card'), function (c) {
-            var title = c.querySelector('.prop-card-title');
-            var meta = c.querySelector('.prop-card-meta');
-            return '<tr class="row-prop">' +
-              '<td>' + esc(title ? title.textContent.trim() : '') + '</td>' +
-              '<td>' + esc(meta ? meta.querySelector('span')?.textContent.trim() : '') + '</td>' +
-              '<td>' + esc(meta ? (meta.querySelector('.prop-price')?.textContent.trim() || '-') : '-') + '</td>' +
-              '</tr>';
-          }).join('');
-          panel.className = 'prop-list prop-list--table';
-          panel.innerHTML = '<table class="prop-table"><thead><tr><th>Propiedad</th><th>Zona</th><th>Precio</th></tr></thead><tbody>' + rows + '</tbody></table>';
-          tableBtn.classList.add('active');
-        } else {
-          panel.className = 'prop-list';
-          panel.innerHTML = panel.dataset.savedHtml;
-          tableBtn.classList.remove('active');
-          renderListFromFilter();
-        }
       });
 
       var activasBtn = document.createElement('button');

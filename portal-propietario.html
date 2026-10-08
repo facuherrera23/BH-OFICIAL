@@ -1616,7 +1616,7 @@
       background: var(--bg-card); border: 1px solid var(--border);
       border-radius: 10px; padding: 6px 12px;
     }
-    .prop-search i { color: var(--text-muted); font-size: 12px; }
+    .prop-search > i { color: var(--text-muted); font-size: 12px; }
     .prop-search input {
       flex: 1; background: none; border: none; outline: none;
       color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif;
@@ -1624,31 +1624,13 @@
     }
     .prop-search input::placeholder { color: var(--text-muted); }
     .prop-view-toggle {
-      background: none; border: none; color: var(--text-muted);
-      cursor: pointer; padding: 4px 8px; font-size: 13px;
+      background: rgba(31,200,195,0.08); border: 1px solid rgba(31,200,195,0.35);
+      color: var(--gold); cursor: pointer; padding: 5px 12px; font-size: 12px;
+      font-weight: 600; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px;
+      transition: border-color 0.2s, background 0.2s; white-space: nowrap;
     }
-    .prop-view-toggle:hover { color: var(--text); }
-
-    /* Vista lista */
-    .prop-list--list .prop-card { display: flex; }
-    .prop-list--list .prop-card-header { flex-direction: row; }
-    .prop-list--list .prop-card-thumb, .prop-list--list .prop-card-thumb-wrap { width: 100px; height: 84px; }
-    .prop-list--list .prop-card-detail { display: none; }
-
-    /* Favorito */
-    .prop-fav-btn {
-      position: absolute; top: 10px; right: 10px;
-      width: 32px; height: 32px; border-radius: 50%;
-      border: 1px solid var(--border);
-      background: rgba(5,7,10,0.6); color: var(--text-muted);
-      cursor: pointer; font-size: 14px; z-index: 2;
-      display: flex; align-items: center; justify-content: center;
-      transition: all 0.2s;
-    }
-    .prop-fav-btn:hover { border-color: var(--warm); color: var(--warm); }
-    .prop-fav-btn.is-fav { color: var(--warm); border-color: var(--warm); background: rgba(251,191,36,0.1); }
-    .prop-card-body { position: relative; }
-    .prop-card-body .prop-fav-btn { position: absolute; top: 8px; right: 8px; }
+    .prop-view-toggle:hover { background: rgba(31,200,195,0.18); border-color: var(--gold); }
+    .prop-view-toggle i { font-size: 12px; }
 
     /* Urgencia exclusividad */
     .excl-urgency {
@@ -1699,46 +1681,6 @@
     }
     .prop-map-link:hover { border-color: var(--border-accent); color: var(--gold); }
     .prop-map-link i { color: var(--gold); font-size: 12px; }
-
-    /* Buscador de propiedades y toggle de vista */
-    .prop-search {
-      display: flex; align-items: center; gap: 8px;
-      margin-top: 4px; margin-bottom: 12px;
-      background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: 10px; padding: 6px 12px;
-    }
-    .prop-search i { color: var(--text-muted); font-size: 12px; }
-    .prop-search input {
-      flex: 1; background: none; border: none; outline: none;
-      color: var(--text); font-family: 'Plus Jakarta Sans', sans-serif;
-      font-size: 13px; padding: 6px 0;
-    }
-    .prop-search input::placeholder { color: var(--text-muted); }
-    .prop-view-toggle {
-      background: none; border: none; color: var(--text-muted);
-      cursor: pointer; padding: 4px 8px; font-size: 13px;
-    }
-    .prop-view-toggle:hover { color: var(--text); }
-
-    /* Vista lista de propiedades */
-    .prop-list--list .prop-card { display: flex; }
-    .prop-list--list .prop-card-header { flex-direction: row; }
-    .prop-list--list .prop-card-thumb, .prop-list--list .prop-card-thumb-wrap { width: 100px; height: 84px; }
-    .prop-list--list .prop-card-detail { display: none; }
-
-    /* Favorito en card */
-    .prop-fav-btn {
-      position: absolute; top: 10px; right: 10px;
-      width: 32px; height: 32px; border-radius: 50%;
-      border: 1px solid var(--border);
-      background: rgba(5,7,10,0.6); color: var(--text-muted);
-      cursor: pointer; font-size: 14px; z-index: 2;
-      display: flex; align-items: center; justify-content: center;
-      transition: all 0.2s;
-    }
-    .prop-fav-btn:hover { border-color: var(--warm); color: var(--warm); }
-    .prop-fav-btn.is-fav { color: var(--warm); border-color: var(--warm); background: rgba(251,191,36,0.1); }
-    .prop-fav-btn { position: relative; top: auto; right: auto; float: right; margin-top: -4px; }
 
     /* Urgencia exclusividad */
     .excl-urgency {
@@ -2468,10 +2410,19 @@
     .prep-btn.prep-done i { color: var(--green); }
     .prop-list--table { overflow-x: auto; }
     .prop-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    .prop-table th { text-align: left; padding: 8px 10px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-accent); }
-    .prop-table td { padding: 10px; border-bottom: 1px solid var(--border); }
-    .row-prop { cursor: pointer; transition: background 0.2s; }
-    .row-prop:hover { background: rgba(255,255,255,0.02); }
+    .prop-table th { text-align: left; padding: 8px 10px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-accent); white-space: nowrap; }
+    .prop-table td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .prop-table tbody tr:last-child td { border-bottom: none; }
+    .prop-table-row { cursor: pointer; transition: background 0.2s; }
+    .prop-table-row:hover { background: rgba(255,255,255,0.03); }
+    .pt-name-row { display: flex; align-items: center; gap: 10px; min-width: 220px; }
+    .pt-thumb { width: 46px; height: 40px; object-fit: cover; border-radius: 8px; flex-shrink: 0; border: 1px solid var(--border); }
+    .pt-thumb--ph { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 40px; border-radius: 8px; background: var(--bg-card-hover); border: 1px solid var(--border); color: var(--text-muted); font-size: 15px; flex-shrink: 0; }
+    .pt-title { font-weight: 600; color: var(--text); line-height: 1.3; }
+    .pt-code { font-size: 11px; color: var(--gold); margin-top: 2px; letter-spacing: 0.3px; }
+    .pt-price { color: var(--gold); font-weight: 600; white-space: nowrap; }
+    .pt-meta { color: var(--text-dim); white-space: nowrap; }
+    .prop-table-row .prop-status-badge { margin: 0; }
     .prop-card.dragging { opacity: 0.4; transform: scale(0.98); }
     .prop-card[draggable="true"] { touch-action: pan-y; }
     .prop-card[draggable="true"] .prop-card-header { cursor: grab; }
@@ -2545,6 +2496,6 @@
   <script src="assets/js/config.js?v=7"></script>
   <script src="assets/js/utils.js?v=4"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="assets/js/pages/portal-propietario-page.js?v=8"></script>
+  <script src="assets/js/pages/portal-propietario-page.js?v=9"></script>
 </body>
 </html>
