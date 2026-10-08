@@ -1,6 +1,16 @@
   (function() {
     'use strict';
 
+    /* Bug real 2026-10-08: con zoom <100% (dpr<1) el viewport (100vw) excede el ancho visible de la
+       pantalla y la columna centrada queda fuera de pantalla ("todo a la derecha", bordes cortados).
+       Publicamos en --visible-w el ancho realmente visible y el CSS centra contra él. */
+    function syncVisibleWidth() {
+      var vis = Math.min(window.innerWidth, (window.screen && window.screen.availWidth) || window.innerWidth);
+      if (vis > 0) document.documentElement.style.setProperty('--visible-w', vis + 'px');
+    }
+    syncVisibleWidth();
+    window.addEventListener('resize', syncVisibleWidth);
+
     /* ── Helpers ── */
     var esc = (window.BHUtils && BHUtils.esc) || function(s){ return s == null ? '' : String(s); };
     var safeUrl = (window.BHUtils && BHUtils.safeUrl) || function(s){ return s || ''; };
