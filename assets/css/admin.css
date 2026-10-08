@@ -4629,6 +4629,9 @@ input[type="range"]::-moz-range-thumb {
    ============================================================ */
 .crm-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:22px}
 .crm-kpi{background:rgba(255,255,255,0.02);border:1px solid var(--border-subtle);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.crm-kpi--btn{cursor:pointer;transition:border-color .15s,background .15s}
+.crm-kpi--btn:hover{border-color:var(--accent)}
+.crm-kpi.is-active{border-color:var(--accent);background:rgba(31,200,195,0.07);box-shadow:0 0 0 1px var(--accent) inset}
 .crm-kpi-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim)}
 .crm-kpi-value{font-size:24px;font-weight:700;color:#fff}
 .crm-kpi--nuevo{color:var(--accent)}

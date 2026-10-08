@@ -27,6 +27,7 @@ var _sortKey = 'created', _sortDir = 'desc';
 var DEFAULT_SORT_DIR = { created: 'desc', cliente: 'asc', propiedad: 'asc', estado: 'asc', prioridad: 'desc', actividad: 'desc', prox: 'asc' };
 var SERVER_SORT_COLUMNS = { created: 'created_at', cliente: 'full_name', estado: 'stage', prioridad: 'lead_score', actividad: 'last_contacted_at', prox: 'next_followup_at' };
 var _showTrash = false;
+var _kpiFilter = ''; // '', 'nuevos7d', 'stale48'
 var _ownerSortKey = 'prox', _ownerSortDir = 'asc';
 var OWNER_DEFAULT_SORT_DIR = { propietario: 'asc', dni: 'asc', propiedades: 'desc', agente: 'asc', tareas: 'desc', exclusivo: 'asc', prox: 'asc' };
 var _leads = [];
@@ -178,6 +179,13 @@ function applyBaseFilters(q) {
   if (ag && ag.value === '__none__') q = q.is('assigned_to', null);
   else if (ag && ag.value) q = q.eq('assigned_to', ag.value);
   if (_hasFollowupFilter) q = q.not('next_followup_at', 'is', 'null');
+  if (_kpiFilter === 'nuevos7d') {
+    q = q.gte('created_at', new Date(Date.now() - 7 * 86400000).toISOString());
+  } else if (_kpiFilter === 'stale48') {
+    var staleCut = new Date(Date.now() - 2 * 86400000).toISOString();
+    q = q.or('last_contacted_at.is.null,last_contacted_at.lt.' + staleCut)
+         .not('stage', 'in', '("cerrado_ganado","cerrado_perdido")');
+  }
   if (_showTrash) return q.not('deleted_at', 'is', null);
   return q.is('deleted_at', null);
 }
@@ -610,6 +618,38 @@ function setKpiLabels(labels) {
   for (var i = 0; i < els.length && i < labels.length; i++) els[i].textContent = labels[i];
 }
 
+/* KPI clickeables: Activos=reset, Nuevos(7d), Sin contacto +48h */
+var KPI_CARD_BINDINGS = { crmKpiTotal: 'reset', crmKpiNuevo: 'nuevos7d', crmKpiGanados: 'stale48' };
+function syncKpiCards() {
+  var clickable = _viewMode === 'leads' && !_showTrash;
+  Object.keys(KPI_CARD_BINDINGS).forEach(function (id) {
+    var el = $id(id);
+    var card = el && el.closest('.crm-kpi');
+    if (!card) return;
+    var k = KPI_CARD_BINDINGS[id];
+    card.classList.toggle('crm-kpi--btn', clickable && k !== 'reset');
+    card.classList.toggle('is-active', clickable && k === _kpiFilter);
+    if (clickable && k !== 'reset') card.title = 'Clic para filtrar'; else card.removeAttribute('title');
+  });
+}
+function toggleKpiFilter(key) {
+  if (_viewMode !== 'leads' || _showTrash) return;
+  _kpiFilter = (key === 'reset' || _kpiFilter === key) ? '' : key;
+  _page = 1;
+  syncKpiCards();
+  loadLeads();
+}
+function bindKpiCards() {
+  Object.keys(KPI_CARD_BINDINGS).forEach(function (id) {
+    var el = $id(id);
+    var card = el && el.closest('.crm-kpi');
+    if (card && !card.dataset.kpiBound) {
+      card.dataset.kpiBound = '1';
+      card.addEventListener('click', function () { toggleKpiFilter(KPI_CARD_BINDINGS[id]); });
+    }
+  });
+}
+
 async function updateOwnerKpis() {
   setKpiLabels(['Propietarios', 'Exclusivos', 'Vencidas', 'Propiedades']);
   try {
@@ -642,21 +682,24 @@ async function updateKpis() {
     var twoDays = new Date(now - 2 * 86400000).toISOString();
     var leads = db().from('leads');
     var counts = await Promise.all([
-      leads.select('id', { count: 'exact', head: true }).gte('created_at', sevenDays).is('deleted_at', null),
+      leads.select('id', { count: 'exact', head: true }).is('deleted_at', null).neq('stage', 'cerrado_perdido'),
+      leads.select('id', { count: 'exact', head: true }).gte('created_at', sevenDays).is('deleted_at', null).neq('stage', 'cerrado_perdido'),
       leads.select('id', { count: 'exact', head: true }).or('last_contacted_at.is.null,last_contacted_at.lt.' + twoDays).not('stage', 'in', '("cerrado_ganado","cerrado_perdido")').is('deleted_at', null),
       leads.select('id', { count: 'exact', head: true }).eq('stage', 'cerrado_ganado').is('deleted_at', null),
       leads.select('id', { count: 'exact', head: true }).in('stage', CLOSED).is('deleted_at', null),
     ]);
-    var nuevos7 = counts[0].count || 0;
-    var stale = counts[1].count || 0;
-    var ganados = counts[2].count || 0;
-    var cerrados = counts[3].count || 0;
+    var activos = counts[0].count || 0;
+    var nuevos7 = counts[1].count || 0;
+    var stale = counts[2].count || 0;
+    var ganados = counts[3].count || 0;
+    var cerrados = counts[4].count || 0;
     var conv = cerrados > 0 ? Math.round((ganados / cerrados) * 100) + '%' : '—';
     var el;
-    el = $id('crmKpiTotal'); if (el) el.textContent = _totalRows;
+    el = $id('crmKpiTotal'); if (el) el.textContent = activos;
     el = $id('crmKpiNuevo'); if (el) el.textContent = nuevos7;
     el = $id('crmKpiGanados'); if (el) el.textContent = stale;
     el = $id('crmKpiPerdidos'); if (el) el.textContent = conv;
+    syncKpiCards();
   } catch (e) { console.warn('[crm] kpis:', e.message); }
 }
 
@@ -1515,6 +1558,7 @@ if (search) search.addEventListener('input', function () {
     trashBtn.dataset.bound = '1';
     trashBtn.addEventListener('click', function () {
       _showTrash = !_showTrash;
+      _kpiFilter = '';
       _page = 1;
       closeDetailPanel();
       trashBtn.classList.toggle('is-active', _showTrash);
@@ -1523,10 +1567,13 @@ if (search) search.addEventListener('input', function () {
         : '<i class="fas fa-trash-can"></i> Papelera';
       var stFilter = $id('crmStatusFilter');
       if (stFilter) stFilter.disabled = _showTrash;
+      syncKpiCards();
       loadLeads();
     });
   }
   _bindViewModeToggle();
+  bindKpiCards();
+  syncKpiCards();
   loadAgents().then(function () { return loadLeads(); });
 }
 
@@ -1592,6 +1639,8 @@ function _syncHeader() {
   if (titleEl) {
     titleEl.textContent = ownersMode ? 'Propietarios y Asignaciones' : 'Leads & CRM';
   }
+  if (ownersMode) { _kpiFilter = ''; }
+  syncKpiCards();
 }
 
 
