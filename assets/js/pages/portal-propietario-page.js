@@ -1,11 +1,14 @@
   (function() {
     'use strict';
 
-    /* Bug real 2026-10-08: con zoom <100% (dpr<1) el viewport (100vw) excede el ancho visible de la
-       pantalla y la columna centrada queda fuera de pantalla ("todo a la derecha", bordes cortados).
-       Publicamos en --visible-w el ancho realmente visible y el CSS centra contra él. */
+    /* Bug real 2026-10-08: si el viewport excede la pantalla visible (ventana más ancha que el
+       monitor), la columna centrada queda fuera de pantalla. Con zoom <100% (dpr<1) TODO el
+       viewport es visible (más chico), así que ahí se centra normal contra innerWidth;
+       con dpr>=1 se centra contra la pantalla si el viewport la excede. */
     function syncVisibleWidth() {
-      var vis = Math.min(window.innerWidth, (window.screen && window.screen.availWidth) || window.innerWidth);
+      var dpr = window.devicePixelRatio || 1;
+      var avail = (window.screen && window.screen.availWidth) || window.innerWidth;
+      var vis = (dpr < 1) ? window.innerWidth : Math.min(window.innerWidth, avail);
       if (vis > 0) document.documentElement.style.setProperty('--visible-w', vis + 'px');
     }
     syncVisibleWidth();
