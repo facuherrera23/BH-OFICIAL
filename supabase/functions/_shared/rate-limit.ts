@@ -38,6 +38,7 @@ export const RATE_LIMIT_CONFIG = {
     'check-password-hash': { requests: 10, windowMs: 60_000 }, // 10/min - HIBP password check
     'ml-publish': { requests: 10, windowMs: 60_000 }, // 10/min - publicar/actualizar/quitar items ML
     'ml-portal-status': { requests: 60, windowMs: 60_000 }, // 60/min - polling de estado desde el panel
+    'ml-questions-sweep': { requests: 10, windowMs: 60_000 }, // cron 10 min - barrido preguntas UNANSWERED
     'ml-disconnect': { requests: 5, windowMs: 60_000 }, // 5/min - desconexion OAuth
     'ml-sync-import': { requests: 2, windowMs: 60_000 }, // 2/min - importacion full ML -> BH (cron/admin)
     'contact-submit': { requests: 5, windowMs: 3_600_000 }, // 5/h por IP - formulario público

@@ -190,6 +190,7 @@ jobs:
             "ml-oauth"
             "ml-portal-status"
             "ml-publish"
+            "ml-questions-sweep"
             "ml-sync"
             "ml-webhook"
             "monthly_commission_liquidation"
