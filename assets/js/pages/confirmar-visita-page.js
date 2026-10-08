@@ -23,6 +23,7 @@
         }
 
         renderVisit(data);
+        maybeRenderSurvey(data);
 
       } catch (err) {
         console.error(err);
@@ -185,7 +186,201 @@
         };
       }
 
-      function showError(msg) {
+      /* ── Encuesta HOJA DE VISITA (digitalización del formulario, pedido 2026-10-08) ──
+       Vive en este mismo link: aparece cuando la visita está completada (o pasó su fecha).
+       Autoguardado continuo: si el visitante se va sin tocar Guardar, lo respondido queda igual. */
+    const SURVEY_SCORES = [
+      ['ubicacion', 'Ubicación'],
+      ['tamano', 'Tamaño'],
+      ['distribucion', 'Distribución'],
+      ['calidad', 'Calidad'],
+      ['precio', 'Precio'],
+      ['conservacion', 'Conservación'],
+      ['general', 'Valoración general']
+    ];
+    const SURVEY_TEXTS = [
+      ['mas_gusto', '¿Qué fue lo que MÁS te gustó de la propiedad?'],
+      ['menos_gusto', '¿Qué fue lo que MENOS te gustó de la propiedad?'],
+      ['por_que', 'Si querés, contanos por qué (o por qué no) la comprarías']
+    ];
+
+    async function maybeRenderSurvey(v) {
+      const section = document.getElementById('surveySection');
+      if (!section) return;
+      if (new URLSearchParams(window.location.search).get('mode') === 'checkin') return;
+      let st = null;
+      try {
+        const { data, error } = await supabaseClient.rpc('get_visit_survey_by_token', { p_token: token });
+        if (error) throw error;
+        st = data;
+      } catch (err) { console.error(err); return; }
+      if (!st || !st.available) return;
+      if (st.survey && st.survey.finalized) { renderSurveyThanks(st.survey.answers || {}); return; }
+      renderSurveyForm(st.survey ? (st.survey.answers || {}) : {}, v);
+    }
+
+    let sqAnswers = {};
+    let sqSaveTimer = null;
+    let sqSaving = false;
+    let sqPendingFinal = false;
+    let sqDirty = false;
+
+    function sqScheduleSave() {
+      sqDirty = true;
+      clearTimeout(sqSaveTimer);
+      sqSaveTimer = setTimeout(() => sqSave(false), 700);
+    }
+
+    function sqSetAutosave(msg) {
+      const el = document.getElementById('sqAutosave');
+      if (el) el.textContent = msg;
+    }
+
+    async function sqSave(finalize) {
+      if (sqSaving) { if (finalize) sqPendingFinal = true; return; }
+      sqSaving = true;
+      sqSetAutosave('Guardando…');
+      try {
+        const { data, error } = await supabaseClient.rpc('submit_visit_survey_by_token', {
+          p_token: token, p_answers: sqAnswers, p_finalize: finalize
+        });
+        if (error) throw error;
+        if (data && data.ok === false) {
+          if (data.finalized) { sqDirty = false; renderSurveyThanks(sqAnswers); return; }
+          throw new Error(data.error || 'No se pudo guardar');
+        }
+        sqDirty = false;
+        sqSetAutosave('✓ Guardado');
+        if (finalize) { renderSurveyThanks(sqAnswers); return; }
+      } catch (err) {
+        console.error(err);
+        sqSetAutosave('⚠ Sin conexión — se guarda apenas toqués algo');
+        window.addEventListener('online', function retry() {
+          window.removeEventListener('online', retry);
+          if (sqDirty) sqSave(false);
+        });
+      } finally {
+        sqSaving = false;
+        if (sqPendingFinal) { sqPendingFinal = false; sqSave(true); }
+      }
+    }
+
+    /* Si cierra la pestaña a mitad, lo último escrito igual llega al server */
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden' && sqDirty && !sqSaving) sqSave(false);
+    });
+
+    function sqPillsRow(key, label, isWide) {
+      let pills = '';
+      if (isWide) {
+        pills = '<button type="button" class="sq-pill pill-wide pill-si" data-key="' + key + '" data-val="si">Sí, la compraría</button>' +
+                '<button type="button" class="sq-pill pill-wide pill-no" data-key="' + key + '" data-val="no">No</button>';
+      } else {
+        for (let n = 1; n <= 10; n++) {
+          pills += '<button type="button" class="sq-pill" data-key="' + key + '" data-val="' + n + '">' + n + '</button>';
+        }
+      }
+      return '<div class="survey-q"><span class="sq-label">' + label + '</span><div class="sq-pills" data-row="' + key + '">' + pills + '</div></div>';
+    }
+
+    function sqTextRow(key, label) {
+      return '<div class="survey-q"><span class="sq-label">' + label + '</span>' +
+        '<textarea class="sq-text" data-text="' + key + '" maxlength="1000"></textarea></div>';
+    }
+
+    function sqMarkActive() {
+      document.querySelectorAll('#surveySection .sq-pill').forEach(p => {
+        const val = sqAnswers[p.dataset.key];
+        p.classList.toggle('is-active', String(val) === p.dataset.val);
+      });
+    }
+
+    function renderSurveyForm(saved, v) {
+      sqAnswers = {};
+      Object.keys(saved).forEach(k => { if (saved[k] !== null && saved[k] !== '') sqAnswers[k] = saved[k]; });
+
+      const card = document.getElementById('confirmCard');
+      const icon = document.getElementById('confirmIcon');
+      const title = document.getElementById('confirmTitle');
+      const subtitle = document.getElementById('confirmSubtitle');
+      const actions = document.getElementById('actionButtons');
+      const section = document.getElementById('surveySection');
+      if (!card || !section) return;
+
+      card.classList.add('survey-mode');
+      icon.className = 'confirm-icon pending';
+      icon.innerHTML = '<i class="fas fa-star"></i>';
+      title.textContent = 'Hola' + (v.client_name ? ' ' + v.client_name.trim().split(' ')[0] : '') + '! ¿Cómo estuvo tu visita?';
+      subtitle.textContent = 'Esta evaluación nos ayuda a mejorar y brindar un mejor servicio.';
+      if (actions) actions.style.display = 'none';
+
+      let html = '<div class="survey-welcome">Puntuá de 1 a 10 — tardás menos de un minuto.</div>';
+      SURVEY_SCORES.forEach(([key, label], i) => {
+        html += sqPillsRow(key, (i + 1) + '. ' + label, false);
+      });
+      html += sqPillsRow('compraria', (SURVEY_SCORES.length + 1) + '. ¿Compraría este inmueble?', true);
+      SURVEY_TEXTS.forEach(([key, label]) => { html += sqTextRow(key, label); });
+      html += '<div class="sq-autosave" id="sqAutosave"></div>' +
+        '<button type="button" class="btn-luxury-action btn-confirm" id="btnSaveSurvey"><i class="fas fa-check"></i> Guardar</button>';
+      section.innerHTML = html;
+      section.style.display = 'block';
+
+      document.querySelectorAll('#surveySection .sq-pill').forEach(p => {
+        p.addEventListener('click', () => {
+          sqAnswers[p.dataset.key] = p.dataset.val;
+          sqMarkActive();
+          sqScheduleSave();
+        });
+      });
+      document.querySelectorAll('#surveySection .sq-text').forEach(t => {
+        if (sqAnswers[t.dataset.text]) t.value = sqAnswers[t.dataset.text];
+        let tt = null;
+        t.addEventListener('input', () => {
+          sqAnswers[t.dataset.text] = t.value;
+          clearTimeout(tt);
+          tt = setTimeout(sqScheduleSave, 400);
+        });
+      });
+      sqMarkActive();
+
+      document.getElementById('btnSaveSurvey').addEventListener('click', function () {
+        this.disabled = true;
+        this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando…';
+        sqSave(true);
+      });
+    }
+
+    function renderSurveyThanks(answers) {
+      const card = document.getElementById('confirmCard');
+      const icon = document.getElementById('confirmIcon');
+      const title = document.getElementById('confirmTitle');
+      const subtitle = document.getElementById('confirmSubtitle');
+      const section = document.getElementById('surveySection');
+      const thanks = document.getElementById('surveyThanks');
+      if (!card || !thanks) return;
+
+      card.classList.add('survey-mode');
+      icon.className = 'confirm-icon success';
+      icon.innerHTML = '<i class="fas fa-check-circle"></i>';
+      title.textContent = '¡Gracias por responder!';
+      subtitle.textContent = 'Tu evaluación de la visita ya quedó registrada.';
+      if (section) section.style.display = 'none';
+      sqDirty = false;
+
+      let grid = '';
+      SURVEY_SCORES.forEach(([key, label]) => {
+        if (answers[key] !== undefined && answers[key] !== null) {
+          grid += '<div class="t-score"><div class="ts-v">' + answers[key] + '</div><div class="ts-l">' + label + '</div></div>';
+        }
+      });
+      if (answers.compraria) {
+        grid += '<div class="t-score"><div class="ts-v">' + (answers.compraria === 'si' ? '✓' : '✗') + '</div><div class="ts-l">Compraría</div></div>';
+      }
+      thanks.innerHTML = grid ? '<div class="t-score-grid">' + grid + '</div>' : '';
+      thanks.style.display = 'block';
+    }
+
+    function showError(msg) {
         document.getElementById('confirmTitle').textContent = 'Error';
         document.getElementById('confirmSubtitle').textContent = msg;
         document.getElementById('confirmIcon').className = 'confirm-icon danger';

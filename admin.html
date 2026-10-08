@@ -2681,13 +2681,15 @@
 <input type="email" name="client_email" placeholder="cliente@email.com" />
 </div>
 </div>
-<div class="form-field">
-<label>Notas</label>
-<textarea name="notes" placeholder="Detalles de la visita...">
-</textarea>
-</div>
-<div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px; align-items:center;">
-<button type="button" class="btn-action" id="visitCopyLinkBtn" style="display:none;" title="Copiar link de confirmación para el cliente"><i class="fas fa-link"></i> Copiar link</button>
+      <div class="form-field">
+        <label>Notas</label>
+        <textarea name="notes" placeholder="Detalles de la visita...">
+        </textarea>
+      </div>
+      <div id="visitSurveyBox" style="display:none;"></div>
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px; align-items:center; flex-wrap:wrap;">
+        <button type="button" class="btn-action" id="visitCopyLinkBtn" style="display:none;" title="Copiar link de confirmación para el cliente"><i class="fas fa-link"></i> Copiar link</button>
+        <button type="button" class="btn-action" id="visitSurveyWaBtn" style="display:none; background:rgba(37,211,102,0.15); color:#25d366;" title="Enviar la hoja de visita por WhatsApp (el mismo link de confirmación)"><i class="fab fa-whatsapp"></i> Enviar encuesta</button>
 <button type="button" class="btn-action" id="visitQrBtn" style="display:none;" title="QR de llegada para pegar en la propiedad"><i class="fas fa-qrcode"></i> QR</button>
 <button type="button" class="btn-action" id="visitDuplicateBtn" style="display:none;" title="Crear otra visita con los mismos datos"><i class="fas fa-copy"></i> Duplicar</button>
 <button type="button" class="btn-action" id="visitReagendarBtn" style="display:none; color:var(--warning);" title="Reagendar esta visita cancelada con los mismos datos"><i class="fas fa-calendar-plus"></i> Reagendar</button>
@@ -3354,6 +3356,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="assets/js/admin-propiedades.js?v=15"></script>
 <script src="assets/js/tasacion-calc.js?v=1"></script>
-<script src="assets/js/admin-agenda.js?v=13"></script>
+<script src="assets/js/admin-agenda.js?v=14"></script>
 <script src="assets/js/admin-supervision.js?v=17"></script></body>
 </html>

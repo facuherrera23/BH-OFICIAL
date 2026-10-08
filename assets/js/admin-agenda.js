@@ -1516,7 +1516,9 @@
     editingVisitId = null;
     const form = $('#visitForm');
     if (form) form.reset();
-    ['visitCopyLinkBtn', 'visitQrBtn', 'visitDuplicateBtn', 'visitReagendarBtn'].forEach(bid => { const b = $('#' + bid); if (b) b.style.display = 'none'; });
+    ['visitCopyLinkBtn', 'visitQrBtn', 'visitDuplicateBtn', 'visitReagendarBtn', 'visitSurveyWaBtn'].forEach(bid => { const b = $('#' + bid); if (b) b.style.display = 'none'; });
+    const sbox = $('#visitSurveyBox');
+    if (sbox) { sbox.style.display = 'none'; sbox.innerHTML = ''; }
 
     loadAgentSelect($('#visitBrokerSelect'));
     loadVisitLeadSelect(prefill.lead_id || null);
@@ -1916,7 +1918,88 @@
   } catch (err) { showToast('Error: ' + err.message, 'error'); }
 };
 
-window.adminApp.editVisit = async function (id) {
+  /* Hoja de visita (encuesta): respuesta del visitante + envío por WhatsApp.
+     El link es el mismo de confirmación — después de la visita muestra la encuesta. */
+  const SURVEY_FIELDS = [
+    ['ubicacion', 'Ubicación'], ['tamano', 'Tamaño'], ['distribucion', 'Distribución'],
+    ['calidad', 'Calidad'], ['precio', 'Precio'], ['conservacion', 'Conservación'],
+    ['general', 'Valoración general']
+  ];
+
+  function surveyCanAnswer(v) {
+    if (!v) return false;
+    const st = String(v.status || '');
+    const past = v.visit_date && new Date(v.visit_date).getTime() < Date.now();
+    return st === 'completada' || (past && st !== 'cancelada' && st !== 'no_show');
+  }
+
+  async function renderVisitSurveyBox(v) {
+    const box = $('#visitSurveyBox');
+    const waBtn = $('#visitSurveyWaBtn');
+    if (!box || !editingVisitId) return;
+    box.style.display = 'none';
+    box.innerHTML = '';
+    if (waBtn) waBtn.style.display = 'none';
+
+    let survey = null;
+    try {
+      const { data } = await window.supabaseClient.from('visit_surveys')
+        .select('answers, finalized, submitted_at')
+        .eq('visit_id', editingVisitId)
+        .maybeSingle();
+      survey = data || null;
+    } catch (_) { /* sin encuesta cargable: caja oculta */ }
+
+    const canAnswer = surveyCanAnswer(v);
+    if (!canAnswer && !survey) return;
+
+    const showWa = !!v.confirmation_token && !!v.client_phone && canAnswer && (!survey || !survey.finalized);
+    if (waBtn && showWa) {
+      waBtn.style.display = 'inline-flex';
+      waBtn.onclick = (e) => {
+        e.preventDefault();
+        const propSel = $('#visitPropertySelect');
+        const propTitle = propSel && propSel.selectedOptions[0] ? propSel.selectedOptions[0].textContent.trim() : 'la propiedad';
+        const url = `${window.location.origin}/confirmar-visita.html?token=${v.confirmation_token}`;
+        const msg = `Hola ${v.client_name || ''}! Gracias por visitar ${propTitle}. ¿Nos contás qué te pareció? Tu opinión nos ayuda mucho: ${url}`;
+        const phone = String(v.client_phone).replace(/\D/g, '');
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+      };
+    }
+
+    if (!survey) {
+      box.innerHTML = '<div style="border:1px dashed var(--border); border-radius:10px; padding:12px 14px; font-size:12px; color:var(--text-muted); margin-bottom:8px;">' +
+        '<i class="fas fa-clipboard-check" style="color:var(--accent);"></i> Hoja de visita: el visitante todavía no respondió. Envíasela por WhatsApp con el botón verde.</div>';
+      box.style.display = 'block';
+      return;
+    }
+
+    const a = survey.answers || {};
+    const chips = SURVEY_FIELDS.filter(([k]) => a[k] != null)
+      .map(([k, label]) => `<span style="display:inline-block; background:rgba(31,200,195,0.1); border:1px solid rgba(31,200,195,0.3); color:var(--accent); border-radius:8px; padding:3px 9px; font-size:11px; font-weight:600; margin:2px;">${esc(label)}: ${esc(String(a[k]))}/10</span>`)
+      .join('');
+    const compraria = a.compraria
+      ? `<span style="display:inline-block; background:${a.compraria === 'si' ? 'rgba(0,200,120,0.12); color:#00c878' : 'rgba(239,68,68,0.12); color:#ef4444'}; border:1px solid ${a.compraria === 'si' ? 'rgba(0,200,120,0.35)' : 'rgba(239,68,68,0.35)'}; border-radius:8px; padding:3px 9px; font-size:11px; font-weight:700; margin:2px;">Compraría: ${a.compraria === 'si' ? 'SÍ' : 'NO'}</span>`
+      : '';
+    const texts = [
+      ['mas_gusto', 'Lo que MÁS le gustó'],
+      ['menos_gusto', 'Lo que MENOS le gustó'],
+      ['por_que', 'Por qué (no) la compraría']
+    ].filter(([k]) => a[k])
+      .map(([k, label]) => `<div style="margin-top:8px;"><span style="font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.4px;">${esc(label)}</span><div style="font-size:12px; color:#fff; background:rgba(0,0,0,0.25); border-radius:8px; padding:8px 10px; margin-top:3px;">${esc(String(a[k]))}</div></div>`)
+      .join('');
+    const stateLabel = survey.finalized
+      ? '<span style="font-size:10px; font-weight:700; color:#00c878;">FINALIZADA' + (survey.submitted_at ? ' · ' + new Date(survey.submitted_at).toLocaleString('es-AR') : '') + '</span>'
+      : '<span style="font-size:10px; font-weight:700; color:#FFB800;">EN PROGRESO (sin tocar Guardar)</span>';
+
+    box.innerHTML = '<div style="border:1px solid rgba(31,200,195,0.3); border-radius:12px; padding:14px; margin-bottom:8px; background:rgba(31,200,195,0.04);">' +
+      `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;"><span style="font-size:13px; font-weight:700; color:#fff;"><i class="fas fa-clipboard-check" style="color:var(--accent);"></i> Hoja de visita</span>${stateLabel}</div>` +
+      (chips || compraria ? `<div style="line-height:1.8;">${chips}${compraria}</div>` : '<div style="font-size:12px; color:var(--text-muted);">Sin puntuaciones todavía.</div>') +
+      texts + '</div>';
+    box.style.display = 'block';
+  }
+
+  window.adminApp.editVisit = async function (id) {
     try {
       const { data, error } = await window.supabaseClient
         .from('visits')
@@ -1992,6 +2075,7 @@ window.adminApp.editVisit = async function (id) {
         if (data.lead_id) { leadSelect.dispatchEvent(new Event('change')); }
       }
 
+      renderVisitSurveyBox(data);
       openModal('visitModal');
     } catch (err) {
       logError('Error al cargar visita:', err);
