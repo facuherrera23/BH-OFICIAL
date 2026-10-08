@@ -1119,6 +1119,7 @@
         <td>
           <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
             ${v.confirmation_token && v.client_email ? '<button class="btn-action" title="Copiar link de confirmacion" onclick="window.adminApp.copyVisitLink(\'${v.id}\')"><i class="fas fa-link"></i></button>' : ''}
+            ${v.confirmation_token && surveyCanAnswer(v) ? `<button class="btn-action" title="Enviar encuesta por WhatsApp" onclick="window.adminApp.sendVisitSurvey('${v.id}')" style="background:rgba(37,211,102,0.15); color:#25d366;"><i class="fab fa-whatsapp"></i></button>` : ''}
             <button class="btn-action" title="Editar" onclick="window.adminApp.editVisit('${v.id}')"><i class="fas fa-pen"></i></button>
             ${checkinHtml}
             ${checkinTimeHtml}
@@ -2388,6 +2389,67 @@
     } catch (err) { showToast('Error al registrar el resultado: ' + err.message, 'error'); }
   }
 
+  /* Encuesta: envío por WhatsApp a un toque desde la fila o justo después del check-out */
+  window.adminApp.sendVisitSurvey = async function (id) {
+    try {
+      const { data: v, error } = await window.supabaseClient.from('visits')
+        .select('client_name, client_phone, confirmation_token, status, visit_date, properties(title, property_code)')
+        .eq('id', id).single();
+      if (error) throw error;
+      if (!v?.confirmation_token) { showToast('Esta visita no tiene link de encuesta.', 'error'); return; }
+      if (!surveyCanAnswer({ status: v.status, visit_date: v.visit_date })) { showToast('La encuesta se habilita pasada la hora de la visita.', 'warning'); return; }
+      const phone = String(v.client_phone || '').replace(/\D/g, '');
+      if (!phone) { showToast('La visita no tiene teléfono del cliente.', 'error'); return; }
+      const url = `${window.location.origin}/confirmar-visita.html?token=${v.confirmation_token}`;
+      const propTitle = v.properties?.title
+        ? v.properties.title + (v.properties.property_code ? ' [' + v.properties.property_code + ']' : '')
+        : 'la propiedad';
+      const msg = `Hola ${v.client_name || ''}! Gracias por visitar ${propTitle}. ¿Nos contás qué te pareció? Tu opinión nos ayuda mucho: ${url}`;
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  };
+
+  /* Tras el check-out aparece la oferta de enviar la encuesta — el momento natural */
+  async function offerSurveyAfterCheckout(id) {
+    try {
+      const { data: v } = await window.supabaseClient.from('visits')
+        .select('client_name, client_phone, confirmation_token')
+        .eq('id', id).single();
+      if (!v?.confirmation_token || !String(v.client_phone || '').replace(/\D/g, '')) return;
+      document.querySelectorAll('.survey-offer').forEach(el => el.remove());
+      const card = document.createElement('div');
+      card.className = 'survey-offer';
+      card.style.cssText = 'position:fixed; bottom:20px; right:20px; z-index:12000; background:#141a22; border:1px solid rgba(37,211,102,0.4); border-radius:14px; padding:14px 16px; max-width:320px; box-shadow:0 12px 40px rgba(0,0,0,0.5); display:flex; flex-direction:column; gap:10px;';
+      const head = document.createElement('div');
+      head.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:8px;';
+      const strong = document.createElement('strong');
+      strong.style.cssText = 'font-size:13px; color:#fff;';
+      strong.innerHTML = '<i class="fas fa-clipboard-check" style="color:#25d366;"></i> Visita completada';
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.innerHTML = '&times;';
+      close.style.cssText = 'background:none; border:none; color:#8b93a1; cursor:pointer; font-size:16px; padding:0 4px;';
+      close.addEventListener('click', () => card.remove());
+      head.appendChild(strong); head.appendChild(close);
+      const ask = document.createElement('div');
+      ask.style.cssText = 'font-size:12px; color:#aab2c0;';
+      const nameSpan = document.createElement('span');
+      nameSpan.style.color = '#fff';
+      nameSpan.textContent = v.client_name || 'el visitante';
+      ask.appendChild(document.createTextNode('¿Le enviamos la encuesta a '));
+      ask.appendChild(nameSpan);
+      ask.appendChild(document.createTextNode(' por WhatsApp?'));
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.innerHTML = '<i class="fab fa-whatsapp"></i> Enviar encuesta';
+      btn.style.cssText = 'background:linear-gradient(135deg,#25d366,#1da851); color:#04210f; border:none; border-radius:10px; padding:10px 14px; font-weight:700; font-size:13px; cursor:pointer; font-family:inherit;';
+      btn.addEventListener('click', () => { card.remove(); window.adminApp.sendVisitSurvey(id); });
+      card.appendChild(head); card.appendChild(ask); card.appendChild(btn);
+      document.body.appendChild(card);
+      setTimeout(() => card.remove(), 90 * 1000);
+    } catch (_) { /* oferta opcional: falla silenciosa */ }
+  }
+
   window.adminApp.checkoutVisit = async function (id) {
     try {
       const { data: v } = await window.supabaseClient.from('visits').select('lead_id, client_name').eq('id', id).single();
@@ -2399,6 +2461,7 @@
       if (v?.lead_id) await logVisitOutcome(v.lead_id, note);
       showToast('Salida registrada', 'success');
       loadAgenda();
+      offerSurveyAfterCheckout(id);
     } catch (err) { showToast('Error: ' + err.message, 'error'); }
   };
 
