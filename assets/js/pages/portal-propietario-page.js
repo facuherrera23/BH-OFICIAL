@@ -591,13 +591,12 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
         list.push('<div class="section-title" style="margin-top:20px;"><i class="fas fa-history"></i> Historial de visitas</div>');
         list.push(ex.visit_history.map(function(v) {
           var icon = v.status === 'completada' ? 'fa-check-circle' : 'fa-times-circle';
+          /* Pedido del dueño 2026-10-08: historial solo con fecha y estado */
           return '<div class="visit-card-past">' +
             '<div class="v-icon"><i class="fas ' + icon + '"></i></div>' +
             '<div class="v-body">' +
-              '<div style="font-weight:600;">' + esc(fmtDate(v.visit_date)) + ' · ' + esc(v.client_name || 'Cliente') + '</div>' +
-              '<div style="font-size:12px; color:var(--text-muted);">' + esc(v.property_title || '') + ' (' + esc(v.property_code || '') + ')</div>' +
-              (v.notes ? '<div style="font-size:12px; margin-top:4px; font-style:italic; color:var(--text-dim);">"' + esc(v.notes) + '"</div>' : '') +
-              '<div class="v-status ' + esc(v.status) + '">' + esc(v.status === 'completada' ? 'Completada' : 'Cancelada') + (v.duration_minutes ? ' · ' + v.duration_minutes + ' min' : '') + (v.cancel_reason ? ' · ' + esc(v.cancel_reason) : '') + '</div>' +
+              '<div style="font-weight:600;">' + esc(fmtDate(v.visit_date)) + '</div>' +
+              '<div class="v-status ' + esc(v.status) + '">' + esc(v.status === 'completada' ? 'Completada' : 'Cancelada') + '</div>' +
             '</div>' +
           '</div>';
         }).join(''));
