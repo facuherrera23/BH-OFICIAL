@@ -2306,7 +2306,7 @@ window.adminApp.editVisit = async function (id) {
 
   window.adminApp.checkoutVisit = async function (id) {
     try {
-      const { data: v } = await window.supabaseClient.from('visits').select('lead_id, client_name').eq('id', id).single();
+      const { data: v } = await window.supabaseClient.from('visits').select('lead_id, client_name, client_phone, property_id, properties(title)').eq('id', id).single();
       const note = await promptVisitOutcome(v?.lead_id, v?.client_name);
       if (note === null) return;
       const { error } = await window.supabaseClient
@@ -2314,6 +2314,22 @@ window.adminApp.editVisit = async function (id) {
       if (error) throw error;
       if (v?.lead_id) await logVisitOutcome(v.lead_id, note);
       showToast('Salida registrada', 'success');
+      /* Momento natural: ofrecer la encuesta de visita al visitante */
+      if (v?.lead_id && v?.property_id && window.BH_CRM && typeof window.BH_CRM.sendSurvey === 'function' && window.BH_CRM.waNumber(v.client_phone)) {
+        try {
+          const send = typeof window.showConfirmDialog === 'function'
+            ? await window.showConfirmDialog({ title: '¿Enviar encuesta?', message: 'La visita quedó completada. ¿Le mandás la encuesta de visita por WhatsApp?', icon: 'fas fa-clipboard-list', confirmText: 'Enviar encuesta' })
+            : confirm('¿Enviar la encuesta de visita por WhatsApp?');
+          if (send) {
+            await window.BH_CRM.sendSurvey(
+              { id: v.lead_id, full_name: v.client_name, whatsapp: v.client_phone, phone: v.client_phone },
+              v.property_id,
+              (v.properties && v.properties.title) || '',
+              null
+            );
+          }
+        } catch (_) { logError('Encuesta post-checkout:', _); }
+      }
       loadAgenda();
     } catch (err) { showToast('Error: ' + err.message, 'error'); }
   };
