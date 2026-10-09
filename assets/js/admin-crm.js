@@ -988,9 +988,24 @@ function bindContactActions(panel, lead, firstProp, props) {
   }
 }
 
-/* -- Encuesta de visita (HOJA DE VISITA) -- */
+/* Tras completar la visita: ofrecer mandar la encuesta en el momento. */
+async function offerSurveyAfterVisit(leadId, visitId, panel) {
+  var vr = await db().from('visits').select('property_id, properties(title)').eq('id', visitId).single();
+  if (vr.error || !vr.data || !vr.data.property_id) return;
+  var lr = await db().from('leads').select('id, full_name, whatsapp, phone').eq('id', leadId).single();
+  if (lr.error || !lr.data) return;
+  var lead = lr.data;
+  if (!waNumber(lead.whatsapp) && !waNumber(lead.phone)) return;
+  var ok = typeof window.showConfirmDialog === 'function'
+    ? await window.showConfirmDialog({ title: '¿Enviar encuesta?', message: 'La visita quedó completada. ¿Le mandás la encuesta de visita por WhatsApp?', icon: 'fas fa-clipboard-list', confirmText: 'Enviar encuesta' })
+    : confirm('¿Enviar la encuesta de visita por WhatsApp?');
+  if (!ok) return;
+  await sendSurveyForProperty(lead, vr.data.property_id, (vr.data.properties && vr.data.properties.title) || '', panel);
+}
+
+/* ── Encuesta de visita (HOJA DE VISITA) ── */
 function getLeadSurveys(id) {
-  return db().from('visit_surveys').select('property_id, token, finalized, submitted_at').eq('lead_id', id)
+  return db().from('visit_surveys').select('property_id, token, finalized, submitted_at, archived_at, answers').eq('lead_id', id)
     .then(function (r) { return r.data || []; }).catch(function () { return []; });
 }
 
@@ -1042,16 +1057,21 @@ async function sendSurveyForProperty(lead, propId, propTitle, panel) {
 
 /* Actualiza el estado del chip sin recargar el panel (mantiene la solapa abierta). */
 function updateSurveyChip(panel, propId, state) {
+  if (!panel) return;
   var badge = panel.querySelector('[data-survey-badge="' + propId + '"]');
   if (badge) {
     if (state === 'done') {
       badge.textContent = '✓ Respondida';
+      badge.style.display = '';
       badge.style.color = '#00c878';
       badge.style.background = 'rgba(0,200,120,0.12)';
-    } else {
+    } else if (state === 'sent') {
       badge.textContent = 'Enviada';
+      badge.style.display = '';
       badge.style.color = '#FFB800';
       badge.style.background = 'rgba(255,184,0,0.12)';
+    } else {
+      badge.style.display = 'none';
     }
   }
   var btn = panel.querySelector('[data-survey-action="send"][data-prop-id="' + propId + '"]');
@@ -1063,11 +1083,74 @@ function updateSurveyChip(panel, propId, state) {
   }
 }
 
-function bindSurveyActions(panel, lead) {
-  panel.querySelectorAll('[data-survey-action="send"]').forEach(function (b) {
+/* Resumen legible de las respuestas (para el diálogo "Ver respuestas"). */
+function surveyAnswersText(a) {
+  a = a || {};
+  var LBL = { ubicacion: 'Ubicación', tamano: 'Tamaño', distribucion: 'Distribución', calidad: 'Calidad', precio: 'Precio', conservacion: 'Conservación' };
+  var out = [];
+  if (a.general != null) out.push('Valoración general: ' + a.general + '/10');
+  Object.keys(LBL).forEach(function (k) { if (a[k] != null) out.push(LBL[k] + ': ' + a[k] + '/10'); });
+  if (a.compraria) out.push('Compraría: ' + ({ si: 'Sí', no: 'No', quizas: 'Quizás' })[a.compraria]);
+  if (a.mas_gusto) out.push('Le gustó: ' + a.mas_gusto);
+  if (a.menos_gusto) out.push('No le gustó: ' + a.menos_gusto);
+  if (a.por_que) out.push('Por qué: ' + a.por_que);
+  return out.join('\n') || 'Sin respuestas registradas.';
+}
+
+/* Archiva la encuesta respondida para poder generar una nueva (segunda visita). */
+async function resetSurveyForProperty(lead, propId, panel) {
+  var ok = typeof window.showConfirmDialog === 'function'
+    ? await window.showConfirmDialog({ title: 'Reiniciar encuesta', message: 'La respuesta actual queda archivada (el propietario la sigue viendo en su portal) y el próximo “Encuesta” genera un link nuevo.', icon: 'fas fa-rotate-left', confirmText: 'Reiniciar' })
+    : confirm('Archivar la encuesta actual y generar una nueva?');
+  if (!ok) return;
+  try {
+    var r = await db().from('visit_surveys').update({ archived_at: new Date().toISOString() })
+      .eq('lead_id', lead.id).eq('property_id', propId).is('archived_at', null);
+    if (r.error) throw new Error(r.error.message);
+    updateSurveyChip(panel, propId, 'reset');
+    var btn = panel.querySelector('[data-survey-action="reset"][data-prop-id="' + propId + '"]');
+    if (btn) btn.remove();
+    var sbtn = panel.querySelector('[data-survey-action="send"][data-prop-id="' + propId + '"]');
+    if (!sbtn) {
+      var badge = panel.querySelector('[data-survey-badge="' + propId + '"]');
+      var item = badge ? badge.closest('.crm-prop-item') : null;
+      if (item) {
+        var nb = document.createElement('button');
+        nb.type = 'button';
+        nb.className = 'btn-action';
+        nb.setAttribute('data-survey-action', 'send');
+        nb.setAttribute('data-prop-id', propId);
+        nb.setAttribute('data-prop-title', item.querySelector('span').textContent || '');
+        nb.style.cssText = 'color:#25d366; border-color:rgba(37,211,102,0.35);';
+        nb.innerHTML = '<i class="fab fa-whatsapp"></i> Encuesta';
+        item.insertBefore(nb, item.querySelector('[data-action="removeProp"]'));
+        nb.addEventListener('click', function () { sendSurveyForProperty(lead, this.dataset.propId, this.dataset.propTitle, panel); });
+      }
+    } else {
+      sbtn.innerHTML = '<i class="fab fa-whatsapp"></i> Encuesta';
+      sbtn.title = 'Enviar encuesta de visita por WhatsApp';
+    }
+    toast('Encuesta archivada. La próxima se genera nueva.', 'success');
+  } catch (e) { toast('Error al reiniciar: ' + e.message, 'error'); }
+}
+
+function bindSurveyActions(panel, lead, surveys) {
+  var active = {};
+  (surveys || []).forEach(function (s) { if (!s.archived_at) active[s.property_id] = s; });
+  panel.querySelectorAll('[data-survey-action]').forEach(function (b) {
     b.addEventListener('click', function (e) {
       e.stopPropagation();
-      sendSurveyForProperty(lead, this.dataset.propId, this.dataset.propTitle, panel);
+      var act = this.dataset.surveyAction;
+      var propId = this.dataset.propId;
+      if (act === 'send') sendSurveyForProperty(lead, propId, this.dataset.propTitle, panel);
+      else if (act === 'reset') resetSurveyForProperty(lead, propId, panel);
+      else if (act === 'view') {
+        var s = active[propId];
+        var text = s ? surveyAnswersText(s.answers) : 'Sin respuestas registradas.';
+        if (typeof window.showConfirmDialog === 'function') {
+          window.showConfirmDialog({ title: 'Encuesta de visita', message: text, icon: 'fas fa-clipboard-list', confirmText: 'Cerrar' });
+        } else { alert(text); }
+      }
     });
   });
 }
@@ -1154,7 +1237,7 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys) {
   var tcOpts = TIPO_CLIENTE_OPTS.map(function (t) { return '<option value="' + t + '"' + (lead.tipo_cliente === t ? ' selected' : '') + '>' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>'; }).join('');
 
   var surveyMap = {};
-  (surveys || []).forEach(function (s) { surveyMap[s.property_id] = s; });
+  (surveys || []).forEach(function (s) { if (!s.archived_at) surveyMap[s.property_id] = s; });
   var ph = !props || !props.length
     ? '<div class="crm-side-field-value">Sin propiedades vinculadas</div>'
     : props.map(function (p) {
@@ -1165,8 +1248,16 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys) {
           : svState === 'sent'
             ? '<span data-survey-badge="' + esc(p.property_id) + '" style="font-size:10px; font-weight:700; color:#FFB800; background:rgba(255,184,0,0.12); border-radius:999px; padding:2px 8px; white-space:nowrap;">Enviada</span>'
             : '<span data-survey-badge="' + esc(p.property_id) + '" style="display:none;"></span>';
-        var svBtn = svState === 'done' ? '' :
-          '<button type="button" class="btn-action" data-survey-action="send" data-prop-id="' + esc(p.property_id) + '" data-prop-title="' + esc(p.property_title || '') + '" title="' + (svState === 'sent' ? 'Reenviar encuesta por WhatsApp' : 'Enviar encuesta de visita por WhatsApp') + '" style="color:#25d366; border-color:rgba(37,211,102,0.35);"><i class="fab fa-whatsapp"></i>' + (svState === 'sent' ? ' Reenviar' : ' Encuesta') + '</button>';
+        var svBtn = '';
+        if (svState !== 'done') {
+          svBtn += '<button type="button" class="btn-action" data-survey-action="send" data-prop-id="' + esc(p.property_id) + '" data-prop-title="' + esc(p.property_title || '') + '" title="' + (svState === 'sent' ? 'Reenviar encuesta por WhatsApp' : 'Enviar encuesta de visita por WhatsApp') + '" style="color:#25d366; border-color:rgba(37,211,102,0.35);"><i class="fab fa-whatsapp"></i>' + (svState === 'sent' ? ' Reenviar' : ' Encuesta') + '</button>';
+        }
+        if (sv) {
+          svBtn += '<button type="button" class="btn-action" data-survey-action="reset" data-prop-id="' + esc(p.property_id) + '" title="Archivar esta encuesta y generar una nueva (segunda visita)" style="color:#FFB800; border-color:rgba(255,184,0,0.35);"><i class="fas fa-rotate-left"></i></button>';
+        }
+        if (svState === 'done') {
+          svBtn += '<button type="button" class="btn-action" data-survey-action="view" data-prop-id="' + esc(p.property_id) + '" title="Ver respuestas" style="color:var(--accent); border-color:rgba(31,200,195,0.35);"><i class="fas fa-eye"></i></button>';
+        }
         return '<div class="crm-prop-item"><span>' + esc(p.property_title || 'Propiedad') + '</span>' + svBadge + svBtn +
           '<button class="btn-action danger" data-action="removeProp" data-prop-id="' + p.property_id + '" title="Quitar"><i class="fas fa-times"></i></button></div>';
       }).join('');
@@ -1197,7 +1288,7 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys) {
   bindSideSave(lead, panel);
   bindPropSearch(panel, lead.id);
   bindContactActions(panel, lead, (props && props[0]) || null, props);
-  bindSurveyActions(panel, lead);
+  bindSurveyActions(panel, lead, surveys);
   bindLeadTaskForm(panel, lead);
   bindAgendaActions(panel, lead.id);
   bindTlTaskActions(panel, lead.id);
@@ -1762,7 +1853,7 @@ function _syncHeader() {
 
 /* ctypes */
 
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, waNumber: waNumber, telNumber: telNumber };
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty };
 
 /* --- Generación de token portal desde CRM (en modo propietarios) --- */
 (function () {
@@ -1917,6 +2008,9 @@ async function updateVisitStatus(visitId, newStatus, leadId, panel, cancelReason
       } catch (_) {}
     }
     toast('Visita ' + (VISIT_STATUS_LABELS[newStatus] || newStatus).toLowerCase() + '.', 'success');
+    if (newStatus === 'completada' && leadId) {
+      try { await offerSurveyAfterVisit(leadId, visitId, panel); } catch (e) { console.warn('[crm] oferta encuesta:', e && e.message); }
+    }
     closeDetailPanel();
     openDetailPanel(leadId);
     await loadLeads();
