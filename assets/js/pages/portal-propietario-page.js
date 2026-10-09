@@ -939,13 +939,10 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
           downloadICS({ visit_date: parts[0], property_code: parts[1], property_title: parts[2], client_name: parts[3] });
         });
       } else {
-        var waNext = (d.broker && d.broker.phone && portalWaNumber(d.broker.phone)) ? 'https://wa.me/' + portalWaNumber(d.broker.phone) + '?text=' + encodeURIComponent('Hola ' + (d.broker.full_name || '') + ', ¿cuándo agendamos la próxima visita?') : '';
         $('nextVisitSlot').innerHTML =
           '<div class="inicio-empty">' +
             '<i class="fas fa-calendar-check"></i>' +
-            '<span>No tenés visitas programadas por ahora.' +
-            (waNext ? ' <a href="' + waNext + '" target="_blank" rel="noopener" style="color:var(--green);font-weight:600;text-decoration:none;">Coordiná una por WhatsApp</a>' : ' Cuando agendes una, la vas a ver acá.') +
-            '</span>' +
+            '<span>No tenés visitas programadas por ahora. Cuando tu asesor agende una, la vas a ver acá.</span>' +
           '</div>';
       }
 
@@ -1999,8 +1996,7 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
         var sinBenefits = [
           { icon:'fas fa-bullhorn', title:'Publicación prioritaria', desc:'Tu propiedad destaca en todos los canales.' },
           { icon:'fas fa-chart-line', title:'Reportes periódicos', desc:'Seguimiento de consultas y visitas.' },
-          { icon:'fas fa-handshake', title:'Asesor dedicado', desc:'Un broker gestiona tu propiedad de forma exclusiva.' },
-          { icon:'fas fa-percent', title:'Comisión preferencial', desc:'Condiciones especiales para propietarios en exclusividad.' }
+          { icon:'fas fa-handshake', title:'Asesor dedicado', desc:'Un broker gestiona tu propiedad de forma exclusiva.' }
         ];
         var sinHtml = sinBenefits.map(function(b){
           return '<div class="excl-benefit">' +
