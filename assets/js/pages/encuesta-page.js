@@ -179,6 +179,11 @@
   });
 
   /* ── Render del formulario ── */
+  function paintSlider(el) {
+    var pct = ((el.value - el.min) / (el.max - el.min)) * 100;
+    el.style.setProperty('--fill', pct + '%');
+  }
+
   function fillValueDisplays(k) {
     var v = ANSWERS[k];
     var el = $('v_' + k);
@@ -210,11 +215,12 @@
     SCORES.forEach(function (k) {
       var slider = $('s_' + k);
       var val = ANSWERS[k];
-      if (val != null) { slider.value = val; touched[k] = true; }
+      if (val != null) { slider.value = val; touched[k] = true; paintSlider(slider); }
       fillValueDisplays(k);
       slider.addEventListener('input', function () {
         touched[k] = true;
         ANSWERS[k] = parseInt(slider.value, 10);
+        paintSlider(slider);
         fillValueDisplays(k);
         scheduleSave();
       });
