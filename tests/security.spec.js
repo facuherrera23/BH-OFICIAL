@@ -3,7 +3,7 @@
 // Read-only: solo fetches de HTML/JS crudos vía request.
 const { test, expect } = require('@playwright/test');
 
-const PAGES_NONCE = ['index.html', 'tasacion.html', 'portal-propietario.html', 'confirmar-visita.html'];
+const PAGES_NONCE = ['index.html', 'tasacion.html', 'portal-propietario.html', 'confirmar-visita.html', 'encuesta.html'];
 
 test.describe('Seguridad — CSP y delegación (regresión guards)', () => {
   test('admin.html: unsafe-inline SIN nonce y 0 handlers inline', async ({ request }) => {

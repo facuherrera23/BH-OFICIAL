@@ -57,4 +57,14 @@ test.describe('Smoke: páginas del sistema', () => {
     expect(console.pageErrors).toEqual([]);
     console.assertClean();
   });
+
+  test('encuesta.html — token inválido muestra error', async ({ page }) => {
+    await page.goto('/encuesta.html?token=TEST');
+    const console = trackConsoleErrors(page, ALLOWED_406);
+    // survey_get_by_token responde available:false → showError con título específico.
+    await expect(page.locator('#errorTitle')).toHaveText('Link inválido o expirado');
+    await expect(page.locator('#formState')).toBeHidden();
+    expect(console.pageErrors).toEqual([]);
+    console.assertClean();
+  });
 });
