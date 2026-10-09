@@ -704,10 +704,15 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
           var comp = a.compraria
             ? '<span style="display:inline-block; background:rgba(0,200,120,0.12); border-radius:999px; padding:3px 10px; margin:2px 4px 2px 0; font-size:11px; font-weight:700; color:' + (a.compraria === 'no' ? '#ef4444' : '#00c878') + ';">' + esc(SV_COMPRARIA[a.compraria] || a.compraria) + '</span>'
             : '';
-          function quote(label, text) {
-            return '<div style="margin-top:8px; font-size:12px; line-height:1.5; color:var(--text-secondary); background:rgba(31,200,195,0.05); border-left:2px solid var(--gold); border-radius:0 8px 8px 0; padding:6px 10px;">' +
-              '<b style="color:#fff;">' + esc(label) + ':</b> ' + esc(text) + '</div>';
-          }
+      function quote(label, text) {
+        /* Privacidad: secuencias numéricas largas (teléfonos/DNI) no llegan al dueño */
+        var safe = String(text || '').replace(/\+?\d(?:[\d\s().\-]{6,}\d)?/g, function (m) {
+          var digits = m.replace(/\D/g, '');
+          return digits.length >= 7 ? '[ dato oculto ]' : m;
+        });
+        return '<div style="margin-top:8px; font-size:12px; line-height:1.5; color:var(--text-secondary); background:rgba(31,200,195,0.05); border-left:2px solid var(--gold); border-radius:0 8px 8px 0; padding:6px 10px;">' +
+          '<b style="color:#fff;">' + esc(label) + ':</b> ' + esc(safe) + '</div>';
+      }
           card += '<div class="visit-card-past" style="display:block; padding:12px 14px; margin-bottom:8px;">' +
             '<div style="font-weight:600; margin-bottom:6px;">' + (s.submitted_at ? esc(fmtDate(s.submitted_at)) : 'Visita reciente') + '</div>' +
             '<div>' + general + scores + comp + '</div>' +
