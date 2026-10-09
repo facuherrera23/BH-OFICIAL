@@ -41,6 +41,19 @@ test.describe('Agenda/Visitas — estructura del módulo', () => {
     expect(js).toContain('data-visit-action="reschedule"');
   });
 
+  test('admin-crm: encuesta de visita (botones, envío por WhatsApp y estado)', async ({ request }) => {
+    const js = await (await request.get('/assets/js/admin-crm.js')).text();
+    expect(js).toContain('sendSurveyForProperty');
+    expect(js).toContain('ensureSurveyToken');
+    expect(js).toContain('id="crmSurveyBtn"');
+    expect(js).toContain('data-survey-action="send"');
+    expect(js).toContain('/encuesta.html?token=');
+    expect(js).toContain('visit_surveys');
+    const encuesta = await (await request.get('/encuesta.html')).text();
+    expect(encuesta).toContain('id="s_general"');
+    expect(encuesta).toContain('id="comprariaChips"');
+  });
+
   test('visitas: drag&drop reprogramación presente', async ({ request }) => {
     const js = await (await request.get('/assets/js/admin-agenda.js')).text();
     expect(js).toContain('rescheduleVisitToDay');

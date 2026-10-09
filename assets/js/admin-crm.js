@@ -886,13 +886,14 @@ function telNumber(phone) {
   return d ? '54' + d : null;
 }
 
-function contactSectionHtml(lead, firstProp) {
+function contactSectionHtml(lead, firstProp, props) {
   var propTitle = firstProp && firstProp.property_title;
   var propLink = firstProp && firstProp.property_code
     ? 'https://bienenhaus.com.ar/fichas/' + encodeURIComponent(firstProp.property_code) + '.html'
     : null;
   var wa = waNumber(lead.whatsapp) || waNumber(lead.phone);
   var tel = telNumber(lead.phone);
+  var hasProps = props && props.length > 0;
   var opts = '<option value="">Plantilla de WhatsApp...</option>' + WA_TEMPLATES.map(function (t) { return '<option value="' + t.id + '">' + t.label + '</option>'; }).join('');
   var row = '<div class="crm-contact-row">';
   row += wa
@@ -904,6 +905,9 @@ function contactSectionHtml(lead, firstProp) {
   row += lead.email
     ? '<a class="crm-contact-btn" href="mailto:' + esc(lead.email) + '"><i class="fas fa-envelope"></i> Email</a>'
     : '<span class="crm-contact-btn is-disabled" title="Sin email"><i class="fas fa-envelope"></i> Email</span>';
+  row += hasProps
+    ? '<button class="crm-contact-btn" id="crmSurveyBtn" type="button" title="Enviar encuesta de visita por WhatsApp"><i class="fas fa-clipboard-list"></i> Encuesta</button>'
+    : '<span class="crm-contact-btn is-disabled" title="Vinculá una propiedad para enviar la encuesta"><i class="fas fa-clipboard-list"></i> Encuesta</span>';
   if (!lead.assigned_to) {
     row += '<button class="crm-contact-btn crm-contact-btn--assign" id="crmAssignMe" type="button" title="Asignarme este lead"><i class="fas fa-user-check"></i> Asignarme</button>';
   }
@@ -913,7 +917,7 @@ function contactSectionHtml(lead, firstProp) {
   return '<div class="crm-side-section"><h4 class="crm-side-section-title">Contacto</h4>' + row + '</div>';
 }
 
-function bindContactActions(panel, lead, firstProp) {
+function bindContactActions(panel, lead, firstProp, props) {
   var propTitle = firstProp && firstProp.property_title;
   var propLink = firstProp && firstProp.property_code
     ? 'https://bienenhaus.com.ar/fichas/' + encodeURIComponent(firstProp.property_code) + '.html'
@@ -967,6 +971,105 @@ function bindContactActions(panel, lead, firstProp) {
       }
     });
   }
+  /* Encuesta de visita (HOJA DE VISITA): desde Contacto, con 1 propiedad enviá directo;
+     con varias te lleva a la solapa Propiedades para elegir cuál. */
+  var surveyBtn = panel.querySelector('#crmSurveyBtn');
+  if (surveyBtn) {
+    surveyBtn.addEventListener('click', function () {
+      if (!props || !props.length) return;
+      if (props.length === 1) {
+        sendSurveyForProperty(lead, props[0].property_id, props[0].property_title, panel);
+      } else {
+        var tabBtn = panel.querySelector('.crm-tab-btn[data-crm-tab="props"]');
+        if (tabBtn) tabBtn.click();
+        toast('Elegí la propiedad y tocá el botón “Encuesta”.', 'info');
+      }
+    });
+  }
+}
+
+/* -- Encuesta de visita (HOJA DE VISITA) -- */
+function getLeadSurveys(id) {
+  return db().from('visit_surveys').select('property_id, token, finalized, submitted_at').eq('lead_id', id)
+    .then(function (r) { return r.data || []; }).catch(function () { return []; });
+}
+
+/* 1 encuesta por (lead, propiedad): el token queda registrado y se reusa al reenviar. */
+async function ensureSurveyToken(leadId, propertyId) {
+  var r = await db().from('visit_surveys').select('token, finalized').eq('lead_id', leadId).eq('property_id', propertyId).maybeSingle();
+  if (r.error) throw new Error(r.error.message);
+  if (r.data) return r.data;
+  var token = crypto.randomUUID();
+  var ins = await db().from('visit_surveys').insert([{ lead_id: leadId, property_id: propertyId, token: token }]);
+  if (!ins.error) return { token: token, finalized: false };
+  /* carrera: dos clics simultáneos → ya existe; se relee. */
+  if (ins.error && ins.error.code === '23505') {
+    var r2 = await db().from('visit_surveys').select('token, finalized').eq('lead_id', leadId).eq('property_id', propertyId).maybeSingle();
+    if (r2.error || !r2.data) throw new Error(r2.error ? r2.error.message : 'No se pudo crear la encuesta');
+    return r2.data;
+  }
+  throw new Error(ins.error.message);
+}
+
+async function sendSurveyForProperty(lead, propId, propTitle, panel) {
+  try {
+    var s = await ensureSurveyToken(lead.id, propId);
+    if (s.finalized) { toast('Este visitante ya respondió la encuesta.', 'info'); return; }
+    var link = location.origin + '/encuesta.html?token=' + encodeURIComponent(s.token);
+    var firstName = (lead.full_name || '').split(' ')[0] || '';
+    var text = 'Hola' + (firstName ? ' ' + firstName : '') + ', ¡gracias por visitar ' + (propTitle || 'la propiedad') + '! ¿Nos ayudás con esta breve encuesta sobre la visita? Tus respuestas quedan guardadas solas:\n' + link;
+    var wa = waNumber(lead.whatsapp) || waNumber(lead.phone);
+    try { await navigator.clipboard.writeText(link); } catch (_) {}
+    if (wa) {
+      window.open('https://wa.me/' + wa + '?text=' + encodeURIComponent(text), '_blank', 'noopener');
+      toast('Link de encuesta copiado. Abriendo WhatsApp…', 'success');
+    } else {
+      toast('Link de encuesta copiado (el lead no tiene WhatsApp).', 'info');
+    }
+    try {
+      await db().from('lead_activities').insert([{
+        lead_id: lead.id,
+        activity_type: 'note',
+        title: 'Encuesta de visita enviada',
+        description: 'Propiedad: ' + (propTitle || propId) + ' · Link: ' + link
+      }]);
+    } catch (_) { /* el envío no se bloquea por el log */ }
+    updateSurveyChip(panel, propId, 'sent');
+  } catch (e) {
+    toast('Error al generar la encuesta: ' + e.message, 'error');
+  }
+}
+
+/* Actualiza el estado del chip sin recargar el panel (mantiene la solapa abierta). */
+function updateSurveyChip(panel, propId, state) {
+  var badge = panel.querySelector('[data-survey-badge="' + propId + '"]');
+  if (badge) {
+    if (state === 'done') {
+      badge.textContent = '✓ Respondida';
+      badge.style.color = '#00c878';
+      badge.style.background = 'rgba(0,200,120,0.12)';
+    } else {
+      badge.textContent = 'Enviada';
+      badge.style.color = '#FFB800';
+      badge.style.background = 'rgba(255,184,0,0.12)';
+    }
+  }
+  var btn = panel.querySelector('[data-survey-action="send"][data-prop-id="' + propId + '"]');
+  if (btn && state === 'sent') {
+    btn.innerHTML = '<i class="fab fa-whatsapp"></i> Reenviar';
+    btn.title = 'Reenviar encuesta por WhatsApp';
+  } else if (btn && state === 'done') {
+    btn.remove();
+  }
+}
+
+function bindSurveyActions(panel, lead) {
+  panel.querySelectorAll('[data-survey-action="send"]').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      sendSurveyForProperty(lead, this.dataset.propId, this.dataset.propTitle, panel);
+    });
+  });
 }
 
 /* -- Panel lateral -- */
@@ -1004,7 +1107,7 @@ function openDetailPanel(id) {
   bindSideOverlayClose(panel);
   panel.classList.add('open');
 
-  Promise.all([getLeadFull(id), getLeadActivities(id), getLeadProps(id), getLeadVisits(id), getLeadTasks(id)])
+  Promise.all([getLeadFull(id), getLeadActivities(id), getLeadProps(id), getLeadVisits(id), getLeadTasks(id), getLeadSurveys(id)])
     .then(function (results) {
       var leadRes = results[0];
       if (leadRes.error) throw new Error(leadRes.error.message);
@@ -1014,15 +1117,16 @@ function openDetailPanel(id) {
       var props = results[2] || [];
       var visits = results[3] || [];
       var tasks = results[4] || [];
+      var surveys = results[5] || [];
       if (!props.length && lead.property_id) {
         /* fallback a property_id directo */
         return db().from('properties').select('id, title').eq('id', lead.property_id).single()
           .then(function (pr) {
             if (pr.data) props = [{ property_id: pr.data.id, property_title: pr.data.title }];
-            renderSide(panel, lead, activities, props, visits, tasks); return null;
+            renderSide(panel, lead, activities, props, visits, tasks, surveys); return null;
           });
       }
-      renderSide(panel, lead, activities, props, visits, tasks);
+      renderSide(panel, lead, activities, props, visits, tasks, surveys);
       return null;
     })
     .catch(function (e) { toast('Error al cargar prospecto: ' + e.message, 'error'); closeDetailPanel(); });
@@ -1042,17 +1146,28 @@ function bindSideOverlayClose(panel) {
   panel.dataset.sideBound = '1';
 }
 
-function renderSide(panel, lead, activities, props, visits, tasks) {
+function renderSide(panel, lead, activities, props, visits, tasks, surveys) {
   var stage = normalizeStage(lead.stage || 'nuevo');
   var sopts = LEAD_STATUSES.map(function (s) { return '<option value="' + s + '"' + (stage === s ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>'; }).join('');
   var aopts = _agents.map(function (a) { return '<option value="' + a.id + '"' + (lead.assigned_to === a.id ? ' selected' : '') + '>' + esc(a.full_name) + '</option>'; }).join('');
   var oopts = ORIGINS.map(function (o) { return '<option value="' + o + '"' + (lead.source === o ? ' selected' : '') + '>' + (ORIGIN_LABELS[o] || o) + '</option>'; }).join('');
   var tcOpts = TIPO_CLIENTE_OPTS.map(function (t) { return '<option value="' + t + '"' + (lead.tipo_cliente === t ? ' selected' : '') + '>' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>'; }).join('');
 
+  var surveyMap = {};
+  (surveys || []).forEach(function (s) { surveyMap[s.property_id] = s; });
   var ph = !props || !props.length
     ? '<div class="crm-side-field-value">Sin propiedades vinculadas</div>'
     : props.map(function (p) {
-        return '<div class="crm-prop-item"><span>' + esc(p.property_title || 'Propiedad') + '</span>' +
+        var sv = surveyMap[p.property_id];
+        var svState = !sv ? '' : (sv.finalized ? 'done' : 'sent');
+        var svBadge = svState === 'done'
+          ? '<span data-survey-badge="' + esc(p.property_id) + '" style="font-size:10px; font-weight:700; color:#00c878; background:rgba(0,200,120,0.12); border-radius:999px; padding:2px 8px; white-space:nowrap;">✓ Respondida</span>'
+          : svState === 'sent'
+            ? '<span data-survey-badge="' + esc(p.property_id) + '" style="font-size:10px; font-weight:700; color:#FFB800; background:rgba(255,184,0,0.12); border-radius:999px; padding:2px 8px; white-space:nowrap;">Enviada</span>'
+            : '<span data-survey-badge="' + esc(p.property_id) + '" style="display:none;"></span>';
+        var svBtn = svState === 'done' ? '' :
+          '<button type="button" class="btn-action" data-survey-action="send" data-prop-id="' + esc(p.property_id) + '" data-prop-title="' + esc(p.property_title || '') + '" title="' + (svState === 'sent' ? 'Reenviar encuesta por WhatsApp' : 'Enviar encuesta de visita por WhatsApp') + '" style="color:#25d366; border-color:rgba(37,211,102,0.35);"><i class="fab fa-whatsapp"></i>' + (svState === 'sent' ? ' Reenviar' : ' Encuesta') + '</button>';
+        return '<div class="crm-prop-item"><span>' + esc(p.property_title || 'Propiedad') + '</span>' + svBadge + svBtn +
           '<button class="btn-action danger" data-action="removeProp" data-prop-id="' + p.property_id + '" title="Quitar"><i class="fas fa-times"></i></button></div>';
       }).join('');
 
@@ -1063,7 +1178,7 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
       '<button class="crm-side-close" aria-label="Cerrar"><i class="fas fa-times"></i></button>' +
     '</div>' +
     '<div class="crm-side-body">' +
-      contactSectionHtml(lead, (props && props[0]) || null) +
+      contactSectionHtml(lead, (props && props[0]) || null, props) +
       '<div class="crm-modal-tabs">' +
         '<button type="button" class="crm-tab-btn is-active" data-crm-tab="data">Datos Principales</button>' +
         '<button type="button" class="crm-tab-btn" data-crm-tab="tasks">Tareas</button>' +
@@ -1081,7 +1196,8 @@ function renderSide(panel, lead, activities, props, visits, tasks) {
   });
   bindSideSave(lead, panel);
   bindPropSearch(panel, lead.id);
-  bindContactActions(panel, lead, (props && props[0]) || null);
+  bindContactActions(panel, lead, (props && props[0]) || null, props);
+  bindSurveyActions(panel, lead);
   bindLeadTaskForm(panel, lead);
   bindAgendaActions(panel, lead.id);
   bindTlTaskActions(panel, lead.id);
