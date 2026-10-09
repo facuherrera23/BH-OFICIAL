@@ -155,6 +155,12 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
       .then(function(r){ if (r && r.data) EXTRA_DATA = r.data; document.dispatchEvent(new Event('bh:portalExtra')); })
       .catch(function(){ /* opcional */ });
 
+    /* Opiniones de visitas (encuestas): mismo patrón en paralelo, sin bloquear el render */
+    var SURVEY_DATA = null;
+    supabase.rpc('portal_get_surveys', { p_token: token })
+      .then(function(r){ if (r && r.data) SURVEY_DATA = r.data; renderEncuestas(); })
+      .catch(function(){ /* sección opcional */ });
+
     /* Cuando hay https en la URL, el token queda expuesto en el historial/pestañas.
        Tras validar correctamente, reemplazamos la URL por una versión limpia
        (el token ya está en sessionStorage). */
@@ -226,6 +232,7 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
       try { renderPropiedades(d, props); } catch (e) { console.error('[portal] propiedades:', e); }
       try { renderExclusividad(d, owner, props); } catch (e) { console.error('[portal] exclusividad:', e); }
       try { renderVisitasExtras(d, owner); } catch (e) { console.error('[portal] visitas extras:', e); }
+      try { renderEncuestas(); } catch (e) { console.error('[portal] encuestas:', e); }
       try { renderOfflineBanner(); } catch (e) {}
       try { renderSessionChip(); } catch (e) {}
       try { renderRefreshButton(); } catch (e) {}
@@ -656,6 +663,67 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
         renderRonda5(CURRENT_DATA, CURRENT_DATA.owner, CURRENT_DATA.properties || []);
       }
     });
+
+    /* ── Opiniones de visitas (encuestas de los visitantes, anónimas) ──
+       El dueño ve las respuestas sobre su propiedad, nunca los datos de quién visitó. */
+    function renderEncuestas() {
+      if (!SURVEY_DATA || !SURVEY_DATA.length) return;
+      var anchor = $('nextVisitSlot');
+      if (!anchor) return;
+      var old = document.getElementById('surveysSection');
+      if (old) old.remove();
+
+      var SV_LABELS = { ubicacion: 'Ubicación', tamano: 'Tamaño', distribucion: 'Distribución', calidad: 'Calidad', precio: 'Precio', conservacion: 'Conservación' };
+      var SV_COMPRARIA = { si: 'Compraría: Sí', no: 'Compraría: No', quizas: 'Compraría: Quizás' };
+
+      var byProp = {};
+      var order = [];
+      SURVEY_DATA.forEach(function (s) {
+        var key = s.property_id || s.property_code || 'x';
+        if (!byProp[key]) { byProp[key] = s; order.push(key); }
+      });
+
+      var html = '<div class="section-title" style="margin-top:20px;"><i class="fas fa-star"></i> Opiniones de visitas (' + SURVEY_DATA.length + ')</div>';
+      order.forEach(function (key) {
+        var head = byProp[key];
+        var rows = SURVEY_DATA.filter(function (s) { return (s.property_id || s.property_code || 'x') === key; });
+        html += rows.map(function (s, idx) {
+          var a = s.answers || {};
+          var card = '';
+          if (idx === 0) {
+            card += '<div style="font-size:12px; color:var(--gold); font-weight:700; margin:14px 0 6px;">' +
+              esc(head.property_code || '') + (head.property_code && head.property_title ? ' · ' : '') + esc(head.property_title || 'Propiedad') +
+            '</div>';
+          }
+          var scores = Object.keys(SV_LABELS).filter(function (k) { return a[k] != null; }).map(function (k) {
+            return '<span style="display:inline-block; background:rgba(255,255,255,0.05); border-radius:6px; padding:3px 8px; margin:2px 4px 2px 0; font-size:11px; color:var(--text-secondary);">' + esc(SV_LABELS[k]) + ' <b style="color:#fff;">' + esc(String(a[k])) + '</b></span>';
+          }).join('');
+          var general = a.general != null
+            ? '<span style="display:inline-block; background:rgba(255,184,0,0.15); border-radius:6px; padding:3px 10px; margin:2px 4px 2px 0; font-size:11.5px; color:var(--gold); font-weight:700;">Valoración general ' + esc(String(a.general)) + '/10</span>'
+            : '';
+          var comp = a.compraria
+            ? '<span style="display:inline-block; background:rgba(0,200,120,0.12); border-radius:999px; padding:3px 10px; margin:2px 4px 2px 0; font-size:11px; font-weight:700; color:' + (a.compraria === 'no' ? '#ef4444' : '#00c878') + ';">' + esc(SV_COMPRARIA[a.compraria] || a.compraria) + '</span>'
+            : '';
+          function quote(label, text) {
+            return '<div style="margin-top:8px; font-size:12px; line-height:1.5; color:var(--text-secondary); background:rgba(31,200,195,0.05); border-left:2px solid var(--gold); border-radius:0 8px 8px 0; padding:6px 10px;">' +
+              '<b style="color:#fff;">' + esc(label) + ':</b> ' + esc(text) + '</div>';
+          }
+          card += '<div class="visit-card-past" style="display:block; padding:12px 14px; margin-bottom:8px;">' +
+            '<div style="font-weight:600; margin-bottom:6px;">' + (s.submitted_at ? esc(fmtDate(s.submitted_at)) : 'Visita reciente') + '</div>' +
+            '<div>' + general + scores + comp + '</div>' +
+            (a.mas_gusto ? quote('Lo que más le gustó', a.mas_gusto) : '') +
+            (a.menos_gusto ? quote('Lo que menos le gustó', a.menos_gusto) : '') +
+            (a.por_que ? quote('Por qué', a.por_que) : '') +
+          '</div>';
+          return card;
+        }).join('');
+      });
+
+      var div = document.createElement('div');
+      div.id = 'surveysSection';
+      div.innerHTML = html;
+      anchor.appendChild(div);
+    }
 
     /* Pull-to-refresh en mobile */
     (function setupPullToRefresh() {
