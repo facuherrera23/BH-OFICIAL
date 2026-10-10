@@ -101,25 +101,20 @@
     if (!tbody) return;
     _agentsPageCache = data || [];
     if (!_agentsPageCache.length) {
-      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:40px; color:var(--text-dim);"><i class="fas fa-user-tie" style="font-size:24px; opacity:0.3; display:block; margin-bottom:10px;"></i>' +
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:40px; color:var(--text-dim);"><i class="fas fa-user-tie" style="font-size:24px; opacity:0.3; display:block; margin-bottom:10px;"></i>' +
         (_agViewTrash ? 'La papelera está vacía' : ((_agSearchQuery || _agStatusFilter) ? 'Sin resultados para los filtros aplicados' : 'No hay agentes cargados. Tocá "Registrar Agente" para agregar el primero.')) + '</td></tr>';
       return;
     }
     tbody.innerHTML = _agentsPageCache.map(a => {
-      const specs = (a.specialties && a.specialties.length)
-        ? a.specialties.slice(0, 3).map(s => '<span style="font-size:10px; color:#10b981; background:rgba(16,185,129,0.1); border-radius:999px; padding:1px 8px; margin-right:3px;">' + esc(s) + '</span>').join('') + (a.specialties.length > 3 ? '<span style="font-size:10px; color:var(--text-dim);">+' + (a.specialties.length - 3) + '</span>' : '')
-        : '<span style="color:var(--text-dim); font-size:11px;">—</span>';
       const wa = waLink(a.phone);
-      const contacto = (a.phone ? '<a href="tel:' + esc(String(a.phone).replace(/[^+0-9]/g, '')) + '" title="Llamar" style="color:var(--accent); font-size:12px;"><i class="fas fa-phone"></i></a>' : '') +
-        (wa ? ' <a href="' + esc(wa) + '" target="_blank" rel="noopener" title="WhatsApp" style="color:#25d366; font-size:12px;"><i class="fab fa-whatsapp"></i></a>' : '') +
-        (a.email ? ' <a href="mailto:' + esc(a.email) + '" title="Email" style="color:var(--text-muted); font-size:12px;"><i class="fas fa-envelope"></i></a>' : '') || '-';
       const acciones = _agViewTrash
         ? '<button class="btn-action" data-ag-act="restore" data-ag-id="' + esc(a.id) + '" title="Restaurar"><i class="fas fa-rotate-left"></i></button>' +
           '<button class="btn-action danger" data-ag-act="destroy" data-ag-id="' + esc(a.id) + '" title="Eliminar definitivamente"><i class="fas fa-xmark"></i></button>'
         : '<button class="btn-action" data-ag-act="detail" data-ag-id="' + esc(a.id) + '" title="Ver detalle"><i class="fas fa-eye"></i></button>' +
-          '<button class="btn-action" data-ag-act="ical" data-ag-id="' + esc(a.id) + '" title="Copiar feed de calendario (ICS)"><i class="fas fa-calendar-days"></i></button>' +
+          '<button class="btn-action" data-ag-act="ical" data-ag-id="' + esc(a.id) + '" title="Copiar feed ICS"><i class="fas fa-calendar-days"></i></button>' +
+          (a.phone ? '<a class="btn-action" href="' + esc(wa) + '" target="_blank" rel="noopener" title="WhatsApp" style="color:#25d366; text-decoration:none;"><i class="fab fa-whatsapp"></i></a>' : '') +
           '<button class="btn-action" data-ag-act="edit" data-ag-id="' + esc(a.id) + '" title="Editar"><i class="fas fa-pen"></i></button>' +
-          '<button class="btn-action danger" data-ag-act="delete" data-ag-id="' + esc(a.id) + '" title="Enviar a papelera"><i class="fas fa-trash"></i></button>';
+          '<button class="btn-action danger" data-ag-act="delete" data-ag-id="' + esc(a.id) + '" title="Papelera"><i class="fas fa-trash"></i></button>';
       const leads = _agLeadsCount[a.id] || 0;
       const props = propsCount[a.id] || 0;
       return '<tr data-ag-row="' + esc(a.id) + '" style="cursor:pointer;">' +
@@ -128,15 +123,12 @@
         '<div><div style="font-weight:600; color:#fff; font-size:13px;">' + esc(a.full_name || 'Sin nombre') + '</div>' +
         '<div style="color:var(--text-dim); font-size:11px;">' + esc(a.email || '') + '</div></div></div></td>' +
         '<td>' + agLinkedUserHtml(a) + '</td>' +
-        '<td style="font-size:12.5px;">' + esc(a.matricula || '-') + '</td>' +
-        '<td style="font-size:11px; max-width:160px;">' + specs + '</td>' +
-        '<td style="font-size:13px; color:var(--accent); font-weight:600;">' + (a.commission_rate != null ? esc(a.commission_rate + '%') : '3%') + '</td>' +
+        '<td style="font-size:12.5px; color:var(--text-secondary);">' + esc(a.matricula || '—') + '</td>' +
+        '<td style="text-align:center;"><span style="font-size:13px; color:var(--accent); font-weight:700;">' + (a.commission_rate != null ? a.commission_rate : 3) + '%</span></td>' +
         '<td>' + agStatusPill(a.status, _agViewTrash ? null : a.id) + '</td>' +
-        '<td style="text-align:center; font-size:13px;"><span style="color:var(--accent); font-weight:600;">' + props + '</span><span style="color:var(--text-dim); font-size:10px;"> props</span></td>' +
-        '<td style="text-align:center; font-size:13px;"><span style="color:#3B82F6; font-weight:600;">' + leads + '</span><span style="color:var(--text-dim); font-size:10px;"> leads</span></td>' +
-        '<td style="text-align:right; font-size:13px;">' + Number(a.sales_ytd || 0).toLocaleString('es-AR') + '</td>' +
-        '<td style="font-size:13px; white-space:nowrap;">' + contacto + '</td>' +
-        '<td><div style="display:flex; gap:6px; justify-content:flex-end;">' + acciones + '</div></td></tr>';
+        '<td style="text-align:center; white-space:nowrap;"><span style="color:var(--accent); font-weight:600; font-size:13px;">' + props + '</span><span style="color:var(--text-dim); font-size:10px;"> props</span> <span style="color:var(--text-dim); font-size:10px;">·</span> <span style="color:#3B82F6; font-weight:600; font-size:13px;">' + leads + '</span><span style="color:var(--text-dim); font-size:10px;"> leads</span></td>' +
+        '<td style="text-align:right; font-size:13px; font-weight:600; color:var(--text-secondary);">' + Number(a.sales_ytd || 0).toLocaleString('es-AR') + '</td>' +
+        '<td><div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;">' + acciones + '</div></td></tr>';
     }).join('');
     agRenderBulkBar();
     agHighlightSort();
@@ -148,7 +140,7 @@
     if (!tbody) return;
     const client = await getAuthedClient();
     if (!client) return;
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:24px; color:var(--text-dim);"><i class="fas fa-circle-notch fa-spin"></i> Cargando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:24px; color:var(--text-dim);"><i class="fas fa-circle-notch fa-spin"></i> Cargando...</td></tr>';
 
     try {
       const from = (_agPage - 1) * _agPageSize;
@@ -186,7 +178,7 @@
       agRenderPagination();
     } catch (err) {
       logError('Agents error:', err);
-      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:24px; color:var(--warning);">No se pudo cargar el padrón de agentes. Reintentá o revisá la consola.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:24px; color:var(--warning);">No se pudo cargar el padrón de agentes. Reintentá o revisá la consola.</td></tr>';
     }
   }
   let _agLeadsCount = {};
