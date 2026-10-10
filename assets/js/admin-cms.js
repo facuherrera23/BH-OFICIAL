@@ -718,6 +718,15 @@
     info.innerHTML = '<strong style="color:#fff;">' + esc(currentUser?.email || '—') + '</strong> · rol: ' + esc(currentProfile?.role || '—');
   }
 
+  on($('#cfgSignOutBtn'), 'click', async () => {
+    try {
+      await window.supabaseClient.auth.signOut();
+    } catch (err) {
+      logError('Config signOut error:', err);
+      showToast('No se pudo cerrar sesión, intentá desde el menú lateral', 'error');
+    }
+  });
+
   function renderCfgCompleteness() {
     const banner = $('#cfgCompletenessBanner');
     if (!banner) return;
