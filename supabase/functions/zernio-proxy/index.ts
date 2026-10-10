@@ -2,14 +2,17 @@
 // zernio-proxy — Proxy autenticado para la Inbox API de Zernio.
 //
 // DEPLOY: supabase functions deploy zernio-proxy --verify-jwt
-// Se requiere JWT válido de usuario super_admin (via header Authorization: Bearer <jwt>).
+// Se requiere JWT válido de staff (super_admin con acceso total; broker solo
+// sobre conversaciones propias — via header Authorization: Bearer <jwt>).
 //
 // Acciones (body.action):
-//   - send_message:        { conversationId, text }
-//   - mark_read:           { conversationId }
-//   - list_accounts:       (sync espejo cuentas)
-//   - backfill_conversations
-//   - backfill_messages:   { conversationId }
+//   - send_message:        { conversationId, text }          [super_admin | broker dueño]
+//   - typing:              { conversationId }                 [super_admin | broker dueño]
+//   - mark_read:           { conversationId }                 [super_admin | broker dueño]
+//   - list_accounts:       (sync espejo cuentas)             [super_admin]
+//   - backfill_conversations                                [super_admin]
+//   - backfill_messages:   { conversationId }                [super_admin]
+//   - diagnose | list_facebook_pages                        [super_admin]
 //
 // API Key: variable de entorno ZERNIO_API_KEY con fallback a zernio_config (key='api_key').
 // ============================================================
@@ -194,7 +197,8 @@ async function getZernioApiKey(): Promise<string> {
     return typeof key === 'string' ? key : '';
 }
 
-async function requireSuperAdmin(req: Request): Promise<{ token: string; userId: string } | null> {
+/* Staff autenticado: super_admin (todo) o broker (solo acciones de conversación propia). */
+async function requireStaff(req: Request): Promise<{ userId: string; role: string } | null> {
     const auth = req.headers.get('authorization') ?? '';
     if (!auth.startsWith('Bearer ')) return null;
     const token = auth.slice(7);
@@ -207,9 +211,29 @@ async function requireSuperAdmin(req: Request): Promise<{ token: string; userId:
         .select('role, is_active')
         .eq('id', user.id)
         .maybeSingle();
-    if (!profile || !profile.is_active || profile.role !== 'super_admin') return null;
+    if (!profile || !profile.is_active) return null;
+    if (profile.role !== 'super_admin' && profile.role !== 'broker') return null;
 
-    return { token, userId: user.id };
+    return { userId: user.id, role: profile.role };
+}
+
+/* Broker → solo su conversación (broker_id → su agent). super_admin → siempre. */
+async function canTouchConversation(staff: { userId: string; role: string }, conversationId: string): Promise<boolean> {
+    if (staff.role === 'super_admin') return true;
+    if (!conversationId) return false;
+    const { data: conv } = await supabase
+        .from('zernio_conversations')
+        .select('broker_id')
+        .eq('id', conversationId)
+        .maybeSingle();
+    if (!conv?.broker_id) return false;
+    const { data: agent } = await supabase
+        .from('agents')
+        .select('id')
+        .eq('id', conv.broker_id)
+        .eq('profile_id', staff.userId)
+        .maybeSingle();
+    return !!agent;
 }
 
 async function zernioRequest(path: string, options: RequestInit & { apiKey?: string } = {}): Promise<Response> {
@@ -745,8 +769,8 @@ Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') return optionsResponse(req);
     if (req.method !== 'POST') return respond(405, { error: 'Method not allowed' }, req);
 
-    const auth = await requireSuperAdmin(req);
-    if (!auth) return respond(401, { error: 'No autorizado (super_admin requerido)' }, req);
+    const auth = await requireStaff(req);
+    if (!auth) return respond(401, { error: 'No autorizado' }, req);
 
     let body: Record<string, unknown>;
     try {
@@ -756,6 +780,13 @@ Deno.serve(async (req) => {
     }
 
     const action = String(body.action ?? '');
+    const BROKER_ACTIONS = new Set(['send_message', 'typing', 'mark_read']);
+    if (!BROKER_ACTIONS.has(action) && auth.role !== 'super_admin') {
+        return respond(403, { error: 'Acción restringida a super_admin' }, req);
+    }
+    if (auth.role !== 'super_admin' && !(await canTouchConversation(auth, String(body.conversationId ?? '')))) {
+        return respond(403, { error: 'No autorizado para esta conversación' }, req);
+    }
     try {
         switch (action) {
             case 'send_message': {
