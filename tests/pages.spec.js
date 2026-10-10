@@ -67,4 +67,46 @@ test.describe('Smoke: páginas del sistema', () => {
     expect(console.pageErrors).toEqual([]);
     console.assertClean();
   });
+
+  test('encuesta.html — autoguardado: pagehide dispara el flush keepalive', async ({ page }) => {
+    // Mock del RPC de carga: la página renderiza el formulario sin tocar producción.
+    await page.route('**/rest/v1/rpc/survey_get_by_token', route => {
+      return route.fulfill({
+        json: {
+          available: true,
+          property: { title: 'Depto Test', zone: 'Palermo', address: 'Calle Falsa 123', property_code: 'TS-0001' },
+          client_first_name: 'Test',
+          survey: { answers: {}, finalized: false, submitted_at: null },
+        },
+      });
+    });
+
+    // Captura del flush: el request de keepalive contra survey_submit_by_token.
+    const flushPromise = page
+      .waitForRequest(r => r.url().includes('/rest/v1/rpc/survey_submit_by_token'), { timeout: 5000 })
+      .then(r => ({ url: r.url(), body: r.postData() }));
+
+    await page.goto('/encuesta.html?token=00000000-0000-0000-0000-000000000001');
+    await expect(page.locator('#formState')).toBeVisible();
+
+    // El visitante responde algo y cierra la pestaña sin apretar "Enviar".
+    await page.evaluate(() => {
+      const gen = document.getElementById('s_general');
+      gen.value = '8';
+      gen.dispatchEvent(new Event('input', { bubbles: true }));
+      document.getElementById('t_por_que').value = 'Me gustó la ubicación';
+      document.getElementById('t_por_que').dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    // Simula el cierre de pestaña ANTES de que dispare el debounce de 900ms.
+    await page.evaluate(() => { window.dispatchEvent(new Event('pagehide')); });
+
+    const flush = await flushPromise;
+    expect(flush.url).toContain('survey_submit_by_token');
+    const body = JSON.parse(flush.body);
+    expect(body.p_token).toBe('00000000-0000-0000-0000-000000000001');
+    expect(body.p_finalize).toBe(false);
+    expect(body.p_answers.general).toBe(8);
+    expect(body.p_answers.por_que).toBe('Me gustó la ubicación');
+  });
 });
