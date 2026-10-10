@@ -304,9 +304,7 @@ BH-OFICIAL/
 ├── .well-known/                  # Archivos de verificación de dominio
 ├── .github/workflows/            # CI (deploy.yml)
 │
-└── *.md                          # AUDITORIA_MODULOS, AUDIT_FINDINGS, AUDIT_INVENTORY,
-                                  # CLOUDFLARE_SETUP, CONECTAR_ZERNIO_CHAT,
-                                  # REMEDIATION_PLAN, XSS_REVIEW
+└── *.md                          # README.md, AGENTS.md (los demás documentos viven en docs/)
 ```
 
 > Carpetas de tooling que **no** se versionan: `.codegraph/`, `.omo/`, `.playwright-mcp/`, `supabase/.temp/`, `node_modules/`, `*.log`, `.env.local`, `test-results/`, `playwright-report/`.
@@ -811,7 +809,7 @@ Los tokens se guardan cifrados (AES-256-GCM) y nunca llegan al frontend.
 | Test de webhook | `supabase/functions/zernio-webhook-test` | ✅ |
 | Frontend | tab Chat Redes (`admin-app.js`) | ✅ `super_admin` y `broker` |
 | Base de datos | 5 tablas `zernio_*` | ✅ RLS + triggers |
-| Guía | `CONECTAR_ZERNIO_CHAT.md` | ✅ |
+| Guía | `docs/integrations/CONECTAR_ZERNIO_CHAT.md` | ✅ |
 
 **Acciones del inbox:** ver contexto lateral (propiedad/lead/visitas), crear lead, agendar visita, asignar broker, marcar leído y enviar mensaje.
 
@@ -1026,7 +1024,7 @@ Solo en el admin, para formularios (ej. Agente con `commission_sale` / `commissi
 | Output directory | `/` |
 | Dominio | `CNAME` → `bienenhaus.com.ar` |
 
-Guía detallada: [`CLOUDFLARE_SETUP.md`](CLOUDFLARE_SETUP.md).
+Guía detallada: [`docs/CLOUDFLARE_SETUP.md`](docs/CLOUDFLARE_SETUP.md).
 
 ### Cache busters
 
@@ -1083,7 +1081,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 | Commit `ed9c75c` sin pushear | Repo desincronizado | `git push` |
 | Leaked Password Protection (Supabase Auth) | Seguridad | Activar en Dashboard → Auth (manual) |
 | Zernio webhook push sin registrar (solo el dueño tiene el dashboard) | Chat opera con pull cada 2 min | Si el dueño completa `CONECTAR_ZERNIO_CHAT.md` §4, el push instantáneo se suma solo |
-| Secret de webhook en texto plano en `CONECTAR_ZERNIO_CHAT.md` | Seguridad | Rotar tras registrar el webhook |
+| Secret de webhook en texto plano en `docs/integrations/CONECTAR_ZERNIO_CHAT.md` | Seguridad | Rotar tras registrar el webhook |
 | `usd_rate` sin uso en tarjetas del landing | Feature | Conectar `fmtARS` cuando se necesite |
 | Notificaciones push reales (Web Push / VAPID) | Futuro | Service Worker pendiente |
 | Advisor: `rls_enabled_no_policy` en `property_sequences` y `zernio_config` | Info | Intencional (solo `service_role`) |
@@ -1120,13 +1118,14 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 
 | Documento | Contenido |
 |---|---|
-| [`AUDITORIA_MODULOS.md`](AUDITORIA_MODULOS.md) | Auditoría módulo a módulo (P0/P1/P2) |
-| [`AUDIT_FINDINGS.md`](AUDIT_FINDINGS.md) · [`AUDIT_INVENTORY.md`](AUDIT_INVENTORY.md) | Hallazgos e inventario de auditoría |
-| [`REMEDIATION_PLAN.md`](REMEDIATION_PLAN.md) | Plan de remediación |
-| [`XSS_REVIEW.md`](XSS_REVIEW.md) | Revisión de superficie XSS |
-| [`CLOUDFLARE_SETUP.md`](CLOUDFLARE_SETUP.md) | Configuración de Cloudflare Pages |
-| [`CONECTAR_ZERNIO_CHAT.md`](CONECTAR_ZERNIO_CHAT.md) | Activación del chat Zernio |
-| `docs/integrations/` | Documentación de integraciones |
+| [`docs/CIERRE_PROYECTO_2026-10.md`](docs/CIERRE_PROYECTO_2026-10.md) | **Cierre del proyecto para el dueño**: entregables, cómo usar cada módulo nuevo y pendientes que solo él puede resolver |
+| [`docs/GUIA_ENCUESTA_VISITA.md`](docs/GUIA_ENCUESTA_VISITA.md) | Guía de uso de la Encuesta de Visita (HOJA DE VISITA) para el equipo |
+| [`docs/AGENDA_CALENDARIO.md`](docs/AGENDA_CALENDARIO.md) · [`docs/AUDITORIA_PORTALES_APIS.md`](docs/AUDITORIA_PORTALES_APIS.md) · [`docs/AUDITORIA_USUARIOS_CONFIG.md`](docs/AUDITORIA_USUARIOS_CONFIG.md) | Guías y auditorías por módulo |
+| [`docs/GUIA_GOOGLE.md`](docs/GUIA_GOOGLE.md) · [`docs/COTIZACION_PLATAFORMA_BH.md`](docs/COTIZACION_PLATAFORMA_BH.md) | Google Business / cotización de plataforma |
+| [`docs/CLOUDFLARE_SETUP.md`](docs/CLOUDFLARE_SETUP.md) | Configuración de Cloudflare Pages |
+| [`docs/integrations/`](docs/integrations/) | Integraciones: Zernio (chat) y RELA |
+| [`docs/audit/`](docs/audit/) | Auditorías históricas del sistema |
+| [`docs/referencias/`](docs/referencias/) | Material de referencia del dueño (especificaciones originales) |
 
 ---
 
