@@ -144,6 +144,12 @@
     list.sort((a, b) => {
       const va = a[_sortKey] || '';
       const vb = b[_sortKey] || '';
+      if (_sortKey === 'last_sign_in_at') {
+        const aNull = !va; const bNull = !vb;
+        if (aNull && bNull) return 0;
+        if (aNull) return _sortDir === 'asc' ? -1 : 1;
+        if (bNull) return _sortDir === 'asc' ? 1 : -1;
+      }
       const cmp = String(va).localeCompare(String(vb), 'es', { sensitivity: 'base' });
       return _sortDir === 'asc' ? cmp : -cmp;
     });
@@ -268,8 +274,23 @@
 
   on($('#btnExportUsers'), 'click', () => {
     if (!usersCache.length) { showToast('No hay usuarios para exportar', 'warning'); return; }
-    const headers = ['ID', 'Nombre', 'Email', 'Teléfono', 'Rol', 'Activo', 'Creado'];
-    const rows = usersCache.map(u => [u.id, u.full_name || '', u.email || '', u.phone || '', USER_ROLE_LABELS[u.role] || u.role || '', u.is_active === false ? 'No' : 'Sí', u.created_at ? new Date(u.created_at).toISOString().slice(0, 10) : '']);
+    const headers = ['ID', 'Nombre', 'Email', 'Teléfono', 'Rol', 'Activo', 'Última conexión', 'Matrícula', 'Comisión %', 'Agente linkeado', 'Creado'];
+    const rows = usersCache.map(u => {
+      const stats = _agentStats[u.id];
+      return [
+        u.id,
+        u.full_name || '',
+        u.email || '',
+        u.phone || '',
+        USER_ROLE_LABELS[u.role] || u.role || '',
+        u.is_active === false ? 'No' : 'Sí',
+        u.last_sign_in_at ? new Date(u.last_sign_in_at).toISOString().slice(0, 16).replace('T', ' ') : 'Nunca',
+        stats?.matricula || '',
+        stats?.commission ?? '',
+        _agentIds.has(u.id) ? 'Sí' : 'No',
+        u.created_at ? new Date(u.created_at).toISOString().slice(0, 10) : '',
+      ];
+    });
     downloadCSV(`usuarios-${new Date().toISOString().slice(0, 10)}.csv`, rows, headers);
     showToast(`Usuarios exportados (${rows.length})`, 'success');
   });
@@ -521,7 +542,12 @@
     }
     try {
       await callManageUsers({ action: 'update-user', userId, is_active: nextActive });
-      showToast(nextActive ? 'Usuario reactivado' : 'Usuario desactivado', 'success');
+      const agentId = _agentByProfile[userId];
+      if (agentId) {
+        window.supabaseClient.from('agents').update({ status: nextActive ? 'activo' : 'inactivo' }).eq('id', agentId)
+          .then(() => {}, () => {});
+      }
+      showToast(nextActive ? 'Usuario reactivado' : 'Usuario desactivado (su agente también)', 'success');
       loadUsers();
     } catch (err) {
       showToast(err.message || 'No se pudo cambiar el estado', 'error');

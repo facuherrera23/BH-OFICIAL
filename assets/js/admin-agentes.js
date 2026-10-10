@@ -94,6 +94,9 @@
     set('agKpiActivos', agents.filter(a => a.status === 'activo').length);
     set('agKpiLicencia', agents.filter(a => a.status === 'licencia').length);
     set('agKpiVentas', agents.reduce((s, a) => s + (Number(a.sales_ytd) || 0), 0));
+    const revenue = agents.reduce((s, a) => s + (Number(a.sales_ytd || 0) * Number(a.commission_rate || 3)) / 100, 0);
+    const revEl = $('#agKpiRevenue');
+    if (revEl) revEl.textContent = '$' + Math.round(revenue).toLocaleString('es-AR');
   }
 
   function agRenderTable(data, propsCount) {
@@ -369,7 +372,10 @@
   };
 
   window.adminApp.deleteAgent = async function (id) {
-    if (!confirm('¿Enviar este agente a la papelera? Podés restaurarlo después.')) return;
+    const ok = typeof window.showConfirmDialog === 'function'
+      ? await window.showConfirmDialog({ title: 'Enviar a papelera', message: '¿Enviar este agente a la papelera? Podés restaurarlo después.', icon: 'fas fa-trash-can', confirmText: 'Enviar' })
+      : window.confirm('¿Enviar este agente a la papelera?');
+    if (!ok) return;
     try {
       await mutate('agents', async () => {
         const { error } = await window.supabaseClient
@@ -400,13 +406,14 @@
     }
   }
 
-  // Borrado físico: irreversible, por eso doble confirmación
   async function destroyAgent(id) {
-    if (!confirm('⚠ Esto elimina DEFINITIVAMENTE el agente de la base de datos. ¿Continuar?')) return;
-    if (!confirm('Última confirmación: ¿eliminar el registro de forma permanente?')) return;
+    const ok = typeof window.showConfirmDialog === 'function'
+      ? await window.showConfirmDialog({ title: 'Eliminar definitivamente', message: 'Esto elimina el registro de forma PERMANENTE de la base de datos. No se puede deshacer.', icon: 'fas fa-xmark', confirmText: 'Eliminar', danger: true })
+      : window.confirm('⚠ Esto elimina DEFINITIVAMENTE el agente. ¿Continuar?');
+    if (!ok) return;
     try {
       await mutate('agents', async () => {
-        const { error } = await window.supabaseClient.from('agents').delete().eq('id', id);
+        const { error } = await window.supabaseClient.delete().from('agents').eq('id', id);
         if (error) throw error;
       });
       showToast('Agente eliminado definitivamente', 'success');
@@ -417,8 +424,11 @@
     }
   }
 
-  // Duplica ficha sin email ni vínculo de usuario (evita colisiones por unique)
   async function duplicateAgent(id) {
+    const ok = typeof window.showConfirmDialog === 'function'
+      ? await window.showConfirmDialog({ title: 'Duplicar agente', message: 'Se creará una copia inactiva, sin email ni matrícula. Útil para reutilizar comisiones y especialidades.', icon: 'fas fa-copy', confirmText: 'Duplicar' })
+      : window.confirm('¿Duplicar este agente?');
+    if (!ok) return;
     try {
       const { data: src, error } = await window.supabaseClient.from('agents').select('*').eq('id', id).single();
       if (error) throw error;
@@ -432,7 +442,7 @@
         }]);
         if (err2) throw err2;
       });
-      showToast('Agente duplicado (inactivo, sin email/matrícula)', 'success');
+      showToast('Agente duplicado (inactivo)', 'success');
       loadAgents();
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
@@ -615,7 +625,10 @@
   });
   on($('#agentBulkDelete'), 'click', async () => {
     if (!_agSelected.size) return;
-    if (!confirm('¿Enviar ' + _agSelected.size + ' agentes a la papelera?')) return;
+    const ok = typeof window.showConfirmDialog === 'function'
+      ? await window.showConfirmDialog({ title: 'Enviar a papelera', message: `¿Enviar ${_agSelected.size} agentes a la papelera?`, icon: 'fas fa-trash-can', confirmText: 'Enviar' })
+      : window.confirm(`¿Enviar ${_agSelected.size} agentes a la papelera?`);
+    if (!ok) return;
     try {
       await mutate('agents', async () => {
         const { error } = await window.supabaseClient.from('agents').update({ deleted_at: new Date().toISOString() }).in('id', [..._agSelected]);
@@ -699,10 +712,26 @@
         s = s.replace(/"/g, '""');
         return (/[",\n]/).test(s) ? '"' + s + '"' : s;
       };
-      const headers = ['Nombre', 'Email', 'Teléfono', 'Matrícula', 'Especialidades', 'Comisión %', 'Estado', 'Ventas YTD', 'Alta'];
-      let csv = headers.join(',') + '\n' + (data || []).map(a =>
-        [a.full_name, a.email, a.phone, a.matricula, (a.specialties || []).join(' | '), a.commission_rate, a.status, a.sales_ytd, a.created_at].map(escCsv).join(',')
-      ).join('\n');
+      const headers = ['Nombre', 'Email', 'Teléfono', 'Matrícula', 'Especialidades', 'Comisión %', 'Estado', 'Ventas YTD', 'Revenue estimado', 'Usuario linkeado', 'Rol usuario', 'Última conexión', 'Alta'];
+      let csv = headers.join(',') + '\n' + (data || []).map(a => {
+        const revenue = (Number(a.sales_ytd || 0) * Number(a.commission_rate || 3)) / 100;
+        const u = a.profiles;
+        return [
+          a.full_name,
+          a.email,
+          a.phone,
+          a.matricula,
+          (a.specialties || []).join(' | '),
+          a.commission_rate,
+          a.status,
+          a.sales_ytd,
+          revenue.toFixed(0),
+          u?.full_name || '',
+          u?.role || '',
+          u?.last_sign_in_at ? new Date(u.last_sign_in_at).toISOString().slice(0, 16).replace('T', ' ') : '',
+          a.created_at,
+        ].map(escCsv).join(',');
+      }).join('\n');
       const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const al = document.createElement('a');
