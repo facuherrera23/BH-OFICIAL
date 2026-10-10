@@ -576,7 +576,30 @@
       if (!m || !cfgData[m.section]) return;
       input.value = (cfgData[m.section].content || {})[m.path] || '';
     });
+    _cfgDirty = false;
+    _cfgUpdateDirtyIndicator();
   }
+
+  /* ── Dirty state: indicador visual de cambios sin guardar ── */
+  let _cfgDirty = false;
+  function _cfgUpdateDirtyIndicator() {
+    const el = document.getElementById('cfgDirtyIndicator');
+    if (el) el.style.display = _cfgDirty ? '' : 'none';
+  }
+  function _cfgMarkDirty() {
+    if (!_cfgDirty) {
+      _cfgDirty = true;
+      _cfgUpdateDirtyIndicator();
+    }
+  }
+  document.addEventListener('input', (e) => {
+    if (e.target.classList?.contains('cfg-field') || e.target.classList?.contains('cfg-field-pref')) {
+      _cfgMarkDirty();
+    }
+  });
+  window.addEventListener('beforeunload', (e) => {
+    if (_cfgDirty) { e.preventDefault(); e.returnValue = ''; }
+  });
 
   async function loadConfig() {
     const client = await getAuthedClient();
@@ -637,8 +660,12 @@
       $$('.cfg-field[data-key]').forEach(field => {
         const m = CFG_FIELD_MAP[field.dataset.key];
         if (!m) return;
+        const val = field.value.trim();
+        if (field.type === 'url' && val && !/^https?:\/\/.+\..+/.test(val)) {
+          throw new Error(`"${field.labels?.[0]?.textContent || field.dataset.key}" debe ser una URL válida (ej.: https://instagram.com/...)`);
+        }
         if (!updatesBySection[m.section]) updatesBySection[m.section] = {};
-        updatesBySection[m.section][m.path] = field.value.trim();
+        updatesBySection[m.section][m.path] = val;
       });
 
       await Promise.all(Object.entries(updatesBySection).map(async ([sectionKey, newFields]) => {
@@ -675,6 +702,8 @@
       }
 
       showToast('Configuración guardada correctamente', 'success');
+      _cfgDirty = false;
+      _cfgUpdateDirtyIndicator();
     } catch (err) {
       showToast('Error al guardar: ' + err.message, 'error');
     } finally {
