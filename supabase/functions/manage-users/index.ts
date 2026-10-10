@@ -544,6 +544,52 @@ async function actionDeleteUser(
   return jsonResponse(200, { ok: true, deleted: targetId }, req);
 }
 
+/* Restablecer la contraseña de otro usuario: solo super_admin, nunca la propia
+   (para eso está el flujo "Cambiar mi Contraseña"). Genera una temporal
+   que el admin le pasa al empleado por el medio que prefiera. */
+async function actionResetPassword(
+  body: Record<string, unknown>,
+  callerId: string,
+  supabaseUrl: string,
+  serviceKey: string,
+  supabaseClient: ReturnType<typeof createClient>,
+  req: Request,
+) {
+  const targetId = typeof body.userId === 'string' ? body.userId.trim() : '';
+  if (!targetId) return jsonResponse(400, { error: 'userId requerido' }, req);
+  if (targetId === callerId) return jsonResponse(400, { error: 'Para tu propia contraseña usá "Cambiar mi Contraseña"' }, req);
+
+  const target = await fetchProfileRow(targetId, supabaseUrl, serviceKey);
+  if (!target) return jsonResponse(404, { error: 'Usuario no encontrado' }, req);
+
+  const rand = crypto.randomUUID().replace(/-/g, '');
+  const tempPassword = `BH-${rand.slice(0, 6)}${rand.slice(6, 10)}!`;
+
+  const updateRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(targetId)}`, {
+    method: 'PUT',
+    headers: { ...serviceHeaders(serviceKey), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: tempPassword }),
+  });
+  if (!updateRes.ok) {
+    console.error('reset-password error:', updateRes.status);
+    return jsonResponse(500, { error: 'No se pudo restablecer la contraseña' }, req);
+  }
+
+  await auditSensitiveAction(
+    supabaseClient,
+    req,
+    'reset_password',
+    'users',
+    'user',
+    targetId,
+    `Contraseña restablecida: ${target.email || targetId}`,
+    { target_id: targetId },
+    { source: 'manage-users', action: 'reset-password' },
+  );
+
+  return jsonResponse(200, { ok: true, tempPassword }, req);
+}
+
 /* Autogestion: cualquier usuario del panel actualiza su nombre y telefono.
    Rol/estado jamas (validacion explicita + trigger trg_profiles_guard_self
    en DB como segunda capa). El email propio de un no-admin se cambia desde
@@ -668,6 +714,9 @@ Deno.serve(async (req: Request) => {
     }
     if (body.action === 'delete-user') {
       return await actionDeleteUser(body, userId, supabaseUrl, serviceKey, supabaseClient, req);
+    }
+    if (body.action === 'reset-password') {
+      return await actionResetPassword(body, userId, supabaseUrl, serviceKey, supabaseClient, req);
     }
     return jsonResponse(400, { error: 'Accion desconocida' }, req);
   } catch (err) {

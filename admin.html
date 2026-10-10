@@ -1670,7 +1670,7 @@
 <tr>
 <th data-sort="full_name" style="cursor:pointer;">Usuario <i class="fas fa-sort" style="opacity:0.3; font-size:10px;"></i></th>
 <th data-sort="email" style="cursor:pointer;">Email <i class="fas fa-sort" style="opacity:0.3; font-size:10px;"></i></th>
-<th data-sort="role" style="cursor:pointer;">Rol <i class="fas fa-sort" style="opacity:0.3; font-size:10px;"></i></th>
+<th data-sort="role" style="cursor:pointer;">Rol <i class="fas fa-sort" style="opacity:0.3; font-size:10px;"></i> <button type="button" id="usersRoleInfoBtn" title="Qué puede hacer cada rol" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:11px; margin-left:4px;"><i class="fas fa-circle-info"></i></button></th>
 <th>Estado</th>
 <th data-sort="last_sign_in_at" style="cursor:pointer;">Última conexión <i class="fas fa-sort" style="opacity:0.3; font-size:10px;"></i></th>
 <th data-sort="created_at" style="cursor:pointer;">Creado <i class="fas fa-sort" style="opacity:0.3; font-size:10px;"></i></th>
@@ -3108,7 +3108,20 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 </div>
 <p id="userEditEmailNote" style="display:none; font-size:11px; color:var(--text-dim); margin-top:12px;">
 </p>
-<div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">      <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>      <button type="button" class="status-pill danger" id="userEditDeleteBtn" style="background:#dc2626; border-color:#dc2626;">Eliminar Usuario</button>      <button type="submit" class="btn-luxury-action" id="userEditSaveBtn">Guardar Cambios</button>    </div>
+<div style="display:flex; justify-content:flex-end; gap:8px; margin-top:24px; flex-wrap:wrap;">
+<button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
+<button type="button" class="status-pill danger" id="userEditDeleteBtn" style="background:#dc2626; border-color:#dc2626; display:none;">Eliminar Usuario</button>
+<button type="button" class="status-pill" id="userEditResetPwdBtn" style="background:rgba(255,184,0,0.1); border:1px solid rgba(255,184,0,0.3); color:#FFB800; display:none;"><i class="fas fa-key"></i> Restablecer contraseña</button>
+<button type="submit" class="btn-luxury-action" id="userEditSaveBtn">Guardar Cambios</button>
+</div>
+<div id="userEditTempPassBox" style="display:none; margin-top:16px;">
+<label style="color:var(--success); font-size:12px; font-weight:700; margin-bottom:6px;"><i class="fas fa-key" style="margin-right:6px;"></i>Nueva contraseña temporal</label>
+<div style="display:flex; gap:8px; align-items:center;">
+<input type="text" id="userEditTempPass" readonly style="flex:1; background:rgba(0,200,120,0.08); border:1px solid rgba(0,200,120,0.3); border-radius:10px; padding:12px 16px; color:var(--success); font-weight:600; font-size:14px; letter-spacing:0.5px;" />
+<button type="button" id="userEditTempPassCopy" class="btn-action" title="Copiar" style="padding:10px 14px; white-space:nowrap;"><i class="fas fa-copy"></i> Copiar</button>
+</div>
+<p style="font-size:11px; color:var(--text-dim); margin-top:8px;">Pasásela al empleado y que la cambie al entrar.</p>
+</div>
 </form>
 </div>
 </div>
@@ -3150,6 +3163,28 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 <button type="submit" class="btn-luxury-action" id="passwordChangeBtn">Actualizar Contraseña</button>
 </div>
 </form>
+</div>
+</div>
+<!-- MODAL MATRIZ DE PERMISOS -->
+<div class="admin-modal" id="roleMatrixModal">
+<div class="modal-box modal-box--wide">
+<h3 style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:6px;">¿Qué puede hacer cada rol?</h3>
+<p style="color:var(--text-muted); font-size:12.5px; margin-bottom:18px;">Guía rápida para decidir qué nivel de acceso dar a cada miembro del equipo.</p>
+<table class="luxury-table" style="font-size:12px;">
+<thead>
+<tr>
+<th>Permiso</th>
+<th style="width:30px;"></th>
+<th style="text-align:center; color:var(--accent);">Super Admin</th>
+<th style="text-align:center; color:#a78bfa;">Broker</th>
+<th style="text-align:center; color:var(--text-dim);">Agente</th>
+</tr>
+</thead>
+<tbody id="roleMatrixBody"></tbody>
+</table>
+<div style="display:flex; justify-content:flex-end; margin-top:20px;">
+<button type="button" class="btn-luxury-action modal-close-btn">Entendido</button>
+</div>
 </div>
 </div>
 <!-- MODAL PORTAL API -->
@@ -3353,7 +3388,7 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 <script src="assets/js/admin-crm.js?v=49"></script>
 <script src="assets/js/admin-app.js?v=401"></script>
 <script src="assets/js/admin-propietarios.js?v=14"></script>
-<script src="assets/js/admin-usuarios.js?v=7"></script>
+<script src="assets/js/admin-usuarios.js?v=8"></script>
 <script src="assets/js/admin-agentes.js?v=5"></script>
 <script src="assets/js/admin-cms.js?v=3"></script>
 <script src="assets/js/admin-portales.js?v=9"></script>

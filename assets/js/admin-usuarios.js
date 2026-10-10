@@ -147,7 +147,7 @@
           <td style="font-weight:500; color:#fff; font-size:13px;">
             <div style="display:flex; align-items:center; gap:10px;">
               <span style="width:30px; height:30px; border-radius:50%; background:${rbs.bg}; border:1px solid ${rbs.border}; display:flex; align-items:center; justify-content:center; font-size:12px; color:${rbs.color}; flex-shrink:0; position:relative;"><i class="fas ${rbs.icon}" style="font-size:11px;"></i>${_agentIds.has(u.id) ? '<span style="position:absolute; bottom:-1px; right:-1px; width:10px; height:10px; border-radius:50%; background:var(--success); border:2px solid var(--bg-secondary); display:flex; align-items:center; justify-content:center;" title="Agente linkeado"></span>' : u.role !== 'super_admin' ? '<span style="position:absolute; bottom:-1px; right:-1px; width:10px; height:10px; border-radius:50%; background:#ef4444; border:2px solid var(--bg-secondary); display:flex; align-items:center; justify-content:center;" title="Sin agente linkeado"></span>' : ''}</span>
-              <span>${esc(u.full_name || u.email || 'Sin nombre')}${isSelf ? ' <span style="font-size:10px; color:var(--accent); font-weight:700; margin-left:4px;">(vos)</span>' : ''}</span>
+              <span>${esc(u.full_name || u.email || 'Sin nombre')}${isSelf ? ' <span style="font-size:10px; color:var(--accent); font-weight:700; margin-left:4px;">(vos)</span>' : ''}${u.phone ? '<div style="font-size:10.5px; color:var(--text-dim); font-weight:400; margin-top:1px;"><i class="fas fa-phone" style="font-size:9px; margin-right:3px; opacity:0.5;"></i>' + esc(u.phone) + '</div>' : ''}</span>
             </div>
           </td>
           <td><button type="button" class="user-email-copy" data-email="${esc(u.email || '')}" style="background:none; border:none; color:var(--text-dim); font-size:12px; cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px; padding:2px 0;" title="Click para copiar">${esc(u.email || '-')}</button></td>
@@ -333,6 +333,14 @@
     const btn = $('#userSaveBtn');
     if (!btn) return;
     const fd = new FormData(form);
+    const inviteEmail = String(fd.get('email') || '').trim().toLowerCase();
+    const existingUser = usersCache.find(u => String(u.email || '').toLowerCase() === inviteEmail);
+    if (existingUser) {
+      showToast(`Ya existe un usuario con ese email: ${existingUser.full_name || inviteEmail}`, 'error', 6000);
+      btn.disabled = false;
+      btn.textContent = userNoEmailCb?.checked ? 'Crear Usuario' : 'Enviar Invitación';
+      return;
+    }
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creando...';
     try {
@@ -440,6 +448,10 @@
     }
     const delBtn = $('#userEditDeleteBtn');
     if (delBtn) delBtn.style.display = (canManageUsers() && !isSelf) ? '' : 'none';
+    const resetBtn = $('#userEditResetPwdBtn');
+    if (resetBtn) resetBtn.style.display = (canManageUsers() && !isSelf) ? '' : 'none';
+    const tempBox = $('#userEditTempPassBox');
+    if (tempBox) tempBox.style.display = 'none';
     openModal('userEditModal');
   }
 
@@ -554,6 +566,78 @@
       btn.disabled = false;
       btn.textContent = 'Eliminar Usuario';
     }
+  });
+
+  /* ── Restablecer contraseña de otro usuario ── */
+  on($('#userEditResetPwdBtn'), 'click', async () => {
+    const form = $('#userEditForm');
+    if (!form) return;
+    const userId = form.elements.userId.value;
+    if (!userId || !canManageUsers() || userId === currentProfile?.id) return;
+    const row = usersCache.find(u => u.id === userId);
+    const label = row?.full_name || row?.email || 'este usuario';
+    const confirm = typeof window.showConfirmDialog === 'function'
+      ? await window.showConfirmDialog({
+          title: 'Restablecer contraseña',
+          message: `¿Generar una nueva contraseña temporal para ${label}? La contraseña actual deja de funcionar de inmediato.`,
+          icon: 'fas fa-key',
+          confirmText: 'Restablecer',
+        })
+      : window.confirm(`¿Restablecer la contraseña de ${label}?`);
+    if (!confirm) return;
+    const btn = $('#userEditResetPwdBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando...';
+    try {
+      const out = await callManageUsers({ action: 'reset-password', userId });
+      if (out.tempPassword) {
+        const box = $('#userEditTempPassBox');
+        const input = $('#userEditTempPass');
+        if (box && input) { box.style.display = ''; input.value = out.tempPassword; input.select(); }
+        showToast('Contraseña restablecida. Copiala y pasásela al empleado.', 'warning', 6000);
+      }
+    } catch (err) {
+      showToast(err.message || 'No se pudo restablecer', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-key"></i> Restablecer contraseña';
+    }
+  });
+
+  on($('#userEditTempPassCopy'), 'click', async () => {
+    const input = $('#userEditTempPass');
+    if (!input || !input.value) return;
+    try { await navigator.clipboard.writeText(input.value); showToast('Contraseña copiada', 'success'); }
+    catch { input.select(); document.execCommand('copy'); showToast('Contraseña copiada', 'success'); }
+  });
+
+  /* ── Matriz de permisos por rol ── */
+  const PERM_MATRIX = {
+    'Ver leads/propiedades': [true, true, 'Los suyos'],
+    'Agendar visitas': [true, true, 'Las suyas'],
+    'Responder chat de redes': [true, true, false],
+    'Publicar a portales': [true, 'Con permiso', false],
+    'Crear tasaciones': [true, true, false],
+    'Gestionar propietarios': [true, true, false],
+    'Ver panel de supervisión': [true, false, false],
+    'Gestionar usuarios': [true, false, false],
+    'Editar configuración del sitio': [true, false, false],
+    'Exportar datos': [true, true, 'Los suyos'],
+    'Ver todas las estadísticas': [true, true, 'Solo las suyas'],
+  };
+  on($('#usersRoleInfoBtn'), 'click', () => {
+    const modal = document.getElementById('roleMatrixModal');
+    if (!modal) return;
+    const tbody = document.getElementById('roleMatrixBody');
+    if (tbody) {
+      tbody.innerHTML = Object.entries(PERM_MATRIX).map(([perm, [sa, br, ag]]) => {
+        const fmt = (v) => v === true ? '<td style="text-align:center; color:var(--success);"><i class="fas fa-check"></i></td>'
+          : v === false ? '<td style="text-align:center; color:var(--danger);"><i class="fas fa-xmark"></i></td>'
+          : `<td style="text-align:center; color:var(--text-dim); font-size:11px;">${esc(v)}</td>`;
+        return `<tr><td style="font-size:12.5px; color:var(--text-secondary);">${esc(perm)}</td><td style="text-align:center;"><i class="fas fa-shield-halved" style="color:var(--accent); font-size:11px;"></i></td>${fmt(sa)}${fmt(br)}${fmt(ag)}</tr>`;
+      }).join('');
+    }
+    openModal('roleMatrixModal');
   });
 
   on($('#passwordChangeForm'), 'submit', async (e) => {
