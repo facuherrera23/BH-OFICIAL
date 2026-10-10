@@ -206,6 +206,7 @@ jobs:
             "trigger_commission_on_close"
             "visits-process-reminders"
             "zernio-proxy"
+            "zernio-sync"
             "zernio-webhook"
             "zernio-webhook-test"
           )
