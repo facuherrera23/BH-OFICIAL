@@ -60,6 +60,8 @@ JSONB con fotos base64 embebidas. Las tasaciones nuevas comprimen client-side (`
 - La nota "Encuesta de visita recibida" en el historial del lead la inserta la **función SQL** al finalizar — no el frontend.
 - El portal enmascara teléfonos (7+ dígitos) en los textos libres (`renderEncuestas` en portal-propietario-page.js) — pedido de privacidad del dueño, no "arreglar".
 - `sendSurveyForProperty` se exporta como `window.BH_CRM.sendSurvey` — la Agenda la usa para la oferta de encuesta post-check-out; cambiar la firma rompe la Agenda.
+- Recordatorio automático: `survey_pending_reminders()` (cron `survey-reminders-daily`, 12:00 ART) crea una tarea `contact`/`whatsapp` al agente si la encuesta lleva 48h sin responder. Dedup por lead: mientras haya una tarea "Encuesta sin responder—" activa, no se duplica.
+- Backups automáticos: `backup-snapshot` (Edge Function, cron `backup-snapshot-daily` 04:00 ART) → bucket privado `backups` en Storage, retención 30 días. Secret compartido con zernio-sync en `zernio_config(key='sync_secret')`. Ambas funciones están en `NO_VERIFY` del CI.
 
 ## Chat Redes / Zernio (gotchas)
 

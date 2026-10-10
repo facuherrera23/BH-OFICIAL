@@ -4,12 +4,23 @@
 
 ---
 
+## Capas de protección
+
+| Capa | Qué | Cuándo | Automático |
+|---|---|---|---|
+| **`backup-snapshot`** (cron) | Snapshot lógico de tablas de negocio → bucket privado `backups` en Storage | Diario 04:00 ART | ✅ Sí — Edge Function + pg_cron |
+| **`pg_dump`** (runbook) | Backup estructural completo (DDL + datos) | Semanal + antes de operaciones riesgosas | ❌ Manual — requiere connection string |
+| **Snapshot manual** | Export JSON de emergencia | Cuando no hay pg_dump | ❌ Manual |
+
+La capa automática diaria guarda los **datos** (para restaurarlos en una DB nueva). El pg_dump semanal guarda **todo** (estructura + datos + índices + triggers). Ambas son necesarias.
+
+---
+
 ## Reglas
 
-1. **Frecuencia:** semanal + **siempre antes** de cualquier operación riesgosa (migraciones con DROP/ALTER, cambios de RLS, deletes).
-2. **Los backups NUNCA se commitean** — `backups/` está en `.gitignore` porque contiene datos reales de clientes.
-3. **Copia externa:** el archivo de backup debe quedar también fuera de la máquina (OneDrive/Drive del dueño).
-4. **Verificar antes de confiar:** todo backup se valida al crearlo (el script lo hace con `pg_restore --list`).
+1. **Los backups NUNCA se commitean** — `backups/` local está en `.gitignore`; el bucket Storage es privado.
+2. **Copia externa:** el pg_dump semanal debe quedar también fuera de la máquina (OneDrive/Drive del dueño).
+3. **Verificar antes de confiar:** todo backup se valida al crearlo (el script lo hace con `pg_restore --list`; el snapshot automático reporta bytes al bucket).
 
 ---
 
