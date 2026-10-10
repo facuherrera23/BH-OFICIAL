@@ -471,6 +471,10 @@
   }
 
   async function openAgentDetail(id) {
+    /* El drawer vive dentro del tab de agentes que lo restringe;
+       lo sacamos a document.body para que sea overlay real sin cortes. */
+    var _dNode = document.getElementById('agentDrawer');
+    if (_dNode && _dNode.parentNode !== document.body) { document.body.appendChild(_dNode); }
     const drawer = $('#agentDrawer'), body = $('#agentDrawerBody');
     if (!drawer || !body) return;
     try {
