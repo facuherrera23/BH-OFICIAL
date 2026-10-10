@@ -93,11 +93,22 @@
   function userStatusCellHtml(u) {
     const isSelf = !!(currentUser && u.id === currentUser.id);
     const active = u.is_active !== false;
-    const dot = '<span style="display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:5px; background:' + (active ? '#00c878' : '#ef4444') + ';"></span>';
-    if (!canManageUsers() || isSelf) {
-      return '<span style="font-size:11.5px; font-weight:600; color:' + (active ? 'var(--success)' : 'var(--danger)') + ';">' + dot + (active ? 'Activo' : 'Inactivo') + '</span>';
+    if (!active) {
+      const dot = '<span style="display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:5px; background:#ef4444;"></span>';
+      return '<span style="font-size:11.5px; font-weight:600; color:var(--danger);">' + dot + 'Inactivo</span>';
     }
-    return '<button type="button" class="user-status-toggle" data-id="' + esc(u.id) + '" title="' + (active ? 'Desactivar acceso' : 'Reactivar acceso') + '" style="background:none; border:none; cursor:pointer; font-size:11.5px; font-weight:600; color:' + (active ? 'var(--success)' : 'var(--danger)') + '; padding:4px 8px; border-radius:999px;">' + dot + (active ? 'Activo' : 'Inactivo') + '</button>';
+    const neverLoggedIn = !u.last_sign_in_at;
+    const hasAgent = _agentIds.has(u.id);
+    const dot = neverLoggedIn
+      ? '<span style="display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:5px; background:#FFB800;"></span>'
+      : '<span style="display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:5px; background:#00c878;"></span>';
+    let label = 'Activo';
+    if (neverLoggedIn) label = 'Pendiente';
+    else if (!hasAgent && u.role !== 'super_admin') label = 'Activo · sin agente';
+    if (!canManageUsers() || isSelf) {
+      return '<span style="font-size:11.5px; font-weight:600; color:' + (neverLoggedIn ? 'var(--warning)' : 'var(--success)') + ';">' + dot + label + '</span>';
+    }
+    return '<button type="button" class="user-status-toggle" data-id="' + esc(u.id) + '" title="' + (active ? 'Desactivar acceso' : 'Reactivar acceso') + '" style="background:none; border:none; cursor:pointer; font-size:11.5px; font-weight:600; color:' + (neverLoggedIn ? 'var(--warning)' : 'var(--success)') + '; padding:4px 8px; border-radius:999px;">' + dot + label + '</button>';
   }
 
   function userEditCellHtml(u) {
@@ -470,16 +481,44 @@
     if (!row) return;
     const nextActive = row.is_active === false;
     const label = row.full_name || row.email || 'este usuario';
-    const confirm = typeof window.showConfirmDialog === 'function'
-      ? await window.showConfirmDialog({
-          title: nextActive ? 'Reactivar acceso' : 'Desactivar acceso',
-          message: nextActive ? `¿Reactivar el acceso de ${label}?` : `¿Desactivar el acceso de ${label}? No podrá volver a iniciar sesión.`,
-          icon: nextActive ? 'fas fa-user-check' : 'fas fa-user-xmark',
-          confirmText: nextActive ? 'Reactivar' : 'Desactivar',
-          danger: !nextActive,
-        })
-      : window.confirm(`¿${nextActive ? 'Reactivar' : 'Desactivar'} el acceso de ${label}?`);
-    if (!confirm) return;
+    if (!nextActive) {
+      let cascada = '';
+      try {
+        const agentId = _agentByProfile[userId];
+        if (agentId) {
+          const [leadsC, propsC, visitsC] = await Promise.all([
+            window.supabaseClient.from('leads').select('id', { count: 'exact', head: true }).eq('assigned_to', agentId).is('deleted_at', null),
+            window.supabaseClient.from('properties').select('id', { count: 'exact', head: true }).eq('agent_id', agentId).is('deleted_at', null),
+            window.supabaseClient.from('visits').select('id', { count: 'exact', head: true }).eq('agent_id', agentId).eq('status', 'pendiente'),
+          ]);
+          const parts = [];
+          if (leadsC.count) parts.push(leadsC.count + ' lead' + (leadsC.count !== 1 ? 's' : ''));
+          if (propsC.count) parts.push(propsC.count + ' propiedad' + (propsC.count !== 1 ? 'es' : ''));
+          if (visitsC.count) parts.push(visitsC.count + ' visita' + (visitsC.count !== 1 ? 's' : ''));
+          if (parts.length) cascada = '\n\nQuedarán sin atención: ' + parts.join(', ') + '.';
+        }
+      } catch (_) {}
+      const confirm = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog({
+            title: 'Desactivar acceso',
+            message: `¿Desactivar el acceso de ${label}? No podrá volver a iniciar sesión.${cascada}`,
+            icon: 'fas fa-user-xmark',
+            confirmText: 'Desactivar',
+            danger: true,
+          })
+        : window.confirm(`¿Desactivar el acceso de ${label}?${cascada}`);
+      if (!confirm) return;
+    } else {
+      const confirm = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog({
+            title: 'Reactivar acceso',
+            message: `¿Reactivar el acceso de ${label}?`,
+            icon: 'fas fa-user-check',
+            confirmText: 'Reactivar',
+          })
+        : window.confirm(`¿Reactivar el acceso de ${label}?`);
+      if (!confirm) return;
+    }
     try {
       await callManageUsers({ action: 'update-user', userId, is_active: nextActive });
       showToast(nextActive ? 'Usuario reactivado' : 'Usuario desactivado', 'success');

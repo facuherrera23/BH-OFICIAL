@@ -36,14 +36,18 @@
     return digits ? 'https://wa.me/' + digits : '';
   }
 
-  function agStatusPill(status) {
+  function agStatusPill(status, agentId) {
     const map = {
       activo: { bg: 'rgba(0,200,120,0.12)', color: 'var(--success)', dot: '#00c878' },
       licencia: { bg: 'rgba(255,184,0,0.12)', color: 'var(--warning)', dot: '#FFB800' },
       inactivo: { bg: 'rgba(255,255,255,0.06)', color: 'var(--text-dim)', dot: '#94a3b8' },
     };
     const s = map[status] || map.inactivo;
-    return '<span style="font-size:11.5px; font-weight:600; color:' + s.color + ';"><span style="display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:5px; background:' + s.dot + ';"></span>' + esc(status || 'activo') + '</span>';
+    const dot = '<span style="display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:5px; background:' + s.dot + ';"></span>';
+    if (agentId) {
+      return '<button type="button" data-ag-act="cycle-status" data-ag-id="' + esc(agentId) + '" data-status="' + esc(status) + '" title="Click para cambiar: activo → licencia → inactivo" style="background:none; border:none; cursor:pointer; font-size:11.5px; font-weight:600; color:' + s.color + '; padding:4px 8px; border-radius:999px; display:inline-flex; align-items:center;">' + dot + esc(status) + '</button>';
+    }
+    return '<span style="font-size:11.5px; font-weight:600; color:' + s.color + ';">' + dot + esc(status) + '</span>';
   }
 
   function agLinkedUserHtml(a) {
@@ -127,7 +131,7 @@
         '<td style="font-size:12.5px;">' + esc(a.matricula || '-') + '</td>' +
         '<td style="font-size:11px; max-width:160px;">' + specs + '</td>' +
         '<td style="font-size:13px; color:var(--accent); font-weight:600;">' + (a.commission_rate != null ? esc(a.commission_rate + '%') : '3%') + '</td>' +
-        '<td>' + agStatusPill(a.status) + '</td>' +
+        '<td>' + agStatusPill(a.status, _agViewTrash ? null : a.id) + '</td>' +
         '<td style="text-align:center; font-size:13px;"><span style="color:var(--accent); font-weight:600;">' + props + '</span><span style="color:var(--text-dim); font-size:10px;"> props</span></td>' +
         '<td style="text-align:center; font-size:13px;"><span style="color:#3B82F6; font-weight:600;">' + leads + '</span><span style="color:var(--text-dim); font-size:10px;"> leads</span></td>' +
         '<td style="text-align:right; font-size:13px;">' + Number(a.sales_ytd || 0).toLocaleString('es-AR') + '</td>' +
@@ -468,15 +472,27 @@
     const drawer = $('#agentDrawer'), body = $('#agentDrawerBody');
     if (!drawer || !body) return;
     try {
-      const { data: a, error } = await window.supabaseClient.from('agents').select('*').eq('id', id).single();
+      const { data: a, error } = await window.supabaseClient.from('agents').select('*, profiles!agents_profile_id_fkey(id, full_name, email, role, last_sign_in_at)').eq('id', id).single();
       if (error) throw error;
-      const [props, visits, comms] = await Promise.all([
+      const [props, visits, comms, leadsRes] = await Promise.all([
         window.supabaseClient.from('properties').select('id, title, status, price_usd, price_currency').eq('agent_id', id).is('deleted_at', null).order('created_at', { ascending: false }).limit(10),
         window.supabaseClient.from('visits').select('id, visit_date, status, lead_id, client_name').eq('agent_id', id).gte('visit_date', new Date().toISOString()).order('visit_date', { ascending: true }).limit(5),
         window.supabaseClient.from('commissions').select('id, commission_amount_usd, commission_amount_ars, status, created_at').eq('broker_id', id).order('created_at', { ascending: false }).limit(5),
+        window.supabaseClient.from('leads').select('id, full_name, stage, created_at').eq('assigned_to', id).is('deleted_at', null).order('created_at', { ascending: false }).limit(8),
       ]);
       const kv = (k, v) => '<div class="ag-d-kv"><span>' + k + '</span><strong>' + (v || '—') + '</strong></div>';
       const wa = waLink(a.phone);
+      const linkedUser = a.profiles;
+      const linkedUserHtml = linkedUser && linkedUser.id
+        ? '<div class="ag-d-section"><h4>Usuario del sistema</h4>' +
+          '<div class="ag-d-item"><span style="font-weight:500;">' + esc(linkedUser.full_name || linkedUser.email) + '</span><span style="font-size:10px; font-weight:700; color:' + (linkedUser.role === 'super_admin' ? 'var(--accent)' : linkedUser.role === 'broker' ? '#a78bfa' : 'var(--text-dim)') + ';">' + esc(linkedUser.role || '') + '</span></div>' +
+          (linkedUser.last_sign_in_at ? '<div class="ag-d-sub" style="font-size:11px; color:var(--text-dim); margin-top:4px;">Último acceso: ' + new Date(linkedUser.last_sign_in_at).toLocaleString('es-AR') + '</div>' : '<div class="ag-d-sub" style="font-size:11px; color:var(--warning); margin-top:4px;"><i class="fas fa-hourglass-half" style="margin-right:4px;"></i>Nunca entró al sistema</div>') +
+          '</div>'
+        : '';
+      const STAGE_LABELS = { nuevo: 'Nuevo', contactado: 'Contactado', calificado: 'Calificado', visita_agendada: 'Visita agendada', visita_realizada: 'Visita realizada', negociacion: 'Negociación', oferta: 'Oferta', cerrado: 'Cerrado', perdido: 'Perdido' };
+      const leadsHtml = (leadsRes.data || []).length
+        ? leadsRes.data.map(l => '<div class="ag-d-item"><span>' + esc(l.full_name || 'Lead') + '</span><span style="font-size:10px; color:' + (l.stage === 'cerrado' ? 'var(--success)' : l.stage === 'perdido' ? 'var(--danger)' : 'var(--text-dim)') + ';">' + esc(STAGE_LABELS[l.stage] || l.stage) + '</span></div>').join('')
+        : '<div class="ag-d-empty">Sin leads asignados</div>';
       body.innerHTML =
         '<div style="display:flex; align-items:center; gap:12px; margin-bottom:4px;">' +
         (a.photo_url ? '<img src="' + esc(a.photo_url) + '" alt="" style="width:52px; height:52px; border-radius:50%; object-fit:cover;" />' : '<span class="ag-avatar" style="width:52px; height:52px; font-size:17px;">' + esc(agInitials(a.full_name).toUpperCase()) + '</span>') +
@@ -488,12 +504,14 @@
         '<button type="button" class="status-pill pending" data-ag-act="edit" data-ag-id="' + esc(a.id) + '"><i class="fas fa-pen"></i> Editar</button>' +
         '<button type="button" class="status-pill pending" data-ag-act="duplicate" data-ag-id="' + esc(a.id) + '"><i class="fas fa-copy"></i> Duplicar</button>' +
         '</div>' +
+        linkedUserHtml +
         '<div class="ag-d-section"><h4>Datos</h4>' +
         kv('Matrícula', esc(a.matricula || '—')) + kv('Estado', esc(a.status || 'activo')) +
         kv('Comisión', (a.commission_rate != null ? a.commission_rate + '%' : '3%')) +
         kv('Ventas YTD', Number(a.sales_ytd || 0).toLocaleString('es-AR')) +
         kv('Especialidades', (a.specialties || []).join(', ') || '—') + '</div>' +
         (a.bio ? '<div class="ag-d-section"><h4>Bio</h4><p style="color:var(--text-muted); font-size:12.5px;">' + esc(a.bio) + '</p></div>' : '') +
+        '<div class="ag-d-section"><h4>Leads asignados (' + (leadsRes.data?.length || 0) + ')</h4>' + leadsHtml + '</div>' +
         '<div class="ag-d-section"><h4>Cartera (' + (props.data?.length || 0) + ')</h4>' +
         ((props.data || []).length ? props.data.map(p => '<div class="ag-d-item"><span>' + esc(p.title || 'Propiedad') + '</span><span>' + esc(p.status || '') + '</span></div>').join('') : '<div class="ag-d-empty">Sin propiedades asignadas</div>') + '</div>' +
         '<div class="ag-d-section"><h4>Próximas visitas</h4>' +
@@ -623,7 +641,7 @@
   /* Delegación de clics en la tabla (acciones + checkboxes + fila → drawer) */
   const tbodyEl = $('#agentsTableBody');
   if (tbodyEl) {
-    tbodyEl.addEventListener('click', (e) => {
+    tbodyEl.addEventListener('click', async (e) => {
       const btn = e.target.closest('[data-ag-act]');
       if (btn) {
         const id = btn.dataset.agId;
@@ -635,6 +653,24 @@
         else if (act === 'ical') agCopyIcs(id);
         else if (act === 'detail') openAgentDetail(id);
         else if (act === 'duplicate') duplicateAgent(id);
+        else if (act === 'cycle-status') {
+          const current = btn.dataset.status;
+          const next = current === 'activo' ? 'licencia' : current === 'licencia' ? 'inactivo' : 'activo';
+          const labels = { activo: 'activo', licencia: 'en licencia', inactivo: 'inactivo' };
+          const confirm = typeof window.showConfirmDialog === 'function'
+            ? await window.showConfirmDialog({ title: 'Cambiar estado', message: '¿Pasar a ' + labels[next] + '?', icon: 'fas fa-user-gear', confirmText: 'Confirmar' })
+            : window.confirm('¿Pasar a ' + labels[next] + '?');
+          if (confirm) {
+            try {
+              await mutate('agents', async () => {
+                const { error } = await window.supabaseClient.from('agents').update({ status: next }).eq('id', id);
+                if (error) throw error;
+              });
+              showToast('Estado: ' + next, 'success');
+              loadAgents();
+            } catch (err) { showToast('Error: ' + err.message, 'error'); }
+          }
+        }
         return;
       }
       if (e.target.closest('a, input, label, select')) return; // no abrir drawer desde links/checkbox
