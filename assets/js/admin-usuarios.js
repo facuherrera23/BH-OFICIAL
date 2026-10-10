@@ -13,10 +13,67 @@
     broker: { bg: 'rgba(139,92,246,0.12)', color: '#a78bfa', border: 'rgba(139,92,246,0.3)', icon: 'fa-user-tie' },
     agente: { bg: 'rgba(255,255,255,0.06)', color: 'var(--text-dim)', border: 'rgba(255,255,255,0.1)', icon: 'fa-user' },
   };
+  const ROLE_CHANGE_INFO = {
+    'agente>broker': 'Gana acceso al Chat Redes para responder mensajes de Instagram.',
+    'broker>agente': 'Pierde acceso al Chat Redes. Sus conversaciones quedan para super_admin.',
+    'agente>super_admin': 'Gana control total: usuarios, configuración, supervisión y todos los módulos.',
+    'broker>super_admin': 'Gana control total: usuarios, configuración, supervisión y todos los módulos.',
+    'super_admin>broker': 'Pierde gestión de usuarios, configuración y supervisión. Mantiene el chat.',
+    'super_admin>agente': 'Pierde gestión de usuarios, configuración, supervisión Y el chat.',
+  };
   let usersCache = [];
   let _roleFilter = '';
   let _sortKey = 'created_at';
   let _sortDir = 'asc';
+  let _agentIds = new Set();
+
+  /* ── Password strength ── */
+  function evalPwdStrength(pwd) {
+    let score = 0;
+    if (pwd.length >= 6) score++;
+    if (pwd.length >= 10) score++;
+    if (/[a-z]/.test(pwd) && /[A-Z]/.test(pwd)) score++;
+    if (/\d/.test(pwd)) score++;
+    if (/[^a-zA-Z0-9]/.test(pwd)) score++;
+    if (pwd.length >= 14) score++;
+    const LEVELS = [
+      { max: 1, color: '#ef4444', label: 'Muy débil' },
+      { max: 2, color: '#ef4444', label: 'Débil' },
+      { max: 3, color: '#FFB800', label: 'Aceptable' },
+      { max: 4, color: '#FFB800', label: 'Buena' },
+      { max: 5, color: '#00c878', label: 'Fuerte' },
+      { max: 99, color: 'var(--accent)', label: 'Excelente' },
+    ];
+    const lvl = LEVELS.find(l => score <= l.max) || LEVELS[LEVELS.length - 1];
+    return { score: Math.min(100, (score / 6) * 100), color: lvl.color, label: lvl.label };
+  }
+
+  function bindPasswordStrength(formEl, inputSelector, barId, labelId) {
+    const input = formEl?.querySelector(inputSelector);
+    const bar = document.getElementById(barId);
+    const label = document.getElementById(labelId);
+    if (!input || !bar || !label) return;
+    input.addEventListener('input', () => {
+      const pwd = input.value;
+      if (!pwd) { bar.firstElementChild.style.width = '0%'; label.textContent = ''; return; }
+      const r = evalPwdStrength(pwd);
+      bar.firstElementChild.style.width = r.score + '%';
+      bar.firstElementChild.style.background = r.color;
+      label.textContent = 'Fuerza: ' + r.label;
+      label.style.color = r.color;
+    });
+  }
+
+  /* ── Show/hide password toggle ── */
+  document.querySelectorAll('.pwd-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = btn.closest('div')?.querySelector('input');
+      if (!input) return;
+      input.type = input.type === 'password' ? 'text' : 'password';
+      const icon = btn.querySelector('i');
+      if (icon) icon.className = 'fas ' + (input.type === 'password' ? 'fa-eye' : 'fa-eye-slash');
+    });
+  });
 
   function buildRoleSelect(userId, currentRole) {
     const isSelf = currentUser && userId === currentUser.id;
@@ -88,7 +145,7 @@
         <tr style="${isSelf ? 'background:rgba(31,200,195,0.03);' : ''}">
           <td style="font-weight:500; color:#fff; font-size:13px;">
             <div style="display:flex; align-items:center; gap:10px;">
-              <span style="width:30px; height:30px; border-radius:50%; background:${rbs.bg}; border:1px solid ${rbs.border}; display:flex; align-items:center; justify-content:center; font-size:12px; color:${rbs.color}; flex-shrink:0;"><i class="fas ${rbs.icon}" style="font-size:11px;"></i></span>
+              <span style="width:30px; height:30px; border-radius:50%; background:${rbs.bg}; border:1px solid ${rbs.border}; display:flex; align-items:center; justify-content:center; font-size:12px; color:${rbs.color}; flex-shrink:0; position:relative;"><i class="fas ${rbs.icon}" style="font-size:11px;"></i>${_agentIds.has(u.id) ? '<span style="position:absolute; bottom:-1px; right:-1px; width:10px; height:10px; border-radius:50%; background:var(--success); border:2px solid var(--bg-secondary); display:flex; align-items:center; justify-content:center;" title="Agente linkeado — asignable a leads, propiedades y chat"></span>' : u.role !== 'super_admin' ? '<span style="position:absolute; bottom:-1px; right:-1px; width:10px; height:10px; border-radius:50%; background:#ef4444; border:2px solid var(--bg-secondary); display:flex; align-items:center; justify-content:center;" title="SIN agente linkeado — no asignable a leads, propiedades ni chat"></span>' : ''}</span>
               <span>${esc(u.full_name || u.email || 'Sin nombre')}${isSelf ? ' <span style="font-size:10px; color:var(--accent); font-weight:700; margin-left:4px;">(vos)</span>' : ''}</span>
             </div>
           </td>
@@ -109,12 +166,13 @@
     const client = await getAuthedClient();
     if (!client) return;
     try {
-      const { data, error } = await client
-        .from('profiles')
-        .select('id, full_name, email, phone, role, is_active, created_at, updated_at')
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      usersCache = data || [];
+      const [profilesRes, agentsRes] = await Promise.all([
+        client.from('profiles').select('id, full_name, email, phone, role, is_active, created_at, updated_at').order('created_at', { ascending: true }),
+        client.from('agents').select('profile_id').not('profile_id', 'is', null),
+      ]);
+      if (profilesRes.error) throw profilesRes.error;
+      usersCache = profilesRes.data || [];
+      _agentIds = new Set((agentsRes.data || []).map(a => a.profile_id));
       renderKpis();
       applyFilters();
     } catch (err) {
@@ -274,13 +332,14 @@
     const previous = select.dataset.current || 'agente';
     const next = select.value;
     if (next === previous) return;
-    const ROLE_RANK = { agente: 1, broker: 2, super_admin: 3 };
+    const key = previous + '>' + next;
+    const contextInfo = ROLE_CHANGE_INFO[key] || '';
     const label = USER_ROLE_LABELS[next] || next;
     const prevLabel = USER_ROLE_LABELS[previous] || previous;
     const confirm = typeof window.showConfirmDialog === 'function'
       ? await window.showConfirmDialog({
           title: 'Cambiar rol',
-          message: `¿Cambiar rol de ${prevLabel} a ${label}?`,
+          message: `¿Cambiar rol de ${prevLabel} a ${label}?${contextInfo ? '\n\n' + contextInfo : ''}`,
           icon: 'fas fa-user-shield',
           confirmText: 'Confirmar',
         })
@@ -485,6 +544,10 @@
       fail(err.message || 'No se pudo cambiar la contraseña.');
     } finally { btn.disabled = false; }
   });
+
+  /* ── Password strength en formularios ── */
+  bindPasswordStrength($('#inviteSetupForm'), 'input[name="password"]', 'pwdStrengthBar', 'pwdStrengthLabel');
+  bindPasswordStrength($('#passwordChangeForm'), 'input[name="password"]', 'pwdStrengthBarChange', 'pwdStrengthLabelChange');
 
   window.__BH.loadUsers = loadUsers;
   if (!Object.prototype.hasOwnProperty.call(window, 'loadUsers')) Object.defineProperty(window, 'loadUsers', { get: () => loadUsers, configurable: true });

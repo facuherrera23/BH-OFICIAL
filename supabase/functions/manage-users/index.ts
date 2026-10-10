@@ -115,6 +115,12 @@ async function actionInvite(
     return jsonResponse(500, { error: 'Usuario invitado pero no se pudo asignar el rol en profiles' }, req);
   }
 
+  /* Auto-linkeo a agents para roles operativos */
+  if (role !== 'super_admin') {
+    const agentOk = await ensureAgentRecord(user.id, fullName, email, phone || '', supabaseUrl, serviceKey);
+    if (!agentOk) console.warn('manage-users: agent auto-link failed for', email);
+  }
+
   // Auditoría: invitación de usuario
   await auditSensitiveAction(
     supabaseClient,
@@ -266,6 +272,12 @@ async function actionCreateDirect(
     return jsonResponse(500, { error: 'Usuario creado pero no se pudo asignar el rol en profiles' }, req);
   }
 
+  /* Auto-linkeo a agents para roles operativos */
+  if (role !== 'super_admin') {
+    const agentOk = await ensureAgentRecord(user.id, fullName, email, phone || '', supabaseUrl, serviceKey);
+    if (!agentOk) console.warn('manage-users: agent auto-link failed for', email);
+  }
+
   // Auditoría: creación directa de usuario
   await auditSensitiveAction(
     supabaseClient,
@@ -294,6 +306,32 @@ async function fetchProfileRow(
   if (!res.ok) return null;
   const rows = await res.json();
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+/* Auto-linkeo: crea el registro en agents para que el empleado sea asignable
+   a leads, propiedades, visitas y chat desde el primer minuto. */
+async function ensureAgentRecord(
+  userId: string,
+  fullName: string,
+  email: string,
+  phone: string,
+  supabaseUrl: string,
+  serviceKey: string,
+): Promise<boolean> {
+  const existing = await fetch(
+    `${supabaseUrl}/rest/v1/agents?profile_id=eq.${encodeURIComponent(userId)}&select=id`,
+    { headers: serviceHeaders(serviceKey) },
+  );
+  if (existing.ok) {
+    const rows = await existing.json();
+    if (Array.isArray(rows) && rows.length > 0) return true; /* ya existe */
+  }
+  const createRes = await fetch(`${supabaseUrl}/rest/v1/agents`, {
+    method: 'POST',
+    headers: { ...serviceHeaders(serviceKey), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify({ full_name: fullName, email, phone: phone || '', profile_id: userId, status: 'activo' }),
+  });
+  return createRes.ok;
 }
 
 async function patchAuthUser(

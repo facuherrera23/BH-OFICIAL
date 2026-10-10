@@ -3043,11 +3043,21 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 <form id="inviteSetupForm">
 <div class="form-field">
 <label>Contraseña *</label>
-<input type="password" name="password" required minlength="6" placeholder="Mínimo 6 caracteres" />
+<div style="position:relative;">
+<input type="password" name="password" required minlength="6" placeholder="Mínimo 6 caracteres" style="padding-right:40px;" />
+<button type="button" class="pwd-toggle" data-target="input[name=password]" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:14px;"><i class="fas fa-eye"></i></button>
+</div>
+<div id="pwdStrengthBar" style="height:4px; border-radius:2px; margin-top:6px; background:rgba(255,255,255,0.06); overflow:hidden;">
+<div style="height:100%; width:0%; border-radius:2px; transition:all 0.3s ease; background:#ef4444;"></div>
+</div>
+<p id="pwdStrengthLabel" style="font-size:11px; color:var(--text-dim); margin-top:4px; min-height:14px;"></p>
 </div>
 <div class="form-field">
 <label>Repetir Contraseña *</label>
-<input type="password" name="password2" required minlength="6" placeholder="Repetí la contraseña" />
+<div style="position:relative;">
+<input type="password" name="password2" required minlength="6" placeholder="Repetí la contraseña" style="padding-right:40px;" />
+<button type="button" class="pwd-toggle" data-target="input[name=password2]" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:14px;"><i class="fas fa-eye"></i></button>
+</div>
 </div>
 <p id="inviteSetupError" style="display:none; color:#f87171; font-size:12px; margin-top:10px;">
 </p>
@@ -3109,15 +3119,28 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 <form id="passwordChangeForm">
 <div class="form-field">
 <label>Contraseña Actual *</label>
-<input type="password" name="current_password" required autocomplete="current-password" placeholder="Tu contraseña actual" />
+<div style="position:relative;">
+<input type="password" name="current_password" required autocomplete="current-password" placeholder="Tu contraseña actual" style="padding-right:40px;" />
+<button type="button" class="pwd-toggle" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:14px;"><i class="fas fa-eye"></i></button>
+</div>
 </div>
 <div class="form-field">
 <label>Nueva Contraseña *</label>
-<input type="password" name="password" required minlength="6" autocomplete="new-password" placeholder="Mínimo 6 caracteres" />
+<div style="position:relative;">
+<input type="password" name="password" required minlength="6" autocomplete="new-password" placeholder="Mínimo 6 caracteres" style="padding-right:40px;" />
+<button type="button" class="pwd-toggle" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:14px;"><i class="fas fa-eye"></i></button>
+</div>
+<div id="pwdStrengthBarChange" style="height:4px; border-radius:2px; margin-top:6px; background:rgba(255,255,255,0.06); overflow:hidden;">
+<div style="height:100%; width:0%; border-radius:2px; transition:all 0.3s ease; background:#ef4444;"></div>
+</div>
+<p id="pwdStrengthLabelChange" style="font-size:11px; color:var(--text-dim); margin-top:4px; min-height:14px;"></p>
 </div>
 <div class="form-field">
 <label>Repetir Nueva Contraseña *</label>
-<input type="password" name="password2" required minlength="6" autocomplete="new-password" placeholder="Repetí la nueva contraseña" />
+<div style="position:relative;">
+<input type="password" name="password2" required minlength="6" autocomplete="new-password" placeholder="Repetí la nueva contraseña" style="padding-right:40px;" />
+<button type="button" class="pwd-toggle" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:14px;"><i class="fas fa-eye"></i></button>
+</div>
 </div>
 <p id="passwordChangeError" style="display:none; color:#f87171; font-size:12px; margin-top:10px;">
 </p>
@@ -3329,7 +3352,7 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 <script src="assets/js/admin-crm.js?v=49"></script>
 <script src="assets/js/admin-app.js?v=399"></script>
 <script src="assets/js/admin-propietarios.js?v=14"></script>
-<script src="assets/js/admin-usuarios.js?v=5"></script>
+<script src="assets/js/admin-usuarios.js?v=6"></script>
 <script src="assets/js/admin-agentes.js?v=5"></script>
 <script src="assets/js/admin-cms.js?v=3"></script>
 <script src="assets/js/admin-portales.js?v=9"></script>
