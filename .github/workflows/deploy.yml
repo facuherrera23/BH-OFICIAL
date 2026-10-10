@@ -181,6 +181,7 @@ jobs:
           # Sin verify_jwt (webhooks externos, crons y endpoints pre-login).
           # Mapa exacto del estado desplegado a 2026-09-18:
           NO_VERIFY=(
+            "backup-snapshot"
             "check-password-hash"
             "cloudinary-sign"
             "cron_exclusivity_renewals"
