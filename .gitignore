@@ -24,3 +24,6 @@ chat-attach-final.png
 
 # Capturas de verificación locales en la raíz
 /*.png
+
+# Backups locales (datos reales de clientes � jamas al repo)
+backups/
