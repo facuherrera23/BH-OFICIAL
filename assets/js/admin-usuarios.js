@@ -11,6 +11,11 @@
      ------------------------------------------------ */
   const USER_ROLE_LABELS = { super_admin: 'Super Admin', broker: 'Broker', agente: 'Agente' };
   const USER_ROLE_ORDER = ['super_admin', 'broker', 'agente'];
+  const ROLE_BADGE_STYLE = {
+    super_admin: { bg: 'rgba(31,200,195,0.12)', color: 'var(--accent)', border: 'rgba(31,200,195,0.3)' },
+    broker: { bg: 'rgba(139,92,246,0.12)', color: '#a78bfa', border: 'rgba(139,92,246,0.3)' },
+    agente: { bg: 'rgba(255,255,255,0.06)', color: 'var(--text-dim)', border: 'rgba(255,255,255,0.1)' },
+  };
   let usersCache = [];
 
   function buildRoleSelect(userId, currentRole) {
@@ -66,16 +71,19 @@
         return;
       }
 
-      tbody.innerHTML = data.map((u) => `
+      tbody.innerHTML = data.map((u) => {
+        const rbs = ROLE_BADGE_STYLE[u.role] || ROLE_BADGE_STYLE.agente;
+        return `
         <tr>
           <td style="font-weight:500; color:#fff; font-size:13px;">${esc(u.full_name || u.email || 'Sin nombre')}</td>
-          <td style="font-size:13px; color:var(--text-dim);">${esc(u.email || '-')}</td>
-          <td><span class="nav-badge" style="background:${u.role === 'super_admin' ? 'rgba(31,200,195,0.15)' : 'rgba(255,255,255,0.06)'}; color:${u.role === 'super_admin' ? 'var(--accent)' : 'var(--text-dim)'}; font-size:11px;">${esc(USER_ROLE_LABELS[u.role] || u.role || 'agente')}</span></td>
+          <td style="font-size:12.5px; color:var(--text-dim);">${esc(u.email || '-')}</td>
+          <td><span style="display:inline-block; padding:3px 12px; border-radius:999px; font-size:11px; font-weight:700; background:${rbs.bg}; color:${rbs.color}; border:1px solid ${rbs.border};">${esc(USER_ROLE_LABELS[u.role] || u.role || 'agente')}</span></td>
           <td>${userStatusCellHtml(u)}</td>
           <td style="color:var(--text-dim); font-size:12px;">${u.created_at ? new Date(u.created_at).toLocaleDateString('es-AR') : '-'}</td>
           <td>${buildRoleSelect(u.id, u.role)}</td>
           <td>${userEditCellHtml(u)}</td>
-        </tr>`).join('');
+        </tr>`;
+      }).join('');
     } catch (err) {
       logError('Users error:', err);
     }
@@ -168,9 +176,15 @@
   });
 
   const userNoEmailCb = document.querySelector('#userForm input[name="no_email"]');
+  const userModeHint = document.getElementById('userModeHint');
   on(userNoEmailCb, 'change', () => {
     const btn = $('#userSaveBtn');
     if (btn) btn.textContent = userNoEmailCb.checked ? 'Crear Usuario' : 'Enviar Invitación';
+    if (userModeHint) {
+      userModeHint.innerHTML = userNoEmailCb.checked
+        ? '<i class="fas fa-key" style="color:var(--success); margin-right:4px;"></i>Sin email: se genera una contraseña temporal que le pasás por WhatsApp. El usuario cambia su contraseña al primer login. <b style="color:var(--success);">Sin límite de envíos.</b>'
+        : '<i class="fas fa-envelope" style="color:var(--accent); margin-right:4px;"></i>Con email: le llega una invitación de Supabase al correo. El usuario define su contraseña desde el panel. <b style="color:#FFB800;">Límite: 3 emails/hora en el plan free.</b>';
+    }
   });
 
   on($('#userForm'), 'submit', async (e) => {
