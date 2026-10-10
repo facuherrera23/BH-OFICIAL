@@ -673,6 +673,12 @@ function esc(s) {
     try {
       const { error } = await window.supabaseClient.auth.signInWithPassword({ email, password });
       if (error) throw error;
+      /* HIBP en login (mitiga la falta del toggle Leaked Password Protection
+         del dashboard): advertir fuerte y exigir cambio inmediato. */
+      const pwned = await checkPasswordPwned(password);
+      if (pwned.pwned) {
+        showToast(`⚠️ Tu contraseña apareció en ${pwned.count.toLocaleString('es-AR')} filtraciones de datos. Cambiala AHORA desde Configuración → sección Sesión.`, 'error', 12000);
+      }
     } catch (err) {
       if (errorEl) { errorEl.textContent = err.message || 'Credenciales incorrectas'; errorEl.style.display = 'block'; }
     } finally {
