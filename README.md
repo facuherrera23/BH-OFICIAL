@@ -30,22 +30,23 @@
 12. [Landing pública](#-landing-pública)
 13. [Portal del Propietario](#-portal-del-propietario)
 14. [Confirmación de visitas](#-confirmación-de-visitas)
-15. [Tasaciones (ACM)](#-tasaciones-acm)
-16. [Comisiones y liquidaciones](#-comisiones-y-liquidaciones)
-17. [Integración Mercado Libre](#-integración-mercado-libre)
-18. [Chat omnicanal (Zernio)](#-chat-omnicanal-zernio)
-19. [Centro de Supervisión](#-centro-de-supervisión)
-20. [Edge Functions](#-edge-functions)
-21. [Migraciones](#-migraciones)
-22. [Flujos end-to-end](#-flujos-end-to-end)
-23. [Patrones técnicos](#-patrones-técnicos)
-24. [Deploy](#-deploy)
-25. [Testing y CI](#-testing-y-ci)
-26. [Convenciones de desarrollo](#-convenciones-de-desarrollo)
-27. [Deudas técnicas y roadmap](#-deudas-técnicas-y-roadmap)
-28. [ADRs](#-adrs-architecture-decision-records)
-29. [Documentación complementaria](#-documentación-complementaria)
-30. [Changelog](#-changelog)
+15. [Encuesta de Visita — HOJA DE VISITA](#-encuesta-de-visita--hoja-de-visita)
+16. [Tasaciones (ACM)](#-tasaciones-acm)
+17. [Comisiones y liquidaciones](#-comisiones-y-liquidaciones)
+18. [Integración Mercado Libre](#-integración-mercado-libre)
+19. [Chat omnicanal (Zernio)](#-chat-omnicanal-zernio)
+20. [Centro de Supervisión](#-centro-de-supervisión)
+21. [Edge Functions](#-edge-functions)
+22. [Migraciones](#-migraciones)
+23. [Flujos end-to-end](#-flujos-end-to-end)
+24. [Patrones técnicos](#-patrones-técnicos)
+25. [Deploy](#-deploy)
+26. [Testing y CI](#-testing-y-ci)
+27. [Convenciones de desarrollo](#-convenciones-de-desarrollo)
+28. [Deudas técnicas y roadmap](#-deudas-técnicas-y-roadmap)
+29. [ADRs](#-adrs-architecture-decision-records)
+30. [Documentación complementaria](#-documentación-complementaria)
+31. [Changelog](#-changelog)
 
 ---
 
@@ -158,6 +159,7 @@ flowchart LR
         T[tasacion.html<br/>ACM]
         P[portal-propietario.html]
         V[confirmar-visita.html]
+        E[encuesta.html<br/>Encuesta de visita]
     end
 
     subgraph Supabase
@@ -184,6 +186,7 @@ flowchart LR
     T --> DB
     P --> DB
     V --> DB
+    E --> DB
 
     EF --> CLD
     EF <--> ML
@@ -237,6 +240,7 @@ graph TD
 | Propiedad | `properties` | Propiedades, CRM, Agenda, Portales, Tasaciones, Portal Propietario |
 | Lead | `leads` | CRM, Agenda, Chat, Landing |
 | Visita | `visits` | Agenda, CRM, Confirmar Visita |
+| Encuesta | `visit_surveys` | CRM (lead, envío y estado), Portal Propietario (resultados anónimos), Encuesta (página pública) |
 | Conversación | `zernio_conversations` | Chat, CRM |
 | Propietario | `owners` | Propietarios, Portal, Comisiones |
 | Tasación | `tasaciones` | Tasaciones, Portal |
@@ -482,6 +486,7 @@ erDiagram
 | `owners` | Propietarios: DNI/CUIT, documentos JSONB (vencimiento y verificación) |
 | `leads` | Pipeline CRM: `source`, `stage`, `tags`, `score`, `assigned_to` |
 | `visits` | Visitas: estados, `agent_id`, `confirmation_token`, check-in/out |
+| `visit_surveys` | Encuesta de visita (HOJA DE VISITA): 1 activa por (lead, propiedad), `token` público, `answers` jsonb, `finalized`, `archived_at` para re-encuesta |
 | `tasaciones` | ACM: `data` JSONB, valoración USD/ARS, estado borrador/en_revision/entregada/vencida |
 | `commissions` | Comisiones por cierre (pendiente/liquidada/pagada) |
 | `commission_liquidations` | Liquidaciones mensuales |
@@ -559,6 +564,7 @@ erDiagram
 | `properties` | Lectura pública de las publicadas (`TO public`); escritura autenticada |
 | `leads` | `INSERT` anónimo solo con `source IN ('landing_page','newsletter')` |
 | `visits` | `SELECT/UPDATE` anónimo por `confirmation_token`; resto vía JOIN `agents.profile_id = auth.uid()` |
+| `visit_surveys` | `SELECT` a authenticated; `INSERT/UPDATE` solo agente del lead o super_admin; público **solo** vía RPC por token (ver sección Encuesta) |
 | `owners` | `SELECT` super_admin/broker; `INSERT/UPDATE/DELETE` solo super_admin |
 | `tasaciones` | Solo `authenticated` y `service_role` (sin acceso anónimo) |
 | `portal_settings` | Lectura solo autenticada (sin fuga de secretos) |
@@ -696,6 +702,65 @@ Consume `site_content` y `portal_settings` desde `landing-app.js`.
 | **Cancelar** | `status = 'cancelada'`, `cancel_reason = 'Cancelado por cliente'` |
 
 Muestra cliente, fecha/hora y estado visual (pendiente / confirmada / completada / cancelada).
+
+---
+
+## 📝 Encuesta de Visita — HOJA DE VISITA
+
+`encuesta.html?token=<uuid>` — digitaliza la hoja de visita en papel del mismo nombre. El asesor genera un link por WhatsApp desde el panel del lead; el visitante responde **durante o después de la visita**; las opiniones quedan guardadas en la propiedad y el **dueño las ve en su portal sin saber quién visitó**.
+
+### Flujo completo
+
+```mermaid
+flowchart LR
+    A[Panel del lead<br/>Contacto o tab Propiedades] -->|botón Encuesta| B[visit_surveys<br/>token único por<br/>lead + propiedad]
+    B -->|wa.me mensaje pre-armado| C[Visitante abre<br/>encuesta.html?token]
+    C -->|cada cambio| D[Autoguardado<br/>debounce 900ms + draft local<br/>+ flush keepalive al cerrar]
+    D --> E[Enviar respuestas<br/>finaliza y bloquea]
+    E --> F[Nota automática en<br/>el historial del lead]
+    E --> G[Portal del propietario<br/>Opiniones de visitas<br/>100% anónimas]
+    H[Check-out en Agenda<br/>o Completar visita] -->|oferta| B
+    I[Botón Reiniciar] -->|archiva la actual| B
+```
+
+### Origen de los botones (todas las superficies)
+
+| Dónde | Comportamiento |
+|---|---|
+| Lead → **Contacto** | 1 propiedad: envía directo · varias: te lleva a la tab Propiedades · 0: deshabilitado |
+| Lead → **tab Propiedades** | Botón por propiedad + chip de estado (Enviada / ✓ Respondida) + 👁 Ver respuestas + 🔄 Reiniciar |
+| **Agenda → check-out** y Lead → Completar visita | Diálogo "¿Le mandás la encuesta?" en el momento natural |
+| Envío | Copia el link + abre `wa.me` con mensaje pre-armado; sin WhatsApp solo copia. Log en `lead_activities` |
+
+### Las preguntas (mapean el PDF HOJA DE VISITA)
+
+| Tipo | Campos |
+|---|---|
+| Valoración 1–10 (sliders) | `ubicacion`, `tamano`, `distribucion`, `calidad`, `precio`, `conservacion`, `general` |
+| Decisión | `compraria` → Sí / No / Quizás + `por_que` (texto) |
+| Texto libre | `mas_gusto`, `menos_gusto` (máx 1000 chars, sanitizado server-side) |
+
+### Autoguardado ("si no guarda, se guardó igual")
+
+- Cada cambio se persiste con debounce de 900 ms vía `survey_submit_by_token` (replace full-set).
+- Draft en `localStorage` por token: al reabrir, merge campo a campo (el draft local gana).
+- Al cerrar la pestaña: `fetch keepalive` contra PostgREST en `pagehide`/`visibilitychange`.
+- Offline: el draft queda y se empuja al volver la señal (`online`).
+- **Finalizar** = lock server-side (`FOR UPDATE` evita nota duplicada ante submits concurrentes). Reabrir muestra el "gracias".
+
+### Modelo de datos y seguridad
+
+`visit_surveys`: `id`, `token` (uuid público único), `lead_id`, `property_id`, `answers` jsonb, `finalized`, `submitted_at`, `archived_at`, timestamps. **1 encuesta activa por (lead, propiedad)** — unique parcial sobre `archived_at IS NULL`; reiniciar archiva (la opinión archivada sigue visible para el dueño) y habilita un token nuevo para una segunda visita.
+
+| Capa | Regla |
+|---|---|
+| RLS `SELECT` | Abierto a `authenticated` (consistente con `leads`/`lead_activities`) |
+| RLS `INSERT`/`UPDATE` | Solo el agente asignado/creador del lead o super_admin (mismo criterio que `lead_activities`) |
+| RPC `survey_get_by_token` | Lectura pública por token uuid v4; corta si el lead o propiedad tienen soft-delete |
+| RPC `survey_submit_by_token` | Sanitiza todo (notas 1–10 enteras, enum compraria, textos ≤1000); lock post-finalización; `FOR UPDATE` |
+| RPC `portal_get_surveys` | Solo `finalized`, **cero datos del visitante** (propiedad + fecha + respuestas); valida token/revocación/expiración del portal |
+| Hardening | Las 3 funciones `SECURITY DEFINER`, `search_path=''`, REVOKE a `PUBLIC`, GRANT a `anon`+`authenticated`+`service_role` |
+| Privacidad extra | El portal enmascara secuencias de 7+ dígitos (teléfonos/DNI) escritas en texto libre |
 
 ---
 
@@ -895,8 +960,19 @@ Admin: Propietarios → generateOwnerPortalLink → owner_portal_tokens
 
 ```
 pg_cron → supervision_rules + baselines + ml-anomaly → alertas / anomalías
-   → supervision-notify → supervision-notifications (push/email)
-   → supervision-digest (Brevo) → tab Supervisión / supervision-api
+  → supervision-notify → supervision-notifications (push/email)
+  → supervision-digest (Brevo) → tab Supervisión / supervision-api
+```
+
+### 7. Encuesta de visita (HOJA DE VISITA)
+
+```
+Lead (Contacto / tab Propiedades / check-out de la Agenda)
+  → botón Encuesta → visit_surveys (token único por lead+propiedad, se reusa al reenviar)
+  → wa.me con link → encuesta.html?token= → visitante responde con autoguardado
+  → Enviar = finalizada (lock) → nota automática en historial del lead
+  → portal_get_surveys → Portal del Propietario: "Opiniones de visitas" (anónimo)
+  → Reiniciar archiva la respondida y habilita token nuevo (segunda visita)
 ```
 
 ---
@@ -1034,6 +1110,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 | 014 | Wrapper `mutate()` | Invalida caché y mantiene Realtime consistente |
 | 015 | Zod (UMD) solo en admin | Validación runtime de formularios |
 | 016 | Portal/Visita por token URL | Acceso público sin credenciales |
+| 017 | Encuesta: token por (lead, propiedad) + autoguardado continuo + archivado para re-encuesta | 1 link registrado reutilizable, cero pérdida de datos del visitante, historial preservado |
 
 ---
 
