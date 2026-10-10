@@ -1120,6 +1120,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 |---|---|
 | [`docs/CIERRE_PROYECTO_2026-10.md`](docs/CIERRE_PROYECTO_2026-10.md) | **Cierre del proyecto para el dueño**: entregables, cómo usar cada módulo nuevo y pendientes que solo él puede resolver |
 | [`docs/GUIA_ENCUESTA_VISITA.md`](docs/GUIA_ENCUESTA_VISITA.md) | Guía de uso de la Encuesta de Visita (HOJA DE VISITA) para el equipo |
+| [`docs/COTIZACION_PROYECTO_COMPLETA_2026-10.md`](docs/COTIZACION_PROYECTO_COMPLETA_2026-10.md) | Valorización completa módulo por módulo (octubre 2026) |
 | [`docs/AGENDA_CALENDARIO.md`](docs/AGENDA_CALENDARIO.md) · [`docs/AUDITORIA_PORTALES_APIS.md`](docs/AUDITORIA_PORTALES_APIS.md) · [`docs/AUDITORIA_USUARIOS_CONFIG.md`](docs/AUDITORIA_USUARIOS_CONFIG.md) | Guías y auditorías por módulo |
 | [`docs/GUIA_GOOGLE.md`](docs/GUIA_GOOGLE.md) · [`docs/COTIZACION_PLATAFORMA_BH.md`](docs/COTIZACION_PLATAFORMA_BH.md) | Google Business / cotización de plataforma |
 | [`docs/CLOUDFLARE_SETUP.md`](docs/CLOUDFLARE_SETUP.md) | Configuración de Cloudflare Pages |
