@@ -2028,20 +2028,6 @@ window.adminApp.editVisit = async function (id) {
     }
   };
 
-  window.adminApp.checkoutVisit = async function (id) {
-    try {
-      const { error } = await window.supabaseClient
-        .from('visits')
-        .update({ check_out: new Date().toISOString() })
-        .eq('id', id);
-      if (error) throw error;
-      showToast('Salida registrada', 'success');
-      loadAgenda();
-    } catch (err) {
-      showToast('Error: ' + err.message, 'error');
-    }
-  };
-
   $('#calSubscribeBtn')?.addEventListener('click', async function () {
     if (!window.supabaseClient) return;
     try {
