@@ -802,7 +802,7 @@ Los tokens se guardan cifrados (AES-256-GCM) y nunca llegan al frontend.
 
 ## 💬 Chat omnicanal (Zernio)
 
-**Estado:** recepción validada en producción (HMAC, dedup, persistencia, auditoría). El envío saliente espera una API key real.
+**Estado:** API key activa en producción (envío saliente operativo). Entrada de mensajes vía `zernio-sync` (cron cada 2 min): pull incremental de conversaciones con actividad nueva → los INSERT disparan el realtime del panel. El webhook push (`zernio-webhook`) está construido y verificado, pero requiere configuración manual en el dashboard de Zernio (acceso del dueño) — ver `CONECTAR_ZERNIO_CHAT.md` §4.
 
 | Componente | Ubicación | Estado |
 |---|---|---|
@@ -858,8 +858,9 @@ Los tokens se guardan cifrados (AES-256-GCM) y nunca llegan al frontend.
 | `supervision-ml-anomaly` | ON | Detección de anomalías |
 | `supervision-notifications` | ON | Push/email de alertas críticas |
 | `supervision-notify` | cron | Dispara notificaciones |
-| `zernio-proxy` | ON | `send_message`, `mark_read`, `list_accounts`, `backfill_*` |
-| `zernio-webhook` | OFF | Recibe webhooks (HMAC, dedup, persistencia) |
+| `zernio-proxy` | ON | `send_message`, `mark_read`, `typing`, `list_accounts`, `backfill_*`, `diagnose` (super_admin) |
+| `zernio-sync` | OFF | Cron cada 2 min: pull incremental de Zernio → realtime del panel (puentea la falta de webhook push; secret `x-sync-secret` en `zernio_config`) |
+| `zernio-webhook` | OFF | Recibe webhooks (HMAC, dedup, persistencia) — pendiente registrar en el dashboard de Zernio |
 | `zernio-webhook-test` | OFF | Test de configuración |
 
 ### Desplegadas en producción sin fuente en el repo
@@ -1081,7 +1082,8 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 | Cambios de `admin-app.js` sin commitear (`loadAnomaliesTable`, `supNewRuleBtn`) | Entrega | Commitear y subir cache buster |
 | Commit `ed9c75c` sin pushear | Repo desincronizado | `git push` |
 | Leaked Password Protection (Supabase Auth) | Seguridad | Activar en Dashboard → Auth (manual) |
-| Zernio sin API key para envíos | Funcionalidad parcial | Falta credencial |
+| Zernio webhook push sin registrar (solo el dueño tiene el dashboard) | Chat opera con pull cada 2 min | Si el dueño completa `CONECTAR_ZERNIO_CHAT.md` §4, el push instantáneo se suma solo |
+| Secret de webhook en texto plano en `CONECTAR_ZERNIO_CHAT.md` | Seguridad | Rotar tras registrar el webhook |
 | `usd_rate` sin uso en tarjetas del landing | Feature | Conectar `fmtARS` cuando se necesite |
 | Notificaciones push reales (Web Push / VAPID) | Futuro | Service Worker pendiente |
 | Advisor: `rls_enabled_no_policy` en `property_sequences` y `zernio_config` | Info | Intencional (solo `service_role`) |
@@ -1132,6 +1134,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 
 | Fecha | Versión | Cambios |
 |---|---|---|
+| 2026-10-10 | — | Chat Redes: auditoría completa + `zernio-sync` (Edge Function + cron cada 2 min) — pull incremental de Zernio con realtime en el panel sin depender del webhook push; recuperación de mensajes perdidos; README alineado con el estado real |
 | 2026-10-09 | — | Encuesta de visita (HOJA DE VISITA): tabla `visit_surveys` + RPC por token, página pública con autoguardado, botones en el panel del lead (Contacto/Propiedades), oferta al completar visita, resultados anónimos en el portal del propietario, re-encuesta por archivado |
 | 2026-09-01 | — | Migración `20260901000001`: hardening P0 aplicado a producción |
 | 2026-08-30 | — | Suite E2E Playwright; fix RLS `properties_public_read`; RLS de `tasaciones`; REVOKE en 44 funciones; 8 vistas `security_invoker`; policies anon para `leads` y `visits`; `portal_settings` sin fuga de secretos; 9 Edge Functions huérfanas eliminadas; `acorn` removido |
