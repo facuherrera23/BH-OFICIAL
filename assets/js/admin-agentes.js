@@ -37,9 +37,28 @@
   }
 
   function agStatusPill(status) {
-    const map = { activo: ['rgba(0,200,120,0.15)', 'var(--success)'], licencia: ['rgba(255,184,0,0.15)', 'var(--warning)'], inactivo: ['rgba(255,255,255,0.06)', 'var(--text-dim)'] };
-    const [bg, fg] = map[status] || map.inactivo;
-    return '<span class="nav-badge" style="background:' + bg + '; color:' + fg + '; font-size:11px;">' + esc(status || 'activo') + '</span>';
+    const map = {
+      activo: { bg: 'rgba(0,200,120,0.12)', color: 'var(--success)', dot: '#00c878' },
+      licencia: { bg: 'rgba(255,184,0,0.12)', color: 'var(--warning)', dot: '#FFB800' },
+      inactivo: { bg: 'rgba(255,255,255,0.06)', color: 'var(--text-dim)', dot: '#94a3b8' },
+    };
+    const s = map[status] || map.inactivo;
+    return '<span style="font-size:11.5px; font-weight:600; color:' + s.color + ';"><span style="display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:5px; background:' + s.dot + ';"></span>' + esc(status || 'activo') + '</span>';
+  }
+
+  function agLinkedUserHtml(a) {
+    const u = a.profiles;
+    if (!u || !u.id) return '<span style="color:var(--text-dim); font-size:11px;">—</span>';
+    const roleLabel = { super_admin: 'Super Admin', broker: 'Broker', agente: 'Agente' }[u.role] || u.role;
+    const roleColor = { super_admin: 'var(--accent)', broker: '#a78bfa', agente: 'var(--text-dim)' }[u.role] || 'var(--text-dim)';
+    const lastLogin = u.last_sign_in_at
+      ? new Date(u.last_sign_in_at).getTime() > Date.now() - 86400000 ? '🟢' : '⚪'
+      : '⏳';
+    return '<div style="display:flex; align-items:center; gap:6px;">' +
+      '<span style="font-size:12px; color:var(--text-secondary);">' + esc(u.full_name || u.email || '') + '</span>' +
+      '<span style="font-size:10px; font-weight:700; color:' + roleColor + '; background:rgba(255,255,255,0.03); border-radius:999px; padding:1px 8px;">' + esc(roleLabel) + '</span>' +
+      '<span title="' + (u.last_sign_in_at ? 'Último acceso: ' + new Date(u.last_sign_in_at).toLocaleString('es-AR') : 'Nunca entró') + '" style="font-size:10px;">' + lastLogin + '</span>' +
+      '</div>';
   }
 
   /* Consulta común según filtros/papelera; con selectCustom para reutilizar en data/count */
@@ -78,14 +97,14 @@
     if (!tbody) return;
     _agentsPageCache = data || [];
     if (!_agentsPageCache.length) {
-      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:40px; color:var(--text-dim);">' +
-        (_agViewTrash ? 'La papelera está vacía' : ((_agSearchQuery || _agStatusFilter) ? 'Sin resultados para los filtros aplicados' : 'No hay agentes cargados')) + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:40px; color:var(--text-dim);"><i class="fas fa-user-tie" style="font-size:24px; opacity:0.3; display:block; margin-bottom:10px;"></i>' +
+        (_agViewTrash ? 'La papelera está vacía' : ((_agSearchQuery || _agStatusFilter) ? 'Sin resultados para los filtros aplicados' : 'No hay agentes cargados. Tocá "Registrar Agente" para agregar el primero.')) + '</td></tr>';
       return;
     }
     tbody.innerHTML = _agentsPageCache.map(a => {
       const specs = (a.specialties && a.specialties.length)
-        ? a.specialties.map(s => '<span class="nav-badge" style="background:rgba(16,185,129,0.12); color:#10b981; font-size:10px; margin-right:3px;">' + esc(s) + '</span>').join('')
-        : '<span style="color:var(--text-dim);">—</span>';
+        ? a.specialties.slice(0, 3).map(s => '<span style="font-size:10px; color:#10b981; background:rgba(16,185,129,0.1); border-radius:999px; padding:1px 8px; margin-right:3px;">' + esc(s) + '</span>').join('') + (a.specialties.length > 3 ? '<span style="font-size:10px; color:var(--text-dim);">+' + (a.specialties.length - 3) + '</span>' : '')
+        : '<span style="color:var(--text-dim); font-size:11px;">—</span>';
       const wa = waLink(a.phone);
       const contacto = (a.phone ? '<a href="tel:' + esc(String(a.phone).replace(/[^+0-9]/g, '')) + '" title="Llamar" style="color:var(--accent); font-size:12px;"><i class="fas fa-phone"></i></a>' : '') +
         (wa ? ' <a href="' + esc(wa) + '" target="_blank" rel="noopener" title="WhatsApp" style="color:#25d366; font-size:12px;"><i class="fab fa-whatsapp"></i></a>' : '') +
@@ -97,16 +116,20 @@
           '<button class="btn-action" data-ag-act="ical" data-ag-id="' + esc(a.id) + '" title="Copiar feed de calendario (ICS)"><i class="fas fa-calendar-days"></i></button>' +
           '<button class="btn-action" data-ag-act="edit" data-ag-id="' + esc(a.id) + '" title="Editar"><i class="fas fa-pen"></i></button>' +
           '<button class="btn-action danger" data-ag-act="delete" data-ag-id="' + esc(a.id) + '" title="Enviar a papelera"><i class="fas fa-trash"></i></button>';
+      const leads = _agLeadsCount[a.id] || 0;
+      const props = propsCount[a.id] || 0;
       return '<tr data-ag-row="' + esc(a.id) + '" style="cursor:pointer;">' +
         '<td><input type="checkbox" class="ag-row-check" data-ag-id="' + esc(a.id) + '"' + (_agSelected.has(a.id) ? ' checked' : '') + ' /></td>' +
         '<td><div style="display:flex; align-items:center; gap:10px;">' + agAvatarHtml(a) +
         '<div><div style="font-weight:600; color:#fff; font-size:13px;">' + esc(a.full_name || 'Sin nombre') + '</div>' +
         '<div style="color:var(--text-dim); font-size:11px;">' + esc(a.email || '') + '</div></div></div></td>' +
-        '<td style="font-size:13px;">' + esc(a.matricula || '-') + '</td>' +
-        '<td style="font-size:12px; max-width:200px;">' + specs + '</td>' +
-        '<td style="font-size:13px; color:var(--accent);">' + (a.commission_rate != null ? esc(a.commission_rate + '%') : '3%') + '</td>' +
+        '<td>' + agLinkedUserHtml(a) + '</td>' +
+        '<td style="font-size:12.5px;">' + esc(a.matricula || '-') + '</td>' +
+        '<td style="font-size:11px; max-width:160px;">' + specs + '</td>' +
+        '<td style="font-size:13px; color:var(--accent); font-weight:600;">' + (a.commission_rate != null ? esc(a.commission_rate + '%') : '3%') + '</td>' +
         '<td>' + agStatusPill(a.status) + '</td>' +
-        '<td style="text-align:center; font-size:13px;">' + (propsCount[a.id] || 0) + '</td>' +
+        '<td style="text-align:center; font-size:13px;"><span style="color:var(--accent); font-weight:600;">' + props + '</span><span style="color:var(--text-dim); font-size:10px;"> props</span></td>' +
+        '<td style="text-align:center; font-size:13px;"><span style="color:#3B82F6; font-weight:600;">' + leads + '</span><span style="color:var(--text-dim); font-size:10px;"> leads</span></td>' +
         '<td style="text-align:right; font-size:13px;">' + Number(a.sales_ytd || 0).toLocaleString('es-AR') + '</td>' +
         '<td style="font-size:13px; white-space:nowrap;">' + contacto + '</td>' +
         '<td><div style="display:flex; gap:6px; justify-content:flex-end;">' + acciones + '</div></td></tr>';
@@ -121,33 +144,36 @@
     if (!tbody) return;
     const client = await getAuthedClient();
     if (!client) return;
-    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:24px; color:var(--text-dim);"><i class="fas fa-circle-notch fa-spin"></i> Cargando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:24px; color:var(--text-dim);"><i class="fas fa-circle-notch fa-spin"></i> Cargando...</td></tr>';
 
     try {
       const from = (_agPage - 1) * _agPageSize;
-      const q = agBuildQuery(client, '*', { count: true });
+      const q = agBuildQuery(client, '*, profiles!agents_profile_id_fkey(id, full_name, email, role, last_sign_in_at)', { count: true });
       const { data, error, count } = await q.range(from, from + _agPageSize - 1);
       if (error) throw error;
       _agTotalCount = count || 0;
 
-      // KPIs del padron completo (pocos registros: una query liviana sin paginar)
       const { data: allAgents } = await client.from('agents').select('id, status, sales_ytd').is('deleted_at', null);
       if (allAgents) agRenderKpis(allAgents);
 
-      // Props activas asignadas por agente de la página actual
       const propsCount = {};
+      const leadsCount = {};
       const ids = (data || []).map(a => a.id);
       if (ids.length) {
-        const { data: props } = await client.from('properties').select('agent_id').is('deleted_at', null).in('agent_id', ids);
-        (props || []).forEach(p => { propsCount[p.agent_id] = (propsCount[p.agent_id] || 0) + 1; });
+        const [propsRes, leadsRes] = await Promise.all([
+          client.from('properties').select('agent_id').is('deleted_at', null).in('agent_id', ids),
+          client.from('leads').select('assigned_to').is('deleted_at', null).in('assigned_to', ids),
+        ]);
+        (propsRes.data || []).forEach(p => { propsCount[p.agent_id] = (propsCount[p.agent_id] || 0) + 1; });
+        (leadsRes.data || []).forEach(l => { leadsCount[l.assigned_to] = (leadsCount[l.assigned_to] || 0) + 1; });
       }
+      _agLeadsCount = leadsCount;
       const kpiProps = $('#agKpiProps');
       if (kpiProps && allAgents) {
         const { data: allProps } = await client.from('properties').select('agent_id').is('deleted_at', null).not('agent_id', 'is', null);
         kpiProps.textContent = String((allProps || []).length);
       }
 
-      // Estado del botón papelera
       const { count: trashCount } = await client.from('agents').select('id', { count: 'exact', head: true }).not('deleted_at', 'is', null);
       const trashBtn = $('#agTrashToggle');
       if (trashBtn) trashBtn.innerHTML = '<i class="fas fa-trash-can"></i> Papelera (' + (trashCount || 0) + ')';
@@ -156,9 +182,10 @@
       agRenderPagination();
     } catch (err) {
       logError('Agents error:', err);
-      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:24px; color:var(--warning);">No se pudo cargar el padrón de agentes. Reintentá o revisá la consola.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; padding:24px; color:var(--warning);">No se pudo cargar el padrón de agentes. Reintentá o revisá la consola.</td></tr>';
     }
   }
+  let _agLeadsCount = {};
 
   /* ------------------------------------------------
      Modal: foto (preview/quitar), especialidades (chips) y profiles

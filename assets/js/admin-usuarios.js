@@ -27,6 +27,7 @@
   let _sortDir = 'asc';
   let _agentIds = new Set();
   let _agentByProfile = {};
+  let _agentStats = {};
 
   /* ── Password strength ── */
   function evalPwdStrength(pwd) {
@@ -184,7 +185,9 @@
     if (!agentId) return '';
     const isSelf = !!(currentUser && u.id === currentUser.id);
     if (!canManageUsers() && !isSelf) return '';
-    return '<button type="button" class="user-agent-link" data-agent="' + esc(agentId) + '" title="Ir a la ficha del agente (matrícula, comisiones)" style="background:rgba(31,200,195,0.06); border:1px solid rgba(31,200,195,0.15); border-radius:8px; padding:6px 10px; color:var(--accent); cursor:pointer; font-size:11px; margin-left:6px;"><i class="fas fa-id-card"></i></button>';
+    const stats = _agentStats[u.id];
+    const info = stats ? (stats.commission != null ? stats.commission + '%' : '') + (stats.matricula ? ' · ' + stats.matricula : '') : '';
+    return '<button type="button" class="user-agent-link" data-agent="' + esc(agentId) + '" title="Ir a la ficha del agente' + (info ? ' (' + info + ')' : '') + '" style="background:rgba(31,200,195,0.06); border:1px solid rgba(31,200,195,0.15); border-radius:8px; padding:6px 10px; color:var(--accent); cursor:pointer; font-size:11px; margin-left:6px;"><i class="fas fa-id-card"></i>' + (info ? ' ' + esc(info.split(' · ')[0]) : '') + '</button>';
   }
 
   async function loadUsers() {
@@ -196,13 +199,19 @@
     try {
       const [profilesRes, agentsRes] = await Promise.all([
         client.from('profiles').select('id, full_name, email, phone, role, is_active, created_at, updated_at, last_sign_in_at').order('created_at', { ascending: true }),
-        client.from('agents').select('id, profile_id').not('profile_id', 'is', null),
+        client.from('agents').select('id, profile_id, commission_rate, matricula').not('profile_id', 'is', null),
       ]);
       if (profilesRes.error) throw profilesRes.error;
       usersCache = profilesRes.data || [];
       _agentIds = new Set((agentsRes.data || []).map(a => a.profile_id));
       _agentByProfile = {};
-      (agentsRes.data || []).forEach(a => { if (a.profile_id) _agentByProfile[a.profile_id] = a.id; });
+      _agentStats = {};
+      (agentsRes.data || []).forEach(a => {
+        if (a.profile_id) {
+          _agentByProfile[a.profile_id] = a.id;
+          _agentStats[a.profile_id] = { commission: a.commission_rate, matricula: a.matricula };
+        }
+      });
       renderKpis();
       applyFilters();
     } catch (err) {
