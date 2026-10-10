@@ -454,6 +454,58 @@ async function actionUpdateUser(
   return jsonResponse(200, { ok: true, userId, authMirror }, req);
 }
 
+/* Eliminar usuario: solo super_admin, nunca a si mismo. Borra el perfil
+   y la entrada de auth.users con la admin API de Supabase. */
+async function actionDeleteUser(
+  body: Record<string, unknown>,
+  callerId: string,
+  supabaseUrl: string,
+  serviceKey: string,
+  supabaseClient: ReturnType<typeof createClient>,
+  req: Request,
+) {
+  const targetId = typeof body.userId === 'string' ? body.userId.trim() : '';
+  if (!targetId) return jsonResponse(400, { error: 'userId requerido' }, req);
+  if (targetId === callerId) return jsonResponse(400, { error: 'No podés eliminar tu propio usuario' }, req);
+
+  const target = await fetchProfileRow(targetId, supabaseUrl, serviceKey);
+  if (!target) return jsonResponse(404, { error: 'Usuario no encontrado' }, req);
+
+  /* Borrar el perfil (public.profiles) */
+  const { error: profileErr } = await supabaseClient
+    .from('profiles')
+    .delete()
+    .eq('id', targetId);
+  if (profileErr) {
+    console.error('delete-user profile error:', profileErr);
+  }
+
+  /* Borrar de auth.users con la admin API */
+  const delRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${targetId}`, {
+    method: 'DELETE',
+    headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+  });
+  if (!delRes.ok) {
+    const errText = await delRes.text().catch(() => '');
+    console.error('delete-user auth error:', delRes.status, errText);
+    return jsonResponse(500, { error: 'No se pudo eliminar el usuario de auth' }, req);
+  }
+
+  await auditSensitiveAction(
+    supabaseClient,
+    req,
+    'delete_user',
+    'usuarios',
+    'user',
+    targetId,
+    `Usuario eliminado: ${target.email || targetId}`,
+    { target_id: targetId, role: target.role },
+    { source: 'manage-users', action: 'delete-user' },
+  );
+
+  return jsonResponse(200, { ok: true, deleted: targetId }, req);
+}
+
 /* Autogestion: cualquier usuario del panel actualiza su nombre y telefono.
    Rol/estado jamas (validacion explicita + trigger trg_profiles_guard_self
    en DB como segunda capa). El email propio de un no-admin se cambia desde
@@ -575,6 +627,9 @@ Deno.serve(async (req: Request) => {
     }
     if (body.action === 'update-user') {
       return await actionUpdateUser(body, userId, supabaseUrl, serviceKey, supabaseClient, req);
+    }
+    if (body.action === 'delete-user') {
+      return await actionDeleteUser(body, userId, supabaseUrl, serviceKey, supabaseClient, req);
     }
     return jsonResponse(400, { error: 'Accion desconocida' }, req);
   } catch (err) {
