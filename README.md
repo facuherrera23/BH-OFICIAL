@@ -379,7 +379,7 @@ Los usuarios se crean desde el propio panel (**Usuarios & Permisos**) mediante l
 
 ## 🗄️ Base de datos
 
-PostgreSQL gestionado por Supabase. **37 tablas en el esquema `public`, todas con RLS activada** (verificado contra producción el 2026-08-28).
+PostgreSQL gestionado por Supabase. **67 tablas en el esquema `public`, todas con RLS activada** (verificado contra producción el 2026-10-10; 121 políticas RLS).
 
 ### Diagrama entidad-relación (núcleo de negocio)
 
@@ -587,7 +587,7 @@ El permiso se resuelve con `profiles.role` (enum `user_role`):
 
 ## 🔒 Seguridad
 
-- **RLS en las 37 tablas**; lectura pública solo donde corresponde.
+- **RLS en las 67 tablas**; lectura pública solo donde corresponde.
 - **Hardening de funciones**: `search_path` fijo, `REVOKE ALL` a `PUBLIC` y `anon` en 44 funciones, con `GRANT` explícitos.
 - **XSS**: `esc()` obligatorio antes de todo `innerHTML`; `safeUrl` / `safeImageUrl` / `safeCssUrl` para atributos. Ver `XSS_REVIEW.md`.
 - **CSP** verificada por tests en las 5 páginas.
@@ -863,6 +863,8 @@ Los tokens se guardan cifrados (AES-256-GCM) y nunca llegan al frontend.
 
 ### Desplegadas en producción sin fuente en el repo
 
+> La tabla anterior es un listado de referencia; el directorio `supabase/functions/` contiene las **48 funciones** del repo (28+ activas en producción), con sus flags `verify_jwt` gestionados en `.github/workflows/deploy.yml` (lista `NO_VERIFY`).
+
 `ml-oauth`, `ml-callback`, `ml-auth`, `ml-api`, `ml-config`, `ml-categories`, `ml-listing-types`, `ml-metrics`, `ml-answer-question`, `ml-bulk-enqueue`, `ml-revoke-tokens`, `ml-import-listings`, `ml-sync-import`, `ml-webhook`.
 
 > Las funciones huérfanas `qr-checkin`, `visits-process-reminders`, `admin-user-invite`, `audit-log`, `contact-submit`, `chat-ai`, `chat-upload`, `convert-image` y `process-retention-policies` se eliminaron de producción el 2026-08-30.
@@ -898,6 +900,7 @@ Los tokens se guardan cifrados (AES-256-GCM) y nunca llegan al frontend.
 | `20260828_fix_owners_rls` | RLS de owners |
 | `20260830_fix_properties_public_read` | Lectura pública de propiedades |
 | `20260901000001_fix_p0_security_and_functional` | Hardening P0 (RLS, REVOKEs, vistas, policies anon) |
+| *(…hasta 93 migraciones, ver `supabase/migrations/`)* | ML completo (sync, webhooks, questions, tokens cifrados), Zernio chat (5 tablas + realtime), CRM revamp (stages canónicos, scoring, tareas), Agenda v2 (QR, recordatorios cron), RELA, encuesta de visita (`visit_surveys` + RPC por token + archivado), fixes de seguridad |
 
 ```bash
 supabase migration list     # ver estado
@@ -1043,7 +1046,7 @@ supabase functions deploy <slug> --no-verify-jwt  # webhooks y cron
 
 ```bash
 npm run lint    # node --check sobre admin-app.js y landing-app.js
-npm test        # Playwright (19 tests)
+npm test        # Playwright (59 tests)
 ```
 
 La suite E2E corre **en modo lectura** contra producción (RLS protege las escrituras) y cubre:
@@ -1077,8 +1080,6 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 | Ítem | Impacto | Estado |
 |---|---|---|
 | Edge Functions desplegadas sin fuente en el repo (ML OAuth/API, etc.) | Mantenibilidad / drift | Pendiente: sincronizar el código |
-| Cambios de `admin-app.js` sin commitear (`loadAnomaliesTable`, `supNewRuleBtn`) | Entrega | Commitear y subir cache buster |
-| Commit `ed9c75c` sin pushear | Repo desincronizado | `git push` |
 | Leaked Password Protection (Supabase Auth) | Seguridad | Activar en Dashboard → Auth (manual) |
 | Zernio webhook push sin registrar (solo el dueño tiene el dashboard) | Chat opera con pull cada 2 min | Si el dueño completa `CONECTAR_ZERNIO_CHAT.md` §4, el push instantáneo se suma solo |
 | Secret de webhook en texto plano en `docs/integrations/CONECTAR_ZERNIO_CHAT.md` | Seguridad | Rotar tras registrar el webhook |
@@ -1134,7 +1135,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 
 | Fecha | Versión | Cambios |
 |---|---|---|
-| 2026-10-10 | — | Chat Redes: auditoría completa + `zernio-sync` (Edge Function + cron cada 2 min) — pull incremental de Zernio con realtime en el panel sin depender del webhook push; recuperación de mensajes perdidos; README alineado con el estado real |
+| 2026-10-10 | — | Chat Redes: auditoría completa + `zernio-sync` (Edge Function + cron cada 2 min) — pull incremental de Zernio con realtime en el panel sin depender del webhook push; recuperación de mensajes perdidos; portal: quitados el botón "Coordiná una por WhatsApp" y el beneficio "Comisión preferencial"; encuesta rediseñada con identidad de marca (teal, Plus Jakarta Sans, logo) + mejoras de accesibilidad; documentación de cierre y cotización completa |
 | 2026-10-09 | — | Encuesta de visita (HOJA DE VISITA): tabla `visit_surveys` + RPC por token, página pública con autoguardado, botones en el panel del lead (Contacto/Propiedades), oferta al completar visita, resultados anónimos en el portal del propietario, re-encuesta por archivado |
 | 2026-09-01 | — | Migración `20260901000001`: hardening P0 aplicado a producción |
 | 2026-08-30 | — | Suite E2E Playwright; fix RLS `properties_public_read`; RLS de `tasaciones`; REVOKE en 44 funciones; 8 vistas `security_invoker`; policies anon para `leads` y `visits`; `portal_settings` sin fuga de secretos; 9 Edge Functions huérfanas eliminadas; `acorn` removido |
