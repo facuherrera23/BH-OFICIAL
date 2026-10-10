@@ -3521,7 +3521,7 @@ window.supabaseClient.from('agents').select('id, full_name, phone, email').eq('s
     })();
 
     initNotifications();
-    setInterval(() => { if (currentUser) loadNotifications(); }, 90000);
+    if ($('#notifList')) setInterval(() => { if (currentUser) loadNotifications(); }, 90000);
 
     initAuth();
   }
