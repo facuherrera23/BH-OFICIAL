@@ -856,7 +856,7 @@ Los tokens se guardan cifrados (AES-256-GCM) y nunca llegan al frontend.
 | `supervision-ml-anomaly` | ON | Detección de anomalías |
 | `supervision-notifications` | ON | Push/email de alertas críticas |
 | `supervision-notify` | cron | Dispara notificaciones |
-| `zernio-proxy` | ON | `send_message`, `mark_read`, `typing`, `list_accounts`, `backfill_*`, `diagnose` (super_admin) |
+| `zernio-proxy` | ON | `send_message`, `mark_read`, `typing`, `list_accounts`, `backfill_*`, `diagnose` (super_admin; broker: send/typing/mark_read en conversaciones propias) |
 | `zernio-sync` | OFF | Cron cada 2 min: pull incremental de Zernio → realtime del panel (puentea la falta de webhook push; secret `x-sync-secret` en `zernio_config`) |
 | `zernio-webhook` | OFF | Recibe webhooks (HMAC, dedup, persistencia) — pendiente registrar en el dashboard de Zernio |
 | `zernio-webhook-test` | OFF | Test de configuración |
@@ -1135,6 +1135,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 
 | Fecha | Versión | Cambios |
 |---|---|---|
+| 2026-10-10 (2) | — | Hardening de cierre: **P0 neutralizado** (stubs con verify_jwt sobre `tmp-gen-jwt`/`cta-test` — ya no generan links sin auth; eliminarlas del dashboard queda como pendiente estético), estrategia de **backups** (snapshot lógico verificado + runbook `pg_dump` en `docs/BACKUPS.md`), **brokers pueden responder el chat** en sus conversaciones (proxy con verificación de dueño), código muerto eliminado (`checkoutVisit` duplicado) |
 | 2026-10-10 | — | Chat Redes: auditoría completa + `zernio-sync` (Edge Function + cron cada 2 min) — pull incremental de Zernio con realtime en el panel sin depender del webhook push; recuperación de mensajes perdidos; portal: quitados el botón "Coordiná una por WhatsApp" y el beneficio "Comisión preferencial"; encuesta rediseñada con identidad de marca (teal, Plus Jakarta Sans, logo) + mejoras de accesibilidad; documentación de cierre y cotización completa |
 | 2026-10-09 | — | Encuesta de visita (HOJA DE VISITA): tabla `visit_surveys` + RPC por token, página pública con autoguardado, botones en el panel del lead (Contacto/Propiedades), oferta al completar visita, resultados anónimos en el portal del propietario, re-encuesta por archivado |
 | 2026-09-01 | — | Migración `20260901000001`: hardening P0 aplicado a producción |

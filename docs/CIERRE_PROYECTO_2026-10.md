@@ -49,7 +49,7 @@ Solución implementada (sin necesitar tu intervención):
 
 | # | Pendiente | Por qué importa | Esfuerzo |
 |---|---|---|---|
-| 1 | **Borrar del dashboard de Supabase las funciones de debug `tmp-gen-jwt` y `cta-test`** | ⚠️ **Prioridad seguridad**: `tmp-gen-jwt` genera magic-links sin autenticación. Son leftovers de pruebas viejas | 5 min en supabase.com/dashboard → Edge Functions → borrar |
+| 1 | **Borrar del dashboard de Supabase las funciones `tmp-gen-jwt` y `cta-test`** | ⚠️ **Ya neutralizadas** (2026-10-10): se sobrescribieron con stubs inertes con `verify_jwt` ON — **ya no generan magic-links sin auth** (verificado: responden 401). Borrarlas del dashboard quedó como pendiente estético | 5 min en supabase.com/dashboard → Edge Functions → borrar |
 | 2 | **Activar Leaked Password Protection** (Supabase → Auth) | Impide contraseñas filtradas en cuentas de tu equipo | 1 toggle en el dashboard |
 | 3 | **Chat: registrar el webhook en Zernio** (opcional — todo funciona igual sin esto) | Baja la latencia de 2 min a instantáneo. Pasos: `docs/integrations/CONECTAR_ZERNIO_CHAT.md` §4. Si lo hacés, avisar para rotar el secret que quedó en esa guía | ~5 min |
 | 4 | **Mercado Libre**: cerrar las publicaciones huérfanas DA-P0019/21/22/03 en el panel de ML antes de republicar | Evita duplicados en el portal | Desde el panel de ML |

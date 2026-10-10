@@ -66,7 +66,7 @@ JSONB con fotos base64 embebidas. Las tasaciones nuevas comprimen client-side (`
 - La entrada opera por **`zernio-sync`** (Edge Function, cron `zernio-sync-every-2-min`): pull incremental de Zernio, solo conversaciones con `updatedTime` nuevo → INSERTs disparan el realtime del panel. Auth: header `x-sync-secret` contra `zernio_config(key='sync_secret')`.
 - `zernio-sync` está en la lista `NO_VERIFY` de `.github/workflows/deploy.yml` — si se agrega una función cron nueva sin meterla ahí, el CI la deploya con verify_jwt ON y el cron muere en silencio (401).
 - El webhook push (`zernio-webhook`) está construido y defendido (HMAC timing-safe, dedup por event id) pero **Zernio no tiene API para registrarlo** — solo el dashboard del dueño (ver `docs/integrations/CONECTAR_ZERNIO_CHAT.md` §4). Mientras tanto, el pull lo cubre con ≤2 min de latencia.
-- `zernio-proxy` exige **super_admin** (la key de Zernio solo la usan funciones server-side); los brokers pueden leer sus conversaciones (RLS por `broker_id`) pero no enviar.
+- `zernio-proxy` exige **staff** (super_admin: todo; **broker**: `send_message`/`typing`/`mark_read` solo en conversaciones donde su `broker_id` es el dueño — la key de Zernio solo la usan funciones server-side).
 
 ## Imágenes y performance
 
