@@ -26,6 +26,7 @@
   let _sortKey = 'created_at';
   let _sortDir = 'asc';
   let _agentIds = new Set();
+  let _agentByProfile = {};
 
   /* ── Password strength ── */
   function evalPwdStrength(pwd) {
@@ -135,7 +136,7 @@
       return _sortDir === 'asc' ? cmp : -cmp;
     });
     if (!list.length) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:36px; color:var(--text-dim);"><i class="fas fa-user-plus" style="font-size:24px; opacity:0.3; display:block; margin-bottom:10px;"></i>' + (usersCache.length ? 'Ningún usuario coincide con el filtro.' : 'No hay usuarios aún. Tocá "+ Invitar Usuario" para agregar el primero.') + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:36px; color:var(--text-dim);"><i class="fas fa-user-plus" style="font-size:24px; opacity:0.3; display:block; margin-bottom:10px;"></i>' + (usersCache.length ? 'Ningún usuario coincide con el filtro.' : 'No hay usuarios aún. Tocá "+ Invitar Usuario" para agregar el primero.') + '</td></tr>';
       return;
     }
     tbody.innerHTML = list.map(u => {
@@ -145,18 +146,45 @@
         <tr style="${isSelf ? 'background:rgba(31,200,195,0.03);' : ''}">
           <td style="font-weight:500; color:#fff; font-size:13px;">
             <div style="display:flex; align-items:center; gap:10px;">
-              <span style="width:30px; height:30px; border-radius:50%; background:${rbs.bg}; border:1px solid ${rbs.border}; display:flex; align-items:center; justify-content:center; font-size:12px; color:${rbs.color}; flex-shrink:0; position:relative;"><i class="fas ${rbs.icon}" style="font-size:11px;"></i>${_agentIds.has(u.id) ? '<span style="position:absolute; bottom:-1px; right:-1px; width:10px; height:10px; border-radius:50%; background:var(--success); border:2px solid var(--bg-secondary); display:flex; align-items:center; justify-content:center;" title="Agente linkeado — asignable a leads, propiedades y chat"></span>' : u.role !== 'super_admin' ? '<span style="position:absolute; bottom:-1px; right:-1px; width:10px; height:10px; border-radius:50%; background:#ef4444; border:2px solid var(--bg-secondary); display:flex; align-items:center; justify-content:center;" title="SIN agente linkeado — no asignable a leads, propiedades ni chat"></span>' : ''}</span>
+              <span style="width:30px; height:30px; border-radius:50%; background:${rbs.bg}; border:1px solid ${rbs.border}; display:flex; align-items:center; justify-content:center; font-size:12px; color:${rbs.color}; flex-shrink:0; position:relative;"><i class="fas ${rbs.icon}" style="font-size:11px;"></i>${_agentIds.has(u.id) ? '<span style="position:absolute; bottom:-1px; right:-1px; width:10px; height:10px; border-radius:50%; background:var(--success); border:2px solid var(--bg-secondary); display:flex; align-items:center; justify-content:center;" title="Agente linkeado"></span>' : u.role !== 'super_admin' ? '<span style="position:absolute; bottom:-1px; right:-1px; width:10px; height:10px; border-radius:50%; background:#ef4444; border:2px solid var(--bg-secondary); display:flex; align-items:center; justify-content:center;" title="Sin agente linkeado"></span>' : ''}</span>
               <span>${esc(u.full_name || u.email || 'Sin nombre')}${isSelf ? ' <span style="font-size:10px; color:var(--accent); font-weight:700; margin-left:4px;">(vos)</span>' : ''}</span>
             </div>
           </td>
           <td><button type="button" class="user-email-copy" data-email="${esc(u.email || '')}" style="background:none; border:none; color:var(--text-dim); font-size:12px; cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px; padding:2px 0;" title="Click para copiar">${esc(u.email || '-')}</button></td>
           <td><span style="display:inline-block; padding:3px 12px; border-radius:999px; font-size:11px; font-weight:700; background:${rbs.bg}; color:${rbs.color}; border:1px solid ${rbs.border};">${esc(USER_ROLE_LABELS[u.role] || u.role || 'agente')}</span></td>
           <td>${userStatusCellHtml(u)}</td>
+          <td>${lastSignInCellHtml(u)}</td>
           <td style="color:var(--text-dim); font-size:12px;">${u.created_at ? new Date(u.created_at).toLocaleDateString('es-AR') : '-'}</td>
           <td>${buildRoleSelect(u.id, u.role)}</td>
-          <td>${userEditCellHtml(u)}</td>
+          <td style="white-space:nowrap;">${userEditCellHtml(u)}${agentLinkCellHtml(u)}</td>
         </tr>`;
     }).join('');
+  }
+
+  function lastSignInCellHtml(u) {
+    if (!u.last_sign_in_at) {
+      return '<span style="font-size:10.5px; font-weight:700; color:#FFB800; background:rgba(255,184,0,0.1); border:1px solid rgba(255,184,0,0.25); border-radius:999px; padding:2px 10px; white-space:nowrap;"><i class="fas fa-hourglass-half" style="margin-right:4px; font-size:9px;"></i>Pendiente</span>';
+    }
+    const diff = Date.now() - new Date(u.last_sign_in_at).getTime();
+    const days = Math.floor(diff / 86400000);
+    const hours = Math.floor(diff / 3600000);
+    const mins = Math.floor(diff / 60000);
+    let label;
+    if (mins < 1) label = 'Ahora';
+    else if (mins < 60) label = 'Hace ' + mins + ' min';
+    else if (hours < 24) label = 'Hace ' + hours + ' h';
+    else if (days < 30) label = 'Hace ' + days + ' día' + (days !== 1 ? 's' : '');
+    else label = new Date(u.last_sign_in_at).toLocaleDateString('es-AR');
+    const isRecent = hours < 24;
+    return '<span style="font-size:11px; color:' + (isRecent ? 'var(--success)' : 'var(--text-dim)') + ';" title="' + new Date(u.last_sign_in_at).toLocaleString('es-AR') + '">' + label + '</span>';
+  }
+
+  function agentLinkCellHtml(u) {
+    const agentId = _agentByProfile[u.id];
+    if (!agentId) return '';
+    const isSelf = !!(currentUser && u.id === currentUser.id);
+    if (!canManageUsers() && !isSelf) return '';
+    return '<button type="button" class="user-agent-link" data-agent="' + esc(agentId) + '" title="Ir a la ficha del agente (matrícula, comisiones)" style="background:rgba(31,200,195,0.06); border:1px solid rgba(31,200,195,0.15); border-radius:8px; padding:6px 10px; color:var(--accent); cursor:pointer; font-size:11px; margin-left:6px;"><i class="fas fa-id-card"></i></button>';
   }
 
   async function loadUsers() {
@@ -167,12 +195,14 @@
     if (!client) return;
     try {
       const [profilesRes, agentsRes] = await Promise.all([
-        client.from('profiles').select('id, full_name, email, phone, role, is_active, created_at, updated_at').order('created_at', { ascending: true }),
-        client.from('agents').select('profile_id').not('profile_id', 'is', null),
+        client.from('profiles').select('id, full_name, email, phone, role, is_active, created_at, updated_at, last_sign_in_at').order('created_at', { ascending: true }),
+        client.from('agents').select('id, profile_id').not('profile_id', 'is', null),
       ]);
       if (profilesRes.error) throw profilesRes.error;
       usersCache = profilesRes.data || [];
       _agentIds = new Set((agentsRes.data || []).map(a => a.profile_id));
+      _agentByProfile = {};
+      (agentsRes.data || []).forEach(a => { if (a.profile_id) _agentByProfile[a.profile_id] = a.id; });
       renderKpis();
       applyFilters();
     } catch (err) {
@@ -248,6 +278,15 @@
     if (emailBtn && emailBtn.dataset.email) {
       try { await navigator.clipboard.writeText(emailBtn.dataset.email); showToast('Email copiado', 'success'); }
       catch { showToast('No se pudo copiar', 'warning'); }
+      return;
+    }
+    const agentBtn = e.target.closest('.user-agent-link');
+    if (agentBtn && agentBtn.dataset.agent) {
+      const tabBtn = document.querySelector('[data-tab="tab-agentes"]');
+      if (tabBtn) {
+        tabBtn.click();
+        setTimeout(() => { if (typeof window.adminApp?.editAgent === 'function') window.adminApp.editAgent(agentBtn.dataset.agent); }, 400);
+      }
       return;
     }
     const editBtn = e.target.closest('.user-edit-btn');

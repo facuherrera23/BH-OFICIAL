@@ -390,6 +390,8 @@ function esc(s) {
         window._bhCurrentUser = currentUser;
         showApp();
         loadProfile().then(updateUserInfo).catch(() => {});
+        /* Track last sign-in para el módulo Usuarios (fire-and-forget) */
+        window.supabaseClient.from('profiles').update({ last_sign_in_at: new Date().toISOString() }).eq('id', session.user.id).then(() => {}, () => {});
       } else if (event === 'SIGNED_OUT') {
         currentUser = null;
         currentProfile = null;
