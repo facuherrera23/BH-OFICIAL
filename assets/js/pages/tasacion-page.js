@@ -643,7 +643,8 @@ function _markEmptyFields(){
     if (el.tagName === 'INPUT' && !el.value.toString().trim()) { wrapper.classList.add('print-empty'); return; }
     wrapper.classList.remove('print-empty');
   });
-  /* También oculta filas de grid que quedaron completamente vacías */
+
+  /* Oculta grids que quedaron completamente vacías */
   document.querySelectorAll('.grid').forEach(grid => {
     const fields = grid.querySelectorAll(':scope > .field');
     if (fields.length > 0 && Array.from(fields).every(f => f.classList.contains('print-empty'))) {
@@ -652,6 +653,27 @@ function _markEmptyFields(){
       grid.classList.remove('print-empty');
     }
   });
+
+  /* Oculta secciones enteras sin contenido visible:
+     evita páginas con solo un título huérfano al final del PDF */
+  document.querySelectorAll('section.card').forEach(sec => {
+    const isComparable = sec.id === 'sectionComparables';
+    if (isComparable) return; /* comparables se ocultan por :has(.comp-block) en CSS */
+    const hasVisibleField = Array.from(sec.querySelectorAll('.field, .amb-field')).some(f => !f.classList.contains('print-empty'));
+    const hasFixedContent = sec.querySelectorAll('.marketing-text, table, canvas, .valuation-summary, .ac-chart-wrap, .map-frame, img[src]:not([style*="display:none"]), .comp-block').length > 0;
+    const hasPhoto = !!sec.querySelector('.photo-box img[src]') && sec.querySelector('.photo-box img[src]').offsetParent !== null;
+    if (!hasVisibleField && !hasFixedContent && !hasPhoto) {
+      sec.classList.add('print-empty');
+    } else {
+      sec.classList.remove('print-empty');
+    }
+  });
+
+  /* El footer del logo se oculta si queda solo en una página casi vacía */
+  const allSections = document.querySelectorAll('section.card:not(.print-empty)');
+  if (allSections.length === 0) {
+    document.querySelector('.brand-footer')?.classList.add('print-empty');
+  }
 }
 document.getElementById('ac_dispersion').addEventListener('input', ()=>renderAnalisisComparativo());
 
