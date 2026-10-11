@@ -257,14 +257,11 @@
   @media print{
     .action-bar, .toast, .add-btn, .remove{display:none !important;}
     .comp-block[data-included="false"]{display:none !important;}
-    /* Informe por bloques (formato definido por el estudio):
-       B1 · p1: cliente + inmueble + foto · p2: descripción + servicios · p3: barrio + plano
-       B2 · comparables 2 por página; si son impares la media página final queda en blanco
-            (.print-page-break la marca beforeprint sobre los comparables VISIBLES)
-       B3 · análisis comparativo + valuación · B4 · observaciones + plan de marketing */
+    /* Informe: el contenido fluye natural página a página.
+       Solo 3 saltos forzados: portada→contenido, comparables, análisis. */
     main{max-width:100%;}
-    #printGroupPropiedad, #printGroupBarrio, #sectionComparables,
-    #sectionAnalisisComparativo, #sectionObservaciones{break-before:page; page-break-before:always;}
+    #sectionComparables,
+    #sectionAnalisisComparativo{break-before:page; page-break-before:always;}
     .comp-block.print-page-break{break-before:page; page-break-before:always;}
     .screen-only{display:none !important;}
     #sectionComparables:not(:has(.comp-block)){display:none !important;}
@@ -275,7 +272,7 @@
     section.card.collapsed h2{border-bottom-color:#ccc !important;}
     body{padding-bottom:0; background:#fff !important; color:var(--dark) !important;}
     section.card{border:1px solid #ccc; background:#fff !important; color:var(--dark) !important; break-inside:auto; page-break-inside:auto;}
-    section.card h2{color:var(--teal-dark) !important; border-bottom-color:#ccc !important; break-after:avoid; page-break-after:avoid;}
+    section.card h2{color:var(--teal-dark) !important; border-bottom-color:#ccc !important; break-after:avoid; page-break-after:avoid; break-before:avoid; page-break-before:avoid;}
     .field label, .char-cell .label, .valor-box label, .valuation-summary .box .lbl{color:#555 !important;}
     .comp-block{background:#fff !important; border-color:var(--teal) !important;}
     .comp-block h3{color:var(--teal-dark) !important; break-after:avoid; page-break-after:avoid;}
@@ -343,7 +340,13 @@
     .map-legend{display:flex !important; font-size:11px !important; margin-top:8px;}
     .map-legend .chip{background:#fff !important; border-color:#ccc !important; color:var(--dark) !important; padding:2px 10px !important;}
 
-    /* Compactación del layout paginado: cada bloque del informe debe entrar en su página */
+    /* Grids pueden fluir entre páginas sin cortar campos individuales */
+    .grid{break-inside:auto; page-break-inside:auto;}
+    .field{break-inside:avoid; page-break-inside:avoid;}
+    .amb-field{break-inside:avoid; page-break-inside:avoid;}
+    .char-cell{break-inside:avoid; page-break-inside:avoid;}
+
+    /* Compactación del layout paginado */
     main{padding:12px 14px 16px;}
     .grid{gap:7px;}
     .grid.cols-2{grid-template-columns:1fr 1fr;}
