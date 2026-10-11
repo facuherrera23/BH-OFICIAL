@@ -309,26 +309,20 @@
     [style*="--muted"]{color:#555 !important;}
 
     /* ── Documento profesional: texto plano en vez de inputs ── */
-    .field input, .field select, .field textarea{
+    .field input, .field select, .field textarea,
+    .comp-block .field input, .comp-block .field select, .comp-block .field textarea,
+    .amb-field input, .char-cell select, input.c_precioM2{
       border:none !important; border-radius:0 !important; background:transparent !important;
       padding:2px 0 !important; color:#222 !important;
       border-bottom:1px dotted #bbb !important;
       appearance:none; -webkit-appearance:none;
     }
-    .field select{color:#222 !important;}
-    .field input::placeholder{color:transparent !important;}
-    .amb-field input{border-bottom:1px dotted #bbb !important; border-radius:0 !important; background:transparent !important;}
-    input.c_precioM2, .char-cell select{background:transparent !important; border:none !important; border-bottom:1px dotted #bbb !important; border-radius:0 !important; color:var(--dark) !important;}
-    .comp-block .field input, .comp-block .field select{border:none !important; border-bottom:1px dotted #bbb !important; border-radius:0 !important; background:transparent !important;}
-    .comp-block .char-cell select{border:none !important; border-bottom:1px dotted #bbb !important; border-radius:0 !important; background:transparent !important;}
+    .field select, .comp-block .char-cell select, select{color:#222 !important;}
+    .field input::placeholder, .comp-block .field input::placeholder{color:transparent !important;}
 
-    /* ── Ocultar campos vacíos (cero ruido en el documento) ── */
-    .field:has(input:not([value]):not([type="file"])):not(:has(input[value=""])){display:none !important;}
-    .field:has(input[value=""]):not(:has(input[type="number"][value=""])):not(:has(input[value][value!=""])){display:none !important;}
-    .field:has(select[value=""]):not(:has(select > option[selected][value=""])){display:none !important;}
-    .field:has(select:not([value])):not(:has(select > option[selected])){display:none !important;}
-    .field:has(textarea:empty){display:none !important;}
-    .amb-field:has(input:not([value]):not([value=""])):has(input:placeholder-shown){opacity:.35;}
+    /* ── Ocultar campos vacíos (marcados por JS con .print-empty) ── */
+    .print-empty{display:none !important;}
+    .amb-field.print-empty{display:none !important;}
 
     /* ── Foto placeholder discreto ── */
     .photo-placeholder{font-size:10px !important; padding:16px 8px !important;}
@@ -351,11 +345,11 @@
 
     /* Compactación del layout paginado: cada bloque del informe debe entrar en su página */
     main{padding:12px 14px 16px;}
-    header.top{padding:10px 18px;}
-    .logo-badge img{height:30px;}
-    section.card{padding:13px 15px; margin-bottom:10px;}
-    section.card h2{font-size:11.5px; margin-bottom:9px; padding-bottom:6px;}
     .grid{gap:7px;}
+    .grid.cols-2{grid-template-columns:1fr 1fr;}
+    .grid.cols-3{grid-template-columns:1fr 1fr 1fr;}
+    .grid.cols-4{grid-template-columns:1fr 1fr;}
+    .grid.cols-5{grid-template-columns:1fr 1fr;}
     .field input, .field select, .field textarea{padding:3px 0 !important; font-size:12.5px;}
     .field label{margin-bottom:2px; font-size:9px;}
     .field textarea{min-height:50px;}

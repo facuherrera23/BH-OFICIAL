@@ -624,11 +624,35 @@ window.addEventListener('beforeprint', ()=>{
      es impar, la media página final queda en blanco. */
   const visibles = Array.from(document.querySelectorAll('.comp-block')).filter(b => b.dataset.included !== 'false');
   visibles.forEach((b, i) => b.classList.toggle('print-page-break', i > 0 && i % 2 === 0));
+  _markEmptyFields();
 });
 window.addEventListener('afterprint', ()=>{
   renderAnalisisComparativo(false);
   document.querySelectorAll('.comp-block.print-page-break').forEach(b => b.classList.remove('print-page-break'));
+  document.querySelectorAll('.print-empty').forEach(el => el.classList.remove('print-empty'));
 });
+
+/* Marca campos vacíos para que el CSS de print los oculte.
+   CSS :has(input[value=""]) no funciona — el atributo HTML no refleja el value property de JS. */
+function _markEmptyFields(){
+  document.querySelectorAll('.field input, .field select, .field textarea, .amb-field input').forEach(el => {
+    const wrapper = el.closest('.field') || el.closest('.amb-field');
+    if (!wrapper) return;
+    if (el.tagName === 'SELECT' && !el.value) { wrapper.classList.add('print-empty'); return; }
+    if (el.tagName === 'TEXTAREA' && !el.value.trim()) { wrapper.classList.add('print-empty'); return; }
+    if (el.tagName === 'INPUT' && !el.value.toString().trim()) { wrapper.classList.add('print-empty'); return; }
+    wrapper.classList.remove('print-empty');
+  });
+  /* También oculta filas de grid que quedaron completamente vacías */
+  document.querySelectorAll('.grid').forEach(grid => {
+    const fields = grid.querySelectorAll(':scope > .field');
+    if (fields.length > 0 && Array.from(fields).every(f => f.classList.contains('print-empty'))) {
+      grid.classList.add('print-empty');
+    } else {
+      grid.classList.remove('print-empty');
+    }
+  });
+}
 document.getElementById('ac_dispersion').addEventListener('input', ()=>renderAnalisisComparativo());
 
 let photoDataUrl = null;
