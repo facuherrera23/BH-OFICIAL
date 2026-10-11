@@ -31,6 +31,7 @@
     --dark:#1c2321;
   }
   *{box-sizing:border-box;}
+  .print-hero{display:none !important;}
   body{
     margin:0; background:var(--paper); color:var(--ink);
     font-family:'Source Serif 4', Georgia, serif;
@@ -387,6 +388,24 @@
     table.data-table td, table.data-table th{padding:4px 6px; font-size:12px;}
     .brand-footer{padding:8px 20px 4px; break-before:avoid; page-break-before:avoid; break-inside:avoid;}
     .brand-footer img{height:28px; opacity:.85;}
+
+    /* Sello de marca: logo grande centrado en la primera página del PDF */
+    .print-hero{
+      display:flex !important;
+      justify-content:center;
+      align-items:center;
+      padding:28px 0 20px;
+      break-inside:avoid; page-break-inside:avoid;
+    }
+    .print-hero img{
+      height:110px;
+      width:auto;
+      opacity:1;
+      print-color-adjust:exact; -webkit-print-color-adjust:exact;
+    }
+    /* El header compacto pasa a ser secundario (el sello es el protagonista) */
+    header.top .logo-badge{display:none !important;}
+    header.top{border-bottom:none !important;}
   }
 </style>
 </head>
@@ -404,6 +423,11 @@
     </div>
   </div>
 </header>
+
+<!-- Sello de marca: solo visible en el PDF (primera página) -->
+<div class="print-hero" aria-hidden="true">
+  <img src="assets/img/logo-bh.png" alt="Bienenhaus Propiedades">
+</div>
 
 <main>
 
