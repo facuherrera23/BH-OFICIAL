@@ -307,6 +307,32 @@
     .ac-table td, .ac-table th{color:var(--dark) !important;}
     [style*="--muted"]{color:#555 !important;}
 
+    /* ── Documento profesional: texto plano en vez de inputs ── */
+    .field input, .field select, .field textarea{
+      border:none !important; border-radius:0 !important; background:transparent !important;
+      padding:2px 0 !important; color:#222 !important;
+      border-bottom:1px dotted #bbb !important;
+      appearance:none; -webkit-appearance:none;
+    }
+    .field select{color:#222 !important;}
+    .field input::placeholder{color:transparent !important;}
+    .amb-field input{border-bottom:1px dotted #bbb !important; border-radius:0 !important; background:transparent !important;}
+    input.c_precioM2, .char-cell select{background:transparent !important; border:none !important; border-bottom:1px dotted #bbb !important; border-radius:0 !important; color:var(--dark) !important;}
+    .comp-block .field input, .comp-block .field select{border:none !important; border-bottom:1px dotted #bbb !important; border-radius:0 !important; background:transparent !important;}
+    .comp-block .char-cell select{border:none !important; border-bottom:1px dotted #bbb !important; border-radius:0 !important; background:transparent !important;}
+
+    /* ── Ocultar campos vacíos (cero ruido en el documento) ── */
+    .field:has(input:not([value]):not([type="file"])):not(:has(input[value=""])){display:none !important;}
+    .field:has(input[value=""]):not(:has(input[type="number"][value=""])):not(:has(input[value][value!=""])){display:none !important;}
+    .field:has(select[value=""]):not(:has(select > option[selected][value=""])){display:none !important;}
+    .field:has(select:not([value])):not(:has(select > option[selected])){display:none !important;}
+    .field:has(textarea:empty){display:none !important;}
+    .amb-field:has(input:not([value]):not([value=""])):has(input:placeholder-shown){opacity:.35;}
+
+    /* ── Foto placeholder discreto ── */
+    .photo-placeholder{font-size:10px !important; padding:16px 8px !important;}
+    .photo-placeholder .photo-hint{display:none !important;}
+
     /* Ocultar bloques vacíos (fotos sin cargar, mapa sin ubicar) */
     .photo-box:has(.photo-placeholder:not([style*="display: none"])){display:none !important;}
     section.card:has(#leafletMap > .map-placeholder:not([style*="display: none"])){display:none !important;}
@@ -329,7 +355,7 @@
     section.card{padding:13px 15px; margin-bottom:10px;}
     section.card h2{font-size:11.5px; margin-bottom:9px; padding-bottom:6px;}
     .grid{gap:7px;}
-    .field input, .field select, .field textarea{padding:5px 8px; font-size:12.5px;}
+    .field input, .field select, .field textarea{padding:3px 0 !important; font-size:12.5px;}
     .field label{margin-bottom:2px; font-size:9px;}
     .field textarea{min-height:50px;}
     .amb-grid{grid-template-columns:repeat(4,1fr); gap:3px 12px;}
@@ -339,12 +365,12 @@
     .comp-block{padding:9px 12px; margin-bottom:8px;}
     .comp-block h3{font-size:11.5px; margin-bottom:5px;}
     .comp-block .photo-box{max-width:210px; aspect-ratio:16/7; margin:4px auto 0; min-height:0;}
-    .comp-block .field input, .comp-block .field select, .comp-block .field textarea{padding:4px 7px; font-size:12px;}
+    .comp-block .field input, .comp-block .field select, .comp-block .field textarea{padding:4px 0 !important; font-size:12px; border:none !important; border-bottom:1px dotted #bbb !important; border-radius:0 !important; background:transparent !important;}
     .comp-block .field label{margin-bottom:2px; font-size:9px;}
     .comp-block .grid{gap:6px;}
     .comp-block .char-grid{gap:4px 8px; margin-top:5px;}
     .comp-block .char-cell .label{font-size:9px; margin-bottom:2px;}
-    .comp-block .char-cell select{padding:4px 7px; font-size:12px;}
+    .comp-block .char-cell select{padding:4px 0 !important; font-size:12px; border:none !important; border-bottom:1px dotted #bbb !important; border-radius:0 !important; background:transparent !important;}
     .comp-block .coef-box{padding:5px 10px; margin-top:6px;}
     .comp-block .coef-box span{font-size:10.5px;}
     .comp-block .coef-box strong{font-size:13px;}
