@@ -364,6 +364,7 @@ function applyFormData(data){
   }
   if(data.photo){ setPhoto(data.photo); }
   renderServicios();
+  _updateHeroAddr();
   if(data.servicios){
     Object.keys(data.servicios).forEach(k=>{
       const el = document.getElementById('serv_'+k);
@@ -868,8 +869,26 @@ function makeAccordions(){
   });
 }
 
+function _updateHeroAddr(){
+  const el = document.getElementById('printHeroAddr');
+  if (!el) return;
+  const dir = document.getElementById('f_direccion')?.value || '';
+  const barrio = document.getElementById('f_barrio')?.value || '';
+  const parts = [dir, barrio].filter(Boolean).join(' · ');
+  el.textContent = parts;
+}
+
 async function init(){
   document.getElementById('dateStamp').textContent = new Date().toLocaleDateString('es-AR', {year:'numeric',month:'long',day:'numeric'});
+  const _phDate = document.getElementById('printHeroDate');
+  if (_phDate) _phDate.textContent = new Date().toLocaleDateString('es-AR', {year:'numeric',month:'long',day:'numeric'});
+  const _phAddr = document.getElementById('printHeroAddr');
+  if (_phAddr) {
+    const dir = document.getElementById('f_direccion');
+    const barrio = document.getElementById('f_barrio');
+    if (dir) dir.addEventListener('input', () => _updateHeroAddr());
+    if (barrio) barrio.addEventListener('input', () => _updateHeroAddr());
+  }
   document.querySelectorAll('.field label').forEach(l=>{ l.title = l.textContent; });
   renderServicios();
 

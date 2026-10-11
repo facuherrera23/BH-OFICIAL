@@ -389,23 +389,48 @@
     .brand-footer{padding:8px 20px 4px; break-before:avoid; page-break-before:avoid; break-inside:avoid;}
     .brand-footer img{height:28px; opacity:.85;}
 
-    /* Sello de marca: logo grande centrado en la primera página del PDF */
+    /* Portada: logo grande + título + fecha — página completa */
     .print-hero{
       display:flex !important;
+      flex-direction:column;
       justify-content:center;
       align-items:center;
-      padding:28px 0 20px;
-      break-inside:avoid; page-break-inside:avoid;
+      min-height:85vh;
+      padding:40px 20px;
+      text-align:center;
+      break-after:page; page-break-after:always;
     }
     .print-hero img{
-      height:110px;
+      height:200px;
       width:auto;
       opacity:1;
+      margin-bottom:32px;
       print-color-adjust:exact; -webkit-print-color-adjust:exact;
     }
-    /* El header compacto pasa a ser secundario (el sello es el protagonista) */
-    header.top .logo-badge{display:none !important;}
-    header.top{border-bottom:none !important;}
+    .print-hero-title{
+      font-family:'Poppins',sans-serif !important;
+      font-size:22px !important;
+      font-weight:700;
+      color:#222 !important;
+      margin:0 0 12px;
+      letter-spacing:1px;
+      text-transform:uppercase;
+    }
+    .print-hero-date{
+      font-family:'Poppins',sans-serif !important;
+      font-size:13px !important;
+      color:#666 !important;
+      margin:0 0 6px;
+    }
+    .print-hero-addr{
+      font-family:'Poppins',sans-serif !important;
+      font-size:15px !important;
+      font-weight:600;
+      color:#0d9488 !important;
+      margin:0;
+    }
+    /* El header original se oculta: la portada lo reemplaza */
+    header.top{display:none !important;}
   }
 </style>
 </head>
@@ -424,9 +449,12 @@
   </div>
 </header>
 
-<!-- Sello de marca: solo visible en el PDF (primera página) -->
+<!-- Portada del PDF: solo visible en print — logo grande + título + fecha -->
 <div class="print-hero" aria-hidden="true">
   <img src="assets/img/logo-bh.png" alt="Bienenhaus Propiedades">
+  <h1 class="print-hero-title">Análisis Comparativo<br>de Mercado</h1>
+  <p class="print-hero-date" id="printHeroDate"></p>
+  <p class="print-hero-addr" id="printHeroAddr"></p>
 </div>
 
 <main>
