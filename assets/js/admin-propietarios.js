@@ -433,78 +433,184 @@ closeModal('ownerModal');
     }
   };
 
-  /* Generate Portal Link for Owner */
-  window.adminApp.generateOwnerPortalLink = async function() {
+  /* ── Acceso al Portal del Propietario ──
+     owner_portal_tokens tiene UNIQUE(owner_id): un acceso por propietario.
+     Si ya tiene uno vigente se REUTILIZA (regenerarlo con upsert invalidaría
+     al instante el link que el propietario ya tiene); regenerar exige
+     confirmación explícita. Vigencia = misma definición que valida el
+     portal: revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now). */
+  let _portalTokenRow = null;
 
-    if (!editingOwnerId) return showToast('Primero guarde el propietario', 'warning');
+  function portalTokenActive(row) {
+    return !!row && !row.revoked_at && (!row.expires_at || new Date(row.expires_at).getTime() > Date.now());
+  }
 
-    if (!window.supabaseClient) return;
+  function portalUrl(token) {
+    return window.location.origin + '/portal-propietario.html?token=' + token;
+  }
 
-    try {
+  function fmtPortalExpiry(expiresAtIso) {
+    if (!expiresAtIso) return 'Sin vencimiento';
+    const ms = new Date(expiresAtIso).getTime() - Date.now();
+    const date = new Date(expiresAtIso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    if (ms <= 0) return 'Vencido el ' + date;
+    const days = Math.floor(ms / 86400000);
+    const hours = Math.floor((ms % 86400000) / 3600000);
+    if (days >= 1) return 'Vence en ' + days + (days === 1 ? ' día' : ' días') + ' (' + date + ')';
+    return 'Vence en ' + hours + ' h (' + date + ')';
+  }
 
-      /* El agente elige cuántos días el acceso queda válido */
-      const daysStr = prompt('Días de validez del acceso del propietario (ej: 30, 90, 180)', '90');
+  function portalShareMessage(row) {
+    const until = row.expires_at
+      ? new Date(row.expires_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : 'sin vencimiento';
+    return [
+      'Portal Bienenhaus — seguimiento de tu expediente',
+      'Código de acceso: ' + row.token,
+      'Válido hasta: ' + until,
+      'Ingresá acá: ' + portalUrl(row.token)
+    ].join('\n');
+  }
 
-      if (daysStr === null) return;
+  function renderPortalTokenState() {
+    const activeBox = $('#portalTokenActive');
+    const newBox = $('#portalTokenNew');
+    const msg = $('#portalLinkMsg');
+    if (!activeBox || !newBox || !msg) return;
 
-      const days = parseInt(daysStr, 10);
-
-      if (!days || days < 1) { showToast('Duración inválida', 'error'); return; }
-
-      /* Código corto legible: sin 0/O ni 1/I/L para no confundir leyendo por teléfono */
-      const CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-
-      const rnd = crypto.getRandomValues(new Uint8Array(5));
-
-      let token = '';
-
-      for (let i = 0; i < 5; i++) token += CHARS[rnd[i] % CHARS.length];
-
-      const expiresAt = new Date(Date.now() + days * 86400000).toISOString();
-
-      const { error } = await window.supabaseClient
-
-        .from('owner_portal_tokens')
-
-        .upsert([{
-
-          owner_id: editingOwnerId,
-
-          token: token,
-
-          scopes: ['read_properties', 'read_commissions', 'read_documents'],
-
-          expires_at: expiresAt,
-
-          created_by: currentUser?.id || null
-
-        }], { onConflict: 'owner_id' });
-
-      if (error) throw error;
-
-      const portalUrl = window.location.origin + '/portal-propietario.html?token=' + token;
-
-      const msg = 'Código: ' + token + '  ·  Válido hasta: ' + new Date(expiresAt).toLocaleDateString('es-AR') + '. Link directo: ' + portalUrl;
-
-      navigator.clipboard.writeText(msg).then(() => {
-
-        showToast('Código copiado: ' + token, 'success', 8000);
-
-      }).catch(() => {
-
-        showToast('Código: ' + token + ' (copie manualmente)', 'info', 8000);
-
-      });
-
-    } catch (err) {
-
-      showToast('Error: ' + err.message, 'error');
-
+    if (portalTokenActive(_portalTokenRow)) {
+      msg.textContent = 'El propietario ya tiene un acceso activo. Reutilizá este código — generar uno nuevo lo invalidaría.';
+      activeBox.style.display = '';
+      newBox.style.display = 'none';
+      $('#portalTokenCode').textContent = _portalTokenRow.token;
+      $('#portalTokenExpiry').textContent = fmtPortalExpiry(_portalTokenRow.expires_at);
+      $('#portalTokenLink').textContent = portalUrl(_portalTokenRow.token);
+    } else {
+      const vencido = _portalTokenRow && _portalTokenRow.expires_at
+        ? ' El acceso anterior venció el ' + new Date(_portalTokenRow.expires_at).toLocaleDateString('es-AR') + '.'
+        : '';
+      msg.textContent = 'Este propietario no tiene un acceso vigente al portal.' + vencido;
+      activeBox.style.display = 'none';
+      newBox.style.display = '';
+      updatePortalExpiryPreview();
     }
+  }
 
-  };
+  function updatePortalExpiryPreview() {
+    const input = $('#portalDaysInput');
+    const preview = $('#portalExpiryPreview');
+    if (!input || !preview) return;
+    const days = parseInt(input.value, 10);
+    preview.textContent = days >= 1 && days <= 365
+      ? 'Vence el ' + new Date(Date.now() + days * 86400000).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : 'Ingresá entre 1 y 365 días';
+  }
 
-$('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateOwnerPortalLink);
+  async function doGeneratePortalToken(days) {
+    /* Código corto legible: sin 0/O ni 1/I/L para no confundir leyendo por teléfono */
+    const CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    const rnd = crypto.getRandomValues(new Uint8Array(5));
+    let token = '';
+    for (let i = 0; i < 5; i++) token += CHARS[rnd[i] % CHARS.length];
+
+    const expiresAt = new Date(Date.now() + days * 86400000).toISOString();
+    const { error } = await window.supabaseClient
+      .from('owner_portal_tokens')
+      .upsert([{
+        owner_id: editingOwnerId,
+        token: token,
+        scopes: ['read_properties', 'read_commissions', 'read_documents'],
+        expires_at: expiresAt,
+        revoked_at: null,
+        created_by: currentUser?.id || null
+      }], { onConflict: 'owner_id' });
+    if (error) throw error;
+
+    _portalTokenRow = { token, expires_at, revoked_at: null };
+    renderPortalTokenState();
+    navigator.clipboard.writeText(portalShareMessage(_portalTokenRow)).then(() => {
+      showToast('Código generado y copiado: ' + token, 'success');
+    }).catch(() => {
+      showToast('Código generado: ' + token, 'info');
+    });
+  }
+
+  async function openPortalLinkModal() {
+    if (!editingOwnerId) return showToast('Primero guarde el propietario', 'warning');
+    if (!window.supabaseClient) return;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('owner_portal_tokens')
+        .select('token, expires_at, revoked_at')
+        .eq('owner_id', editingOwnerId)
+        .maybeSingle();
+      if (error) throw error;
+      _portalTokenRow = data || null;
+      renderPortalTokenState();
+      openModal('portalLinkModal');
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  }
+
+  $('#portalLinkClose')?.addEventListener('click', () => closeModal('portalLinkModal'));
+
+  $('#portalDaysInput')?.addEventListener('input', updatePortalExpiryPreview);
+
+  document.querySelectorAll('.portal-days-chips [data-portal-days]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const input = $('#portalDaysInput');
+      if (input) {
+        input.value = chip.dataset.portalDays;
+        updatePortalExpiryPreview();
+      }
+    });
+  });
+
+  $('#portalGenerateBtn')?.addEventListener('click', async () => {
+    const days = parseInt($('#portalDaysInput')?.value, 10);
+    if (!days || days < 1 || days > 365) return showToast('Duración inválida (1-365 días)', 'error');
+    try {
+      await doGeneratePortalToken(days);
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  });
+
+  $('#portalCopyLinkBtn')?.addEventListener('click', () => {
+    if (!portalTokenActive(_portalTokenRow)) return;
+    navigator.clipboard.writeText(portalUrl(_portalTokenRow.token))
+      .then(() => showToast('Link copiado', 'success'))
+      .catch(() => showToast('No se pudo copiar el link', 'error'));
+  });
+
+  $('#portalCopyMsgBtn')?.addEventListener('click', () => {
+    if (!portalTokenActive(_portalTokenRow)) return;
+    navigator.clipboard.writeText(portalShareMessage(_portalTokenRow))
+      .then(() => showToast('Mensaje copiado para enviar', 'success'))
+      .catch(() => showToast('No se pudo copiar el mensaje', 'error'));
+  });
+
+  $('#portalRegenerateBtn')?.addEventListener('click', async () => {
+    if (!portalTokenActive(_portalTokenRow)) return;
+    const ok = await showConfirmDialog({
+      title: '¿Generar un código nuevo?',
+      message: 'El código ' + _portalTokenRow.token + ' dejará de funcionar de inmediato y el propietario deberá usar el nuevo link.',
+      icon: 'fas fa-rotate',
+      confirmText: 'Generar nuevo',
+      danger: true
+    });
+    if (!ok) return;
+    const activeBox = $('#portalTokenActive');
+    const newBox = $('#portalTokenNew');
+    if (activeBox) activeBox.style.display = 'none';
+    if (newBox) newBox.style.display = '';
+    updatePortalExpiryPreview();
+  });
+
+  window.adminApp.generateOwnerPortalLink = openPortalLinkModal;
+
+  $('#btnGeneratePortalLink')?.addEventListener('click', window.adminApp.generateOwnerPortalLink);
 
   /* Owner Checklist */
   // react-doctor-disable-next-line supabase-client-owned-authz-field — created_by sale de auth del usuario logueado; RLS valida

@@ -2976,8 +2976,8 @@
 <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px; padding-top:16px; border-top:1px solid var(--border-subtle);">
 <button type="button" class="status-pill pending modal-close-btn">Cancelar</button>
 <button type="button" class="btn-luxury-action" id="btnGeneratePortalLink" style="background:linear-gradient(135deg, #1fc8c3 0%, #1a9a9a 100%);">
-<i class="fas fa-link">
-</i> Generar Link Portal</button>
+<i class="fas fa-key">
+</i> Acceso Portal</button>
 <button type="submit" class="btn-luxury-action" id="ownerSaveBtn">Guardar Expediente</button>
 </div>
 </form>
@@ -3374,6 +3374,45 @@ Con email: le llega una invitaciÃ³n de Supabase al correo. El usuario define s
     </div>
   </div>
 </div>
+<!-- MODAL ACCESO PORTAL PROPIETARIO (reutiliza el token vigente; regenerar pide confirmación) -->
+<div class="admin-modal" id="portalLinkModal">
+  <div class="modal-box confirm-box" role="dialog" aria-modal="true" aria-labelledby="portalLinkTitle">
+    <div class="confirm-icon"><i class="fas fa-key" style="color:var(--accent);"></i></div>
+    <h3 class="confirm-title" id="portalLinkTitle">Acceso al Portal</h3>
+    <p class="confirm-msg" id="portalLinkMsg"></p>
+    <div id="portalTokenActive" style="display:none;">
+      <div class="portal-token-card">
+        <div class="portal-token-code" id="portalTokenCode">—</div>
+        <div class="portal-token-expiry" id="portalTokenExpiry">—</div>
+        <div class="portal-token-link" id="portalTokenLink">—</div>
+      </div>
+      <div class="portal-token-actions">
+        <button type="button" class="btn-luxury-action btn-sm" id="portalCopyLinkBtn"><i class="fas fa-link"></i> Copiar link</button>
+        <button type="button" class="btn-ghost" id="portalCopyMsgBtn"><i class="fab fa-whatsapp"></i> Copiar mensaje</button>
+        <button type="button" class="btn-ghost" id="portalRegenerateBtn"><i class="fas fa-rotate"></i> Generar nuevo</button>
+      </div>
+    </div>
+    <div id="portalTokenNew" style="display:none;">
+      <div class="form-field" style="text-align:left;">
+        <label>Días de validez del acceso</label>
+        <input type="number" id="portalDaysInput" min="1" max="365" value="90">
+      </div>
+      <div class="portal-days-chips">
+        <button type="button" class="status-pill" data-portal-days="30">30 días</button>
+        <button type="button" class="status-pill" data-portal-days="90">90 días</button>
+        <button type="button" class="status-pill" data-portal-days="180">180 días</button>
+        <button type="button" class="status-pill" data-portal-days="365">1 año</button>
+      </div>
+      <p class="portal-expiry-preview" id="portalExpiryPreview"></p>
+      <div class="confirm-actions">
+        <button type="button" class="btn-luxury-action" id="portalGenerateBtn"><i class="fas fa-key"></i> Generar acceso</button>
+      </div>
+    </div>
+    <div class="confirm-actions" style="margin-top:10px;">
+      <button type="button" class="btn-ghost" id="portalLinkClose">Cerrar</button>
+    </div>
+  </div>
+</div>
 <!-- TOAST NOTIFICATION -->
 <div class="toast-msg" id="toastMsg">
 <i class="fas fa-circle-check" style="color:var(--accent); font-size:18px;">
@@ -3390,7 +3429,7 @@ Con email: le llega una invitaciÃ³n de Supabase al correo. El usuario define s
 <!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Bloqueador de anuncios detectado.</strong> DesactivÃ¡ las extensiones para este sitio o abrÃ­ en ventana incÃ³gnita. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="assets/js/zod.umd.js"></script><script src="assets/js/utils.js?v=140"></script><script src="assets/js/config.js?v=141"></script><script src="assets/js/supabase-client.js?v=140"></script><script src="assets/js/cloudinary.js?v=142"></script><script src="assets/js/admin-crm-tasks.js?v=12"></script>
 <script src="assets/js/admin-crm.js?v=50"></script>
 <script src="assets/js/admin-app.js?v=425"></script>
-<script src="assets/js/admin-propietarios.js?v=14"></script>
+<script src="assets/js/admin-propietarios.js?v=15"></script>
 <script src="assets/js/admin-usuarios.js?v=11"></script>
 <script src="assets/js/admin-agentes.js?v=10"></script>
 <script src="assets/js/admin-cms.js?v=5"></script>
