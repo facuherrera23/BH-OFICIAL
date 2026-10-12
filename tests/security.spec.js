@@ -45,9 +45,12 @@ test.describe('Seguridad — CSP y delegación (regresión guards)', () => {
     // Whitelist de acciones + listener delegado.
     expect(js).toContain('dataActionWhitelist');
     expect(js).toContain("document.addEventListener('click'");
-    // Export del overview (fix de scope ReferenceError) vive en el módulo desde la modularización.
+    // El tab de supervisión entra por window.__BH.loadSupervision (shim de entrada);
+    // el panel viejo (~90KB con exportSupOverviewCSV y data-action muertos) fue retirado (2026-10-12).
+    expect(js).toContain("'tab-supervision': () => window.__BH.loadSupervision");
     const sup = await (await request.get('/assets/js/admin-supervision-panel.js')).text();
-    expect(sup).toContain('window.exportSupOverviewCSV = exportSupOverviewCSV');
+    expect(sup).toContain('window.__BH.loadSupervision = loadSupervision');
+    expect(sup).toContain("role !== 'super_admin'");
   });
 
   test('config.js: sin secretos rastreados', async ({ request }) => {

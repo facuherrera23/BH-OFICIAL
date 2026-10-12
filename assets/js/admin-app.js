@@ -3930,7 +3930,7 @@ let _execToDate = '';
   }
 
   // FASE 1.1: delega clicks de los botones migrados a data-action (CSP-safe)
-  // vía window[action]; exportSupOverviewCSV se expone en la IIFE principal.
+  // vía window[action].
   window.closeCdnWarning = function () {
     const bannerEl = document.getElementById('cdnWarningBanner');
     if (bannerEl) bannerEl.style.display = 'none';
