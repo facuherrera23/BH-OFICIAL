@@ -5,6 +5,7 @@ Sistema CRM inmobiliario **en producción real** (bienenhaus.com.ar) con datos d
 ## Reglas duras
 
 - **Producción con datos reales**: nunca DELETE/TRUNCATE/DROP ni migraciones destructivas sin backup y aprobación explícita. No hay staging.
+- **⚠️ PowerShell corrompe UTF-8 — regla dura de encoding**: NUNCA usar `Get-Content`/`Set-Content`/`Out-File` de PowerShell 5.1 para leer o escribir archivos con acentos/emoji (HTML, JS, CSS, MD, SQL). PS 5.1 lee UTF-8 como CP1252 y al re-escribir hornea doble-encoding (mojibake "DÃ³lares") — incidente real 2026-10-12: dos resoluciones de conflicto de rebase con Get-Content+Set-Content corrompieron TODO admin.html (342 textos) y llegó a producción. Para leer: usar el tool Read. Para escribir/transformar archivos: `node` con `fs.readFileSync(path,'utf8')`/`writeFileSync(path, data,'utf8')` (ver `scripts/recover-admin-html.mjs`). Para resolver conflictos de rebase con contenido no-ASCII: node script, jamás PowerShell.
 - **Directiva del dueño: no usar subagentes** — trabajar directo con herramientas.
 - Todo comando git lleva prefijo `$env:GIT_MASTER='1';` (PowerShell, hook del equipo): `$env:GIT_MASTER='1'; git status`.
 - Commits en español, minúsculas, formato `modulo: mensaje` (ej: `perf: hero cloudinary, fotos comprimidas`). Antes de push: `git pull --rebase`; si rechaza, rebase — jamás force.

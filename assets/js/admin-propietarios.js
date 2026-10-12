@@ -486,10 +486,13 @@ closeModal('ownerModal');
       $('#portalTokenExpiry').textContent = fmtPortalExpiry(_portalTokenRow.expires_at);
       $('#portalTokenLink').textContent = portalUrl(_portalTokenRow.token);
     } else {
-      const vencido = _portalTokenRow && _portalTokenRow.expires_at
-        ? ' El acceso anterior venció el ' + new Date(_portalTokenRow.expires_at).toLocaleDateString('es-AR') + '.'
-        : '';
-      msg.textContent = 'Este propietario no tiene un acceso vigente al portal.' + vencido;
+      let motivo = '';
+      if (_portalTokenRow && _portalTokenRow.revoked_at) {
+        motivo = ' El acceso anterior fue cerrado por el propietario desde el portal.';
+      } else if (_portalTokenRow && _portalTokenRow.expires_at) {
+        motivo = ' El acceso anterior venció el ' + new Date(_portalTokenRow.expires_at).toLocaleDateString('es-AR') + '.';
+      }
+      msg.textContent = 'Este propietario no tiene un acceso vigente al portal.' + motivo;
       activeBox.style.display = 'none';
       newBox.style.display = '';
       updatePortalExpiryPreview();
