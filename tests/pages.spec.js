@@ -40,6 +40,25 @@ test.describe('Smoke: páginas del sistema', () => {
     console.assertClean();
   });
 
+  test('tasacion.html — moneda por destino: alquiler en $, venta en U$S', async ({ page }) => {
+    await page.goto('/tasacion.html');
+    const console = trackConsoleErrors(page);
+    const comp = page.locator('.comp-block').first();
+    await comp.locator('.c_precio').fill('100000');
+    await comp.locator('.c_supCubierta').fill('100');
+    await page.locator('#f_supConstruida').fill('100');
+    await page.locator('#f_destino').selectOption('Venta');
+    await expect(page.locator('#v_valorFinal')).toHaveText(/U\$S/);
+    await expect(comp.locator('.c_precioM2')).toHaveValue(/U\$S/);
+    await page.locator('#f_destino').selectOption('Alquiler');
+    await expect(page.locator('#v_valorFinal')).toHaveText(/^\$/);
+    await expect(page.locator('#v_precioPromedio')).toHaveText(/^\$/);
+    await expect(comp.locator('.c_precioM2')).toHaveValue(/^\$/);
+    await expect(page.locator('#ac_valMin')).toHaveText(/^\$/);
+    expect(console.pageErrors).toEqual([]);
+    console.assertClean();
+  });
+
   test('portal-propietario.html — token inválido muestra error', async ({ page }) => {
     await page.goto('/portal-propietario.html?token=TEST');
     const console = trackConsoleErrors(page, ALLOWED_406);

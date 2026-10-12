@@ -623,7 +623,7 @@ function renderAnalisisComparativo(forPrint){
         }
       },
       scales: {
-        x: { ticks:{color: _acForPrint ? '#444' : '#b8b3aa'}, grid:{color: _acForPrint ? '#ddd' : '#2a2a2a'}, title:{display:true, text:'U$S / m²', color: _acForPrint ? '#444' : '#b8b3aa'} },
+        x: { ticks:{color: _acForPrint ? '#444' : '#b8b3aa'}, grid:{color: _acForPrint ? '#ddd' : '#2a2a2a'}, title:{display:true, text: cur + ' / m²', color: _acForPrint ? '#444' : '#b8b3aa'} },
         y: { ticks:{color: _acForPrint ? '#222' : '#f5f5f4', font:{family:'Poppins'}}, grid:{color: _acForPrint ? '#ddd' : '#2a2a2a'} }
       }
     }

@@ -358,7 +358,7 @@ async function loadOwners() {
       var CH = 50, pJobs = [], tJobs = [], k;
       for (k = 0; k < ids.length; k += CH) {
         var chunk = ids.slice(k, k + CH);
-        pJobs.push(db().from('properties').select('id, title, property_code, price_usd, status, owner_id, agent_id').in('owner_id', chunk).then(function (r) { return r.data || []; }, function () { return []; }));
+        pJobs.push(db().from('properties').select('id, title, property_code, price_usd, price_currency, status, owner_id, agent_id').in('owner_id', chunk).then(function (r) { return r.data || []; }, function () { return []; }));
         tJobs.push(db().from('owner_tasks').select('owner_id, id, type, description, status, priority, due_date').in('owner_id', chunk).then(function (r) { return r.data || []; }, function () { return []; }));
       }
       var pAll = await Promise.all(pJobs);
@@ -393,7 +393,7 @@ function renderOwnerPropsCell(ownerId) {
   return ps.slice(0, 3).map(function (p) {
     var code = esc(p.property_code || ('PROP-' + String(p.id).slice(0, 6)).toUpperCase());
     var title = esc(p.title || '');
-    var price = p.price_usd ? ('U$S ' + Number(p.price_usd).toLocaleString('es-AR')) : '';
+    var price = p.price_usd ? ((p.price_currency === 'ARS' ? '$ ' : 'U$S ') + Number(p.price_usd).toLocaleString('es-AR')) : '';
     var status = esc(p.status || '');
     var tip = title + (price ? ' — ' + price : '') + (status ? ' (' + status + ')' : '');
     return '<span class="crm-prop-code" title="' + esc(tip) + '">' + code + '</span>';
@@ -1170,9 +1170,9 @@ function getLeadProps(id) {
     .then(function (r) {
       var ids = (r.data || []).map(function (x) { return x.property_id; });
       if (!ids.length) return [];
-      return db().from('properties').select('id, title, price_usd, property_code').in('id', ids)
+      return db().from('properties').select('id, title, price_usd, price_currency, property_code').in('id', ids)
         .then(function (pr) {
-          return (pr.data || []).map(function (p) { return { property_id: p.id, property_title: p.title, price_usd: p.price_usd, property_code: p.property_code || null }; });
+          return (pr.data || []).map(function (p) { return { property_id: p.id, property_title: p.title, price_usd: p.price_usd, price_currency: p.price_currency || null, property_code: p.property_code || null }; });
         });
     }).catch(function () { return []; });
 }
@@ -1563,7 +1563,7 @@ function bindPropSearch(panel, leadId) {
   if (!btn || !inp) return;
   var activeIdx = -1;
   function fmtPrice(p) {
-    if (p.price_usd) return 'US$ ' + Number(p.price_usd).toLocaleString('es-AR');
+    if (p.price_usd) return (p.price_currency === 'ARS' ? '$ ' : 'US$ ') + Number(p.price_usd).toLocaleString('es-AR');
     if (p.price) return (p.price_currency === 'USD' ? 'US$ ' : '$ ') + Number(p.price).toLocaleString('es-AR');
     return 'Consultar';
   }

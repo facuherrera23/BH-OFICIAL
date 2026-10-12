@@ -2268,10 +2268,13 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
       /* ── 1. Valorización de la cartera ── */
       if (tasaciones.length) {
         var valHtml = tasaciones.map(function(t) {
+          var isAlquiler = t.type === 'alquiler';
+          var val = isAlquiler ? (t.valuation_ars || t.valuation_usd) : t.valuation_usd;
+          var valStr = val ? ((isAlquiler ? '$ ' : 'US$ ') + Number(val).toLocaleString('es-AR')) : '-';
           return '<div class="val-row">' +
             '<span class="val-code">' + esc(t.property_code || '') + '</span>' +
             '<span class="val-title">' + esc(t.title || 'Tasación') + '</span>' +
-            '<span class="val-usd">' + (t.valuation_usd ? fmtUSD(t.valuation_usd) : '-') + '</span>' +
+            '<span class="val-usd">' + valStr + '</span>' +
             '<span class="val-status ' + esc(t.status || 'borrador') + '">' + esc(t.status || 'borrador') + '</span>' +
             '<span class="val-date">' + fmtDate(t.created_at) + '</span>' +
           '</div>';
@@ -2281,7 +2284,7 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
         div.innerHTML =
           '<div class="section-title"><i class="fas fa-chart-line"></i> Historial de tasaciones</div>' +
           '<div class="val-header">' +
-            '<span>Código</span><span>Título</span><span>USD</span><span>Estado</span><span>Fecha</span>' +
+            '<span>Código</span><span>Título</span><span>Valor</span><span>Estado</span><span>Fecha</span>' +
           '</div>' +
           valHtml;
         slot.appendChild(div);
