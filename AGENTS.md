@@ -96,7 +96,8 @@ Cada HTML tiene su meta CSP propia. Al agregar cualquier recurso externo (API, t
 
 ## Pendientes conocidos
 
-- **⚠️ BREVO_API_KEY faltante (bloquea TODO el email saliente)**: sin el secret de Supabase no envía nada ni el digest semanal de supervisión ni notify-new-lead, visits-reminders, cron_exclusivity_renewals, trigger_commission_on_close ni owner-tasks-reminder. Configuración: dashboard de Supabase → Edge Functions → Secrets (o `supabase secrets set BREVO_API_KEY=xxx BREVO_SENDER_EMAIL=...`) — requiere cuenta Brevo del dueño.
+- ~~**BREVO_API_KEY faltante**~~ → **RESUELTO 2026-10-12**: el secret está configurado y verificado end-to-end (primer `supervision_digest_sent` exitoso con messageId). Cuenta Brevo: Facundo (OsissDev) con `bienenhaus.propiedades@gmail.com` como sender activo. El digest semanal (lunes 08:00 ART) llega a la casilla compartida de los dueños. Si se rompe: verificar que el secret siga seteado y que la cuenta no tenga restricción de IPs activada (las Edge Functions salen con IPs dinámicas — la restricción de IPs de Brevo debe quedar desactivada).
+- **KPIs del digest con queries flojas** (detectado 2026-10-12): `actionsTotal: 1000` (límite PostgREST sin paginación), `uniqueUsers: 0`, `successCount: 0` — el email llega pero con números incompletos. Fix pendiente en `supervision-digest/fetchDigestData`.
 - **Leaked Password Protection** (Supabase Auth): activación manual en Dashboard → Auth. Avisar al dueño si sigue off.
 - **ML**: cerrar publicaciones huérfanas DA-P0019/21/22/03 en el panel de Mercado Libre antes de republicar; "Importar desde ML" **duplica propiedades** — no usar para esas.
 - Edge Functions: el CI deploya TODAS desde el repo en cada push a `main` (`.github/workflows/deploy.yml`, con flags verify_jwt por función); deploy manual vía MCP solo para hotfixes urgentes.
