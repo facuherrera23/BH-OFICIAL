@@ -257,9 +257,11 @@
   @media print{
     .action-bar, .toast, .add-btn, .remove{display:none !important;}
     .comp-block[data-included="false"]{display:none !important;}
-    /* Informe: el contenido fluye natural página a página.
-       Solo 3 saltos forzados: portada→contenido, comparables, análisis. */
+    /* Informe paginado (formato del estudio):
+       p1 portada · p2 cliente + inmueble + foto · p3 descripción + servicios ·
+       comparables 3 por página · análisis en página propia. */
     main{max-width:100%;}
+    #printGroupPropiedad,
     #sectionComparables,
     #sectionAnalisisComparativo{break-before:page; page-break-before:always;}
     .comp-block.print-page-break{break-before:page; page-break-before:always;}
@@ -359,10 +361,14 @@
     .amb-grid{grid-template-columns:repeat(4,1fr); gap:3px 12px;}
     .amb-field{padding:3px 0;}
     .total-cuartos-row{padding:5px 10px; margin:8px 0 2px; break-inside:avoid; page-break-inside:avoid;}
-    .photo-box{max-width:430px; margin-bottom:0; break-inside:avoid; page-break-inside:avoid;}
-    .comp-block{padding:9px 12px; margin-bottom:8px;}
-    .comp-block h3{font-size:11.5px; margin-bottom:5px;}
-    .comp-block .photo-box{max-width:210px; aspect-ratio:16/7; margin:4px auto 0; min-height:0;}
+    .photo-box{max-width:620px; margin-bottom:0; break-inside:avoid; page-break-inside:avoid;}
+    .photo-box img{max-height:450px; width:100%; object-fit:cover;}
+    .comp-block{padding:7px 10px; margin-bottom:6px;}
+    .comp-block h3{font-size:11.5px; margin-bottom:4px;}
+    /* 3 comparables por página: labels de sección fuera, foto flotando a la
+       derecha (chars y coeficiente fluyen a su lado en vez de apilarse). */
+    .comp-block > p{display:none !important;}
+    .comp-block .photo-box{float:right; max-width:150px; aspect-ratio:16/7; margin:2px 0 4px 10px; min-height:0;}
     .comp-block .field input, .comp-block .field select, .comp-block .field textarea{padding:4px 0 !important; font-size:12px; border:none !important; border-bottom:1px dotted #bbb !important; border-radius:0 !important; background:transparent !important;}
     .comp-block .field label{margin-bottom:2px; font-size:9px;}
     .comp-block .grid{gap:6px;}
@@ -809,6 +815,6 @@
 </div>
 
 <script src="assets/js/tasacion-calc.js?v=1"></script>
-<script src="assets/js/pages/tasacion-page.js?v=9"></script>
+<script src="assets/js/pages/tasacion-page.js?v=10"></script>
 </body>
 </html>

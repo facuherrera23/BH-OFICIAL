@@ -631,11 +631,10 @@ function renderAnalisisComparativo(forPrint){
 }
 window.addEventListener('beforeprint', ()=>{
   renderAnalisisComparativo(true);
-  /* Bloque 2 del informe: 2 comparables visibles por página. El salto cae antes
-     del 3°, 5°, … comparable VISIBLE (los excluidos no ocupan lugar); si el total
-     es impar, la media página final queda en blanco. */
+  /* Comparables: 3 por página (formato del estudio). El salto cae antes
+     del 4º, 7º, ... comparable VISIBLE (los excluidos no ocupan lugar). */
   const visibles = Array.from(document.querySelectorAll('.comp-block')).filter(b => b.dataset.included !== 'false');
-  visibles.forEach((b, i) => b.classList.toggle('print-page-break', i > 0 && i % 2 === 0));
+  visibles.forEach((b, i) => b.classList.toggle('print-page-break', i > 0 && i % 3 === 0));
   _markEmptyFields();
 });
 window.addEventListener('afterprint', ()=>{
