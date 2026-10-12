@@ -1,8 +1,9 @@
-// Genera fichas/<code>.html estáticas para GitHub Pages: páginas indexables
+// Genera fichas/<code>.html estáticas para el sitio: páginas indexables
 // (title/meta/canonical/JSON-LD) con OG para compartir en WhatsApp.
-// También regenera sitemap.xml (home + legales + fichas publicadas).
+// También regenera sitemap.xml (home + legales + fichas publicadas) y
+// reconcilia fichas huérfanas de propiedades despublicadas.
 // Se corre en CI (workflow ficha-generate.yml) con SUPABASE_URL y SERVICE_KEY/ANON_KEY.
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -169,6 +170,7 @@ function buildHtml(p, allProps) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src https: data:; font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src https://www.google-analytics.com https://*.analytics.google.com https://stats.g.doubleclick.net https://www.clarity.ms https://*.clarity.ms https://c.bing.com; frame-src https://www.openstreetmap.org; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>${esc(pageTitle)}</title>
 <meta name="description" content="${esc(metaDescription)}">
 <link rel="canonical" href="${esc(fichaUrl)}">
@@ -560,6 +562,28 @@ async function main() {
 
   mkdirSync('fichas', { recursive: true });
   const published = props.filter((p) => p.property_code);
+
+  /* Guard de seguridad: 0 publicadas = falla de auth/RLS o base vacía.
+     Abortar ANTES de escribir o borrar — evita un wipe accidental de fichas/. */
+  if (published.length === 0) {
+    console.error('0 propiedades publicadas — abortando sin tocar fichas/ (¿falló la autenticación?)');
+    process.exit(1);
+  }
+
+  const validFiles = new Set(published.map((p) => `${p.property_code}.html`));
+  let removed = 0;
+  /* Solo en regeneración completa: con ONLY_CODE el set sería de una sola
+     ficha y borraría el resto. */
+  if (!onlyCode) {
+    for (const f of readdirSync('fichas')) {
+      if (f.endsWith('.html') && !validFiles.has(f)) {
+        rmSync(`fichas/${f}`);
+        console.log(`ficha huérfana eliminada: ${f} (propiedad despublicada o eliminada)`);
+        removed += 1;
+      }
+    }
+  }
+
   let count = 0;
   for (const p of published) {
     writeFileSync(`fichas/${p.property_code}.html`, buildHtml(p, published), 'utf8');
@@ -570,7 +594,7 @@ async function main() {
     writeFileSync('sitemap.xml', buildSitemap(published), 'utf8');
     console.log(`sitemap.xml actualizado (${published.length} fichas)`);
   }
-  console.log(`Fichas generadas: ${count}`);
+  console.log(`Fichas generadas: ${count}${removed ? ` · huérfanas eliminadas: ${removed}` : ''}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

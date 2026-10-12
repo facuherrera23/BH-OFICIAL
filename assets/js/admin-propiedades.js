@@ -711,8 +711,7 @@
           if (error) throw error;
         });
         showToast('Propiedad actualizada correctamente', 'success');
-        fichaPublishOnSave(editingPropertyId);
-      
+
       } else {
         const newPropId = await mutate('properties', async () => {
           const { data: inserted, error } = await window.supabaseClient
@@ -723,8 +722,7 @@
           return inserted?.[0]?.id || null;
         });
         showToast('Propiedad creada correctamente', 'success');
-        fichaPublishOnSave(newPropId);
-      
+
         if (_pendingPropertyNotes.length && newPropId) await flushPendingPropertyNotes(newPropId);
       }
 
@@ -739,32 +737,6 @@
       if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar Inmueble'; }
     }
   });
-
-
-  /* Generar/regenerar ficha HTML tras guardar una propiedad */
-
-  const fichaPublishOnSave = async (propertyId) => {
-    if (!propertyId) return;
-    if (!window.BH_CONFIG?.SUPABASE_URL) return;
-    try {
-      const { data: { session } } = await window.supabaseClient.auth.getSession();
-      if (!session) return;
-      const res = await fetch(window.BH_CONFIG.SUPABASE_URL + '/functions/v1/ficha-publish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
-        body: JSON.stringify({ property_id: propertyId })
-      });
-      if (!res.ok) {
-        const errOut = await res.json().catch(() => ({}));
-        logWarn('ficha-publish falló (' + res.status + '): ' + (errOut.error || 'desconocido'));
-        return;
-      }
-      const out = await res.json().catch(() => ({}));
-      console.log('[ficha] generada para', propertyId, out.url || '');
-    } catch (e) {
-      logWarn('ficha-publish fetch error: ' + e.message);
-    }
-  };
 
 
     /* Edit property */
