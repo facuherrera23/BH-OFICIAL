@@ -71,6 +71,14 @@ JSONB con fotos base64 embebidas. Las tasaciones nuevas comprimen client-side (`
 - Al agregar recursos externos al template de ficha: actualizar la **CSP** de `generate-ficha.mjs` (cada ficha lleva la suya) y regenerar.
 - El botón "Compartir por WhatsApp" de Propiedades arma el link con `?de=<agente>&tel=<tel>` del usuario logueado (`sharePropertyWhatsApp`) — la ficha muestra ese contacto y el CTA apunta a su número.
 
+## Centro de Supervisión (gotchas)
+
+- **Motor de reglas** (`evaluate_supervision_rules`, cron cada 5 min): soporta `filter.contains` (changed_fields) y `filter.equals` con **whitelist de campos** (`status`, `table_name` — CASE en la función). Un `filter.equals` con campo desconocido NO filtra (no rompe): al agregar un campo nuevo, extender el CASE. Bug original: `equals` no existía y `repeated_errors_detection` disparaba falsos positivos ante actividad normal (51 dismissados 2026-10-12).
+- **Purga**: `purge_supervision_alerts` usa `COALESCE(resolved_at, dismissed_at, created_at)` — la tabla NO tiene `updated_at`. El bug original (columna inexistente) rompía el cron diario y, por rollback de `purge_supervision_all()`, tampoco purgaba `audit_log`.
+- **UI**: `admin-supervision-panel.js` es solo un shim de entrada (gate super_admin + delegación a `window.adminSupervision`); la UI real vive en `admin-supervision.js` (Equipo/Feed/Errores/Alertas). El panel viejo de ~90KB fue retirado — no re-agregar código ahí. El gate de rol está en el shim porque la UI nueva no lo valida (RLS protege los datos).
+- **Notificaciones (estado actual)**: el digest semanal corre (cron `supervision-digest-weekly`, lunes 11:00 UTC) pero `app_settings.integrations.supervision_digest_recipients` es `[]` — se construye y no se envía a nadie. `supervision-notify`, `supervision-notifications`, `supervision-ml-anomaly` y `supervision-api` están desplegadas **sin caller** (notify además usaría `current_setting('app.settings.supabase_url')` que devuelve NULL en este proyecto).
+- Alertas que NO vienen de `supervision_rules`: `lead_followup_overdue` las genera `crm_queue_followup_alerts()` (cron crm-followup-alerts) y `crm_email_broken` las genera `notify-new-lead`.
+
 ## Chat Redes / Zernio (gotchas)
 
 - La entrada opera por **`zernio-sync`** (Edge Function, cron `zernio-sync-every-2-min`): pull incremental de Zernio, solo conversaciones con `updatedTime` nuevo → INSERTs disparan el realtime del panel. Auth: header `x-sync-secret` contra `zernio_config(key='sync_secret')`.

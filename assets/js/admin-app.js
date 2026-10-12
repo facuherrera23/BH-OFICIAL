@@ -124,10 +124,6 @@ function esc(s) {
 
   function setSupTimezone(tz) {
     _supTimezone = tz;
-    // Re-render current view if in supervision
-    if (currentSection === 'tab-supervision' && _supCurrentView) {
-      switchSupView(_supCurrentView);
-    }
   }
 
   function formatDateWithTZ(dateStr, options = {}) {
@@ -3946,7 +3942,7 @@ let _execToDate = '';
 
   };
 
-  const dataActionWhitelist = ['exportPropertiesCSV', 'exportLeadsCSV', 'exportTasacionesCSV', 'exportSupOverviewCSV', 'exportSupAlertsCSV', 'exportSupUsersCSV', 'exportSupModulesCSV', 'loadMoreSupAudit', 'loadMoreSupAlerts', 'closeSupUserDetail', 'loadMoreAnomalies', 'closeSupAuditDetail', 'simulateSupRule', 'closeCdnWarning', 'createOwnerTask', 'backToSupTeam', 'refreshSupTeam', 'refreshSupEmployee', 'loadMoreEmployeeActivity'];
+  const dataActionWhitelist = ['exportPropertiesCSV', 'exportLeadsCSV', 'exportTasacionesCSV', 'closeCdnWarning', 'createOwnerTask'];
   document.addEventListener('click', function (ev) {
     const target = ev.target && ev.target.closest ? ev.target.closest('[data-action]') : null;
     if (!target) return;
