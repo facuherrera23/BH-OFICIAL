@@ -51,7 +51,8 @@ Cada HTML tiene su meta CSP propia. Al agregar cualquier recurso externo (API, t
 
 ## `tasaciones.data` (gotcha de peso)
 
-JSONB con fotos base64 embebidas. Las tasaciones nuevas comprimen client-side (`resizeImageToDataUrl` en `tasacion-page.js`: fachada 1600px, comparables 1400px, JPEG q≈0.82); las viejas pueden pesar MB. El listado admin **no** selecciona `data` a propósito — no re-agregar. `valuation_usd` se calcula al guardar; el fallback que recalcula desde `data` si es NULL existe por seguridad — no borrar.
+- **Moneda por destino** (fix 2026-10-12): `f_destino = 'Alquiler'` → todo el pipeline va en **$ (ARS mensual)** y persiste en `valuation_ars` con `type='alquiler'`; `Venta` → **U$S** y persiste en `valuation_usd`. El símbolo sale de `currencySymbol()` en `tasacion-page.js` — nunca hardcodear 'U$S' en displays de tasaciones. El listado admin (`buildTasacionRowHtml`) lee la columna según `type` y solo convierte a pesos en las de venta.
+- JSONB con fotos base64 embebidas. Las tasaciones nuevas comprimen client-side (`resizeImageToDataUrl` en `tasacion-page.js`: fachada 1600px, comparables 1400px, JPEG q≈0.82); las viejas pueden pesar MB. El listado admin **no** selecciona `data` a propósito — no re-agregar. `valuation_usd` se calcula al guardar; el fallback que recalcula desde `data` si es NULL existe por seguridad — no borrar.
 
 ## Encuesta de visita / `visit_surveys` (gotchas)
 
