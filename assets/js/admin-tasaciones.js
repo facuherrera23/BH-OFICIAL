@@ -61,7 +61,7 @@
     try {
       const { data: t, error } = await window.supabaseClient
         .from('tasaciones')
-        .select('id, property_id, owner_id, broker_id, type, valuation_usd, title')
+        .select('id, property_id, owner_id, broker_id, type, valuation_usd, valuation_ars, title')
         .eq('id', tasacionId)
         .single();
       if (error || !t) return;
@@ -89,7 +89,11 @@
           contact_name: owner.full_name || 'Propietario',
           contact_phone: owner.phone || null,
           contact_email: owner.email || null,
-          notes: 'Lead generado desde tasación ' + (t.title || '') + (t.valuation_usd ? '. Valor estimado: USD ' + Number(t.valuation_usd).toLocaleString('es-AR') : ''),
+          notes: 'Lead generado desde tasación ' + (t.title || '') + (
+            t.type === 'alquiler'
+              ? (t.valuation_ars ? '. Valor estimado: $ ' + Number(t.valuation_ars).toLocaleString('es-AR') + ' (alquiler mensual)' : '')
+              : (t.valuation_usd ? '. Valor estimado: USD ' + Number(t.valuation_usd).toLocaleString('es-AR') : '')
+          ),
         });
         showToast('Lead creado desde tasación para ' + (owner.full_name || 'propietario'), 'success');
       }
@@ -146,7 +150,7 @@
           /* Sin 'data' a proposito: el listado no necesita el JSONB (fotos base64 pesan MB).
              Si una tasacion vieja tuviera valuation_usd NULL, buildTasacionRowHtml reconsultaria,
              pero todas las actuales tienen valor guardado. */
-          .select('id, title, status, created_at, property_id, owner_id, type, valuation_usd')
+          .select('id, title, status, created_at, property_id, owner_id, type, valuation_usd, valuation_ars')
           .order(_tasSort.col, { ascending: _tasSort.asc, nullsFirst: false })
       ).range(from, to);
       if (error) throw error;
@@ -386,7 +390,7 @@
     try {
       const { data, error } = await window.supabaseClient
         .from('tasaciones')
-        .select('title, type, data, valuation_usd, property_id, owner_id, broker_id')
+        .select('title, type, data, valuation_usd, valuation_ars, property_id, owner_id, broker_id')
         .eq('id', id)
         .single();
       if (error || !data) throw (error || new Error('No se encontró la tasación'));
@@ -396,6 +400,7 @@
           type: data.type || 'venta',
           data: data.data || {},
           valuation_usd: data.valuation_usd || null,
+          valuation_ars: data.valuation_ars || null,
           property_id: data.property_id || null,
           owner_id: data.owner_id || null,
           broker_id: data.broker_id || null,

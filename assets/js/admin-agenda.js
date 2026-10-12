@@ -1306,8 +1306,11 @@
       const typeChip = typeLabel
         ? `<span class="crm-tipo-chip crm-tipo-chip--tas${t.type === 'alquiler' ? ' tas-chip--alquiler' : ''}">${esc(typeLabel)}</span>`
         : '';
-      let valuation = t.valuation_usd;
-      if (!valuation && t.data && typeof t.data === 'object') {
+      /* Moneda por tipo: alquiler → $ (ARS mensual, columna valuation_ars);
+         venta → US$ (valuation_usd) con conversión a pesos debajo. */
+      const isAlquiler = t.type === 'alquiler';
+      let valuation = isAlquiler ? (t.valuation_ars || t.valuation_usd) : t.valuation_usd;
+      if (!valuation && t.data && typeof t.data === 'object' && !isAlquiler) {
         valuation = t.data.valuation_usd || t.data.final_valuation || null;
         if (!valuation && window.BH_TasacionCalc) {
           /* Tasaciones viejas quedaron con valuation_usd null (se guardaron con valor 0):
@@ -1316,9 +1319,13 @@
           valuation = r && r.valorFinal;
         }
       }
-      const valuationStr = valuation ? 'US$ ' + Number(valuation).toLocaleString('es-AR') : '—';
+      if (!valuation && isAlquiler && window.BH_TasacionCalc) {
+        const r = window.BH_TasacionCalc.compute(t.data || {});
+        valuation = r && r.valorFinal;
+      }
+      const valuationStr = valuation ? (isAlquiler ? '$ ' : 'US$ ') + Number(valuation).toLocaleString('es-AR') : '—';
       const arsRate = (window.__BH && window.__BH.tasaUsdRate) || 0;
-      const valuationArs = valuation && arsRate > 0
+      const valuationArs = !isAlquiler && valuation && arsRate > 0
         ? `<span class="tas-valor-ars">≈ $ ${Number(Math.round(valuation * arsRate)).toLocaleString('es-AR')}</span>`
         : '';
       const avatarBase = ownerName || t.title || 'Tasacion';

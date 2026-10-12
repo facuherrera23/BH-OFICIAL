@@ -66,8 +66,13 @@ const urlParams = new URLSearchParams(window.location.search);
 let TASACION_ID = urlParams.get('id');
 const _isPrintMode = urlParams.get('print') === '1';
 
-/* Último valor final calculado por recalcAll() (USD), para persistir en valuation_usd */
-let _lastValorFinalUSD = null;
+  /* Último valor final calculado por recalcAll(). La moneda depende de f_destino:
+     Alquiler → $ (ARS mensual, persiste en valuation_ars), Venta → U$S (valuation_usd). */
+  let _lastValorFinal = null;
+
+  function currencySymbol(){
+    return document.getElementById('f_destino')?.value === 'Alquiler' ? '$' : 'U$S';
+  }
 
 /* Constantes del ACM centralizadas en assets/js/tasacion-calc.js (fuente única). */
 const { PESOS, SLOT_ORDER, NIVELES, NIVELES_LIST, RUBROS, RUBRO_NIVELES, SERVICIOS_MAP } = window.BH_TasacionCalc;
@@ -105,7 +110,7 @@ function addComparable(prefill){
     <div class="grid cols-3">
       <div class="field"><label>Dirección</label><input type="text" class="c_direccion"></div>
       <div class="field"><label>Barrio</label><input type="text" class="c_barrio"></div>
-      <div class="field"><label>Precio (U$S)</label><input type="number" class="c_precio"></div>
+      <div class="field"><label>Precio ($ o U$S según destino)</label><input type="number" class="c_precio"></div>
       <div class="field"><label>Superficie Terreno (m²)</label><input type="number" class="c_supTerreno"></div>
       <div class="field"><label>Superficie Cubierta (m²)</label><input type="number" class="c_supCubierta"></div>
       <div class="field"><label>Días en Mercado</label><input type="number" class="c_dias"></div>
@@ -291,7 +296,7 @@ function recalcAll(){
     const supTer = parseFloat(wrap.querySelector('.c_supTerreno').value)||0;
     const base = supCub>0? supCub : supTer;
     const precioM2Field = wrap.querySelector('.c_precioM2');
-    if(precioM2Field) precioM2Field.value = (precio>0 && base>0) ? 'U$S ' + (precio/base).toFixed(2) : '';
+    if(precioM2Field) precioM2Field.value = (precio>0 && base>0) ? currencySymbol() + ' ' + (precio/base).toFixed(2) : '';
     const included = wrap.dataset.included !== 'false';
     if(precio>0 && base>0 && included){
       precios.push(precio/base);
@@ -302,7 +307,7 @@ function recalcAll(){
   const precioPromedio = precios.length ? precios.reduce((a,b)=>a+b,0)/precios.length : 0;
   const coefPromedio = coefs.length ? coefs.reduce((a,b)=>a+b,0)/coefs.length : 1;
 
-  document.getElementById('v_precioPromedio').textContent = 'U$S ' + precioPromedio.toFixed(2);
+  document.getElementById('v_precioPromedio').textContent = currencySymbol() + ' ' + precioPromedio.toFixed(2);
   document.getElementById('v_coefPromedio').textContent = coefPromedio.toFixed(3);
 
   const precioAjustado = precioPromedio * coefPromedio;
@@ -311,7 +316,7 @@ function recalcAll(){
   const terrPrecio = parseFloat(document.getElementById('v_terrenoPrecio').value)||0;
   const terrTotal = terrM2*terrPrecio;
   document.getElementById('v_terrenoM2').textContent = terrM2? terrM2.toLocaleString('es-AR') : '—';
-  document.getElementById('v_terrenoTotal').textContent = terrTotal? 'U$S '+terrTotal.toLocaleString('es-AR',{maximumFractionDigits:0}) : '—';
+  document.getElementById('v_terrenoTotal').textContent = terrTotal? currencySymbol() + ' ' + terrTotal.toLocaleString('es-AR',{maximumFractionDigits:0}) : '—';
 
   const depreciacion = coefDepreciacionPropia();
   document.getElementById('v_depreciacionServicios').textContent = depreciacion.toFixed(3);
@@ -319,12 +324,12 @@ function recalcAll(){
   const precioCubiertaM2 = precioAjustado * depreciacion;
   const cubTotal = cubM2 * precioCubiertaM2;
   document.getElementById('v_cubiertaM2').textContent = cubM2? cubM2.toLocaleString('es-AR') : '—';
-  document.getElementById('v_cubiertaPrecio').textContent = precioCubiertaM2? 'U$S '+precioCubiertaM2.toFixed(2) : '—';
-  document.getElementById('v_cubiertaTotal').textContent = cubTotal? 'U$S '+cubTotal.toLocaleString('es-AR',{maximumFractionDigits:0}) : '—';
+  document.getElementById('v_cubiertaPrecio').textContent = precioCubiertaM2? currencySymbol() + ' ' + precioCubiertaM2.toFixed(2) : '—';
+  document.getElementById('v_cubiertaTotal').textContent = cubTotal? currencySymbol() + ' ' + cubTotal.toLocaleString('es-AR',{maximumFractionDigits:0}) : '—';
 
   const valorFinal = terrTotal + cubTotal;
-  _lastValorFinalUSD = valorFinal > 0 ? Math.round(valorFinal) : null;
-  document.getElementById('v_valorFinal').textContent = 'U$S ' + valorFinal.toLocaleString('es-AR',{maximumFractionDigits:0});
+  _lastValorFinal = valorFinal > 0 ? Math.round(valorFinal) : null;
+  document.getElementById('v_valorFinal').textContent = currencySymbol() + ' ' + valorFinal.toLocaleString('es-AR',{maximumFractionDigits:0});
 
   renderAnalisisComparativo();
 }
@@ -444,16 +449,21 @@ async function saveToSupabase(finalize){
     const formData = collectFormData();
     const title = formData.fields.f_direccion || formData.fields.f_barrio || 'Sin título';
     const status = finalize ? 'finalized' : 'draft';
+    const isAlquiler = formData.fields.f_destino === 'Alquiler';
+    const persist = {
+      title, data: formData, status,
+      type: isAlquiler ? 'alquiler' : 'venta',
+      valuation_usd: isAlquiler ? null : _lastValorFinal,
+      valuation_ars: isAlquiler ? _lastValorFinal : null,
+      updated_at: new Date().toISOString()
+    };
 
     if(TASACION_ID){
-      const { error } = await _supabase.from('tasaciones').update({
-        title, data: formData, status, valuation_usd: _lastValorFinalUSD, updated_at: new Date().toISOString()
-      }).eq('id', TASACION_ID);
+      const { error } = await _supabase.from('tasaciones').update(persist).eq('id', TASACION_ID);
       if(error) throw error;
     } else {
-      const { data, error } = await _supabase.from('tasaciones').insert({
-        title, data: formData, status, valuation_usd: _lastValorFinalUSD
-      }).select('id').single();
+      delete persist.updated_at;
+      const { data, error } = await _supabase.from('tasaciones').insert(persist).select('id').single();
       if(error) throw error;
       if(data && data.id){
         TASACION_ID = data.id;
@@ -504,7 +514,8 @@ document.getElementById('btnPdf').addEventListener('click', async (e)=>{
   }
 });
 
-document.getElementById('addComparable').addEventListener('click', ()=>addComparable());
+  document.getElementById('addComparable').addEventListener('click', ()=>addComparable());
+  document.getElementById('f_destino').addEventListener('change', recalcAll);
 
 /* --- Security hardening: sin handlers inline (CSP-safe), postMessage con targetOrigin explicito --- */
 const _bhEsc = (s) => (window.BHUtils && typeof window.BHUtils.esc === 'function') ? window.BHUtils.esc(s) : '';
@@ -538,6 +549,7 @@ function renderAnalisisComparativo(forPrint){
   tbody.innerHTML = '';
 
   const rows = [];
+  const cur = currencySymbol();
   document.querySelectorAll('.comp-block').forEach((wrap,i)=>{
     const precio = parseFloat(wrap.querySelector('.c_precio').value)||0;
     const supCub = parseFloat(wrap.querySelector('.c_supCubierta').value)||0;
@@ -556,9 +568,9 @@ function renderAnalisisComparativo(forPrint){
     tr.innerHTML =
       '<td><input type="checkbox" class="ac_check" '+(r.included?'checked':'')+'></td>'+
       '<td>'+r.label+'</td>'+
-      '<td>'+(r.precioM2? 'U$S '+r.precioM2.toFixed(2) : '—')+'</td>'+
-      '<td>'+(r.precioM2? 'U$S '+low.toFixed(2) : '—')+'</td>'+
-      '<td>'+(r.precioM2? 'U$S '+high.toFixed(2) : '—')+'</td>';
+      '<td>'+(r.precioM2? cur + ' ' + r.precioM2.toFixed(2) : '—')+'</td>'+
+      '<td>'+(r.precioM2? cur + ' ' + low.toFixed(2) : '—')+'</td>'+
+      '<td>'+(r.precioM2? cur + ' ' + high.toFixed(2) : '—')+'</td>';
     tr.querySelector('.ac_check').addEventListener('change', (e)=>{
       r.wrap.dataset.included = e.target.checked ? 'true' : 'false';
       recalcAll();
@@ -574,9 +586,9 @@ function renderAnalisisComparativo(forPrint){
     valMin = Math.min(...vals) * (1 - dispersion/100);
     valMax = Math.max(...vals) * (1 + dispersion/100);
   }
-  document.getElementById('ac_valMin').textContent = valMin? 'U$S '+valMin.toFixed(2) : '—';
-  document.getElementById('ac_valProm').textContent = valProm? 'U$S '+valProm.toFixed(2) : '—';
-  document.getElementById('ac_valMax').textContent = valMax? 'U$S '+valMax.toFixed(2) : '—';
+  document.getElementById('ac_valMin').textContent = valMin? cur + ' ' + valMin.toFixed(2) : '—';
+  document.getElementById('ac_valProm').textContent = valProm? cur + ' ' + valProm.toFixed(2) : '—';
+  document.getElementById('ac_valMax').textContent = valMax? cur + ' ' + valMax.toFixed(2) : '—';
 
   const canvas = document.getElementById('ac_chart');
   if(!canvas || typeof Chart === 'undefined') return;
@@ -591,7 +603,7 @@ function renderAnalisisComparativo(forPrint){
     data: {
       labels: labels,
       datasets: [{
-        label: 'Rango U$S/m² (± '+dispersion+'%)',
+        label: 'Rango ' + cur + '/m² (± '+dispersion+'%)',
         data: dataRanges,
         backgroundColor: colors,
         borderRadius: 4,
@@ -606,7 +618,7 @@ function renderAnalisisComparativo(forPrint){
         legend: { display:false },
         tooltip: {
           callbacks:{
-            label: (ctx)=> 'U$S ' + ctx.raw[0].toFixed(2) + ' \u2014 U$S ' + ctx.raw[1].toFixed(2) + ' /m²'
+            label: (ctx)=> cur + ' ' + ctx.raw[0].toFixed(2) + ' \u2014 ' + cur + ' ' + ctx.raw[1].toFixed(2) + ' /m²'
           }
         }
       },
