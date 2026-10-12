@@ -57,6 +57,7 @@ Cada HTML tiene su meta CSP propia. Al agregar cualquier recurso externo (API, t
 
 ## Encuesta de visita / `visit_surveys` (gotchas)
 
+- **Set de preguntas v3** (2026-10-12): sliders = `ubicacion`, `superficie`, `distribucion`, `conservacion` (label "Estado Conservación"), `general`; `compraria` solo Sí/No. La RPC `survey_submit_by_token` valida esas keys con **replace full-set** — si se agregan/cambian sliders, actualizar el ARRAY de la RPC + `SCORES` en encuesta-page.js + los labels del portal (`SV_LABELS`) y del CRM (`LBL`) a la vez. Los displays mantienen las keys viejas (`tamano`/`calidad`/`precio`) para que respuestas anteriores se sigan viendo.
 - 1 encuesta **activa** por (lead, propiedad): el UNIQUE es **parcial** (`WHERE archived_at IS NULL`). "Reiniciar" = `archived_at=now()` (policy UPDATE restringida al agente del lead o super_admin); la archivada sigue visible para el dueño en el portal.
 - El visitante escribe **solo** vía `survey_submit_by_token` (SECURITY DEFINER con `FOR UPDATE` — no sacarlo: evita nota duplicada en `lead_activities` ante submits concurrentes). Nunca agregar UPDATE/DELETE de filas desde el cliente.
 - La nota "Encuesta de visita recibida" en el historial del lead la inserta la **función SQL** al finalizar — no el frontend.

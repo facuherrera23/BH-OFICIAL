@@ -8,7 +8,7 @@
   var params = new URLSearchParams(window.location.search);
   var token = params.get('token');
 
-  var SCORES = ['ubicacion', 'tamano', 'distribucion', 'calidad', 'precio', 'conservacion', 'general'];
+  var SCORES = ['ubicacion', 'superficie', 'distribucion', 'conservacion', 'general'];
   var TEXTS = ['por_que', 'mas_gusto', 'menos_gusto'];
   var DRAFT_KEY = 'bh_survey_' + (token || 'x');
   var SAVE_DEBOUNCE_MS = 900;

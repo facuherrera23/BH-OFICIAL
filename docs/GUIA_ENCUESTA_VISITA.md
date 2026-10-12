@@ -49,10 +49,10 @@ Cuando marcás la visita como **completada** (en el lead o al registrar la salid
 
 ## Qué responde el visitante
 
-Mapea la hoja de visita en papel:
+Mapea la hoja de visita en papel (set v3, actualizado 2026-10-12):
 
-1. **Puntuaciones 1 a 10**: Ubicación · Tamaño · Distribución · Calidad · Precio · Conservación · Valoración general
-2. **¿Comprarías este inmueble?** — Sí / No / Quizás + ¿Por qué?
+1. **Puntuaciones 1 a 10**: Ubicación · Superficie · Distribución · Estado Conservación · Valoración general
+2. **¿Comprarías este inmueble?** — Sí / No + ¿Por qué?
 3. **¿Qué fue lo que más te gustó?** (texto libre)
 4. **¿Qué fue lo que menos te gustó?** (texto libre)
 

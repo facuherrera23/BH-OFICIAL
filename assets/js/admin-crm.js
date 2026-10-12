@@ -1086,7 +1086,7 @@ function updateSurveyChip(panel, propId, state) {
 /* Resumen legible de las respuestas (para el diálogo "Ver respuestas"). */
 function surveyAnswersText(a) {
   a = a || {};
-  var LBL = { ubicacion: 'Ubicación', tamano: 'Tamaño', distribucion: 'Distribución', calidad: 'Calidad', precio: 'Precio', conservacion: 'Conservación' };
+  var LBL = { ubicacion: 'Ubicación', superficie: 'Superficie', tamano: 'Tamaño', distribucion: 'Distribución', calidad: 'Calidad', precio: 'Precio', conservacion: 'Estado Conservación' };
   var out = [];
   if (a.general != null) out.push('Valoración general: ' + a.general + '/10');
   Object.keys(LBL).forEach(function (k) { if (a[k] != null) out.push(LBL[k] + ': ' + a[k] + '/10'); });

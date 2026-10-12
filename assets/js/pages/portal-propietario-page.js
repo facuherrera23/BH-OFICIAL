@@ -673,7 +673,7 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
       var old = document.getElementById('surveysSection');
       if (old) old.remove();
 
-      var SV_LABELS = { ubicacion: 'Ubicación', tamano: 'Tamaño', distribucion: 'Distribución', calidad: 'Calidad', precio: 'Precio', conservacion: 'Conservación' };
+      var SV_LABELS = { ubicacion: 'Ubicación', superficie: 'Superficie', tamano: 'Tamaño', distribucion: 'Distribución', calidad: 'Calidad', precio: 'Precio', conservacion: 'Estado Conservación' };
       var SV_COMPRARIA = { si: 'Compraría: Sí', no: 'Compraría: No', quizas: 'Compraría: Quizás' };
 
       var byProp = {};

@@ -738,8 +738,8 @@ flowchart LR
 
 | Tipo | Campos |
 |---|---|
-| Valoración 1–10 (sliders) | `ubicacion`, `tamano`, `distribucion`, `calidad`, `precio`, `conservacion`, `general` |
-| Decisión | `compraria` → Sí / No / Quizás + `por_que` (texto) |
+| Valoración 1–10 (sliders) | `ubicacion`, `superficie`, `distribucion`, `conservacion`, `general` — set v3 (2026-10-12): se quitaron Tamaño/Calidad/Precio y se agregó Superficie; los displays mantienen los labels del set viejo para respuestas anteriores |
+| Decisión | `compraria` → Sí / No + `por_que` (texto) — v3: sin "Quizás" |
 | Texto libre | `mas_gusto`, `menos_gusto` (máx 1000 chars, sanitizado server-side) |
 
 ### Autoguardado ("si no guarda, se guardó igual")

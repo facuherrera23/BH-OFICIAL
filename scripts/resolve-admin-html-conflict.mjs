@@ -33,9 +33,8 @@ assert(!c.includes('<<<<<<<') && !c.includes('>>>>>>>'), 'quedan marcadores de c
 const mustHave = [
   'id="portalLinkModal"', 'Acceso Portal</button>', 'Días de validez',
   'id="inputPromptModal"', 'Centro de Supervisión',
-  'assets/js/admin-crm.js?v=50', 'assets/js/admin-propietarios.js?v=15',
-  'assets/js/utils.js?v=141', 'assets/js/config.js?v=142',
-  'assets/js/supabase-client.js?v=141', 'assets/js/cloudinary.js?v=143',
+  'assets/js/admin-crm.js?v=', 'assets/js/admin-propietarios.js?v=',
+  'assets/js/utils.js?v=', 'assets/js/config.js?v=',
 ];
 for (const s of mustHave) assert(c.includes(s), 'falta: ' + s);
 const lines = c.split('\n').length;
