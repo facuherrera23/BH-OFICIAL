@@ -25,6 +25,7 @@ test.describe('Fichas indexables + sitemap', () => {
 
     expect(html).not.toContain('window.location.replace');
     expect(html).toMatch(/<link rel="canonical" href="https:\/\/bienenhaus\.com\.ar\/fichas\/[^"]+\.html">/);
+    expect(html).toMatch(/<meta http-equiv="Content-Security-Policy" content="[^"]+"/);
     expect(html).toMatch(/<meta name="description" content="[^"]+"/);
     expect(html).toContain('| Bienenhaus Propiedades');
 

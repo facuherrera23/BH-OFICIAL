@@ -645,9 +645,13 @@ Expone los handlers al HTML (39 métodos):
 
 ### 🧩 Módulo Ficha HTML
 
-- Layout de dos columnas: formulario + preview 1:1 (responsive 1200/1024/680px).
-- Autocompletado desde el CRM (debounce 250 ms) y drag & drop de fotos.
-- Tres exportaciones: `navigator.share`, `window.print` (PDF) y HTML autocontenido descargable.
+**Pipeline de fichas públicas (canónico):** `scripts/generate-ficha.mjs` genera `fichas/<code>.html` estáticas (template v3 dark: JSON-LD, OG, mapa, broker, relacionadas, lightbox, botón PDF, analytics) + `sitemap.xml`, y **reconcilia huérfanas**: al despublicar una propiedad su ficha se borra en la siguiente corrida. Corre por CI (`ficha-generate.yml`: cada 30 min + `repository_dispatch`), se commitea a `main` y Cloudflare Pages las sirve en `bienenhaus.com.ar/fichas/<code>.html`. Guard de seguridad: si la consulta devuelve 0 propiedades publicadas, aborta sin escribir ni borrar. Cada ficha lleva CSP propia.
+
+> `ficha-publish` (Edge Function → Supabase Storage) quedó **deprecado como stub 410** (2026-10-11): duplicaba la generación con un template inferior que ningún consumidor usaba y divergía del canónico. El redirector legado `/ficha?code=X` sigue apuntando a la ficha estática.
+
+**Compartir:** en la tab Propiedades, cada propiedad publicada tiene "Ver ficha pública" y "Compartir por WhatsApp" — el link se arma con `?de=<agente>&tel=<tel>` del usuario logueado, y la ficha muestra ese contacto con su WhatsApp como CTA.
+
+**Generador manual (tab Ficha HTML):** layout de dos columnas (formulario + preview 1:1, responsive 1200/1024/680px), autocompletado desde el CRM (debounce 250 ms), drag & drop de fotos y tres exportaciones: `navigator.share`, `window.print` (PDF) y HTML autocontenido descargable. Para fichas ad-hoc de propiedades no publicadas.
 
 ### 🧩 Módulo Configuración
 
@@ -1135,6 +1139,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 
 | Fecha | Versión | Cambios |
 |---|---|---|
+| 2026-10-12 | — | Ficha HTML: deprecado `ficha-publish` como stub 410 (duplicaba la generación hacia Storage con template inferior y divergente — ej. HS-P0004 faltante), CSP propia en las 30 fichas públicas, reconciliación de fichas huérfanas en la CI (al despublicar una propiedad su ficha se borra) + guard anti-wipe, documentación del pipeline |
 | 2026-10-10 (3) | — | Camino al 90: `backup-snapshot` (Edge Function + cron 04:00 → bucket privado, retención 30 días), recordatorio de encuestas sin responder a las 48h (cron → tarea al agente con link de reenvío), HIBP check en login (mitiga Leaked Password Protection pendiente), test E2E del keepalive del autoguardado |
 | 2026-10-10 (2) | — | Hardening de cierre: **P0 neutralizado** (stubs con verify_jwt sobre `tmp-gen-jwt`/`cta-test` — ya no generan links sin auth; eliminarlas del dashboard queda como pendiente estético), estrategia de **backups** (snapshot lógico verificado + runbook `pg_dump` en `docs/BACKUPS.md`), **brokers pueden responder el chat** en sus conversaciones (proxy con verificación de dueño), código muerto eliminado (`checkoutVisit` duplicado) |
 | 2026-10-10 | — | Chat Redes: auditoría completa + `zernio-sync` (Edge Function + cron cada 2 min) — pull incremental de Zernio con realtime en el panel sin depender del webhook push; recuperación de mensajes perdidos; portal: quitados el botón "Coordiná una por WhatsApp" y el beneficio "Comisión preferencial"; encuesta rediseñada con identidad de marca (teal, Plus Jakarta Sans, logo) + mejoras de accesibilidad; documentación de cierre y cotización completa |

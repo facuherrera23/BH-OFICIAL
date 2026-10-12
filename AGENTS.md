@@ -63,6 +63,14 @@ JSONB con fotos base64 embebidas. Las tasaciones nuevas comprimen client-side (`
 - Recordatorio automático: `survey_pending_reminders()` (cron `survey-reminders-daily`, 12:00 ART) crea una tarea `contact`/`whatsapp` al agente si la encuesta lleva 48h sin responder. Dedup por lead: mientras haya una tarea "Encuesta sin responder—" activa, no se duplica.
 - Backups automáticos: `backup-snapshot` (Edge Function, cron `backup-snapshot-daily` 04:00 ART) → bucket privado `backups` en Storage, retención 30 días. Secret compartido con zernio-sync en `zernio_config(key='sync_secret')`. Ambas funciones están en `NO_VERIFY` del CI.
 
+## Fichas HTML (pipeline)
+
+- **Único camino de generación**: `scripts/generate-ficha.mjs` vía CI (`ficha-generate.yml`: cron cada 30 min + `repository_dispatch: generar-ficha`). Commitea `fichas/` + `sitemap.xml` a main con `[skip ci-pages]` y Cloudflare las sirve. No hay otro generador.
+- **Reconciliación**: cada corrida completa borra las fichas de propiedades despublicadas (antes quedaban zombie, accesibles e indexadas con datos viejos). Dos guards: si la DB devuelve 0 publicadas aborta sin escribir/borrar (anti-wipe), y con `ONLY_CODE` no reconcilia (el set sería de una sola ficha).
+- **`ficha-publish` es un stub 410** (deprecado 2026-10-11): duplicaba la generación hacia el bucket Storage `fichas` con un template inferior que ningún consumidor usaba — no reactivar. El redirector legado `/ficha?code=X` sigue vivo apuntando a la estática.
+- Al agregar recursos externos al template de ficha: actualizar la **CSP** de `generate-ficha.mjs` (cada ficha lleva la suya) y regenerar.
+- El botón "Compartir por WhatsApp" de Propiedades arma el link con `?de=<agente>&tel=<tel>` del usuario logueado (`sharePropertyWhatsApp`) — la ficha muestra ese contacto y el CTA apunta a su número.
+
 ## Chat Redes / Zernio (gotchas)
 
 - La entrada opera por **`zernio-sync`** (Edge Function, cron `zernio-sync-every-2-min`): pull incremental de Zernio, solo conversaciones con `updatedTime` nuevo → INSERTs disparan el realtime del panel. Auth: header `x-sync-secret` contra `zernio_config(key='sync_secret')`.
@@ -81,4 +89,5 @@ JSONB con fotos base64 embebidas. Las tasaciones nuevas comprimen client-side (`
 - **ML**: cerrar publicaciones huérfanas DA-P0019/21/22/03 en el panel de Mercado Libre antes de republicar; "Importar desde ML" **duplica propiedades** — no usar para esas.
 - Edge Functions: el CI deploya TODAS desde el repo en cada push a `main` (`.github/workflows/deploy.yml`, con flags verify_jwt por función); deploy manual vía MCP solo para hotfixes urgentes.
 - **Borrar del dashboard las funciones de debug `tmp-gen-jwt` (P0: genera magic-links sin auth) y `cta-test`** — leftovers de /tmp con verify_jwt OFF.
+- **Vaciar/borrar del dashboard el bucket Storage `fichas`** (Supabase Studio → Storage): quedó deprecado con 29 fichas stale del viejo flujo `ficha-publish`; el SQL directo está bloqueado por `storage.protect_delete` y el stub impide nuevas escrituras, así que es limpieza manual estética.
 - Codegraph index disponible (`.codegraph/`, no versionado) — útil antes de editar.
