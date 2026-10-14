@@ -229,18 +229,16 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
 
     const itemId: unknown = q?.item_id;
     let propertyId: string | null = null;
-    let mlPermalink: string | null = null;
     const mlItemId: string | null = typeof itemId === 'string' ? itemId : null;
 
     if (itemId != null) {
         const { data: meta } = await supabase
             .from('property_ml_meta')
-            .select('property_id, ml_item_id, permalink')
+            .select('property_id, ml_item_id')
             .eq('ml_item_id', itemId)
             .maybeSingle();
         if (meta) {
             propertyId = meta.property_id;
-            mlPermalink = typeof meta.permalink === 'string' ? meta.permalink : null;
         }
         // Fallback: si la publicación se hizo a mano en ML y no está en property_ml_meta
         if (!propertyId) {
@@ -253,100 +251,36 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
         }
     }
 
-    /* property_ml_meta.permalink viene NULL en las filas actuales: el link real
-       del aviso se resuelve contra la API de items con el token del vendedor
-       (mismo acceso que usa ml-metrics). Fail-soft: sin link el lead sigue
-       sirviendo con pregunta + propiedad + perfil. */
-    if (!mlPermalink && mlItemId && token) {
-        try {
-            const itemRes = await fetch(`${ML_API}/items/${mlItemId}`, {
-                headers: { authorization: `Bearer ${token}` },
-            });
-            if (itemRes.ok) {
-                const item = (await itemRes.json()) as { permalink?: string };
-                if (typeof item.permalink === 'string' && item.permalink) mlPermalink = item.permalink;
-            }
-        } catch {
-            /* sin link al aviso: el lead conserva el resto del contexto */
-        }
-    }
-
-    /* Contexto de conversión para el broker: código y nombre de la propiedad,
-       link directo al aviso de ML y perfil público del interesado (reputación). */
-    let propContext = '';
-    const fromNickname = typeof q?.from?.nickname === 'string' ? q.from.nickname : '';
-    const fromUserId = typeof q?.from?.user_id === 'number' ? q.from.user_id : null;
-    if (propertyId) {
-        const { data: prop } = await supabase
-            .from('properties')
-            .select('property_code, title')
-            .eq('id', propertyId)
-            .maybeSingle();
-        if (prop?.property_code) {
-            propContext += `\nPropiedad: ${prop.property_code}${prop.title ? ' · ' + prop.title : ''}`;
-        }
-    }
-    if (mlPermalink) propContext += `\nAviso ML: ${mlPermalink}`;
-    if (fromNickname) {
-        propContext += `\nPerfil del interesado: https://www.mercadolibre.com.ar/perfil/${encodeURIComponent(fromNickname)}`;
-    }
-
-    // Cada pregunta nueva en ML crea un lead en el CRM — y nunca dos veces:
-    // la misma pregunta llega por los dos tópicos en paralelo (questions y
-    // vis_leads con external_id = question_id). El INSERT del ledger se apoya en
-    // la UNIQUE de question_id y es atómico: quien gana procesa, el perdedor
-    // sale sin crear lead (duplicado real 2026-10-13: la misma pregunta entró
-    // como lead dos veces a las 17:08:07 y 17:08:10).
+    // Regla del estudio (2026-10-13): en inmuebles ML anonimiza al interesado;
+    // sin nombre + método de contacto no se crea lead (antes entraban como
+    // "Interesado ML" y quedaban filas vacías en el CRM). La pregunta queda
+    // igual en el ledger y se responde con la plantilla activa. Quien consulta
+    // de verdad escribe/pide contacto y entra por vis_leads con identidad.
     try {
         const { data: existingQ } = await supabase
             .from('ml_questions')
             .select('lead_id, status')
             .eq('question_id', questionId)
             .maybeSingle();
-
         if (existingQ && (existingQ.lead_id || existingQ.status === 'answered')) return;
 
+        /* Claim atómico: la misma pregunta llega por questions y por vis_leads
+           en paralelo (external_id = question_id). La UNIQUE del ledger deja
+           un solo ganador; el que pierde sale sin hacer nada. */
         const { error: claimErr } = await supabase.from('ml_questions').insert({
             question_id: questionId,
             property_id: propertyId,
             ml_item_id: mlItemId,
+            question_text: typeof q?.text === 'string' ? q.text : null,
+            from_user_id: typeof q?.from?.user_id === 'number' ? q.from.user_id : null,
+            from_user_nickname: typeof q?.from?.nickname === 'string' ? q.from.nickname : null,
             received_at: new Date().toISOString(),
             status: 'unanswered',
         });
-        if (claimErr && (claimErr as { code?: string }).code === '23505') return; // el otro tópico la está procesando
+        if (claimErr && (claimErr as { code?: string }).code === '23505') return;
         if (claimErr) throw new Error('claim ledger: ' + claimErr.message);
-
-        const questionText = typeof q?.text === 'string' ? q.text : '';
-        const { data: newLead, error: leadErr } = await supabase
-            .from('leads')
-            .insert({
-                full_name: fromName,
-                source: 'ml',
-                stage: 'nuevo',
-                property_id: propertyId,
-                /* El lead nace con TODO el contexto de conversión: pregunta +
-                   propiedad vinculada + link al aviso + perfil del interesado. */
-                notes: `[Pregunta Mercado Libre] ${questionText || 'Consulta desde Mercado Libre'}${propContext}${fromUserId ? `\nUsuario ML: ${fromUserId}` : ''}`,
-            })
-            .select('id')
-            .single();
-
-        // Si el lead no pudo crearse bajo nuestro claim, liberarlo para que el
-        // próximo evento (reintento de ML) lo pueda procesar bien.
-        if (leadErr) {
-            await supabase.from('ml_questions').delete().eq('question_id', questionId);
-            throw new Error('lead_create questions: ' + leadErr.message);
-        }
-
-        // El ledger ya existe (lo insertó este mismo proceso): solo vincular el lead.
-        if (newLead?.id) {
-            await supabase
-                .from('ml_questions')
-                .update({ lead_id: newLead.id, question_text: questionText || null })
-                .eq('question_id', questionId);
-        }
     } catch (err) {
-        logWarn({ function: 'ml-webhook', topic: 'questions', question_id: questionId, error: 'lead_create: ' + (err as Error).message });
+        logWarn({ function: 'ml-webhook', topic: 'questions', question_id: questionId, error: 'claim: ' + (err as Error).message });
     }
 
     if (!template) {
@@ -399,57 +333,104 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
     }
 }
 
-/* Busca el lead de ML ya existente para LA MISMA persona en el mismo anuncio
-   (la misma persona escribe una pregunta y después pide contacto/visita: deben
-   quedar UN SOLO lead con toda la info). Matchea en una ventana de 30 días. */
-async function findExistingMlLead(
+/* ─── Consolidación de leads ML (reglas del estudio, 2026-10-13) ───
+   1. Sin identidad de contacto NO se crea lead (ya pasó que entraban como
+      "Interesado ML" sin datos — no sirven).
+   2. La misma persona interesada en otra publicación (o dos veces por la misma)
+      queda en UN SOLO lead con todas las propiedades y la traza de contactos.
+   3. Matcheo por email / últimos 10 dígitos del teléfono / "Usuario ML: id" o
+      "Evento ML vinculado: id" en las notas; nunca sobre leads terminales. */
+const ML_TERMINAL_STAGES_EXCL = '("cerrado_perdido","cerrado_vendido","vendido","descartado")';
+
+async function findConsolidableMlLead(
     supabase: ReturnType<typeof createClient>,
     buyerEmail: string | null,
     buyerPhone: string | null,
     buyerId: number | null,
-    propertyId: string | null,
 ) {
-    if (!propertyId || (!buyerEmail && !buyerPhone && !buyerId)) return null;
     const filters: string[] = [];
     if (buyerEmail) filters.push(`email.eq.${buyerEmail}`);
     const digits = (buyerPhone || '').replace(/\D/g, '');
-    if (digits.length >= 8) filters.push(`phone.ilike.%${digits.slice(-8)}%`);
-    if (buyerId >= 1000) filters.push(`notes.ilike.%Usuario ML: ${buyerId}%`);
+    if (digits.length >= 10) filters.push(`phone.ilike.%${digits.slice(-10)}%`);
+    if (buyerId && buyerId >= 1000) {
+        filters.push(`notes.ilike.%Usuario ML: ${buyerId}%`);
+        filters.push(`notes.ilike.%Evento ML vinculado: ${buyerId}%`);
+    }
     if (!filters.length) return null;
     const { data } = await supabase
         .from('leads')
-        .select('id, full_name, email, phone, notes')
+        .select('id, full_name, email, phone, whatsapp, notes, stage, property_id, ml_lead_id')
         .eq('source', 'ml')
-        .eq('property_id', propertyId)
         .is('deleted_at', null)
-        .gte('created_at', new Date(Date.now() - 30 * 86400000).toISOString())
+        .not('stage', 'in', ML_TERMINAL_STAGES_EXCL)
         .or(filters.join(','))
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: true }) /* el lead canónico es el primero */
         .limit(1)
         .maybeSingle();
     return data ?? null;
 }
 
-/* Completa un lead existente con la identidad que expone vis_leads (nombre,
-   email, teléfono) y agrega la nota del nuevo contacto. Todo queda en UNA fila. */
-async function enrichExistingMlLead(
+/* Merge: la info del evento nuevo queda en el lead existente (rellena campos
+   vacíos, vincula la propiedad adicional vía lead_properties, nota la traza) y
+   registra el id del evento para que sus cambios de estado no re-created el lead. */
+async function mergeMlEventIntoLead(
     supabase: ReturnType<typeof createClient>,
     leadId: string,
-    opts: { buyerEmail: string | null; buyerPhone: string | null; buyerName: string | null; buyerId: number | null; noteLabel: string; noteText: string },
+    opts: {
+        buyerEmail: string | null; buyerPhone: string | null; buyerName: string | null;
+        buyerId: number | null; propertyId: string | null; mlLeadId: string | null;
+        noteLabel: string; noteText: string; propertyContext: string;
+    },
 ) {
     const { data: lead } = await supabase
-        .from('leads').select('id, full_name, email, phone, notes').eq('id', leadId).maybeSingle();
-    if (!lead) return;
+        .from('leads')
+        .select('id, full_name, email, phone, whatsapp, notes, property_id, ml_lead_id')
+        .eq('id', leadId)
+        .maybeSingle();
+    if (!lead) return false;
+
     const patch: Record<string, string> = {};
     if (!lead.email && opts.buyerEmail) patch.email = opts.buyerEmail;
     if (!lead.phone && opts.buyerPhone) patch.phone = opts.buyerPhone;
+    if (!lead.whatsapp && opts.buyerPhone) patch.whatsapp = opts.buyerPhone;
     if ((lead.full_name || '').startsWith('Interesado ML') && opts.buyerName) patch.full_name = opts.buyerName;
-    const identity = [opts.buyerEmail && `Email: ${opts.buyerEmail}`, opts.buyerPhone && `Tel: ${opts.buyerPhone}`, opts.buyerId && `Usuario ML: ${opts.buyerId}`].filter(Boolean).join(' · ');
-    let notes = (lead.notes as string) || '';
-    const extra = [opts.noteText, identity ? `Identidad (del contacto vía ML): ${identity}` : ''].filter(Boolean).join('\n');
-    if (extra && !notes.includes(extra.substring(0, 60))) notes = (notes || '') + '\n[' + opts.noteLabel + '] ' + extra;
-    patch.notes = notes;
-    await supabase.from('leads').update(patch).eq('id', leadId);
+    if (!lead.ml_lead_id && opts.mlLeadId) patch.ml_lead_id = opts.mlLeadId;
+
+    const pieces: string[] = [];
+    const labelLine = `[${opts.noteLabel}] ${opts.noteText || ''}`.trim();
+    if (labelLine.length > opts.noteLabel.length + 2) pieces.push(labelLine);
+    if (opts.propertyContext) pieces.push(opts.propertyContext.trim());
+    if (opts.mlLeadId && lead.ml_lead_id && lead.ml_lead_id !== opts.mlLeadId) {
+        pieces.push(`Evento ML vinculado: ${opts.mlLeadId}`);
+    }
+    const extra = pieces.filter(Boolean).join('\n');
+    const notes = (lead.notes as string) || '';
+    if (extra && !notes.includes(extra.substring(0, 60))) {
+        patch.notes = notes ? notes + '\n' + extra : extra;
+    }
+
+    if (Object.keys(patch).length) {
+        await supabase.from('leads').update(patch).eq('id', leadId);
+    }
+
+    /* Propiedad adicional: la misma persona consultó otra publicación — queda
+       vinculada al MISMO lead (no se crea otra fila en la tabla leads). */
+    if (opts.propertyId && opts.propertyId !== lead.property_id) {
+        const { data: link } = await supabase
+            .from('lead_properties')
+            .select('lead_id, property_id')
+            .eq('lead_id', leadId)
+            .eq('property_id', opts.propertyId)
+            .maybeSingle();
+        if (!link) {
+            await supabase.from('lead_properties').insert({
+                lead_id: leadId,
+                property_id: opts.propertyId,
+                created_at: new Date().toISOString(),
+            });
+        }
+    }
+    return true;
 }
 
 const VIS_CONTACT_LABELS: Record<string, string> = {
@@ -518,6 +499,7 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
        2 preguntas de prueba entraron dos veces al CRM). */
     const isQuestion = contactType === 'question' && !!externalId;
     let questionText = '';
+    let questionClaimedByOther = false;
     if (isQuestion) {
         const { data: existingQ } = await supabase
             .from('ml_questions')
@@ -528,8 +510,10 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
 
         /* Claim atómico: la misma pregunta llega por el tópico clásico y por
            vis_leads en paralelo; la UNIQUE de ml_questions deja UN ganador. Si
-           perdemos, enriquecemos el lead que ya está creando el otro proceso con
-           la identidad del comprador que sí expone vis_leads (caso real 2026-10-13). */
+           perdemos: consolidamos la identidad de este contacto en el lead que
+           ya existe (el del ganador), y nuestra fila queda ligada. Si por alguna
+           razón el ganador no creó lead (era anónimo, no entró al CRM), nosotros
+           sí tenemos identidad → lo creamos acá y vinculamos abajo. */
         const { error: claimErr } = await supabase.from('ml_questions').insert({
             question_id: externalId,
             property_id: null,
@@ -544,13 +528,20 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
                 .eq('question_id', externalId)
                 .maybeSingle();
             if (qrow?.lead_id) {
-                await enrichExistingMlLead(supabase, qrow.lead_id, {
+                await mergeMlEventIntoLead(supabase, qrow.lead_id, {
                     buyerEmail, buyerPhone, buyerName, buyerId,
+                    propertyId: null, mlLeadId: leadId,
                     noteLabel: 'Contacto Mercado Libre · Pregunta',
                     noteText: questionText,
+                    propertyContext: '',
                 });
+                return;
             }
-            return;
+            const hasIdentity = !!(buyerName || buyerEmail || buyerPhone || buyerId);
+            if (!hasIdentity) return;
+            /* El ganador era anónimo (no creó lead) pero tenemos identidad →
+               sigue el flujo normal y el upsert final vincula el ledger. */
+            questionClaimedByOther = true;
         }
         if (claimErr) throw new Error('claim ledger vis: ' + claimErr.message);
 
@@ -618,51 +609,67 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
 
     const contactLabel = VIS_CONTACT_LABELS[contactType] ?? contactType;
 
-    /* Dedup por identidad: la misma persona puede escribir la pregunta y después
-       pedir contacto/visita (o re-consultar). Email / últimos 8 dígitos del
-       teléfono / id de usuario ML contra el mismo anuncio y los últimos 30 días
-       → se consolida TODO en el lead existente; nunca un segundo lead. */
-    const existingLead = await findExistingMlLead(supabase, buyerEmail, buyerPhone, buyerId, propertyId);
-    if (existingLead) {
-        await enrichExistingMlLead(supabase, existingLead.id, {
-            buyerEmail, buyerPhone, buyerName, buyerId,
-            noteLabel: `Contacto Mercado Libre · ${contactLabel}`,
-            noteText: questionText || `Interesado vía ${contactLabel}`,
-        });
-        if (isQuestion && externalId) {
-            await supabase.from('ml_questions').upsert(
-                { question_id: externalId, property_id: propertyId, ml_item_id: itemId, lead_id: existingLead.id, received_at: new Date().toISOString(), question_text: questionText || null, from_user_id: buyerId, from_user_nickname: buyerName, date_created: createdAt, status: 'unanswered' },
-                { onConflict: 'question_id' },
-            );
+    /* Regla del estudio (2026-10-13): sin identidad de contacto NO entra al CRM.
+       La pregunta anónima queda en el ledger y en el panel de Portales, el CRM
+       solo guarda leads accionables (nombre + email o teléfono/WhatsApp). */
+    const hasIdentity = !!(buyerName || buyerEmail || buyerPhone || buyerId);
+    if (!hasIdentity) {
+        if (!isQuestion) {
+            throw new Error(`vis_lead ${contactType} sin identidad de contacto — el evento queda en el log, no genera lead`);
         }
-        return;
+    } else {
+        /* Consolidación global (no por propiedad): la misma persona puede preguntar
+           por A y pedir contacto por B — quedan en UN lead con ambas. */
+        const existingLead = await findConsolidableMlLead(supabase, buyerEmail, buyerPhone, buyerId);
+        if (existingLead) {
+            await mergeMlEventIntoLead(supabase, existingLead.id, {
+                buyerEmail, buyerPhone, buyerName, buyerId,
+                propertyId, mlLeadId: leadId,
+                noteLabel: `Contacto Mercado Libre · ${contactLabel}`,
+                noteText: questionText || `Interesado vía ${contactLabel}`,
+                propertyContext: propContext,
+            });
+            if (isQuestion && externalId) {
+                await supabase.from('ml_questions').upsert(
+                    { question_id: externalId, property_id: propertyId, ml_item_id: itemId, lead_id: existingLead.id, received_at: new Date().toISOString(), question_text: questionText || null, from_user_id: buyerId, from_user_nickname: buyerName, date_created: createdAt, status: 'unanswered' },
+                    { onConflict: 'question_id' },
+                );
+            }
+            return;
+        }
     }
 
-    const { data: newLead, error: leadErr } = await supabase
-        .from('leads')
-        .insert({
-            full_name: buyerName ?? 'Interesado ML',
-            email: buyerEmail,
-            phone: buyerPhone,
-            source: 'ml',
-            stage: 'nuevo',
-            property_id: propertyId,
-            ml_lead_id: leadId,
-            notes: `[Contacto Mercado Libre · ${contactLabel}] ${
-                questionText || `Interesado vía ${contactLabel}`
-            }${propContext}`,
-        })
-        .select('id')
-        .single();
-
-    if (leadErr) {
-        if ((leadErr as { code?: string }).code === '23505') return; // lead ya procesado
-        if (isQuestion && externalId) {
-            await supabase.from('ml_questions').delete().eq('question_id', externalId);
+    /* Solo con identidad se crea la fila en el CRM; sin ella, o sale por merge
+       o no hay nada accionable — la pregunta igual se responde más abajo. */
+    let newLead: { id: string } | null = null;
+    if (hasIdentity) {
+        const created = await supabase
+            .from('leads')
+            .insert({
+                full_name: buyerName ?? 'Interesado ML',
+                email: buyerEmail,
+                phone: buyerPhone,
+                source: 'ml',
+                stage: 'nuevo',
+                property_id: propertyId,
+                ml_lead_id: leadId,
+                notes: `[Contacto Mercado Libre · ${contactLabel}] ${
+                    questionText || `Interesado vía ${contactLabel}`
+                }${propContext}`,
+            })
+            .select('id')
+            .single();
+        const leadErr = created.error;
+        if (leadErr) {
+            if ((leadErr as { code?: string }).code === '23505') return; // re-notificación del mismo vis-lead
+            if (isQuestion && externalId && !questionClaimedByOther) {
+                await supabase.from('ml_questions').delete().eq('question_id', externalId);
+            }
+            throw new Error(`lead_create vis: ${leadErr.message}`);
         }
-        throw new Error(`lead_create vis: ${leadErr.message}`);
+        if (!created.data?.id) throw new Error('lead_create vis: sin id devuelto');
+        newLead = created.data;
     }
-    if (!newLead?.id) throw new Error('lead_create vis: sin id devuelto');
 
     /* Preguntas de inmuebles: registro en ml_questions (ledger compartido con el
        flujo clásico, con lead_id vinculado) + auto-reply con plantilla activa. */
@@ -672,7 +679,7 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
                 question_id: externalId,
                 property_id: propertyId,
                 ml_item_id: itemId,
-                lead_id: newLead.id,
+                lead_id: newLead ? newLead.id : null,
                 received_at: new Date().toISOString(),
                 question_text: questionText || null,
                 from_user_id: buyerId,
