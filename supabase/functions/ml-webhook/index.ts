@@ -275,6 +275,7 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
        link directo al aviso de ML y perfil público del interesado (reputación). */
     let propContext = '';
     const fromNickname = typeof q?.from?.nickname === 'string' ? q.from.nickname : '';
+    const fromUserId = typeof q?.from?.user_id === 'number' ? q.from.user_id : null;
     if (propertyId) {
         const { data: prop } = await supabase
             .from('properties')
@@ -290,56 +291,59 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
         propContext += `\nPerfil del interesado: https://www.mercadolibre.com.ar/perfil/${encodeURIComponent(fromNickname)}`;
     }
 
-    // Cada pregunta nueva en ML crea un lead en el CRM. El dedupe por question_id
-    // lo protege de los reenvíos de webhook que ML a veces hace.
+    // Cada pregunta nueva en ML crea un lead en el CRM — y nunca dos veces:
+    // la misma pregunta llega por los dos tópicos en paralelo (questions y
+    // vis_leads con external_id = question_id). El INSERT del ledger se apoya en
+    // la UNIQUE de question_id y es atómico: quien gana procesa, el perdedor
+    // sale sin crear lead (duplicado real 2026-10-13: la misma pregunta entró
+    // como lead dos veces a las 17:08:07 y 17:08:10).
     try {
-        const { data: existing } = await supabase
+        const { data: existingQ } = await supabase
             .from('ml_questions')
-            .select('lead_id')
+            .select('lead_id, status')
             .eq('question_id', questionId)
             .maybeSingle();
 
-        if (!existing?.lead_id) {
-            const questionText = typeof q?.text === 'string' ? q.text : '';
-            const fromName =
-                typeof q?.from?.nickname === 'string' && q.from.nickname
-                    ? q.from.nickname
-                    : `Interesado ML (user ${typeof q?.from?.user_id === 'number' ? q.from.user_id : 'desconocido'})`;
+        if (existingQ && (existingQ.lead_id || existingQ.status === 'answered')) return;
 
-            const { data: newLead, error: leadErr } = await supabase
-                .from('leads')
-                .insert({
-                    full_name: fromName,
-                    source: 'ml',
-                    stage: 'nuevo',
-                    property_id: propertyId,
-                    /* El lead nace con TODO el contexto de conversión: pregunta +
-                       propiedad vinculada + link al aviso + perfil del interesado. */
-                    notes: `[Pregunta Mercado Libre] ${questionText || 'Consulta desde Mercado Libre'}${propContext}`,
-                })
-                .select('id')
-                .single();
+        const { error: claimErr } = await supabase.from('ml_questions').insert({
+            question_id: questionId,
+            property_id: propertyId,
+            ml_item_id: mlItemId,
+            received_at: new Date().toISOString(),
+            status: 'unanswered',
+        });
+        if (claimErr && (claimErr as { code?: string }).code === '23505') return; // el otro tópico la está procesando
+        if (claimErr) throw new Error('claim ledger: ' + claimErr.message);
 
-            if (!leadErr && newLead?.id) {
-                /* Vincular el lead al ledger ml_questions: si la fila todavía no
-                   existe, un UPDATE toca 0 filas y el flujo vis_leads creería que la
-                   pregunta no generó lead → la duplicaba. Bug real 2026-10-08. */
-                if (existing) {
-                    await supabase
-                        .from('ml_questions')
-                        .update({ lead_id: newLead.id })
-                        .eq('question_id', questionId);
-                } else {
-                    await supabase.from('ml_questions').insert({
-                        question_id: questionId,
-                        property_id: propertyId,
-                        ml_item_id: mlItemId,
-                        lead_id: newLead.id,
-                        received_at: new Date().toISOString(),
-                        status: 'unanswered',
-                    });
-                }
-            }
+        const questionText = typeof q?.text === 'string' ? q.text : '';
+        const { data: newLead, error: leadErr } = await supabase
+            .from('leads')
+            .insert({
+                full_name: fromName,
+                source: 'ml',
+                stage: 'nuevo',
+                property_id: propertyId,
+                /* El lead nace con TODO el contexto de conversión: pregunta +
+                   propiedad vinculada + link al aviso + perfil del interesado. */
+                notes: `[Pregunta Mercado Libre] ${questionText || 'Consulta desde Mercado Libre'}${propContext}${fromUserId ? `\nUsuario ML: ${fromUserId}` : ''}`,
+            })
+            .select('id')
+            .single();
+
+        // Si el lead no pudo crearse bajo nuestro claim, liberarlo para que el
+        // próximo evento (reintento de ML) lo pueda procesar bien.
+        if (leadErr) {
+            await supabase.from('ml_questions').delete().eq('question_id', questionId);
+            throw new Error('lead_create questions: ' + leadErr.message);
+        }
+
+        // El ledger ya existe (lo insertó este mismo proceso): solo vincular el lead.
+        if (newLead?.id) {
+            await supabase
+                .from('ml_questions')
+                .update({ lead_id: newLead.id, question_text: questionText || null })
+                .eq('question_id', questionId);
         }
     } catch (err) {
         logWarn({ function: 'ml-webhook', topic: 'questions', question_id: questionId, error: 'lead_create: ' + (err as Error).message });
@@ -393,6 +397,59 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
             error: (err as Error).message,
         });
     }
+}
+
+/* Busca el lead de ML ya existente para LA MISMA persona en el mismo anuncio
+   (la misma persona escribe una pregunta y después pide contacto/visita: deben
+   quedar UN SOLO lead con toda la info). Matchea en una ventana de 30 días. */
+async function findExistingMlLead(
+    supabase: ReturnType<typeof createClient>,
+    buyerEmail: string | null,
+    buyerPhone: string | null,
+    buyerId: number | null,
+    propertyId: string | null,
+) {
+    if (!propertyId || (!buyerEmail && !buyerPhone && !buyerId)) return null;
+    const filters: string[] = [];
+    if (buyerEmail) filters.push(`email.eq.${buyerEmail}`);
+    const digits = (buyerPhone || '').replace(/\D/g, '');
+    if (digits.length >= 8) filters.push(`phone.ilike.%${digits.slice(-8)}%`);
+    if (buyerId >= 1000) filters.push(`notes.ilike.%Usuario ML: ${buyerId}%`);
+    if (!filters.length) return null;
+    const { data } = await supabase
+        .from('leads')
+        .select('id, full_name, email, phone, notes')
+        .eq('source', 'ml')
+        .eq('property_id', propertyId)
+        .is('deleted_at', null)
+        .gte('created_at', new Date(Date.now() - 30 * 86400000).toISOString())
+        .or(filters.join(','))
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    return data ?? null;
+}
+
+/* Completa un lead existente con la identidad que expone vis_leads (nombre,
+   email, teléfono) y agrega la nota del nuevo contacto. Todo queda en UNA fila. */
+async function enrichExistingMlLead(
+    supabase: ReturnType<typeof createClient>,
+    leadId: string,
+    opts: { buyerEmail: string | null; buyerPhone: string | null; buyerName: string | null; buyerId: number | null; noteLabel: string; noteText: string },
+) {
+    const { data: lead } = await supabase
+        .from('leads').select('id, full_name, email, phone, notes').eq('id', leadId).maybeSingle();
+    if (!lead) return;
+    const patch: Record<string, string> = {};
+    if (!lead.email && opts.buyerEmail) patch.email = opts.buyerEmail;
+    if (!lead.phone && opts.buyerPhone) patch.phone = opts.buyerPhone;
+    if ((lead.full_name || '').startsWith('Interesado ML') && opts.buyerName) patch.full_name = opts.buyerName;
+    const identity = [opts.buyerEmail && `Email: ${opts.buyerEmail}`, opts.buyerPhone && `Tel: ${opts.buyerPhone}`, opts.buyerId && `Usuario ML: ${opts.buyerId}`].filter(Boolean).join(' · ');
+    let notes = (lead.notes as string) || '';
+    const extra = [opts.noteText, identity ? `Identidad (del contacto vía ML): ${identity}` : ''].filter(Boolean).join('\n');
+    if (extra && !notes.includes(extra.substring(0, 60))) notes = (notes || '') + '\n[' + opts.noteLabel + '] ' + extra;
+    patch.notes = notes;
+    await supabase.from('leads').update(patch).eq('id', leadId);
 }
 
 const VIS_CONTACT_LABELS: Record<string, string> = {
@@ -469,6 +526,34 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
             .maybeSingle();
         if (existingQ && (existingQ.lead_id || existingQ.status === 'answered')) return;
 
+        /* Claim atómico: la misma pregunta llega por el tópico clásico y por
+           vis_leads en paralelo; la UNIQUE de ml_questions deja UN ganador. Si
+           perdemos, enriquecemos el lead que ya está creando el otro proceso con
+           la identidad del comprador que sí expone vis_leads (caso real 2026-10-13). */
+        const { error: claimErr } = await supabase.from('ml_questions').insert({
+            question_id: externalId,
+            property_id: null,
+            received_at: new Date().toISOString(),
+            status: 'unanswered',
+        });
+        if (claimErr && (claimErr as { code?: string }).code === '23505') {
+            await new Promise((r) => setTimeout(r, 1500));
+            const { data: qrow } = await supabase
+                .from('ml_questions')
+                .select('lead_id')
+                .eq('question_id', externalId)
+                .maybeSingle();
+            if (qrow?.lead_id) {
+                await enrichExistingMlLead(supabase, qrow.lead_id, {
+                    buyerEmail, buyerPhone, buyerName, buyerId,
+                    noteLabel: 'Contacto Mercado Libre · Pregunta',
+                    noteText: questionText,
+                });
+            }
+            return;
+        }
+        if (claimErr) throw new Error('claim ledger vis: ' + claimErr.message);
+
         try {
             const qRes = await fetch(`${ML_API}/questions/${externalId}?api_version=4`, {
                 headers: { authorization: `Bearer ${token}` },
@@ -532,10 +617,31 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
     if (buyerId) propContext += `\nUsuario ML: ${buyerId}`;
 
     const contactLabel = VIS_CONTACT_LABELS[contactType] ?? contactType;
+
+    /* Dedup por identidad: la misma persona puede escribir la pregunta y después
+       pedir contacto/visita (o re-consultar). Email / últimos 8 dígitos del
+       teléfono / id de usuario ML contra el mismo anuncio y los últimos 30 días
+       → se consolida TODO en el lead existente; nunca un segundo lead. */
+    const existingLead = await findExistingMlLead(supabase, buyerEmail, buyerPhone, buyerId, propertyId);
+    if (existingLead) {
+        await enrichExistingMlLead(supabase, existingLead.id, {
+            buyerEmail, buyerPhone, buyerName, buyerId,
+            noteLabel: `Contacto Mercado Libre · ${contactLabel}`,
+            noteText: questionText || `Interesado vía ${contactLabel}`,
+        });
+        if (isQuestion && externalId) {
+            await supabase.from('ml_questions').upsert(
+                { question_id: externalId, property_id: propertyId, ml_item_id: itemId, lead_id: existingLead.id, received_at: new Date().toISOString(), question_text: questionText || null, from_user_id: buyerId, from_user_nickname: buyerName, date_created: createdAt, status: 'unanswered' },
+                { onConflict: 'question_id' },
+            );
+        }
+        return;
+    }
+
     const { data: newLead, error: leadErr } = await supabase
         .from('leads')
         .insert({
-            full_name: buyerName ?? `Interesado ML (user ${buyerId ?? 'desconocido'})`,
+            full_name: buyerName ?? 'Interesado ML',
             email: buyerEmail,
             phone: buyerPhone,
             source: 'ml',
@@ -551,6 +657,9 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
 
     if (leadErr) {
         if ((leadErr as { code?: string }).code === '23505') return; // lead ya procesado
+        if (isQuestion && externalId) {
+            await supabase.from('ml_questions').delete().eq('question_id', externalId);
+        }
         throw new Error(`lead_create vis: ${leadErr.message}`);
     }
     if (!newLead?.id) throw new Error('lead_create vis: sin id devuelto');
