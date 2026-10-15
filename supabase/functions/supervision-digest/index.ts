@@ -106,121 +106,59 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const now = new Date().toISOString();
 
-  const [
-    auditRes,
-    alertsRes,
-    usersRes,
-  ] = await Promise.all([
-    supabase.from("audit_log").select("*").gte("created_at", weekAgo).lte("created_at", now),
-    supabase.from("supervision_alerts").select("*").gte("created_at", weekAgo).lte("created_at", now),
-    supabase.from("profiles").select("id, full_name, email, role").eq("role", "super_admin").eq("is_active", true),
+  /* Agregación exacta server-side vía RPC (migración 20261015000003).
+     La versión anterior traía audit_log/supervision_alerts con select("*"):
+     PostgREST capa en 1000 filas (actionsTotal clavado en 1000; uniqueUsers 0
+     por el sample oldest-first) y filtraba por a.severity — columna que
+     audit_log no tiene (usa status: success|error + error_code), por eso
+     Exitosas/Fallidas daban siempre 0. */
+  const [statsRes, usersRes] = await Promise.all([
+    supabase.rpc("supervision_digest_stats", { p_from: weekAgo, p_to: now } as any),
+    supabase.from("profiles").select("id, full_name, email, role").eq("is_active", true),
   ]);
 
-  const audit = auditRes.data || [];
-  const alerts = alertsRes.data || [];
-  const admins = usersRes.data || [];
+  const stats = (statsRes.data || {}) as any;
+  const profiles = (usersRes.data || []) as any[];
+  const profileMap = new Map(profiles.map(u => [u.id, u]));
+  const userNames: Record<string, string> = {};
+  profiles.forEach(u => { userNames[u.id] = u.full_name || u.email || u.id; });
 
-  const uniqueUsers = new Set(audit.map(a => a.user_id).filter(Boolean)).size;
-  const actionsTotal = audit.length;
-  const actionsToday = audit.filter(a => new Date(a.created_at).toDateString() === new Date().toDateString()).length;
-  const successCount = audit.filter(a => a.severity === "success" || a.severity === "info").length;
-  const errorCount = audit.filter(a => a.severity === "error" || a.severity === "critical").length;
-  const sensitiveCount = audit.filter(a => a.metadata?.sensitive === true).length;
-  const exportsCount = audit.filter(a => a.action === "export" || a.action?.includes("export")).length;
-  const bulkOpsCount = audit.filter(a => a.action?.includes("bulk") || a.metadata?.bulk === true).length;
+  const k = stats.kpis || {};
+  const al = stats.alerts || {};
 
-  const openAlerts = alerts.filter(a => a.status === "open").length;
-  const criticalAlerts = alerts.filter(a => a.severity === "critical").length;
-  const highAlerts = alerts.filter(a => a.severity === "high").length;
-  const unassignedAlerts = alerts.filter(a => a.status === "open" && !a.assigned_to).length;
-
-  const byUser: Record<string, { count: number; name: string; email: string; errors: number; sensitive: number }> = {};
-  audit.forEach(a => {
-    const uid = a.user_id || "sistema";
-    if (!byUser[uid]) byUser[uid] = { count: 0, name: uid, email: "", errors: 0, sensitive: 0 };
-    byUser[uid].count++;
-    if (a.severity === "error" || a.severity === "critical") byUser[uid].errors++;
-    if (a.metadata?.sensitive === true) byUser[uid].sensitive++;
-  });
-  const adminMap = new Map(admins.map(u => [u.id, u]));
-  Object.keys(byUser).forEach(uid => {
-    const admin = adminMap.get(uid);
-    if (admin) {
-      byUser[uid].name = admin.full_name || admin.email;
-      byUser[uid].email = admin.email;
-    }
-  });
-  const topUsers = Object.entries(byUser)
-    .sort((a, b) => b[1].count - a[1].count)
-    .slice(0, 10);
-
-  const byModule: Record<string, { count: number; errors: number }> = {};
-  audit.forEach(a => {
-    const mod = a.module || "general";
-    if (!byModule[mod]) byModule[mod] = { count: 0, errors: 0 };
-    byModule[mod].count++;
-    if (a.severity === "error" || a.severity === "critical") byModule[mod].errors++;
-  });
-  const topModules = Object.entries(byModule)
-    .sort((a, b) => b[1].count - a[1].count)
-    .slice(0, 10);
-
-  const errorsByUser: Record<string, number> = {};
-  audit.filter(a => a.severity === "error" || a.severity === "critical").forEach(a => {
-    const uid = a.user_id || "sistema";
-    errorsByUser[uid] = (errorsByUser[uid] || 0) + 1;
-  });
-  const topErrors = Object.entries(errorsByUser)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10);
-
-  const sensitiveByUser: Record<string, number> = {};
-  audit.filter(a => a.metadata?.sensitive === true).forEach(a => {
-    const uid = a.user_id || "sistema";
-    sensitiveByUser[uid] = (sensitiveByUser[uid] || 0) + 1;
-  });
-  const topSensitive = Object.entries(sensitiveByUser)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10);
-
-  const alertsBySeverity = {
-    critical: alerts.filter(a => a.severity === "critical").length,
-    high: alerts.filter(a => a.severity === "high").length,
-    medium: alerts.filter(a => a.severity === "medium").length,
-    low: alerts.filter(a => a.severity === "low").length,
-    info: alerts.filter(a => a.severity === "info").length,
+  const resolveUser = (uid: string): { name: string; email: string } => {
+    const p = profileMap.get(uid);
+    return { name: p?.full_name || p?.email || uid, email: p?.email || "" };
   };
 
-  const alertsByModule: Record<string, number> = {};
-  alerts.forEach(a => {
-    const mod = a.module || "system";
-    alertsByModule[mod] = (alertsByModule[mod] || 0) + 1;
+  const topUsers: [string, any][] = (stats.byUser || []).map((u: any) => {
+    const { name, email } = resolveUser(u.user_id);
+    return [u.user_id, { count: u.count, name, email, errors: u.errors, sensitive: u.sensitive }];
   });
 
-  const unassignedCritical = alerts
-    .filter(a => a.status === "open" && !a.assigned_to && (a.severity === "critical" || a.severity === "high"))
-    .slice(0, 10)
-    .map(a => ({
-      id: a.id,
-      title: a.title || a.rule_name || a.alert_type,
-      severity: a.severity,
-      module: a.module,
-      user: a.user_name || a.user_id,
-      created: formatDateTime(a.created_at),
-    }));
+  const topModules: [string, any][] = (stats.byModule || []).map((m: any) =>
+    [m.module, { count: m.count, errors: m.errors }]);
 
+  const topErrors: [string, number][] = (stats.errorsByUser || []).map((u: any) => [u.user_id, u.count]);
+  const topSensitive: [string, number][] = (stats.sensitiveByUser || []).map((u: any) => [u.user_id, u.count]);
+
+  /* El HTML consume trends.dailyActivity como Record con labels es-AR.
+     La serie viene por día ART desde la RPC. */
   const dailyActivity: Record<string, { total: number; errors: number; alerts: number }> = {};
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-    const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
-    const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).toISOString();
-    const dayKey = d.toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "short" });
-    dailyActivity[dayKey] = {
-      total: audit.filter(a => a.created_at >= dayStart && a.created_at < dayEnd).length,
-      errors: audit.filter(a => a.created_at >= dayStart && a.created_at < dayEnd && (a.severity === "error" || a.severity === "critical")).length,
-      alerts: alerts.filter(a => a.created_at >= dayStart && a.created_at < dayEnd).length,
-    };
-  }
+  (stats.dailyActivity || []).forEach((d: any) => {
+    const date = new Date(d.date + "T12:00:00Z");
+    const dayKey = date.toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "short" });
+    dailyActivity[dayKey] = { total: d.total, errors: d.errors, alerts: d.alerts };
+  });
+
+  const unassignedCritical = (al.unassignedCritical || []).map((a: any) => ({
+    id: a.id,
+    title: a.title,
+    severity: a.severity,
+    module: a.module,
+    user: a.user,
+    created: formatDateTime(a.created_at),
+  }));
 
   return {
     period: {
@@ -229,18 +167,18 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
       generated: formatDateTime(now),
     },
     kpis: {
-      uniqueUsers,
-      actionsTotal,
-      actionsToday,
-      successCount,
-      errorCount,
-      sensitiveCount,
-      exportsCount,
-      bulkOpsCount,
-      openAlerts,
-      criticalAlerts,
-      highAlerts,
-      unassignedAlerts,
+      uniqueUsers: k.uniqueUsers ?? 0,
+      actionsTotal: k.actionsTotal ?? 0,
+      actionsToday: k.actionsToday ?? 0,
+      successCount: k.successCount ?? 0,
+      errorCount: k.errorCount ?? 0,
+      sensitiveCount: k.sensitiveCount ?? 0,
+      exportsCount: k.exportsCount ?? 0,
+      bulkOpsCount: k.bulkOpsCount ?? 0,
+      openAlerts: k.openAlerts ?? 0,
+      criticalAlerts: k.criticalAlerts ?? 0,
+      highAlerts: k.highAlerts ?? 0,
+      unassignedAlerts: k.unassignedAlerts ?? 0,
     },
     rankings: {
       topUsers,
@@ -249,16 +187,17 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
       topSensitive,
     },
     alerts: {
-      bySeverity: alertsBySeverity,
-      byModule: alertsByModule,
+      bySeverity: al.bySeverity || {},
+      byModule: al.byModule || {},
       unassignedCritical,
     },
     trends: {
       dailyActivity,
     },
+    userNames,
     meta: {
-      totalAuditEvents: audit.length,
-      totalAlerts: alerts.length,
+      totalAuditEvents: stats.meta?.totalAuditEvents ?? k.actionsTotal ?? 0,
+      totalAlerts: stats.meta?.totalAlerts ?? 0,
     },
   };
 }
@@ -447,10 +386,7 @@ function buildEmailHTML(data: any, config: DigestConfig): string {
         "Usuario",
         "Errores",
         v => v,
-        (k, v) => {
-          const admin = d.rankings.topUsers.find(([uid]) => uid === k);
-          return admin ? admin[1].name : k;
-        }
+        (k, v) => d.userNames?.[k] || k
       ) : ""}
 
       ${d.rankings?.topSensitive ? rankingTable(
@@ -459,10 +395,7 @@ function buildEmailHTML(data: any, config: DigestConfig): string {
         "Usuario",
         "Sensibles",
         v => v,
-        (k, v) => {
-          const admin = d.rankings.topUsers.find(([uid]) => uid === k);
-          return admin ? admin[1].name : k;
-        }
+        (k, v) => d.userNames?.[k] || k
       ) : ""}
 
       ${alertsTable()}

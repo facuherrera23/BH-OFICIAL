@@ -33,26 +33,11 @@
     <p class="dir" id="propDir"></p>
     <img class="qr" id="qrImg" alt="QR de llegada" />
     <p class="cta">Escaneá el código al llegar<small>Registra automáticamente el inicio de la visita.</small></p>
-    <button class="print-btn" onclick="window.print()">Imprimir cartel</button>
+    <button class="print-btn" id="printBtn" type="button">Imprimir cartel</button>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="assets/js/config.js?v=1"></script>
-  <script>
-    (async function () {
-      const token = new URLSearchParams(location.search).get('token');
-      const img = document.getElementById('qrImg');
-      if (!token) { document.getElementById('propTitle').textContent = 'Enlace inválido'; img.style.display = 'none'; return; }
-      const target = location.origin + '/confirmar-visita.html?token=' + encodeURIComponent(token) + '&mode=checkin';
-      img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=480x480&margin=8&data=' + encodeURIComponent(target);
-      try {
-        const sb = supabase.createClient(window.BH_CONFIG.SUPABASE_URL, window.BH_CONFIG.SUPABASE_ANON_KEY);
-        const { data } = await sb.rpc('get_visit_by_token', { p_token: token });
-        if (data) {
-          document.getElementById('propTitle').textContent = (data.property && data.property.title) || 'Visita programada';
-          document.getElementById('propDir').textContent = (data.property && data.property.address) || '';
-        }
-      } catch (_) {}
-    })();
-  </script>
+  <!-- Script externo (la CSP no permite inline). -->
+  <script src="assets/js/pages/qr-visita-page.js?v=1"></script>
 </body>
 </html>

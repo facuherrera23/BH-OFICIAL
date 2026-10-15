@@ -133,9 +133,9 @@
 
 1. ~~**P1** — Migración de privilegios: REVOKE EXECUTE a anon/authenticated en las 11 funciones internas~~ → **RESUELTO 2026-10-15** (migración `20261015000001`; con la excepción documentada de `compute_lead_score`/`notify_new_lead` por el INSERT anónimo del landing, y una 12ª función, `notify_new_lead`, descubierta en la investigación). Advisor 25 → 15.
 2. ~~**P1** — Crear la migración faltante de la publicación realtime (4 tablas)~~ → **RESUELTO 2026-10-15** (migración `20261015000002`, idempotente).
-3. **P2** — Fix de KPIs del digest (paginación/count exacto en `fetchDigestData`).
-4. **P2** — Borrado manual: `tmp-gen-jwt`, `cta-test`, bucket `fichas`.
-5. **P2** — Botón print de `qr-visita.html` → data-* + listener.
+3. ~~**P2** — Fix de KPIs del digest~~ → **RESUELTO 2026-10-15** (migración `20261015000003_supervision_digest_stats` + rewrite de `fetchDigestData`). Eran **3 bugs**: cap de 1000 filas de PostgREST (17.842 acciones reales vs 1.000 mostradas), filtro por `severity` — columna que `audit_log` no tiene (usa `status`: success|error + `error_code`) → Exitosas/Fallidas siempre 0, y sample oldest-first → uniqueUsers 0. RPC de agregación exacta server-side, verificada en producción (actionsTotal 17.842, uniqueUsers 3, successCount 17.841).
+4. **P2** — Borrado manual: `tmp-gen-jwt`, `cta-test`, bucket `fichas`. **Permanece manual**: no existe tool MCP para borrar Edge Functions ni gestionar Storage — lo hace el dueño desde Supabase Studio (stubs neutralizados, sin riesgo).
+5. ~~**P2** — Botón print de `qr-visita.html`~~ → **RESUELTO 2026-10-15**: el hallazgo era mayor que el botón — la CSP bloqueaba TODO el script inline (la página del QR quedaba en "Cargando…" sin QR ni título). Migrado a `assets/js/pages/qr-visita-page.js` externo + botón por listener. Verificado en browser.
 6. **P3** — RLS initplan optimization en policies calientes.
 7. **P3** — Mojibake cosmético (admin.css) con script node.
 8. **Estratégico** — Cobertura de flujos de escritura: un Playwright con credenciales de staging (o el set de admin ya existente) que ejecute altas/ediciones de punta a punta.
