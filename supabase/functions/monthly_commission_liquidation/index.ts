@@ -10,6 +10,21 @@ Deno.serve(async (req: Request) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
+  /* Auth: x-sync-secret (compartido con zernio-sync/backup-snapshot, en
+     zernio_config key='sync_secret'). Fix 2026-10-15: el cron armaba el
+     Authorization desde vault('service_role_key') con guard WHERE EXISTS —
+     el secret nunca existió → no-op silencioso: la liquidación mensual no
+     corría (verify_jwt OFF y sin ningún gate en el endpoint). */
+  const syncSecret: string = await supabase
+    .from("zernio_config")
+    .select("value")
+    .eq("key", "sync_secret")
+    .maybeSingle()
+    .then((r: any) => r.data?.value?.secret || "");
+  if (!syncSecret || req.headers.get("x-sync-secret") !== syncSecret) {
+    return jsonResponse(401, { error: "No autorizado" }, req);
+  }
+
   try {
     const body = await req.json().catch(() => ({}));
     const { period_start, period_end, broker_id, owner_id, force_regenerate } = body;

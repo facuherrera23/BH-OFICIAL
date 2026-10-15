@@ -196,6 +196,25 @@ Deno.serve(async (req: Request) => {
     { auth: { persistSession: false } }
   );
 
+  /* Auth: x-sync-secret (compartido con zernio-sync/backup-snapshot, en
+     zernio_config key='sync_secret'). Fix 2026-10-15: este endpoint no tenía
+     ningún gate (verify_jwt OFF) y además el cron lo llamaba con URL armada
+     desde current_setting('app.settings.supabase_url'), que es NULL en este
+     proyecto → "null value in column url" en cada corrida (3.999 fallos
+     seguidos, nunca envió recordatorios). */
+  const syncSecret: string = await supabase
+    .from("zernio_config")
+    .select("value")
+    .eq("key", "sync_secret")
+    .maybeSingle()
+    .then((r: any) => r.data?.value?.secret || "");
+  if (!syncSecret || req.headers.get("x-sync-secret") !== syncSecret) {
+    return new Response(JSON.stringify({ error: "No autorizado" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   // Fire-and-forget: el cron no espera respuesta, pero respondemos 200 ok.
   const process = async (): Promise<{ sent: number; failed: number; skipped: number }> => {
     const { data: tasks, error } = await supabase

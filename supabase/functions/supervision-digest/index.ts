@@ -475,16 +475,29 @@ Deno.serve(async (req: Request) => {
     return jsonResponse(405, { error: 'Method not allowed' }, req);
   }
 
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) {
-    return jsonResponse(401, { error: 'Missing authorization' }, req);
-  }
-
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     { auth: { persistSession: false } }
   );
+
+  /* Auth: x-sync-secret (compartido con zernio-sync/backup-snapshot, en
+     zernio_config key='sync_secret' — solo pg_cron lo conoce) o Authorization
+     (disparo manual). Fix 2026-10-15: el cron semanal armaba Authorization con
+     current_setting('app.settings.service_role_key'), que es NULL en este
+     proyecto (mismo bug del incidente 2026-10-08 con la URL) → 401 silencioso:
+     el digest nunca llegó por cron, solo en los disparos manuales. */
+  const syncSecret: string = await supabase
+    .from("zernio_config")
+    .select("value")
+    .eq("key", "sync_secret")
+    .maybeSingle()
+    .then((r: any) => r.data?.value?.secret || "");
+  const secretOk = !!syncSecret && req.headers.get("x-sync-secret") === syncSecret;
+  const authHeader = req.headers.get("Authorization");
+  if (!secretOk && !authHeader) {
+    return jsonResponse(401, { error: 'Missing authorization' }, req);
+  }
 
   try {
     let body: { force_run?: boolean; test_mode?: boolean; test_email?: string } = {};
