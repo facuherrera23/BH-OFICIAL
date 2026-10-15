@@ -1564,6 +1564,27 @@ function esc(s) {
     });
   });
 
+  /* X de cierre en la esquina de cada modal: inyección automática sobre
+     .admin-modal .modal-box — cubre los 20 modales del panel y cualquier
+     modal futuro sin tocar el HTML uno por uno. Mismo cierre que el resto:
+     quita is-open del modal contenedor y libera el scroll del body. */
+  $$('.admin-modal .modal-box').forEach(box => {
+    if (box.querySelector('.modal-x-close')) return;
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'modal-x-close';
+    x.setAttribute('aria-label', 'Cerrar');
+    x.innerHTML = '<i class="fas fa-xmark"></i>';
+    x.addEventListener('click', () => {
+      const modal = x.closest('.admin-modal');
+      if (modal) {
+        modal.classList.remove('is-open');
+        document.body.style.overflow = '';
+      }
+    });
+    box.appendChild(x);
+  });
+
   /* ------------------------------------------------
      14B. CSV EXPORT
      ------------------------------------------------ */
