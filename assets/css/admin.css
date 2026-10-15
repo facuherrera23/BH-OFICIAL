@@ -2326,6 +2326,12 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 .modal-box--wide { max-width: 1200px; padding: 28px 32px; }
 .modal-box--xl   { max-width: 1600px; padding: 28px 36px; }
 
+/* Confirmación y prompt son diálogos "sobre otro modal" (ej: confirm de
+   regenerar código dentro del modal de Acceso al Portal). Deben pintarse por
+   ENCIMA del modal que los abrió — al mismo z-index, el último del DOM gana y
+   la confirmación queda atrás, invisible e inutilizable. Bug real 2026-10-15. */
+#confirmModal, #inputPromptModal { z-index: calc(var(--z-modal) + 10); }
+
 /* X de cierre: esquina superior derecha de cada modal (la inyecta admin-app.js
    al inicio, así cubre todos los modales presentes y futuros sin tocar HTML).
    Identidad: sutil en reposo, hover con el mismo realce que los btn-action. */

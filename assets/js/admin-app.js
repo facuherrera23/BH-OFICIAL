@@ -1448,6 +1448,8 @@ function esc(s) {
 
         document.removeEventListener('keydown', onKey, true);
 
+        modal.removeEventListener('click', onX, true);
+
         resolve(val);
 
       };
@@ -1458,11 +1460,17 @@ function esc(s) {
 
       const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); done(false); } };
 
+      /* El botón X injectado (admin X de cierre) cierra el modal sin resolver el
+         promise del await — atrapar el click acá para no colgar al llamador. */
+      const onX = (e) => { if (e.target.closest('.modal-x-close')) { e.stopPropagation(); done(false); } };
+
       okBtn.addEventListener('click', onOk);
 
       cancelBtn.addEventListener('click', onCancel);
 
       document.addEventListener('keydown', onKey, true);
+
+      modal.addEventListener('click', onX, true);
 
       setTimeout(() => okBtn.focus(), 60);
 
