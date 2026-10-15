@@ -156,3 +156,19 @@
 | Tablas en realtime | 16 |
 | Tests E2E | 65 (62 activos + 3 con credenciales) |
 | Páginas públicas | 11 HTML + fichas generadas |
+
+---
+
+## Adenda de la ejecución del fix P2 (2026-10-15, mismo día)
+
+La **verificación end-to-end del fix de KPIs** (disparar el digest una vez) destapó un hallazgo mayor que el P2 mismo: **3 crons de entrega estaban rotos por el patrón `current_setting('app.settings.*')` → NULL** (el mismo bug del incidente 2026-10-08, extendido):
+
+| Cron | Estado verificado | Impacto real |
+|---|---|---|
+| `supervision-digest-weekly` | 401 silencioso en cada corrida (Authorization armado con `current_setting('app.settings.service_role_key')` → NULL) | **El digest nunca llegó por cron** — el envío exitoso del 2026-10-12 fue manual. El cron "succeed" porque el SQL solo encola el HTTP request |
+| `owner-tasks-reminder` | **3.999 corridas `failed` consecutivas** (URL armada con `current_setting('app.settings.supabase_url')` → NULL → "null value in column url") | Nunca envió recordatorios de tareas desde ~septiembre |
+| `monthly-commission-liquidation` | No-op silencioso (guard `WHERE EXISTS (vault 'service_role_key')` con un secret que nunca existió) | **Las liquidaciones de septiembre nunca se generaron** — el owner debe decidir la corrida manual (funciona con `period_start`/`period_end`/`force_regenerate` + `x-sync-secret`) |
+
+**Fix aplicado** (migración `20261015000004`): las 3 funciones validan `x-sync-secret` contra `zernio_config(key='sync_secret')` (patrón ya probado de backup-snapshot/zernio-sync) y los crons leen el secret de la tabla en runtime (corren como owner: RLS no aplica). Verificado end-to-end: **digest 401 sin secret / 200 con secret + email real con KPIs correctos** (17.996 acciones, 3 usuarios, 17.995 exitosas); **owner-tasks-reminder 200** (9 tareas evaluadas, dedup nativo por `reminder_sent_at`); monthly-commission NO se disparó manualmente (crea registros financieros).
+
+> Leva para el score: este hallazgo refuerza lo dicho en **Testing/QA** — los crons "verdes" en `cron.job` no prueban que la entrega funcione; solo un disparo real con respuesta HTTP revela el 401/no-op. El monitoreo de las respuestas de `net._http_response` sería el próximo paso natural.
