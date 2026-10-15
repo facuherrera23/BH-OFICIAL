@@ -440,6 +440,7 @@ closeModal('ownerModal');
      confirmación explícita. Vigencia = misma definición que valida el
      portal: revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now). */
   let _portalTokenRow = null;
+  let _portalTokenJustGenerated = false;
 
   function portalTokenActive(row) {
     return !!row && !row.revoked_at && (!row.expires_at || new Date(row.expires_at).getTime() > Date.now());
@@ -479,12 +480,18 @@ closeModal('ownerModal');
     if (!activeBox || !newBox || !msg) return;
 
     if (portalTokenActive(_portalTokenRow)) {
-      msg.textContent = 'El propietario ya tiene un acceso activo. Reutilizá este código — generar uno nuevo lo invalidaría.';
+      const renewed = _portalTokenJustGenerated;
+      msg.textContent = renewed
+        ? '✓ Código nuevo generado. Copialo y compartíselo al propietario — el anterior quedó invalidado.'
+        : 'El propietario ya tiene un acceso activo. Reutilizá este código — generar uno nuevo lo invalidaría.';
       activeBox.style.display = '';
       newBox.style.display = 'none';
       $('#portalTokenCode').textContent = _portalTokenRow.token;
       $('#portalTokenExpiry').textContent = fmtPortalExpiry(_portalTokenRow.expires_at);
       $('#portalTokenLink').textContent = portalUrl(_portalTokenRow.token);
+      if (renewed) {
+        _portalTokenJustGenerated = false;
+      }
     } else {
       let motivo = '';
       if (_portalTokenRow && _portalTokenRow.revoked_at) {
@@ -529,7 +536,8 @@ closeModal('ownerModal');
       }], { onConflict: 'owner_id' });
     if (error) throw error;
 
-    _portalTokenRow = { token, expires_at, revoked_at: null };
+    _portalTokenRow = { token: token, expires_at: expiresAt, revoked_at: null };
+    _portalTokenJustGenerated = true;
     renderPortalTokenState();
     navigator.clipboard.writeText(portalShareMessage(_portalTokenRow)).then(() => {
       showToast('Código generado y copiado: ' + token, 'success');

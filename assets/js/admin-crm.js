@@ -1923,8 +1923,11 @@ window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open:
     if (codeEl) codeEl.textContent = token;
     if (linkEl) linkEl.textContent = link;
     if (noteEl) {
-      noteEl.style.display = reused ? '' : 'none';
-      noteEl.textContent = reused ? 'Acceso vigente reutilizado — ' + fmtTokenExpiry(expiresAtIso) + '. No se generó un código nuevo.' : '';
+      noteEl.style.display = '';
+      noteEl.textContent = reused
+        ? 'Acceso vigente reutilizado — ' + fmtTokenExpiry(expiresAtIso) + '. No se generó un código nuevo.'
+        : '✓ Código nuevo generado — copialo y compartíselo al propietario.';
+      noteEl.style.color = reused ? 'var(--text-dim)' : 'var(--accent)';
     }
     if (forceBtn) forceBtn.style.display = reused ? '' : 'none';
     if (out) out.style.display = 'block';
