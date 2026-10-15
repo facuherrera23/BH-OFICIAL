@@ -2739,7 +2739,23 @@ function setupCoreRealtime() {
         _coreRealtimeChannel.unsubscribe();
         _coreRealtimeChannel = null;
       }
-      const tables = ['visits', 'leads', 'properties', 'agents', 'owners', 'owner_tasks', 'tasaciones', 'commissions', 'commission_liquidations', 'commission_payments'];
+      /* Todas las tablas que afectan al CRM (los leads ven propiedades, tareas,
+         actividades, visitas y propietarios) + las que alimentan los demás tabs. */
+      const tables = ['visits', 'leads', 'properties', 'agents', 'owners', 'owner_tasks', 'lead_properties', 'lead_tasks', 'lead_activities', 'tasaciones', 'commissions', 'commission_liquidations', 'commission_payments'];
+
+      /* Refresh del CRM con debounce: agrupa ráfagas de cambios (ML puede
+         crear 3 leads en 2 segundos) y solo dispara un reload 500ms después
+         del último evento. Sin esto, cada cambio pisa al anterior en pleno
+         render y el último response en llegar puede ser el más viejo. */
+      let _crmRefreshTimer = null;
+      function debouncedCRMRefresh() {
+        clearTimeout(_crmRefreshTimer);
+        _crmRefreshTimer = setTimeout(() => {
+          if (window.BH_CRM && typeof window.BH_CRM.refresh === 'function') window.BH_CRM.refresh();
+          if (window.BH_CRM && typeof window.BH_CRM.refreshOwners === 'function') window.BH_CRM.refreshOwners();
+        }, 500);
+      }
+
       _coreRealtimeChannel = window.supabaseClient.channel('core-tables')
         .on('postgres_changes', { event: '*', schema: 'public', table: tables }, payload => {
           const table = payload.table;
@@ -2756,7 +2772,6 @@ function setupCoreRealtime() {
               if (event === 'INSERT') {
                 upsertVisitRow(newRecord);
                 updateSidebarBadges();
-                if (newRecord?.lead_id) loadCRM();
               } else if (event === 'UPDATE') {
                 upsertVisitRow(newRecord);
                 updateSidebarBadges();
@@ -2764,7 +2779,8 @@ function setupCoreRealtime() {
                 removeVisitRow(oldRecord.id);
                 updateSidebarBadges();
               }
-              if (event === 'INSERT' && newRecord?.lead_id) loadCRM();
+              /* Visita creada/actualizada para un lead → el contexto del CRM cambia */
+              if (newRecord?.lead_id) debouncedCRMRefresh();
               break;
             case 'leads':
               if (event === 'INSERT' || event === 'UPDATE') {
@@ -2772,7 +2788,7 @@ function setupCoreRealtime() {
               } else if (event === 'DELETE') {
                 removeLeadCard(oldRecord.id);
               }
-              if (window.BH_CRM && typeof window.BH_CRM.refresh === 'function') window.BH_CRM.refresh();
+              debouncedCRMRefresh();
               updateSidebarBadges();
               break;
             case 'properties':
@@ -2781,6 +2797,8 @@ function setupCoreRealtime() {
               } else if (event === 'DELETE') {
                 removePropertyRow(oldRecord.id);
               }
+              /* Una propiedad vinculada a un lead cambia → el CRM la muestra en el contexto */
+              debouncedCRMRefresh();
               updateSidebarBadges();
               break;
             case 'agents':
@@ -2798,19 +2816,21 @@ function setupCoreRealtime() {
               } else if (event === 'DELETE') {
                 removeOwnerRow(oldRecord.id);
               }
-              if (window.BH_CRM && typeof window.BH_CRM.refreshOwners === 'function') window.BH_CRM.refreshOwners();
+              debouncedCRMRefresh();
               updateSidebarBadges();
               break;
             case 'owner_tasks':
               if (editingOwnerId && $('#ownerModal')?.classList.contains('is-open')) {
                 loadOwnerTasks(editingOwnerId);
               }
-              /* Refresca la tabla de propietarios si el CRM está en modo
-                 'owners' (el guard de modo dentro de loadOwners hace el check). */
-              if (window.BH_CRM && typeof window.BH_CRM.refreshOwners === 'function') {
-                window.BH_CRM.refreshOwners();
-              }
+              debouncedCRMRefresh();
               updateSidebarBadges();
+              break;
+            case 'lead_properties':
+            case 'lead_tasks':
+            case 'lead_activities':
+              /* Vincular propiedad, crear tarea, agregar nota → el CRM debe enterarse */
+              debouncedCRMRefresh();
               break;
             case 'tasaciones':
               if (event === 'INSERT' || event === 'UPDATE') {
