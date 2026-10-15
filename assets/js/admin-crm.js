@@ -1867,6 +1867,10 @@ window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open:
     populateTokenOwnerSelect(ownerId || null);
     var res = $id('tokenResult');
     if (res) res.style.display = 'none';
+    var noteEl = $id('tokenResultNote');
+    if (noteEl) { noteEl.style.display = 'none'; noteEl.textContent = ''; }
+    var forceBtn = $id('btnForceToken');
+    if (forceBtn) forceBtn.style.display = 'none';
     var d = $id('tokenDays');
     if (d) d.value = '30';
     if (modal) { modal.classList.add('is-open'); document.body.style.overflow = 'hidden'; }
@@ -1884,6 +1888,38 @@ window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open:
       }).join('');
   }
 
+  function fmtTokenExpiry(iso) {
+    if (!iso) return 'vigencia permanente (sin vencimiento)';
+    var ms = new Date(iso).getTime() - Date.now();
+    var date = new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    if (ms <= 0) return 'venció el ' + date;
+    var days = Math.floor(ms / 86400000);
+    if (days >= 1) return 'vence en ' + days + (days === 1 ? ' día' : ' días') + ' (' + date + ')';
+    return 'vence hoy (' + date + ')';
+  }
+
+  /* Muestra el resultado del modal (token vigente o recién generado) marcando
+     cuándo se reutilizó el acceso existente del propietario. */
+  function showTokenResult(token, expiresAtIso, reused) {
+    var out = $id('tokenResult');
+    var codeEl = $id('tokenResultCode');
+    var linkEl = $id('tokenResultLink');
+    var noteEl = $id('tokenResultNote');
+    var forceBtn = $id('btnForceToken');
+    var link = location.origin + '/portal-propietario.html?token=' + encodeURIComponent(token);
+    /* Los botones de copiar leen de acá: también debe funcionar cuando solo se
+       mostró el token vigente y nada nuevo se generó. */
+    _lastToken = token;
+    if (codeEl) codeEl.textContent = token;
+    if (linkEl) linkEl.textContent = link;
+    if (noteEl) {
+      noteEl.style.display = reused ? '' : 'none';
+      noteEl.textContent = reused ? 'Acceso vigente reutilizado — ' + fmtTokenExpiry(expiresAtIso) + '. No se generó un código nuevo.' : '';
+    }
+    if (forceBtn) forceBtn.style.display = reused ? '' : 'none';
+    if (out) out.style.display = 'block';
+  }
+
   function generate(days) {
     var rnd = crypto.getRandomValues(new Uint8Array(5));
     var chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -1892,7 +1928,7 @@ window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open:
     return out;
   }
 
-  async function onGenerate() {
+  async function onGenerate(evOrForce) {
     var sel = $id('tokenOwnerSelect');
     var d = $id('tokenDays');
     var ownerId = sel && sel.value;
@@ -1900,30 +1936,49 @@ window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open:
     if (!ownerId) { toast('Seleccioná un propietario', 'error'); return; }
     if (!days || days < 1) { toast('Ingresá una duración válida', 'error'); return; }
 
+    /* forceNew llega SOLO de "Generar un código nuevo igualmente"; el listener
+       del botón pasa el MouseEvent como primer arg — no confundir. */
+    var forceNew = evOrForce === true;
+
     var btn = $id('btnCreateToken');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando...'; }
     try {
-      var token = generate(days);
-      var expiresAt = new Date(Date.now() + days * 86400000).toISOString();
       var sess = await db().auth.getSession();
       var uid = sess && sess.data && sess.data.session && sess.data.session.user ? sess.data.session.user.id : null;
+
+      if (!forceNew) {
+        // Reutilizar el token vigente del propietario: owner_portal_tokens tiene
+        // UNIQUE(owner_id) y generar sin mirar iría por upsert y rompería el link
+        // que el dueño ya tiene funcionando. Si RLS niega la lectura NO seguimos
+        // (generar a ciegas destruiría el token que no pudimos leer).
+        var chk = await db().from('owner_portal_tokens')
+          .select('token, expires_at, revoked_at')
+          .eq('owner_id', ownerId)
+          .maybeSingle();
+        if (chk.error) throw chk.error;
+        var row = chk.data;
+        var isActive = row && !row.revoked_at && (!row.expires_at || new Date(row.expires_at).getTime() > Date.now());
+        if (isActive) {
+          showTokenResult(row.token, row.expires_at, true);
+          toast('Ya tiene un acceso vigente: ' + fmtTokenExpiry(row.expires_at), 'info');
+          return;
+        }
+      }
+
+      var token = generate(days);
+      var expiresAt = new Date(Date.now() + days * 86400000).toISOString();
       var res = await db().from('owner_portal_tokens').upsert([{
         owner_id: ownerId,
         token: token,
         scopes: ['read_properties', 'read_commissions', 'read_documents'],
         expires_at: expiresAt,
+        revoked_at: null,
         created_by: uid
       }], { onConflict: 'owner_id' });
       if (res.error) throw res.error;
 
       _lastToken = token; _lastOwnerId = ownerId; _lastDays = days;
-      var out = $id('tokenResult');
-      var codeEl = $id('tokenResultCode');
-      var linkEl = $id('tokenResultLink');
-      var link = location.origin + '/portal-propietario.html?token=' + encodeURIComponent(token);
-      if (codeEl) codeEl.textContent = token;
-      if (linkEl) linkEl.textContent = link;
-      if (out) out.style.display = 'block';
+      showTokenResult(token, expiresAt, false);
       toast('Token generado: ' + token, 'success');
     } catch (e) {
       toast('Error: ' + (e && e.message ? e.message : 'no se pudo generar'), 'error');
@@ -1937,6 +1992,19 @@ window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open:
     if (closeBtn) closeBtn.addEventListener('click', close);
     var createBtn = $id('btnCreateToken');
     if (createBtn) createBtn.addEventListener('click', onGenerate);
+    var forceBtn = $id('btnForceToken');
+    if (forceBtn) forceBtn.addEventListener('click', async function () {
+      var ok = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog({
+            title: '¿Generar un código nuevo?',
+            message: 'El código vigente dejará de funcionar de inmediato y el propietario deberá usar el nuevo link. Continuar?',
+            icon: 'fas fa-key',
+            confirmText: 'Generar nuevo',
+            danger: true
+          })
+        : confirm('Generar un código nuevo? El vigente deja de funcionar.');
+      if (ok) onGenerate(true);
+    });
     var ct = $id('btnCopyToken');
     if (ct) ct.addEventListener('click', function () {
       if (!_lastToken) return;
