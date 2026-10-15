@@ -44,7 +44,7 @@ Cada HTML tiene su meta CSP propia. Al agregar cualquier recurso externo (API, t
 ## Supabase (proyecto único = producción)
 
 - Proyecto `rnldqiwwzhjnurkguihu`. Migraciones vía MCP `supabase_apply_migration` (quedan en `supabase/migrations/`).
-- RLS en las 37 tablas. Las tablas sin policies (`zernio_config`, `property_sequences`, `ml_oauth_states`, `rela_tokens`, `*_webhook_events`) son **intencionales**: solo `service_role`.
+- RLS en las **63 tablas** (100 % de cobertura, verificado 2026-10-15 contra producción). Las tablas sin policies (`zernio_config`, `property_sequences`, `ml_oauth_states`, `rela_tokens`, `*_webhook_events`) son **intencionales**: solo `service_role`.
 - Funciones `SECURITY DEFINER` de acceso público por token (`portal_get_portal_data`, `portal_validate_token`, `get_visit_by_token`, `update_visit_status_by_token`, `log_visit_public_action`, y `get_sidebar_badge_counts` para authenticated) **conservan** EXECUTE — no revocar.
 - **No revocar EXECUTE a `authenticated` en funciones usadas por cadenas de trigger/DEFAULT** (ej: `generate_property_code`, `set_property_code`, triggers de visits/leads). Incidente real 2026-09-28: una revoca masiva rompió el alta de propiedades ("permission denied for function generate_property_code") y hubo que revertirla. Hardening vigente y seguro: REVOKE a `PUBLIC` en las 10 funciones internas de CRM + GRANT explícito a `service_role` + `search_path` fijado.
 - Tras cualquier migración de permisos: verificar con `has_function_privilege` **la lista completa** de funciones tocadas × (anon, authenticated, service_role) — no un subconjunto.
@@ -98,6 +98,11 @@ Cada HTML tiene su meta CSP propia. Al agregar cualquier recurso externo (API, t
 
 ## Pendientes conocidos
 
+> Auditoría completa 2026-10-15 en `docs/audit/AUDITORIA_COMPLETA_2026-10-15.md` (score 79/100, roadmap priorizado).
+
+- **P1 — 11 funciones internas `SECURITY DEFINER` con EXECUTE a `anon`** (hallazgo de auditoría 2026-10-15): `backup_build_snapshot`, `compute_lead_score`, `crm_flag_overdue_visits`, `crm_flag_stale_leads`, `crm_queue_followup_alerts`, `leads_followup_on_contact`, `leads_recalc_followup_on_task`, `purge_rate_limit_logs`, `revoke_owner_tokens_on_delete`, `survey_pending_reminders`, `zernio_increment_unread` — creadas DESPUÉS del hardening 2026-09-28 y nunca revocadas. No exponen datos pero cualquiera puede dispararlas vía RPC. Fix: REVOKE a anon/authenticated + GRANT a `service_role`, verificando con `has_function_privilege` la lista completa y sin tocar las de cadenas de trigger (lección del incidente 2026-09-28).
+- **P1 — Migración faltante de la publicación realtime**: `lead_properties`, `lead_tasks`, `lead_activities`, `owner_tasks` se agregaron a `supabase_realtime` directo vía MCP (2026-10-14) sin archivo en `supabase/migrations/` — un rebuild desde cero quedaría incompleto. Crear la migración equivalente.
+- **qr-visita.html: botón "Imprimir cartel" bloqueado por su propia CSP** (`onclick` inline con `script-src 'self'`): migrar a `data-*` + listener cuando se toque el archivo.
 - ~~**BREVO_API_KEY faltante**~~ → **RESUELTO 2026-10-12**: el secret está configurado y verificado end-to-end (primer `supervision_digest_sent` exitoso con messageId). Cuenta Brevo: Facundo (OsissDev) con `bienenhaus.propiedades@gmail.com` como sender activo. El digest semanal (lunes 08:00 ART) llega a la casilla compartida de los dueños. Si se rompe: verificar que el secret siga seteado y que la cuenta no tenga restricción de IPs activada (las Edge Functions salen con IPs dinámicas — la restricción de IPs de Brevo debe quedar desactivada).
 - **KPIs del digest con queries flojas** (detectado 2026-10-12): `actionsTotal: 1000` (límite PostgREST sin paginación), `uniqueUsers: 0`, `successCount: 0` — el email llega pero con números incompletos. Fix pendiente en `supervision-digest/fetchDigestData`.
 - **Leaked Password Protection** (Supabase Auth): activación manual en Dashboard → Auth. Avisar al dueño si sigue off.

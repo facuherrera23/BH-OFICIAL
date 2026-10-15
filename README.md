@@ -260,6 +260,10 @@ graph TD
 | `portal-propietario.html` | `/portal-propietario.html?token=<uuid>` | Portal del propietario por token |
 | `confirmar-visita.html` | `/confirmar-visita.html?token=<uuid>` | Confirmación/cancelación de visita |
 | `encuesta.html` | `/encuesta.html?token=<uuid>` | Encuesta de visita (HOJA DE VISITA): autoguardado, se envía por WhatsApp desde el lead, resultados anónimos en el portal del propietario |
+| `qr-visita.html` | `/qr-visita.html?token=<uuid>` | Cartel imprimible con QR de check-in (lo genera la Agenda; noindex) |
+| `politica-de-privacidad.html` · `terminos-y-condiciones.html` | `/politica-de-privacidad.html` · `/terminos-y-condiciones.html` | Legales públicos |
+| `403.html` · `404.html` | `/403` · `/404` | Páginas de error de Cloudflare Pages |
+| `fichas/<code>.html` | `/fichas/<CÓDIGO>.html` | Fichas públicas por propiedad (generadas por CI, ver módulo Ficha HTML) |
 
 ---
 
@@ -268,13 +272,15 @@ graph TD
 ```
 BH-OFICIAL/
 ├── index.html                    # Landing pública
-├── admin.html                    # Panel administrativo (SPA por tabs)
+├── admin.html                    # Panel administrativo (SPA por tabs, ~181 KB: 14 tabs + 20 modales inline)
 ├── tasacion.html                 # ACM de tasación (autónomo, embebible)
 ├── portal-propietario.html       # Portal del propietario (token)
 ├── confirmar-visita.html         # Confirmación de visita (token)
+├── encuesta.html                 # Encuesta de visita (token, autoguardado)
+├── qr-visita.html                # Cartel QR de check-in (Agenda)
+├── politica-de-privacidad.html · terminos-y-condiciones.html · 403.html · 404.html
 ├── CNAME                         # Dominio custom (Cloudflare Pages)
 ├── favicon.ico · robots.txt · sitemap.xml · .nojekyll
-├── deno-stubs.d.ts               # Tipos auxiliares para Edge Functions
 ├── playwright.config.js          # Configuración E2E
 ├── package.json · package-lock.json
 │
@@ -284,28 +290,50 @@ BH-OFICIAL/
 │   │   └── admin.css             # Estilos del panel (incluye calendario)
 │   ├── js/
 │   │   ├── config.js             # window.BH_CONFIG (Supabase URL + anon key)
-│   │   ├── supabase-client.js    # Init de window.supabaseClient
-│   │   ├── utils.js              # BHUtils: esc, escAttr, safeUrl, safeImageUrl, safeCssUrl
-│   │   ├── cloudinary.js         # Upload firmado (window.BH_Cloudinary)
+│   │   ├── supabase-client.js    # Init de window.supabaseClient (fail-closed)
+│   │   ├── utils.js              # BHUtils: esc, escAttr, safeUrl, safeImageUrl, safeCssUrl, sanitizeRichText
+│   │   ├── cloudinary.js          # Upload firmado (window.BH_Cloudinary)
 │   │   ├── zod.umd.js            # Zod 3 (solo admin)
 │   │   ├── landing-app.js        # Catálogo, filtros, CMS, contacto → leads
-│   │   └── admin-app.js          # Panel completo (~14k líneas)
+│   │   ├── admin-app.js          # Núcleo del panel: state, helpers (window.__BH), realtime, modales (~3.5k líneas)
+│   │   └── admin-<modulo>.js     # 14 módulos de dominio cargados tras el core (ver tabla abajo)
+│   ├── js/pages/                 # JS de páginas públicas (tasacion, portal, encuesta, confirmar-visita)
 │   ├── images/                   # favicon, hero-bg.webp, pwa-512x512.png
 │   └── img/                      # logo-bh.png
 │
 ├── supabase/
-│   ├── functions/                # Edge Functions (Deno) + _shared/
-│   └── migrations/               # Migraciones SQL versionadas
+│   ├── functions/                # 48 Edge Functions (Deno) + _shared/
+│   └── migrations/               # 98 migraciones SQL versionadas
 │
-├── tests/                        # Suite E2E Playwright
-├── scripts/                      # Scripts auxiliares
-├── fichas/                       # Fichas HTML de propiedades
-├── docs/integrations/            # Documentación de integraciones
+├── tests/                        # Suite E2E Playwright (11 specs)
+├── scripts/                      # bump-busters, generate-ficha, recovery, verificación
+├── fichas/                       # Fichas HTML de propiedades (generadas por CI)
+├── docs/                         # Documentación: backups, integraciones, guías, auditorías
 ├── .well-known/                  # Archivos de verificación de dominio
-├── .github/workflows/            # CI (deploy.yml)
+├── .github/workflows/            # CI (deploy.yml + ficha-generate.yml)
 │
-└── *.md                          # README.md, AGENTS.md (los demás documentos viven en docs/)
+└── *.md                          # README.md, AGENTS.md
 ```
+
+### Módulos del panel (`assets/js/admin-*.js`)
+
+El panel se modularizó (antes era un `admin-app.js` de ~14k líneas; hoy el core tiene ~3.5k y el dominio vive en módulos con contrato documentado: `admin-app.js` publica `window.adminApp` y `window.__BH` **antes** de que los módulos se carguen y los destructuren):
+
+| Módulo | Líneas | Dominio |
+|---|---|---|
+| `admin-app.js` (core) | ~3.5k | Estado global, auth, realtime (`setupCoreRealtime`), modales, toasts, KPIs, utilidades `__BH` |
+| `admin-crm.js` | ~2.4k | Pipeline de leads, propietarios del CRM, tareas, encuestas, token de portal |
+| `admin-agenda.js` | ~2.2k | Calendario mensual, bloqueos, QR, recordatorios |
+| `admin-propietarios.js` | ~1.7k | Expedientes, documentos, timeline, acceso al portal |
+| `admin-supervision.js` | ~1.3k | UI del Centro de Supervisión (Equipo/Feed/Errores/Alertas) |
+| `admin-propiedades.js` | ~1.1k | CRUD de propiedades, publicación, papelera |
+| `admin-portales.js` | ~1k | ML/RELA: OAuth, sync, importación |
+| `admin-cms.js` | ~0.8k | 11 sub-tabs del CMS |
+| `admin-agentes.js` · `admin-usuarios.js` | ~0.7k | CRUD de agentes y usuarios/roles |
+| `admin-tasaciones.js` | ~0.5k | Listado de tasaciones, compartir, tokens |
+| `admin-ficha.js` | ~0.4k | Generador manual de fichas |
+| `admin-crm-tasks.js` | ~0.3k | Tareas del CRM (lead/owner) |
+| `admin-supervision-panel.js` | 43 líneas | Shim de entrada al tab Supervisión (gate `super_admin` → `window.adminSupervision`) |
 
 > Carpetas de tooling que **no** se versionan: `.codegraph/`, `.omo/`, `.playwright-mcp/`, `supabase/.temp/`, `node_modules/`, `*.log`, `.env.local`, `test-results/`, `playwright-report/`.
 
@@ -379,7 +407,7 @@ Los usuarios se crean desde el propio panel (**Usuarios & Permisos**) mediante l
 
 ## 🗄️ Base de datos
 
-PostgreSQL gestionado por Supabase. **67 tablas en el esquema `public`, todas con RLS activada** (verificado contra producción el 2026-10-10; 121 políticas RLS).
+PostgreSQL gestionado por Supabase. **63 tablas en el esquema `public`, todas con RLS activada (100 % de cobertura)** con 117 políticas RLS (verificado contra producción el **2026-10-15**: `pg_class` + `pg_policies`; además 17 jobs de `pg_cron` activos y 16 tablas en la publicación `supabase_realtime`).
 
 ### Diagrama entidad-relación (núcleo de negocio)
 
@@ -587,15 +615,18 @@ El permiso se resuelve con `profiles.role` (enum `user_role`):
 
 ## 🔒 Seguridad
 
-- **RLS en las 67 tablas**; lectura pública solo donde corresponde.
+- **RLS en las 63 tablas (100 %)**; lectura pública solo donde corresponde.
 - **Hardening de funciones**: `search_path` fijo, `REVOKE ALL` a `PUBLIC` y `anon` en 44 funciones, con `GRANT` explícitos.
-- **XSS**: `esc()` obligatorio antes de todo `innerHTML`; `safeUrl` / `safeImageUrl` / `safeCssUrl` para atributos. Ver `XSS_REVIEW.md`.
-- **CSP** verificada por tests en las 5 páginas.
-- **Autenticación por token** en portal y confirmación de visita.
+- **XSS**: `esc()` obligatorio antes de todo `innerHTML`; `safeUrl` / `safeImageUrl` / `safeCssUrl` para atributos; `sanitizeRichText` con allowlist estricta para el CMS. Guards de regresión en `tests/security.spec.js` (CSP por página, cero handlers inline en admin, delegación `data-action`, sin secretos en `config.js`).
+- **CSP** verificada por tests: estricta en las 5 páginas públicas (sin `unsafe-inline` ni nonce); admin usa `'unsafe-inline'` documentado (handlers dinámicos, sin nonce — CSP3 ignoraría el inline si hubiera nonce).
+- **Autenticación por token** en portal, confirmación de visita y encuesta (RPC `SECURITY DEFINER` con validación de token/revocación/expiración dentro de cada función).
 - **Sesión cruzada por iframe**: `postMessage` con `targetOrigin` explícito y verificación de `event.origin`.
-- **Edge Functions**: `verify_jwt` según función, chequeo de rol vía service role y rate limiting.
+- **Edge Functions**: `verify_jwt` según función (mapa en `deploy.yml`), chequeo de rol vía service role y rate limiting (sliding window en `rate_limit_logs`).
 - **Secretos**: solo en Edge Functions (`Deno.env.get`), tokens ML cifrados con AES-256-GCM.
 - **Auditoría**: `audit_log` con cadena de integridad + `api_key_audit`.
+- **HIBP**: check de contraseñas filtradas en el alta de usuario (fail-open documentado).
+
+> ⚠️ **Hallazgo de auditoría (2026-10-15, pendiente)**: 11 funciones internas `SECURITY DEFINER` creadas *después* del hardening 2026-09-28 quedaron ejecutables por `anon` vía RPC (`backup_build_snapshot`, `compute_lead_score`, `crm_flag_overdue_visits`, `crm_flag_stale_leads`, `crm_queue_followup_alerts`, `leads_followup_on_contact`, `leads_recalc_followup_on_task`, `purge_rate_limit_logs`, `revoke_owner_tokens_on_delete`, `survey_pending_reminders`, `zernio_increment_unread`). Ninguna devuelve datos sensibles (son cron/triggers que operan internamente), pero el `EXECUTE` debe restringirse a `service_role` — con la lección aprendida del incidente 2026-09-28: **revisar con `has_function_privilege` la lista completa** (anon × authenticated × service_role) y no revocar las que usan cadenas de trigger.
 
 ---
 
@@ -687,10 +718,9 @@ Consume `site_content` y `portal_settings` desde `landing-app.js`.
 `portal-propietario.html?token=<uuid>` — acceso **sin login**.
 
 - Valida token y expiración (`owner_portal_tokens`); muestra error si es inválido.
-- Lista las propiedades del propietario.
-- Muestra documentos (`document_requirements` + `owners.documents`).
-- Muestra comisiones y liquidaciones (pendiente / liquidada / pagada).
-- El link lo genera el admin con `generateOwnerPortalLink`.
+- Lista las propiedades del propietario, sus tasaciones (con moneda según `type`), documentos (`document_requirements` + `owners.documents`), comisiones y liquidaciones (pendiente / liquidada / pagada).
+- Muestra las encuestas de visita **anónimas** (`portal_get_surveys`) y enmascara teléfonos (7+ dígitos) en textos libres — pedido de privacidad del dueño.
+- El admin genera el link con `generateOwnerPortalLink`. **Gestión del token (2026-10-14)**: `owner_portal_tokens` tiene UNIQUE(owner_id) — un acceso por propietario. Si ya tiene uno vigente se **REUTILIZA** (regenerar con upsert invalidaría al instante el link que el propietario ya tiene); regenerar exige confirmación explícita desde el modal "Acceso al Portal" (muestra el vigente con su vencimiento, botón "Generar nuevo" con confirmación, y al generar muestra el banner ✓ con el código nuevo + copia al portapapeles). Los diálogos de confirmación/prompt pintan por encima de cualquier modal (`z-index: calc(var(--z-modal) + 10)`).
 
 ---
 
@@ -775,6 +805,9 @@ flowchart LR
 - **Características** (ambientes, uso de terreno) y **coeficientes** (condiciones, depreciación) con recálculo en vivo.
 - **Gráficos** (Chart.js) de análisis comparativo.
 - **Guardado** en `tasaciones` (`data` JSONB + estado + valoración USD/ARS).
+- **Moneda por destino** (2026-10-12): `f_destino = 'Alquiler'` → todo el pipeline en **$ (ARS mensual)**, persiste en `valuation_ars` con `type='alquiler'`; `Venta` → **U$S**, persiste en `valuation_usd`. El símbolo sale de `currencySymbol()` — nunca hardcodear 'U$S' en displays. El listado admin lee la columna según `type` y solo convierte a pesos en las de venta.
+- **Fotos**: JSONB con base64 embebidas; las nuevas se comprimen client-side (`resizeImageToDataUrl`: fachada 1600 px, comparables 1400 px, JPEG q≈0.82). El listado admin **no** selecciona `data` a propósito. `valuation_usd` se calcula al guardar; el fallback que recalcula desde `data` si es NULL existe por seguridad.
+- **PDF/print**: 3 comparables por página (foto flotada a la derecha), fachada 620 px, la página 3 arranca con "Descripción de la Propiedad".
 - **Sesión** recibida del admin vía `postMessage`; notifica con `tasaciones-finalized` y `tasaciones-back`.
 
 ---
@@ -791,14 +824,16 @@ flowchart LR
 
 ## 🛒 Integración Mercado Libre
 
-1. **Conexión OAuth 2.0** → `mlConnect` (tab Portales).
+1. **Conexión OAuth 2.0** → `mlConnect` (tab Portales). **La suscripción de notificaciones se configura en el gestor de aplicaciones de ML** (applications.mercadolibre.com.ar → editar la app → callback URL `${SUPABASE_URL}/functions/v1/ml-webhook` + tópico **VIS Leads**): ML retiró el registro por API (`POST /users/{id}/topics/{topic}` responde 404). Los tópicos `questions`/`items` NO traen consultas de inmuebles.
 2. **Publicación** → `mlPublishProperty` con validación de campos y fotos.
-3. **Sincronización** → Edge Function `ml-sync` (cron, lotes de 50): precio, stock y estado, en ambas direcciones.
+3. **Sincronización** → `ml-sync` (cron cada 5 min): precio, stock y estado, en ambas direcciones.
 4. **Auto-reply** → plantillas por tipo de pregunta con variables.
-5. **Webhook** → firmado y con deduplicación; *dead-letter queue* visible.
-6. **Importación inversa** → `mlImportFromML` trae publicaciones que existen en ML pero no en el CRM.
+5. **Webhook** → responde 200 inmediato y procesa en background (`EdgeRuntime.waitUntil` — ML desactiva tópicos si el callback tarda >~500 ms). Barrera real: binding (`application_id` + `user_id` de `ml_connection`) + re-fetch del recurso con el token del vendedor (los tópicos **no vienen firmados**). Parseo tolerante + `logRejectedPayload` guarda en `ml_webhook_events` todo lo que falle validación.
+6. **Flujo de consultas de inmuebles** (2026-10-13): llegan como `vis_leads` (`/vis/leads/{uuid}`) y se procesan en `handleVisLeads`. **Claim atómico** entre topics: `questions` y `vis_leads` compiten por INSERT en el ledger `ml_questions` (UNIQUE `question_id`); quien pierde (23505) no actúa por su cuenta. La vía `questions` **nunca crea leads** (ML anonimiza la identidad en inmuebles): claima el ledger, responde con la plantilla y nada más. Los leads se crean solo desde `vis_leads` **con identidad** (nombre o email/teléfono/whatsapp); la misma persona en otra publicación se consolida en el lead existente (`mergeMlEventIntoLead` rellena campos, vincula la propiedad en `lead_properties` y deja traza en el historial) — nunca sobre etapas terminales.
+7. **Importación inversa** → `mlImportFromML` trae publicaciones que existen en ML pero no en el CRM (⚠️ duplica las huérfanas DA-P0019/21/22/03 — cerrarlas antes de republicar).
+8. **Acceso a leads de inmuebles**: la suscripción solo dispara el webhook; el detalle (`GET /vis/leads/{id}`) y el listado devuelven **403 `PA_UNAUTHORIZED_RESULT_FROM_POLICIES`** hasta que ML otorgue el acceso de lectura de leads a la app (lo pide el empleador a soporte ML; app `6473600664555938`, usuario `2038586793`). Mientras tanto los eventos quedan en `failed` con HTTP 403 y se re-importan cuando se habilite (no se pierden).
 
-Los tokens se guardan cifrados (AES-256-GCM) y nunca llegan al frontend.
+Los tokens se guardan cifrados (AES-256-GCM) y nunca llegan al frontend. Estados de `ml_questions` en minúsculas (`unanswered`/`answered`); `ml_listings` usa `ml_status`/`last_sync`.
 
 ---
 
@@ -821,14 +856,14 @@ Los tokens se guardan cifrados (AES-256-GCM) y nunca llegan al frontend.
 
 ## 🛡️ Centro de Supervisión
 
-- **Reglas configurables** ejecutadas con `pg_cron` (solo `super_admin`).
-- **Alertas** con severidad y asignación.
-- **Anomalías** estadísticas/ML (`supervision-ml-anomaly` + baselines).
+- **Reglas configurables** ejecutadas con `pg_cron` cada 5 min (`evaluate_supervision_rules`); el motor soporta `filter.contains` (changed_fields) y `filter.equals` con whitelist de campos (`status`, `table_name`) — un `equals` con campo desconocido no filtra pero no rompe. `role_change_detection` quedó deshabilitada por duplicar a `privilege_escalation_attempt`.
+- **Alertas** con severidad y asignación. Las que no vienen de reglas: `lead_followup_overdue` (las genera `crm_queue_followup_alerts()`) y `crm_email_broken` (las genera `notify-new-lead`).
+- **Anomalías** estadísticas/ML vía cron SQL `supervision-anomalies-15min` + baselines hourly.
 - **Risk scoring** por usuario con factores explicables.
-- **Notificaciones** push/email y **digest diario** vía Brevo.
-- **API de consulta** (`supervision-api`, límite 60 req/min).
-- **Métricas ML** y de uso.
-- **Retención y purga** (`purge_policy`).
+- **Notificaciones**: canal actual = **digest semanal vía Brevo** (cron `supervision-digest-weekly`, lunes 11:00 UTC = 08:00 ART) a la casilla compartida de los dueños (`bienenhaus.propiedades@gmail.com`, en `app_settings.integrations.supervision_digest_recipients`). `supervision-notify`, `supervision-notifications` y `supervision-ml-anomaly` quedaron como stubs 410.
+- **API de consulta** (`supervision-api`, verify_jwt ON, límite 60 req/min).
+- **Retención y purga**: `purge_supervision_daily` (usa `COALESCE(resolved_at, dismissed_at, created_at)` — la tabla no tiene `updated_at`).
+- **UI**: `admin-supervision-panel.js` es un shim (gate `super_admin` + delegación); la UI real vive en `admin-supervision.js` (Equipo/Feed/Errores/Alertas). El panel viejo de ~90 KB fue retirado.
 
 ---
 
@@ -845,33 +880,40 @@ Los tokens se guardan cifrados (AES-256-GCM) y nunca llegan al frontend.
 | `rate-limit.ts` | Sliding window log en `rate_limit_logs` |
 | `audit.ts` | `auditEvent`, `auditSensitiveAction`, `trackToolUsage`, `auditError` |
 
-### Funciones versionadas en el repo
+### Funciones versionadas en el repo (48) y estado de deploy
+
+**Estado verificado contra producción el 2026-10-15**: 49 funciones desplegadas (47 del repo + `tmp-gen-jwt` y `cta-test`, leftovers de debug que viven **solo en el dashboard** como stubs 410 y deben borrarse manualmente). El CI deploya todas las del repo en cada push a `main` con el mapa `verify_jwt` de `deploy.yml`; `contact-submit` y `convert-image` están en `EXCLUDED_FUNCTIONS` (nunca se deployan desde CI).
 
 | Función | JWT | Propósito |
 |---|---|---|
+| `backup-snapshot` | OFF (cron) | Snapshot lógico diario 04:00 ART → bucket privado `backups` (retención 30 días) |
+| `check-password-hash` | OFF | HIBP k-anonymity (pre-login) |
 | `cloudinary-sign` | ON + admin | Firma uploads con allowlist de carpetas |
+| `ficha` | ON | Redirector legado `/ficha?code=X` → ficha estática |
+| `ficha-publish` | — | **Stub 410 deprecado** (2026-10-11): el pipeline canónico es `scripts/generate-ficha.mjs` vía CI |
+| `ics-feed` | ON | Calendario ICS por token de agente |
 | `manage-users` | ON + super_admin | `invite`, `create-direct`, `set-role`, `update-user`, `update-self` |
-| `ml-sync` | cron | Sync con Mercado Libre |
-| `cron_exclusivity_renewals` | cron | Avisos de exclusividades por vencer |
-| `monthly_commission_liquidation` | cron | Liquidación mensual |
-| `trigger_commission_on_close` | evento | Crea comisión al cerrar |
-| `supervision-api` | ON | Consultas del Centro de Supervisión |
-| `supervision-digest` | cron | Resumen diario por Brevo |
-| `supervision-ml-anomaly` | ON | Detección de anomalías |
-| `supervision-notifications` | ON | Push/email de alertas críticas |
-| `supervision-notify` | cron | Dispara notificaciones |
+| `ml-oauth` · `ml-callback` | OFF (OAuth) | Conexión OAuth 2.0 con Mercado Libre |
+| `ml-webhook` | OFF | Notificaciones ML: `questions` (claim + auto-reply, nunca crea leads) y `vis_leads` (identity gate + consolidación) |
+| `ml-sync` · `ml-sync-import` · `ml-questions-sweep` · `ml-portal-status` | OFF (cron) | Sync bidireccional, importación inversa, barrido de preguntas, estado del panel |
+| `ml-publish` · `ml-api` · `ml-auth` · `ml-config` · `ml-categories` · `ml-listing-types` · `ml-metrics` · `ml-answer-question` · `ml-bulk-enqueue` · `ml-revoke-tokens` · `ml-import-listings` · `ml-disconnect` | mixto | Suite ML (publicación, catálogos, métricas, respuestas, tokens cifrados) |
+| `monthly_commission_liquidation` · `trigger_commission_on_close` | OFF (cron/evento) | Liquidación mensual y comisión al cerrar |
+| `cron_exclusivity_renewals` · `owner-tasks-reminder` · `visits-reminders` | OFF (cron) | Recordatorios de exclusividades, tareas y visitas |
+| `notify-new-lead` | OFF | Email de lead nuevo al agente (Brevo) |
+| `rela-callbacks` · `rela-sync` · `rela-proxy` | mixto | Integración RELA (OAuth, sync, proxy de publicación) |
+| `supervision-api` | ON | API externa del Centro de Supervisión (rate limit 60/min) |
+| `supervision-digest` | OFF (cron) | **Digest semanal** (lunes 08:00 ART) a `bienenhaus.propiedades@gmail.com` vía Brevo |
+| `supervision-notify` · `supervision-notifications` · `supervision-ml-anomaly` | — | **Stubs 410 deprecados** (Fase 2, 2026-10-12): el digest semanal reemplazó a notify/notifications; la detección ML la hace el cron SQL `supervision-anomalies-15min` |
 | `zernio-proxy` | ON | `send_message`, `mark_read`, `typing`, `list_accounts`, `backfill_*`, `diagnose` (super_admin; broker: send/typing/mark_read en conversaciones propias) |
 | `zernio-sync` | OFF | Cron cada 2 min: pull incremental de Zernio → realtime del panel (puentea la falta de webhook push; secret `x-sync-secret` en `zernio_config`) |
-| `zernio-webhook` | OFF | Recibe webhooks (HMAC, dedup, persistencia) — pendiente registrar en el dashboard de Zernio |
+| `zernio-webhook` | OFF | Recibe webhooks (HMAC timing-safe, dedup, persistencia) — pendiente registrar en el dashboard de Zernio |
 | `zernio-webhook-test` | OFF | Test de configuración |
 
-### Desplegadas en producción sin fuente en el repo
+### Crons activos verificados (2026-10-15, `pg_cron`)
 
-> La tabla anterior es un listado de referencia; el directorio `supabase/functions/` contiene las **48 funciones** del repo (28+ activas en producción), con sus flags `verify_jwt` gestionados en `.github/workflows/deploy.yml` (lista `NO_VERIFY`).
+`backup-snapshot-daily` (07:00 UTC) · `evaluate-supervision-rules` (cada 5 min) · `supervision-anomalies-15min` · `supervision-baselines-hourly` · `supervision-digest-weekly` (lunes 11:00 UTC) · `purge-supervision-daily` · `purge-rate-limit-logs` · `ml-sync-every-5-min` · `ml-questions-sweep` (cada 10 min) · `zernio-sync-every-2-min` · `visits-reminders` · `owner-tasks-reminder` (cada 15 min) · `survey-reminders-daily` (15:00 UTC) · `crm-followup-alerts` · `crm-overdue-visits` (hourly) · `crm-stale-leads` (lunes) · `monthly-commission-liquidation` (día 1). **17 jobs, todos activos.**
 
-`ml-oauth`, `ml-callback`, `ml-auth`, `ml-api`, `ml-config`, `ml-categories`, `ml-listing-types`, `ml-metrics`, `ml-answer-question`, `ml-bulk-enqueue`, `ml-revoke-tokens`, `ml-import-listings`, `ml-sync-import`, `ml-webhook`.
-
-> Las funciones huérfanas `qr-checkin`, `visits-process-reminders`, `admin-user-invite`, `audit-log`, `contact-submit`, `chat-ai`, `chat-upload`, `convert-image` y `process-retention-policies` se eliminaron de producción el 2026-08-30.
+> Las funciones huérfanas `qr-checkin`, `admin-user-invite`, `audit-log`, `chat-ai`, `chat-upload` se eliminaron de producción el 2026-08-30; `tmp-gen-jwt` y `cta-test` quedan neutralizadas como stubs 410 hasta su borrado manual.
 
 ---
 
@@ -904,7 +946,12 @@ Los tokens se guardan cifrados (AES-256-GCM) y nunca llegan al frontend.
 | `20260828_fix_owners_rls` | RLS de owners |
 | `20260830_fix_properties_public_read` | Lectura pública de propiedades |
 | `20260901000001_fix_p0_security_and_functional` | Hardening P0 (RLS, REVOKEs, vistas, policies anon) |
-| *(…hasta 93 migraciones, ver `supabase/migrations/`)* | ML completo (sync, webhooks, questions, tokens cifrados), Zernio chat (5 tablas + realtime), CRM revamp (stages canónicos, scoring, tareas), Agenda v2 (QR, recordatorios cron), RELA, encuesta de visita (`visit_surveys` + RPC por token + archivado), fixes de seguridad |
+| *(…93 migraciones intermedias, ver `supabase/migrations/` — total 98)* | ML completo (sync, webhooks, questions, tokens cifrados), Zernio chat (5 tablas + realtime + publication), CRM revamp (stages canónicos, scoring, tareas), Agenda v2 (QR, recordatorios cron), RELA, encuesta de visita (`visit_surveys` + RPC por token + archivado + set v3), portal del propietario v2 (RPCs por token hardening), crons (backup, reminders, crm-*) |
+| `20261012000001_supervision_engine_fixes` | Motor de reglas: `filter.equals` con whitelist + fix de purga (`COALESCE` de fechas) |
+| `20261012000002_portal_tasaciones_type` | Portal lee tasaciones según `type` (alquiler=ARS / venta=USD) |
+| `20261012000003_survey_questions_v3` | Set de preguntas v3 de la encuesta (RPC replace full-set) |
+
+> ⚠️ **Drift conocido (auditoría 2026-10-15)**: la publicación realtime de `lead_properties`, `lead_tasks`, `lead_activities` y `owner_tasks` se aplicó directo en producción vía MCP **sin archivo de migración** (el cambio está activo y verificado en `supabase_realtime`, pero no es reproducible desde el repo). Pendiente: crear la migración equivalente para que un rebuild desde cero quede idéntico.
 
 ```bash
 supabase migration list     # ver estado
@@ -929,13 +976,15 @@ flowchart LR
     H --> I[Comisión<br/>automática]
 ```
 
-### 2. Publicación en Mercado Libre
+### 2. Consulta y publicación en Mercado Libre
 
 ```
-Propiedad → mlPublishProperty → validación → ml-sync (cron) → API ML
+Propiedad → mlPublishProperty → validación → ml-sync (cron cada 5 min) → API ML
    → ml_listings → sync bidireccional (precio / stock / estado)
-   → Webhook ML → preguntas → notificación al broker
-   → Importación inversa: mlImportFromML
+   → Webhook ML (binding + re-fetch; VIS Leads configurado en el gestor de apps de ML)
+   → vis_leads: claim atómico en ml_questions → lead en CRM (con identidad) + consolidación
+   → questions: claim + auto-reply con plantilla (nunca crea lead: ML anonimiza identidad)
+   → Importación inversa: mlImportFromML (⚠️ cerrar huérfanas DA-P0019/21/22/03 antes)
 ```
 
 ### 3. Tasación → Captación
@@ -997,7 +1046,7 @@ await mutate('properties', () =>
 
 ### Realtime
 
-`setupCoreRealtime` suscribe `properties`, `leads`, `visits`, `agents`, `owners`, `tasaciones`, `commissions` y las tablas de Zernio para mantener varias pestañas sincronizadas sin polling.
+`setupCoreRealtime` suscribe 16 tablas de la publicación `supabase_realtime`: `properties`, `leads`, `visits`, `agents`, `owners`, `tasaciones`, `commissions`, `commission_liquidations`, `commission_payments`, `lead_properties`, `lead_tasks`, `lead_activities`, `owner_tasks` y las 3 de Zernio — para mantener varias pestañas sincronizadas sin polling. El CRM refresca con **debounce de 500 ms** (`debouncedCRMRefresh`) y con guards de modo (`loadLeads` no pisa la vista de propietarios y viceversa). Patrón actual: full-refresh por cambio (evitar N+1 en renders grandes — deuda conocida).
 
 ### Helpers de seguridad (`window.BHUtils`)
 
@@ -1050,19 +1099,23 @@ supabase functions deploy <slug> --no-verify-jwt  # webhooks y cron
 
 ```bash
 npm run lint    # node --check sobre admin-app.js y landing-app.js
-npm test        # Playwright (59 tests)
+npm test        # Playwright (65 tests: 62 activos + 3 de admin que requieren BH_TEST_ADMIN_EMAIL/PASSWORD)
+npm run test:unit  # tests unitarios node --test (utils.js) — existe pero aún no corre en CI
 ```
 
 La suite E2E corre **en modo lectura** contra producción (RLS protege las escrituras) y cubre:
 
 - Catálogo con propiedades publicadas y búsqueda.
 - Presencia del formulario de contacto.
-- CSP de las 5 páginas.
-- Regresión de delegación `data-action`.
-- Smoke de tasaciones, portal y confirmar-visita.
-- Admin (login, tabs, sesión persistente): **solo** con `BH_TEST_ADMIN_EMAIL` y `BH_TEST_ADMIN_PASSWORD`.
+- CSP de las 5 páginas públicas + `admin.html` (sin nonce/unsafe-inline en las públicas).
+- Regresión de delegación `data-action` y whitelist.
+- Smoke de tasaciones, portal, confirmar-visita, fichas, propietarios, agenda, CRM y flujo de leads.
+- Keepalive del autoguardado de la encuesta.
+- Guards de seguridad: sin handlers inline, sin secretos en `config.js`.
 
-**CI** (`.github/workflows/deploy.yml`): `node --check` + `npm test` con Chromium headless. `html-validate` corre como informativo.
+> ⚠️ **Deuda conocida**: al ser read-only, los flujos de **escritura** (CRUD, estados de modales, realtime) no tienen cobertura automatizada — los últimos bugs (stacking z-index del confirm, shorthand `expires_at`, realtime CRM) ocurrían en esa zona ciega y se detectaron a mano.
+
+**CI** (`.github/workflows/deploy.yml`): `node --check` + `npm test` con Chromium headless; luego deploya TODAS las Edge Functions del repo (mapa `verify_jwt` en `NO_VERIFY`/`EXCLUDED_FUNCTIONS`) y auto-bumpea los cache busters. `html-validate` corre como informativo. `ficha-generate.yml` corre aparte (cada 30 min + `repository_dispatch`).
 
 ---
 
@@ -1081,17 +1134,28 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 
 ## 🧾 Deudas técnicas y roadmap
 
+> Refrescado por la **auditoría completa del 2026-10-15** (ver `docs/audit/`). Ordenado por prioridad.
+
 | Ítem | Impacto | Estado |
 |---|---|---|
-| Edge Functions desplegadas sin fuente en el repo (ML OAuth/API, etc.) | Mantenibilidad / drift | Pendiente: sincronizar el código |
-| Leaked Password Protection (Supabase Auth) | Seguridad | Activar en Dashboard → Auth (manual) |
-| Zernio webhook push sin registrar (solo el dueño tiene el dashboard) | Chat opera con pull cada 2 min | Si el dueño completa `CONECTAR_ZERNIO_CHAT.md` §4, el push instantáneo se suma solo |
-| Secret de webhook en texto plano en `docs/integrations/CONECTAR_ZERNIO_CHAT.md` | Seguridad | Rotar tras registrar el webhook |
-| `usd_rate` sin uso en tarjetas del landing | Feature | Conectar `fmtARS` cuando se necesite |
+| 11 funciones internas `SECURITY DEFINER` ejecutables por `anon` (creadas post-hardening 2026-09-28: `backup_build_snapshot`, `crm_*`, `purge_rate_limit_logs`, etc.) | Seguridad (medio: no exponen datos, pero son llamables por cualquiera vía RPC) | **P1**: REVOKE EXECUTE a anon/authenticated, GRANT a `service_role`; verificar con `has_function_privilege` la lista completa (lección del incidente 2026-09-28: no romper cadenas de trigger) |
+| Migración faltante de la publicación realtime (`lead_properties`, `lead_tasks`, `lead_activities`, `owner_tasks`) | Reproducibilidad (drift DB↔repo) | **P1**: crear la migración equivalente al cambio aplicado vía MCP |
+| KPIs del digest con queries flojas (`actionsTotal` cap 1000 por límite PostgREST, `uniqueUsers: 0`, `successCount: 0`) | Reporting (el email llega con números incompletos) | P2: fix en `supervision-digest/fetchDigestData` (paginación/`count` exacto) |
+| `tmp-gen-jwt` y `cta-test` siguen desplegadas como stubs 410 | Higiene del dashboard | P2: borrado manual en Supabase Studio (el stub neutraliza el riesgo P0 original) |
+| Vaciar bucket Storage `fichas` (29 fichas stale del viejo flujo `ficha-publish`) | Higiene estética | P2: manual desde Storage (bloqueado por `storage.protect_delete`) |
+| 83 policies RLS con `auth.uid()` directo (advisor `auth_rls_initplan`) | Performance a escala (hoy imperceptible con el volumen actual) | P3: reemplazar por `(select auth.uid())` en policies calientes |
+| Botón "Imprimir cartel" de `qr-visita.html` bloqueado por su propia CSP (inline `onclick` sin `unsafe-inline`) | Bug funcional menor | P3: migrar a `data-*` + listener como el resto del proyecto |
+| Publicaciones huérfanas ML DA-P0019/21/22/03 | Operativa ML | Cerrarlas desde el panel antes de republicar ("Importar desde ML" duplica) |
+| Leaked Password Protection (Supabase Auth) | Seguridad | Activar en Dashboard → Auth (manual); mitigado mientras tanto con HIBP check en el alta |
+| Zernio webhook push sin registrar (solo el dueño tiene el dashboard) | Chat opera con pull cada 2 min | Si el dueño completa `CONECTAR_ZERNIO_CHAT.md` §4, el push instantáneo se suma solo; rotar el secret tras registrar |
+| Mojibake cosmético: `admin.css` (57 chars en comentarios) y `AGENTS.md` (1) | Estético | P3: limpieza puntual con script node (nunca PowerShell) |
+| 48 índices sin uso / 25 FKs sin índice (advisor) | Info | Revisar con `pg_stat_user_indexes` antes de borrar |
+| Realtime full-refresh por cambio | Performance en listados grandes | Documentado; optimizar si crece el equipo |
+| `admin.html` de ~181 KB (20 modales inline) | Mantenibilidad | Candidato a seguir dividiendo (los módulos JS ya están splitteados) |
 | Notificaciones push reales (Web Push / VAPID) | Futuro | Service Worker pendiente |
-| Advisor: `rls_enabled_no_policy` en `property_sequences` y `zernio_config` | Info | Intencional (solo `service_role`) |
-| Advisor: `pg_net` en `public` | Info | Requerida por Edge Functions |
-| `admin-app.js` de ~14k líneas | Mantenibilidad | Candidato a dividirse por módulo |
+| `usd_rate` sin uso en tarjetas del landing | Feature | Conectar `fmtARS` cuando se necesite |
+| Advisor: `pg_net`/`pg_trgm` en schema `public` | Info | Requeridas por Edge Functions / búsqueda trigram |
+| Advisor: 4 tablas RLS sin policies (`ml_oauth_states`, `rela_tokens`, `rela_webhook_events`, `zernio_webhook_events`) | Intencional | Solo `service_role` |
 
 ---
 
@@ -1116,6 +1180,11 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 | 015 | Zod (UMD) solo en admin | Validación runtime de formularios |
 | 016 | Portal/Visita por token URL | Acceso público sin credenciales |
 | 017 | Encuesta: token por (lead, propiedad) + autoguardado continuo + archivado para re-encuesta | 1 link registrado reutilizable, cero pérdida de datos del visitante, historial preservado |
+| 018 | Moneda por destino en tasaciones (Alquiler→ARS, Venta→USD) con `currencySymbol()` | El mismo pipeline sirve ambos mercados sin columnas dobles en displays |
+| 019 | Claim atómico ML (`ml_questions` UNIQUE) + identity gate: `questions` nunca crea leads | ML anonimiza identidad en inmuebles: sin esto se duplicaban leads o quedaban filas vacías |
+| 020 | Diálogos confirm/prompt a `z-index` mayor que modales (`calc(var(--z-modal)+10)`) | Al mismo z-index el último del DOM pinta encima y la confirmación quedaba invisible detrás del modal padre |
+| 021 | Tokens de portal: reutilizar el vigente, regenerar solo con confirmación | Un upsert ciega invalidaría al instante el link que el propietario ya tiene |
+| 022 | Encoding: nunca PowerShell 5.1 para archivos con acentos (usar tools/Node `fs` utf8) | Incidentes reales de doble-encoding en admin.html (2026-10-12); scripts de recovery/resolución con Node |
 
 ---
 
@@ -1123,6 +1192,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 
 | Documento | Contenido |
 |---|---|
+| [`docs/audit/AUDITORIA_COMPLETA_2026-10-15.md`](docs/audit/AUDITORIA_COMPLETA_2026-10-15.md) | **Auditoría completa del proyecto** (score 79/100 con desglose por dimensión, hallazgos P1/P2/P3 y roadmap priorizado) |
 | [`docs/CIERRE_PROYECTO_2026-10.md`](docs/CIERRE_PROYECTO_2026-10.md) | **Cierre del proyecto para el dueño**: entregables, cómo usar cada módulo nuevo y pendientes que solo él puede resolver |
 | [`docs/GUIA_ENCUESTA_VISITA.md`](docs/GUIA_ENCUESTA_VISITA.md) | Guía de uso de la Encuesta de Visita (HOJA DE VISITA) para el equipo |
 | [`docs/COTIZACION_PROYECTO_COMPLETA_2026-10.md`](docs/COTIZACION_PROYECTO_COMPLETA_2026-10.md) | Valorización completa módulo por módulo (octubre 2026) |
@@ -1139,7 +1209,11 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 
 | Fecha | Versión | Cambios |
 |---|---|---|
-| 2026-10-12 | — | Ficha HTML: deprecado `ficha-publish` como stub 410 (duplicaba la generación hacia Storage con template inferior y divergente — ej. HS-P0004 faltante), CSP propia en las 30 fichas públicas, reconciliación de fichas huérfanas en la CI (al despublicar una propiedad su ficha se borra) + guard anti-wipe, documentación del pipeline |
+| 2026-10-15 | — | **Auditoría completa del proyecto** (read-only + verificación en producción: 63 tablas 100 % RLS, 117 policies, 49 Edge Functions, 17 crons activos, 16 tablas realtime; hallazgos: 11 funciones internas anon-executable, migración realtime faltante, botón print de qr-visita, link XSS_REVIEW removido) + documentación puesta al día. Fixes UI: confirm/prompt pintan por encima del modal padre (z-index+10; el confirm de "Generar nuevo" del portal quedaba invisible), X en confirm resuelve la promesa pendiente, fix shorthand `expires_at` que arrojaba ReferenceError tras generar el token (el upsert funcionaba pero el modal no refrescaba), banner ✓ con el código nuevo al generar |
+| 2026-10-14 | — | Realtime CRM completo: `lead_properties`/`lead_tasks`/`lead_activities`/`owner_tasks` en la publicación realtime, debounce 500 ms para el refresh del CRM, guards de modo en `loadLeads`/`loadOwners` (el realtime ya no pisa la vista equivocada). X de cierre auto-inyectado en los 20 modales. Modal "Acceso al Portal" premium con reutilización del token vigente |
+| 2026-10-13 | — | ML leads dedup: claim atómico entre `questions`/`vis_leads` vía UNIQUE(`question_id`) en el ledger, identity gate (solo `vis_leads` con identidad crea leads), consolidación de la misma persona en un lead con todas sus propiedades (`mergeMlEventIntoLead`), nunca sobre etapas terminales |
+| 2026-10-12 | — | Centro de Supervisión Fase 1+2: fix del motor de reglas (`filter.equals` + whitelist, purga con `COALESCE`), 51 falsos positivos dismissados, panel viejo de ~90 KB retirado (shim), **Brevo operativo end-to-end** (digest semanal lunes 08:00 ART a la casilla de los dueños), stubs 410 de notify/notifications/ml-anomaly, regla duplicada deshabilitada. Tasaciones: moneda por destino (Alquiler→ARS). Encuesta: set v3 (Ubicación/Superficie/Distribución/Estado Conservación/General, compraria Sí/No). PDF tasaciones: 3 comparables por página. WhatsApp: mensaje de compartir en texto plano |
+| 2026-10-12 (previo) | — | Ficha HTML: deprecado `ficha-publish` como stub 410 (duplicaba la generación hacia Storage con template inferior y divergente — ej. HS-P0004 faltante), CSP propia en las 30 fichas públicas, reconciliación de fichas huérfanas en la CI (al despublicar una propiedad su ficha se borra) + guard anti-wipe, documentación del pipeline |
 | 2026-10-10 (3) | — | Camino al 90: `backup-snapshot` (Edge Function + cron 04:00 → bucket privado, retención 30 días), recordatorio de encuestas sin responder a las 48h (cron → tarea al agente con link de reenvío), HIBP check en login (mitiga Leaked Password Protection pendiente), test E2E del keepalive del autoguardado |
 | 2026-10-10 (2) | — | Hardening de cierre: **P0 neutralizado** (stubs con verify_jwt sobre `tmp-gen-jwt`/`cta-test` — ya no generan links sin auth; eliminarlas del dashboard queda como pendiente estético), estrategia de **backups** (snapshot lógico verificado + runbook `pg_dump` en `docs/BACKUPS.md`), **brokers pueden responder el chat** en sus conversaciones (proxy con verificación de dueño), código muerto eliminado (`checkoutVisit` duplicado) |
 | 2026-10-10 | — | Chat Redes: auditoría completa + `zernio-sync` (Edge Function + cron cada 2 min) — pull incremental de Zernio con realtime en el panel sin depender del webhook push; recuperación de mensajes perdidos; portal: quitados el botón "Coordiná una por WhatsApp" y el beneficio "Comisión preferencial"; encuesta rediseñada con identidad de marca (teal, Plus Jakarta Sans, logo) + mejoras de accesibilidad; documentación de cierre y cotización completa |
