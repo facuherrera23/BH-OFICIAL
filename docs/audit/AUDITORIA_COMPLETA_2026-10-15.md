@@ -64,11 +64,13 @@
 - Webhook ML: binding + re-fetch como barrera real (documentado que ML no firma tópicos), parseo tolerante + dead-letter visible.
 
 **Hallazgos**
-- 🔶 **P1 — 11 funciones internas `SECURITY DEFINER` ejecutables por `anon`** (creadas después del hardening 2026-09-28): `backup_build_snapshot`, `compute_lead_score`, `crm_flag_overdue_visits`, `crm_flag_stale_leads`, `crm_queue_followup_alerts`, `leads_followup_on_contact`, `leads_recalc_followup_on_task`, `purge_rate_limit_logs`, `revoke_owner_tokens_on_delete`, `survey_pending_reminders`, `zernio_increment_unread`. Ninguna devuelve datos sensibles, pero cualquiera puede dispararlas vía RPC (la peor: `backup_build_snapshot` = vector de DoS en free tier). Fix: REVOKE a anon/authenticated + GRANT a `service_role`, verificando con `has_function_privilege` la lista completa — con cuidado de no repetir el incidente 2026-09-28 (revocar EXECUTE de funciones usadas por triggers rompió el alta de propiedades).
+- ✅ **P1 — RESUELTO mismo día (2026-10-15, migración `20261015000001_hardening_anon_execute_p1`)**: 12 funciones internas `SECURITY DEFINER` eran ejecutables por `anon` (la investigación final encontró una 12ª, `notify_new_lead`, que no estaba en las 11 originales). La clasificación por invocador real (triggers/cron/edge functions) reveló que **2 de ellas NO se pueden revocar**: `compute_lead_score()` y `notify_new_lead()` son triggers sobre `leads`, tabla **anon-writable** (el formulario de contacto del landing inserta con rol anon) — sin EXECUTE para anon se rompería el alta pública de leads. Las otras 10 quedaron restringidas: triggers de tablas authenticated-only conservan `authenticated` (lección del incidente 2026-09-28); crons y RPC de edge functions quedaron solo `service_role` + `postgres`. Verificado con `has_function_privilege` de la lista completa × 4 roles; advisor `anon_security_definer_function_executable`: **25 → 15** (los 15 restantes = 13 RPC públicas por token + las 2 excepciones justificadas y documentadas).
+- ✅ **P1 — RESUELTO (2026-10-15, migración `20261015000002_realtime_publication_crm`)**: la publicación realtime de `lead_properties`/`lead_tasks`/`lead_activities`/`owner_tasks` quedó versionada con un DO block idempotente (no-op en producción, agrega las tablas en un rebuild).
 - 🟡 `tmp-gen-jwt` y `cta-test` siguen desplegadas como stubs 410 (neutralizadas, borrado manual pendiente).
-- 🟡 Leaked Password Protection del dashboard aún sin activar (mitigado por HIBP check).
+- 🟡 Leaked Password Protection del dashboard aún sin activar (mitigado por HIBP check; el advisor `auth_leaked_password_protection` lo sigue marcando).
 - 🟡 Botón "Imprimir cartel" de `qr-visita.html:36` bloqueado por su propia CSP (`onclick` inline sin `unsafe-inline`) — bug funcional, no vulnerabilidad.
 - ℹ️ Advisors INFO intencionales: 4 tablas RLS sin policies (`*_webhook_events`, `rela_tokens`, `ml_oauth_states` — solo service_role); `pg_net`/`pg_trgm` en `public`.
+- ℹ️ Advisor `authenticated_security_definer_function_executable` (31): esperado — incluye las RPC públicas, los triggers de cadenas autenticadas y las excepciones documentadas; NO revocar en masa (lección 2026-09-28).
 
 ### 4. Performance — 7/10
 
@@ -121,7 +123,7 @@
 - Disciplina de producción documentada y respetada (no DELETE/TRUNCATE sin backup/approbación).
 
 **Debilidades**
-- 🔶 **P1 — drift DB↔repo**: la publicación realtime de `lead_properties`/`lead_tasks`/`lead_activities`/`owner_tasks` se aplicó directo vía MCP **sin migración versionada** (el commit `7ecc2aa` dice "(migration)" pero solo tocó `admin-app.js`). Un rebuild desde cero quedaría incompleto.
+- ✅ **P1 — drift DB↔repo RESUELTO (2026-10-15)**: la publicación realtime de `lead_properties`/`lead_tasks`/`lead_activities`/`owner_tasks` (aplicada directo vía MCP el 2026-10-14) quedó versionada en `20261015000002_realtime_publication_crm.sql` con DO block idempotente.
 - Free tier sin backups gestionados (mitigado con lo propio).
 - Limpiezas manuales pendientes: bucket `fichas` (29 stale), funciones debug del dashboard, publicaciones huérfanas ML.
 
@@ -129,8 +131,8 @@
 
 ## Roadmap recomendado (por prioridad)
 
-1. **P1** — Migración de privilegios: REVOKE EXECUTE a anon/authenticated en las 11 funciones internas + GRANT a `service_role` (verificar con `has_function_privilege` lista completa × los 3 roles, respetando cadenas de trigger).
-2. **P1** — Crear la migración faltante de la publicación realtime (4 tablas).
+1. ~~**P1** — Migración de privilegios: REVOKE EXECUTE a anon/authenticated en las 11 funciones internas~~ → **RESUELTO 2026-10-15** (migración `20261015000001`; con la excepción documentada de `compute_lead_score`/`notify_new_lead` por el INSERT anónimo del landing, y una 12ª función, `notify_new_lead`, descubierta en la investigación). Advisor 25 → 15.
+2. ~~**P1** — Crear la migración faltante de la publicación realtime (4 tablas)~~ → **RESUELTO 2026-10-15** (migración `20261015000002`, idempotente).
 3. **P2** — Fix de KPIs del digest (paginación/count exacto en `fetchDigestData`).
 4. **P2** — Borrado manual: `tmp-gen-jwt`, `cta-test`, bucket `fichas`.
 5. **P2** — Botón print de `qr-visita.html` → data-* + listener.

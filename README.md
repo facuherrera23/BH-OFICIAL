@@ -303,7 +303,7 @@ BH-OFICIAL/
 │
 ├── supabase/
 │   ├── functions/                # 48 Edge Functions (Deno) + _shared/
-│   └── migrations/               # 98 migraciones SQL versionadas
+│   └── migrations/               # 100 migraciones SQL versionadas
 │
 ├── tests/                        # Suite E2E Playwright (11 specs)
 ├── scripts/                      # bump-busters, generate-ficha, recovery, verificación
@@ -626,7 +626,7 @@ El permiso se resuelve con `profiles.role` (enum `user_role`):
 - **Auditoría**: `audit_log` con cadena de integridad + `api_key_audit`.
 - **HIBP**: check de contraseñas filtradas en el alta de usuario (fail-open documentado).
 
-> ⚠️ **Hallazgo de auditoría (2026-10-15, pendiente)**: 11 funciones internas `SECURITY DEFINER` creadas *después* del hardening 2026-09-28 quedaron ejecutables por `anon` vía RPC (`backup_build_snapshot`, `compute_lead_score`, `crm_flag_overdue_visits`, `crm_flag_stale_leads`, `crm_queue_followup_alerts`, `leads_followup_on_contact`, `leads_recalc_followup_on_task`, `purge_rate_limit_logs`, `revoke_owner_tokens_on_delete`, `survey_pending_reminders`, `zernio_increment_unread`). Ninguna devuelve datos sensibles (son cron/triggers que operan internamente), pero el `EXECUTE` debe restringirse a `service_role` — con la lección aprendida del incidente 2026-09-28: **revisar con `has_function_privilege` la lista completa** (anon × authenticated × service_role) y no revocar las que usan cadenas de trigger.
+> ✅ **Hallazgo de auditoría 2026-10-15 — RESUELTO mismo día** (migración `20261015000001_hardening_anon_execute_p1`): 12 funciones internas `SECURITY DEFINER` creadas *después* del hardening 2026-09-28 quedaban ejecutables por `anon` vía RPC. Se restringieron por invocador real (triggers/cron/edge functions), con **dos excepciones documentadas que NO se pueden revocar**: `compute_lead_score()` y `notify_new_lead()` son triggers sobre `leads`, tabla anon-writable (el formulario de contacto del landing inserta con rol anon) — anon necesita EXECUTE o se rompe el alta pública de leads. Verificado con `has_function_privilege` lista completa × 4 roles; advisor `anon_security_definer_function_executable` pasó de 25 a 15 (los restantes son las 13 RPC públicas por token + las 2 excepciones justificadas). Regla derivada: **todo trigger nuevo sobre una tabla con INSERT anónimo requiere `GRANT EXECUTE ... TO anon`** para su función.
 
 ---
 
@@ -946,10 +946,12 @@ Los tokens se guardan cifrados (AES-256-GCM) y nunca llegan al frontend. Estados
 | `20260828_fix_owners_rls` | RLS de owners |
 | `20260830_fix_properties_public_read` | Lectura pública de propiedades |
 | `20260901000001_fix_p0_security_and_functional` | Hardening P0 (RLS, REVOKEs, vistas, policies anon) |
-| *(…93 migraciones intermedias, ver `supabase/migrations/` — total 98)* | ML completo (sync, webhooks, questions, tokens cifrados), Zernio chat (5 tablas + realtime + publication), CRM revamp (stages canónicos, scoring, tareas), Agenda v2 (QR, recordatorios cron), RELA, encuesta de visita (`visit_surveys` + RPC por token + archivado + set v3), portal del propietario v2 (RPCs por token hardening), crons (backup, reminders, crm-*) |
+| *(…98 migraciones intermedias, ver `supabase/migrations/` — total 100)* | ML completo (sync, webhooks, questions, tokens cifrados), Zernio chat (5 tablas + realtime + publication), CRM revamp (stages canónicos, scoring, tareas), Agenda v2 (QR, recordatorios cron), RELA, encuesta de visita (`visit_surveys` + RPC por token + archivado + set v3), portal del propietario v2 (RPCs por token hardening), crons (backup, reminders, crm-*) |
 | `20261012000001_supervision_engine_fixes` | Motor de reglas: `filter.equals` con whitelist + fix de purga (`COALESCE` de fechas) |
 | `20261012000002_portal_tasaciones_type` | Portal lee tasaciones según `type` (alquiler=ARS / venta=USD) |
 | `20261012000003_survey_questions_v3` | Set de preguntas v3 de la encuesta (RPC replace full-set) |
+| `20261015000001_hardening_anon_execute_p1` | Hardening P1 de la auditoría: EXECUTE por grupos en 12 funciones internas (2 excepciones justificadas por INSERT anónimo del landing) |
+| `20261015000002_realtime_publication_crm` | Publicación realtime del CRM versionada (4 tablas, DO block idempotente) |
 
 > ⚠️ **Drift conocido (auditoría 2026-10-15)**: la publicación realtime de `lead_properties`, `lead_tasks`, `lead_activities` y `owner_tasks` se aplicó directo en producción vía MCP **sin archivo de migración** (el cambio está activo y verificado en `supabase_realtime`, pero no es reproducible desde el repo). Pendiente: crear la migración equivalente para que un rebuild desde cero quede idéntico.
 
@@ -1138,8 +1140,8 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 
 | Ítem | Impacto | Estado |
 |---|---|---|
-| 11 funciones internas `SECURITY DEFINER` ejecutables por `anon` (creadas post-hardening 2026-09-28: `backup_build_snapshot`, `crm_*`, `purge_rate_limit_logs`, etc.) | Seguridad (medio: no exponen datos, pero son llamables por cualquiera vía RPC) | **P1**: REVOKE EXECUTE a anon/authenticated, GRANT a `service_role`; verificar con `has_function_privilege` la lista completa (lección del incidente 2026-09-28: no romper cadenas de trigger) |
-| Migración faltante de la publicación realtime (`lead_properties`, `lead_tasks`, `lead_activities`, `owner_tasks`) | Reproducibilidad (drift DB↔repo) | **P1**: crear la migración equivalente al cambio aplicado vía MCP |
+| ~~11 funciones internas `SECURITY DEFINER` ejecutables por `anon`~~ | Seguridad | **RESUELTO 2026-10-15** (`20261015000001_hardening_anon_execute_p1`): restricción por grupos con 2 excepciones justificadas (`compute_lead_score`/`notify_new_lead`, triggers sobre `leads` anon-writable); advisor 25 → 15 |
+| ~~Migración faltante de la publicación realtime (`lead_properties`, `lead_tasks`, `lead_activities`, `owner_tasks`)~~ | Reproducibilidad | **RESUELTO 2026-10-15** (`20261015000002_realtime_publication_crm`, idempotente) |
 | KPIs del digest con queries flojas (`actionsTotal` cap 1000 por límite PostgREST, `uniqueUsers: 0`, `successCount: 0`) | Reporting (el email llega con números incompletos) | P2: fix en `supervision-digest/fetchDigestData` (paginación/`count` exacto) |
 | `tmp-gen-jwt` y `cta-test` siguen desplegadas como stubs 410 | Higiene del dashboard | P2: borrado manual en Supabase Studio (el stub neutraliza el riesgo P0 original) |
 | Vaciar bucket Storage `fichas` (29 fichas stale del viejo flujo `ficha-publish`) | Higiene estética | P2: manual desde Storage (bloqueado por `storage.protect_delete`) |
@@ -1209,6 +1211,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 
 | Fecha | Versión | Cambios |
 |---|---|---|
+| 2026-10-15 (2) | — | **Fix de los 2 hallazgos P1 de la auditoría**: (1) hardening de EXECUTE en 12 funciones internas `SECURITY DEFINER` ejecutables por `anon` (`20261015000001`) — clasificación por invocador real en 4 grupos (triggers de tablas anon-writable / triggers de tablas authenticated-only / crons / RPC de edge functions), con 2 excepciones documentadas que conservaron anon por el INSERT público del landing (`compute_lead_score`, `notify_new_lead`); advisor 25 → 15. (2) publicación realtime del CRM versionada (`20261015000002`, idempotente — cierra el drift DB↔repo). Verificación completa con `has_function_privilege` × 4 roles |
 | 2026-10-15 | — | **Auditoría completa del proyecto** (read-only + verificación en producción: 63 tablas 100 % RLS, 117 policies, 49 Edge Functions, 17 crons activos, 16 tablas realtime; hallazgos: 11 funciones internas anon-executable, migración realtime faltante, botón print de qr-visita, link XSS_REVIEW removido) + documentación puesta al día. Fixes UI: confirm/prompt pintan por encima del modal padre (z-index+10; el confirm de "Generar nuevo" del portal quedaba invisible), X en confirm resuelve la promesa pendiente, fix shorthand `expires_at` que arrojaba ReferenceError tras generar el token (el upsert funcionaba pero el modal no refrescaba), banner ✓ con el código nuevo al generar |
 | 2026-10-14 | — | Realtime CRM completo: `lead_properties`/`lead_tasks`/`lead_activities`/`owner_tasks` en la publicación realtime, debounce 500 ms para el refresh del CRM, guards de modo en `loadLeads`/`loadOwners` (el realtime ya no pisa la vista equivocada). X de cierre auto-inyectado en los 20 modales. Modal "Acceso al Portal" premium con reutilización del token vigente |
 | 2026-10-13 | — | ML leads dedup: claim atómico entre `questions`/`vis_leads` vía UNIQUE(`question_id`) en el ledger, identity gate (solo `vis_leads` con identidad crea leads), consolidación de la misma persona en un lead con todas sus propiedades (`mergeMlEventIntoLead`), nunca sobre etapas terminales |
