@@ -246,6 +246,11 @@ function applyOwnerSort() {
 var OWNER_SERVER_SORT = { propietario: 'full_name', dni: 'dni_cuit', exclusivo: 'exclusive_end' };
 
 async function loadOwners() {
+  /* Guard de modo: solo renderiza propietarios cuando la vista activa del CRM
+     es 'owners'. El realtime llama refreshOwners() en cada cambio de la tabla
+     owners — sin el guard, una actualización de un lead en otro modo
+     sobreescribiría la tabla con leads y cerraría el panel de detalle. */
+  if (_viewMode !== 'owners') return;
   var c = $id('crmLeadList');
   if (!c) return;
   c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Cargando propietarios...</div>';
@@ -535,6 +540,11 @@ function renderOwnerList(c) {
 }
 
 async function loadLeads() {
+  /* Guard de modo: solo renderiza leads cuando la vista activa del CRM
+     es 'leads'. El realtime llama refresh() en cada cambio de la tabla
+     leads — sin el guard, un cambio de owners en el otro modo
+     sobreescribiría la tabla con propietarios. */
+  if (_viewMode === 'owners') return;
   var c = $id('crmLeadList');
   if (!c) return;
   c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Cargando prospectos...</div>';

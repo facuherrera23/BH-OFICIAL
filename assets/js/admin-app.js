@@ -2802,21 +2802,16 @@ function setupCoreRealtime() {
               updateSidebarBadges();
               break;
             case 'owner_tasks':
-
               if (editingOwnerId && $('#ownerModal')?.classList.contains('is-open')) {
-
                 loadOwnerTasks(editingOwnerId);
-
-
-
-              loadOwners();
-
               }
-
+              /* Refresca la tabla de propietarios si el CRM está en modo
+                 'owners' (el guard de modo dentro de loadOwners hace el check). */
+              if (window.BH_CRM && typeof window.BH_CRM.refreshOwners === 'function') {
+                window.BH_CRM.refreshOwners();
+              }
               updateSidebarBadges();
-
               break;
-
             case 'tasaciones':
               if (event === 'INSERT' || event === 'UPDATE') {
                 upsertTasacionRow(newRecord);
