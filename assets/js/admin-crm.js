@@ -1457,6 +1457,28 @@ function bindSideSave(lead, panel) {
     var d = collectSideForm(panel);
     if (!d.full_name) { toast('El nombre es obligatorio.', 'error'); return; }
     var stageChanged = d.stage && normalizeStage(d.stage) !== normalizeStage(originalStage);
+
+    /* Razón de pérdida obligatoria: si el nuevo estado es cerrado_perdido
+       y no lo estaba antes, pedir la razón antes de guardar. */
+    if (stageChanged && normalizeStage(d.stage) === 'cerrado_perdido' && normalizeStage(originalStage) !== 'cerrado_perdido') {
+      var lostResult = await showLostReasonModal();
+      if (!lostResult) {
+        /* Canceló el modal: revertir el dropdown al estado original */
+        var stageSel = panel.querySelector('#crmDtlStatus');
+        if (stageSel) stageSel.value = normalizeStage(originalStage);
+        btn.disabled = false;
+        btn.textContent = 'Guardar cambios';
+        return;
+      }
+      d.lost_reason = lostResult.reason;
+      toast('Razón registrada: ' + lostResult.label, 'info');
+    }
+
+    /* Recuperar lead: si estaba perdido y cambia a otro estado, limpiar la razón */
+    if (stageChanged && normalizeStage(originalStage) === 'cerrado_perdido' && normalizeStage(d.stage) !== 'cerrado_perdido') {
+      d.lost_reason = null;
+    }
+
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
     try {
@@ -2185,6 +2207,93 @@ async function syncLeadFollowup(leadId) {
   } catch (e) { console.warn('[crm] sync followup:', e.message); }
 }
 
+/* ============================================================
+   RAZÓN DE PÉRDIDA — modal con opciones estructuradas
+   Reemplaza el confirm simple: el agente DEBE elegir por qué
+   se perdió el lead antes de marcarlo como cerrado_perdido.
+   ============================================================ */
+var LOST_REASONS = [
+  { id: 'presupuesto',  label: 'Presupuesto',       icon: 'fas fa-money-bill-wave',   desc: 'No puede pagar el precio' },
+  { id: 'ubicacion',    label: 'Ubicación',          icon: 'fas fa-map-pin',           desc: 'La zona no le sirve' },
+  { id: 'encontro_otra',label: 'Encontró otra',      icon: 'fas fa-building-circle-check', desc: 'Compró/alquiló con otro' },
+  { id: 'no_responde',  label: 'No responde',        icon: 'fas fa-phone-slash',       desc: 'Dejó de contestar' },
+  { id: 'financiamiento',label: 'Financiamiento',   icon: 'fas fa-credit-card',       desc: 'No consigue crédito/hipoteca' }
+];
+var LOST_REASON_LABELS = {};
+LOST_REASONS.forEach(function(r) { LOST_REASON_LABELS[r.id] = r.label; });
+LOST_REASON_LABELS.otro = 'Otro';
+
+function showLostReasonModal() {
+  return new Promise(function(resolve) {
+    var overlay = document.createElement('div');
+    overlay.className = 'crm-outcome-overlay';
+    var box = document.createElement('div');
+    box.className = 'lost-reason-box';
+    box.innerHTML =
+      '<div class="lost-reason-header">' +
+        '<span class="lost-reason-icon"><i class="fas fa-ban"></i></span>' +
+        '<div><h3 class="lost-reason-title">¿Por qué se perdió?</h3>' +
+        '<p class="lost-reason-subtitle">Elegí la razón principal — esto ayuda a mejorar</p></div>' +
+      '</div>' +
+      '<div class="lost-reason-options">' +
+        LOST_REASONS.map(function(r) {
+          return '<button type="button" class="lost-reason-option" data-reason="' + r.id + '" data-label="' + r.label + '">' +
+            '<i class="' + r.icon + '"></i>' +
+            '<span class="lost-reason-option-label">' + r.label + '</span>' +
+            '<span class="lost-reason-option-desc">' + r.desc + '</span>' +
+          '</button>';
+        }).join('') +
+        '<button type="button" class="lost-reason-option lost-reason-option--other" data-reason="otro" data-label="Otro">' +
+          '<i class="fas fa-ellipsis"></i>' +
+          '<span class="lost-reason-option-label">Otro</span>' +
+          '<span class="lost-reason-option-desc">Especificá el motivo</span>' +
+        '</button>' +
+      '</div>' +
+      '<div class="lost-reason-detail-wrap" style="display:none;">' +
+        '<input class="crm-field-input" id="lostReasonDetail" placeholder="Contanos qué pasó..." style="width:100%;">' +
+      '</div>' +
+      '<div class="lost-reason-actions">' +
+        '<button type="button" class="btn-ghost" id="lostReasonCancel">Cancelar</button>' +
+        '<button type="button" class="btn-luxury-action" id="lostReasonConfirm" disabled><i class="fas fa-ban"></i> Marcar perdido</button>' +
+      '</div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    var selected = null;
+    var confirmBtn = box.querySelector('#lostReasonConfirm');
+    var detailWrap = box.querySelector('.lost-reason-detail-wrap');
+    var detailInput = box.querySelector('#lostReasonDetail');
+
+    function close(result) {
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+      resolve(result);
+    }
+    function onKey(e) { if (e.key === 'Escape') close(null); }
+    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('mousedown', function(e) { if (e.target === overlay) close(null); });
+    box.querySelector('#lostReasonCancel').addEventListener('click', function() { close(null); });
+
+    box.querySelectorAll('.lost-reason-option').forEach(function(opt) {
+      opt.addEventListener('click', function() {
+        box.querySelectorAll('.lost-reason-option').forEach(function(o) { o.classList.remove('is-active'); });
+        this.classList.add('is-active');
+        selected = { reason: this.dataset.reason, label: this.dataset.label };
+        confirmBtn.disabled = false;
+        detailWrap.style.display = this.dataset.reason === 'otro' ? '' : 'none';
+        if (this.dataset.reason === 'otro' && detailInput) detailInput.focus();
+      });
+    });
+
+    confirmBtn.addEventListener('click', function() {
+      if (!selected) return;
+      var detail = detailInput && detailInput.value.trim() ? detailInput.value.trim() : null;
+      if (selected.reason === 'otro' && !detail) { toast('Escribí el motivo.', 'error'); detailInput.focus(); return; }
+      close({ reason: selected.reason, label: selected.label, detail: detail });
+    });
+  });
+}
+
 function bindLeadTaskForm(panel, lead) {
   var leadId = lead.id;
   var actionSel = panel.querySelector('#leadTaskAction');
@@ -2369,16 +2478,12 @@ function bindLeadTaskForm(panel, lead) {
         toast('Nota guardada.', 'success');
       } else if (action === 'lost') {
         if (!desc) { toast('Escribí el motivo del rechazo.', 'error'); return; }
-        var confirmLost = typeof window.showConfirmDialog === 'function'
-          ? await window.showConfirmDialog({ title: 'Marcar como perdido', message: 'El lead queda fuera del embudo (podés recuperarlo cambiando el estado).', icon: 'fas fa-ban', confirmText: 'Marcar Perdido' })
-          : confirm('¿Marcar como perdido? El lead queda fuera del embudo (podés recuperarlo cambiando el estado).');
-        if (!confirmLost) return;
-        var lUp = await db().from('leads').update({ stage: 'cerrado_perdido', last_contacted_at: new Date().toISOString() }).eq('id', leadId);
+        var lostResult = await showLostReasonModal();
+        if (!lostResult) return;
+        var lUp = await db().from('leads').update({ stage: 'cerrado_perdido', lost_reason: lostResult.reason, lost_reason_detail: lostResult.detail || null, last_contacted_at: new Date().toISOString() }).eq('id', leadId);
         if (lUp.error) throw new Error(lUp.error.message);
-        if (desc) {
-          await db().from('lead_activities').insert([{ lead_id: leadId, activity_type: 'note', title: 'Motivo del rechazo', description: desc }]);
-        }
-        toast('Marcado como perdido.', 'success');
+        await db().from('lead_activities').insert([{ lead_id: leadId, activity_type: 'note', title: 'Motivo del rechazo: ' + lostResult.label, description: desc + (lostResult.detail ? ' — ' + lostResult.detail : '') }]);
+        toast('Marcado como perdido: ' + lostResult.label, 'success');
         closeDetailPanel();
         await loadLeads();
         return;

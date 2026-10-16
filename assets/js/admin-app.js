@@ -884,6 +884,9 @@ function esc(s) {
       renderDashVisits(visits);
       renderDashLeads(leads);
       renderDashBrokers(agents);
+      renderDashStaleProps();
+      renderDashLostReasons();
+      renderDashRecommendations();
       const stamp = $('#dashLastUpdated');
       if (stamp) stamp.textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
       const refreshBtn = $('#dashRefreshBtn');
@@ -1075,6 +1078,183 @@ function esc(s) {
         <span style="color:var(--success); font-size:12px; font-weight:600;">${formatPrice(a.sales_ytd)}</span>
       </div>
     `).join('');
+  }
+
+  /* ============================================================
+     DASHBOARD — Propiedades estancadas, razones de pérdida y recomendaciones
+     ============================================================ */
+
+  async function renderDashStaleProps() {
+    const el = $('#dashStaleProps');
+    if (!el) return;
+    const client = await getAuthedClient();
+    if (!client) return;
+    try {
+      /* Publicadas sin soft-delete, con su última visita */
+      const [propsRes, visitsRes] = await Promise.all([
+        client.from('properties').select('id, title, property_code, price_usd, price_currency, status, is_published, created_at, agent_id').eq('is_published', true).is('deleted_at', null),
+        client.from('visits').select('property_id, visit_date').is('deleted_at', null).order('visit_date', { ascending: false })
+      ]);
+      if (propsRes.error) throw propsRes.error;
+      if (visitsRes.error) throw visitsRes.error;
+      const props = propsRes.data || [];
+      const visits = visitsRes.data || [];
+
+      /* Mapa: última visita por propiedad */
+      const lastVisit = {};
+      visits.forEach(v => {
+        if (!v.property_id) return;
+        if (!lastVisit[v.property_id] || new Date(v.visit_date) > new Date(lastVisit[v.property_id])) {
+          lastVisit[v.property_id] = v.visit_date;
+        }
+      });
+
+      const STALE_NEVER_VISITED = 30;  /* Nunca tuvo UNA visita y ya lleva 30+ días publicada */
+      const STALE_NO_RECENT = 60;      /* Tuvo visitas pero ninguna en los últimos 60 días */
+      const stale = props.map(p => {
+        const hadVisit = !!lastVisit[p.id];
+        const last = lastVisit[p.id] || p.created_at;
+        const days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
+        const threshold = hadVisit ? STALE_NO_RECENT : STALE_NEVER_VISITED;
+        return { ...p, last_activity: last, days_stale: days, had_visit: hadVisit, is_stale: days >= threshold };
+      }).filter(p => p.is_stale)
+        .sort((a, b) => b.days_stale - a.days_stale)
+        .slice(0, 6);
+
+      if (!stale.length) {
+        el.innerHTML = '<p style="color:var(--success); font-size:12px; padding:16px 0;"><i class="fas fa-check-circle" style="margin-right:6px;"></i>Todas las propiedades publicadas tienen actividad reciente.</p>';
+        return;
+      }
+
+      const neverVisited = stale.filter(p => !p.had_visit).length;
+      const sevColor = p => !p.had_visit && p.days_stale >= 45 ? 'var(--danger)' : p.days_stale >= 120 ? 'var(--danger)' : p.days_stale >= 90 ? 'var(--warning)' : '#FFB800';
+      const sevBg = p => !p.had_visit && p.days_stale >= 45 ? 'rgba(239,68,68,0.12)' : p.days_stale >= 120 ? 'rgba(239,68,68,0.12)' : p.days_stale >= 90 ? 'rgba(255,184,0,0.12)' : 'rgba(255,184,0,0.06)';
+
+      el.innerHTML =
+        '<div style="margin-bottom:10px; font-size:11px; color:var(--text-dim);">' +
+          stale.length + ' propiedad' + (stale.length === 1 ? '' : 'es') +
+          (neverVisited ? ' · <span style="color:var(--warning);">' + neverVisited + ' nunca visitada' + (neverVisited === 1 ? '' : 's') + '</span>' : '') +
+        '</div>' +
+        stale.map(p => {
+          const price = p.price_currency === 'ARS' ? formatPrice(p.price_usd, 'ARS') : formatPrice(p.price_usd, 'USD');
+          return `
+          <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border-subtle);">
+            <span style="font-family:ui-monospace,monospace; font-size:10px; font-weight:700; color:var(--accent); background:rgba(31,200,195,0.1); padding:2px 6px; border-radius:4px; white-space:nowrap; flex-shrink:0;">${esc(p.property_code || '—')}</span>
+            <div style="flex:1; min-width:0;">
+              <div style="color:#fff; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(p.title || 'Sin título')}</div>
+              <div style="color:var(--text-dim); font-size:10.5px;">${price}</div>
+            </div>
+            <span style="font-size:10px; font-weight:700; padding:3px 8px; border-radius:6px; white-space:nowrap; flex-shrink:0; color:${sevColor(p)}; background:${sevBg(p)};" title="${p.had_visit ? 'Sin visitas en ' + p.days_stale + ' días' : 'NUNCA tuvo una visita'}">${p.had_visit ? p.days_stale + 'd' : '0 visitas'} · ${p.days_stale}d</span>
+          </div>`;
+        }).join('');
+    } catch (err) {
+      logError('renderDashStaleProps:', err);
+      el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Error al cargar.</p>';
+    }
+  }
+
+  async function renderDashLostReasons() {
+    const el = $('#dashLostReasons');
+    if (!el) return;
+    const client = await getAuthedClient();
+    if (!client) return;
+    try {
+      const res = await client.from('leads').select('lost_reason').eq('stage', 'cerrado_perdido').is('deleted_at', null).not('lost_reason', 'is', null);
+      if (res.error) throw res.error.error || res.error;
+      const rows = res.data || [];
+      if (!rows.length) {
+        el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Aún no hay razones registradas. Cuando marques un lead como perdido, elegí el motivo.</p>';
+        return;
+      }
+
+      /* Contar por razón */
+      const counts = {};
+      rows.forEach(r => { counts[r.lost_reason] = (counts[r.lost_reason] || 0) + 1; });
+      const total = rows.length;
+      const LBL = { presupuesto: 'Presupuesto', ubicacion: 'Ubicación', encontro_otra: 'Encontró otra', no_responde: 'No responde', financiamiento: 'Financiamiento', otro: 'Otro' };
+      const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      const maxCount = entries[0][1];
+
+      el.innerHTML =
+        '<div style="margin-bottom:10px; font-size:11px; color:var(--text-dim);">' + total + ' lead' + (total === 1 ? '' : 's') + ' perdido' + (total === 1 ? '' : 's') + ' con razón registrada</div>' +
+        entries.map(([reason, count]) => {
+          const pct = Math.round((count / maxCount) * 100);
+          const lbl = LBL[reason] || reason;
+          return `
+          <div style="display:flex; align-items:center; gap:8px; padding:6px 0;">
+            <span style="width:90px; font-size:11px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0;">${esc(lbl)}</span>
+            <div style="flex:1; height:6px; background:rgba(255,255,255,0.04); border-radius:3px; overflow:hidden;">
+              <div style="height:100%; background:linear-gradient(90deg, rgba(239,68,68,0.6), rgba(239,68,68,0.8)); border-radius:3px; width:${pct}%;"></div>
+            </div>
+            <span style="font-size:11px; color:var(--text-dim); width:24px; text-align:right; flex-shrink:0;">${count}</span>
+          </div>`;
+        }).join('');
+    } catch (err) {
+      logError('renderDashLostReasons:', err);
+      el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Error al cargar.</p>';
+    }
+  }
+
+  async function renderDashRecommendations() {
+    const el = $('#dashRecommendations');
+    if (!el) return;
+    const client = await getAuthedClient();
+    if (!client) return;
+    try {
+      /* Query combinado: leads sin contacto reciente, propiedades caras, exclusividades por vencer */
+      const cutoff48h = new Date(Date.now() - 2 * 86400000).toISOString();
+      const cutoff30d = new Date(Date.now() - 30 * 86400000).toISOString();
+      const [staleLeadsRes, exclusivasRes] = await Promise.all([
+        client.from('leads').select('id, full_name, stage, last_contacted_at, lead_score')
+          .is('deleted_at', null)
+          .not('stage', 'in', '("cerrado_ganado","cerrado_perdido")')
+          .or(`last_contacted_at.is.null,last_contacted_at.lt.${cutoff48h}`)
+          .order('lead_score', { ascending: false })
+          .limit(3),
+        client.from('owners').select('id, full_name, exclusive, exclusive_end')
+          .eq('exclusive', true)
+          .is('deleted_at', null)
+          .not('exclusive_end', 'is', null)
+          .gte('exclusive_end', new Date().toISOString().slice(0, 10))
+          .lte('exclusive_end', new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10))
+          .order('exclusive_end', { ascending: true })
+          .limit(3)
+      ]);
+
+      const recs = [];
+      const staleLeads = (staleLeadsRes.data || []);
+      if (staleLeads.length) {
+        recs.push({
+          icon: 'fas fa-phone',
+          color: 'var(--warning)',
+          text: `${staleLeads.length} lead${staleLeads.length === 1 ? '' : 's'} con score alto sin contacto en +48h`,
+          action: 'goToLeads'
+        });
+      }
+      const exclusivas = (exclusivasRes.data || []);
+      if (exclusivas.length) {
+        recs.push({
+          icon: 'fas fa-calendar-exclamation',
+          color: '#FFB800',
+          text: `${exclusivas.length} exclusividad${exclusivas.length === 1 ? '' : 'es'} vence${exclusivas.length === 1 ? '' : 'n'} en los próximos 30 días`,
+          action: 'goToProperties'
+        });
+      }
+
+      if (!recs.length) {
+        el.innerHTML = '<p style="color:var(--success); font-size:12px; padding:16px 0;"><i class="fas fa-check-circle" style="margin-right:6px;"></i>Todo en orden por ahora.</p>';
+        return;
+      }
+
+      el.innerHTML = recs.map(r => `
+        <div style="display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border-subtle); cursor:pointer;" data-action="${r.action}">
+          <i class="${r.icon}" style="color:${r.color}; font-size:14px; flex-shrink:0;"></i>
+          <span style="color:var(--text-secondary); font-size:12px; line-height:1.3;">${r.text}</span>
+        </div>`).join('');
+    } catch (err) {
+      logError('renderDashRecommendations:', err);
+      el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Error al cargar.</p>';
+    }
   }
 
   /* Extraido a assets/js/admin-propiedades.js (modularizacion) */
