@@ -887,6 +887,7 @@ function esc(s) {
       renderDashStaleProps();
       renderDashLostReasons();
       renderDashRecommendations();
+      renderDashConversion();
       const stamp = $('#dashLastUpdated');
       if (stamp) stamp.textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
       const refreshBtn = $('#dashRefreshBtn');
@@ -1254,6 +1255,199 @@ function esc(s) {
     } catch (err) {
       logError('renderDashRecommendations:', err);
       el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Error al cargar.</p>';
+    }
+  }
+
+  /* ============================================================
+     DASHBOARD — Análisis de Conversión (funnel visual)
+     Embudo completo: total → activos → calificados → con visita →
+     negociando → ganados/perdidos, con conversión por fuente y agente.
+     ============================================================ */
+  async function renderDashConversion() {
+    const el = $('#dashConversion');
+    if (!el) return;
+    const client = await getAuthedClient();
+    if (!client) return;
+    try {
+      const [leadsRes, agentsRes] = await Promise.all([
+        client.from('leads').select('id, stage, source, assigned_to, lead_score, lost_reason').is('deleted_at', null),
+        client.from('agents').select('id, full_name').eq('status', 'activo').is('deleted_at', null)
+      ]);
+      if (leadsRes.error) throw leadsRes.error;
+      const leads = leadsRes.data || [];
+      const agents = agentsRes.data || [];
+      if (!leads.length) {
+        el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Sin leads para analizar.</p>';
+        return;
+      }
+
+      /* ── FUNNEL ── */
+      const STAGE_ORDER = ['nuevo','contactado','calificado','visita_agendada','visita_realizada','negociacion','cerrado_ganado'];
+      const LBL = { nuevo:'Nuevos', contactado:'Contactados', calificado:'Calificados', visita_agendada:'Visita agendada', visita_realizada:'Visita realizada', negociacion:'Negociación', cerrado_ganado:'Ganados' };
+      const total = leads.length;
+      const lostCount = leads.filter(l => l.stage === 'cerrado_perdido').length;
+
+      /* Cada barra del funnel cuenta leads que LLEGARON a esa etapa o más allá */
+      const funnelData = STAGE_ORDER.map((stage, i) => {
+        const reached = leads.filter(l => {
+          const idx = STAGE_ORDER.indexOf(normalizeStageSafe(l.stage));
+          return idx >= i;
+        }).length;
+        return { stage, label: LBL[stage] || stage, count: reached, pct: total ? Math.round((reached / total) * 100) : 0 };
+      });
+
+      function normalizeStageSafe(s) {
+        const map = { visita: 'visita_agendada', oferta: 'negociacion', cerrado: 'cerrado_ganado', perdido: 'cerrado_perdido' };
+        return map[s] || s;
+      }
+
+      const maxCount = funnelData[0].count;
+      const funnelHtml = funnelData.map((d, i) => {
+        const width = maxCount > 0 ? Math.max(4, (d.count / maxCount) * 100) : 4;
+        const isZero = d.count === 0;
+        const color = isZero ? 'rgba(255,255,255,0.08)' : i >= 6 ? 'var(--success)' : 'var(--accent)';
+        const bg = isZero ? 'rgba(255,255,255,0.03)' : i >= 6 ? 'rgba(16,185,129,0.12)' : 'rgba(31,200,195,0.12)';
+        return `
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px;">
+          <span style="width:100px; font-size:11px; color:var(--text-secondary); text-align:right; white-space:nowrap; flex-shrink:0;">${d.label}</span>
+          <div style="flex:1; position:relative; height:22px; background:rgba(255,255,255,0.02); border-radius:4px; overflow:hidden;">
+            <div style="position:absolute; left:0; top:0; bottom:0; width:${width}%; background:${bg}; border-left:2px solid ${color}; border-radius:4px; transition:width .3s ease;"></div>
+            <span style="position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:11px; font-weight:600; color:${isZero ? 'var(--text-dim)' : color};">${d.count}</span>
+            <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:10px; color:${isZero ? 'var(--text-dim)' : 'rgba(255,255,255,0.5)'};">${d.pct}%</span>
+          </div>
+        </div>`;
+      }).join('');
+
+      /* Barra de perdidos */
+      const lostPct = total ? Math.round((lostCount / total) * 100) : 0;
+      const lostHtml = `
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px; margin-top:4px; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.08);">
+          <span style="width:100px; font-size:11px; color:var(--danger); text-align:right; white-space:nowrap; flex-shrink:0;">Perdidos</span>
+          <div style="flex:1; position:relative; height:22px; background:rgba(255,255,255,0.02); border-radius:4px; overflow:hidden;">
+            <div style="position:absolute; left:0; top:0; bottom:0; width:${Math.max(4, lostPct)}%; background:rgba(239,68,68,0.08); border-left:2px solid var(--danger); border-radius:4px;"></div>
+            <span style="position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:11px; font-weight:600; color:var(--danger);">${lostCount}</span>
+            <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:10px; color:rgba(239,68,68,0.5);">${lostPct}%</span>
+          </div>
+        </div>`;
+
+      /* ── MÉTRICAS CLAVE ── */
+      const withVisit = leads.filter(l => ['visita_agendada','visita_realizada','negociacion','cerrado_ganado'].includes(normalizeStageSafe(l.stage))).length;
+      const won = leads.filter(l => l.stage === 'cerrado_ganado').length;
+      const visitRate = total ? ((withVisit / total) * 100).toFixed(1) : '0';
+      const winRate = total ? ((won / total) * 100).toFixed(1) : '0';
+      const lossRate = total ? ((lostCount / total) * 100).toFixed(1) : '0';
+
+      const metricsHtml = `
+        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:14px;">
+          <div style="text-align:center; padding:10px; border-radius:8px; background:rgba(31,200,195,0.06); border:1px solid rgba(31,200,195,0.15);">
+            <div style="font-size:20px; font-weight:800; color:var(--accent);">${visitRate}%</div>
+            <div style="font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.4px;">Lead → Visita</div>
+          </div>
+          <div style="text-align:center; padding:10px; border-radius:8px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.15);">
+            <div style="font-size:20px; font-weight:800; color:var(--success);">${winRate}%</div>
+            <div style="font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.4px;">Lead → Ganado</div>
+          </div>
+          <div style="text-align:center; padding:10px; border-radius:8px; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.15);">
+            <div style="font-size:20px; font-weight:800; color:var(--danger);">${lossRate}%</div>
+            <div style="font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.4px;">Tasa de pérdida</div>
+          </div>
+        </div>`;
+
+      /* ── CONVERSIÓN POR FUENTE ── */
+      const SOURCE_LBL = { landing_page: 'Landing', ml: 'Mercado Libre', manual: 'Manual', newsletter: 'Newsletter', chat: 'Chat', referido: 'Referido', tasacion: 'Tasación', walkin: 'Walk-in', landing: 'Landing (legado)' };
+      const bySource = {};
+      leads.forEach(l => {
+        const src = l.source || 'otros';
+        if (!bySource[src]) bySource[src] = { total: 0, visita: 0, ganado: 0, perdido: 0 };
+        bySource[src].total++;
+        if (['visita_agendada','visita_realizada','negociacion','cerrado_ganado'].includes(normalizeStageSafe(l.stage))) bySource[src].visita++;
+        if (l.stage === 'cerrado_ganado') bySource[src].ganado++;
+        if (l.stage === 'cerrado_perdido') bySource[src].perdido++;
+      });
+      const sourceRows = Object.entries(bySource)
+        .sort((a, b) => b[1].total - a[1].total)
+        .slice(0, 6)
+        .map(([src, d]) => {
+          const convRate = d.total ? ((d.ganado / d.total) * 100).toFixed(0) : '0';
+          const lossRateSrc = d.total ? ((d.perdido / d.total) * 100).toFixed(0) : '0';
+          return `
+          <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+            <td style="padding:6px 8px; font-size:11.5px; color:#fff;">${esc(SOURCE_LBL[src] || src)}</td>
+            <td style="padding:6px 8px; font-size:11.5px; color:var(--text-secondary); text-align:center;">${d.total}</td>
+            <td style="padding:6px 8px; font-size:11.5px; color:${d.visita > 0 ? 'var(--accent)' : 'var(--text-dim)'}; text-align:center;">${d.visita}</td>
+            <td style="padding:6px 8px; font-size:11.5px; color:${d.ganado > 0 ? 'var(--success)' : 'var(--text-dim)'}; text-align:center;">${d.ganado}</td>
+            <td style="padding:6px 8px; font-size:11.5px; color:${Number(lossRateSrc) > 50 ? 'var(--danger)' : 'var(--text-dim)'}; text-align:center;">${lossRateSrc}%</td>
+          </tr>`;
+        }).join('');
+
+      const sourceHtml = `
+        <div style="flex:1; min-width:220px;">
+          <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">Conversión por Fuente</div>
+          <table style="width:100%; border-collapse:collapse;">
+            <thead>
+              <tr style="border-bottom:1px solid rgba(255,255,255,0.08);">
+                <th style="padding:4px 8px; font-size:10px; color:var(--text-dim); text-align:left; text-transform:uppercase;">Fuente</th>
+                <th style="padding:4px 8px; font-size:10px; color:var(--text-dim); text-align:center; text-transform:uppercase;">Leads</th>
+                <th style="padding:4px 8px; font-size:10px; color:var(--text-dim); text-align:center; text-transform:uppercase;">Visitas</th>
+                <th style="padding:4px 8px; font-size:10px; color:var(--text-dim); text-align:center; text-transform:uppercase;">Ganados</th>
+                <th style="padding:4px 8px; font-size:10px; color:var(--text-dim); text-align:center; text-transform:uppercase;">% Perdidos</th>
+              </tr>
+            </thead>
+            <tbody>${sourceRows}</tbody>
+          </table>
+        </div>`;
+
+      /* ── RENDIMIENTO POR AGENTE ── */
+      const agentMap = {};
+      agents.forEach(a => agentMap[a.id] = a.full_name);
+      const byAgent = {};
+      leads.forEach(l => {
+        const aid = l.assigned_to || 'sin_asignar';
+        if (!byAgent[aid]) byAgent[aid] = { total: 0, activos: 0, conVisita: 0, scoreSum: 0 };
+        byAgent[aid].total++;
+        if (!['cerrado_ganado','cerrado_perdido'].includes(l.stage)) byAgent[aid].activos++;
+        if (['visita_agendada','visita_realizada','negociacion','cerrado_ganado'].includes(normalizeStageSafe(l.stage))) byAgent[aid].conVisita++;
+        byAgent[aid].scoreSum += (l.lead_score || 0);
+      });
+      const agentRows = Object.entries(byAgent)
+        .sort((a, b) => b[1].total - a[1].total)
+        .slice(0, 6)
+        .map(([aid, d]) => {
+          const name = aid === 'sin_asignar' ? 'Sin asignar' : (agentMap[aid] || 'Desconocido');
+          const avgScore = d.total ? Math.round(d.scoreSum / d.total) : 0;
+          return `
+          <div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
+            <span style="flex:1; font-size:11.5px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(name)}</span>
+            <span style="font-size:10px; color:var(--text-dim); width:50px; text-align:right;">${d.total} leads</span>
+            <span style="font-size:10px; color:${d.activos > 0 ? 'var(--accent)' : 'var(--text-dim)'}; width:55px; text-align:right;">${d.activos} activos</span>
+            <span style="font-size:10px; color:${d.conVisita > 0 ? 'var(--success)' : 'var(--text-dim)'}; width:50px; text-align:right;">${d.conVisita} visitas</span>
+            <span style="font-size:10px; color:${avgScore >= 50 ? 'var(--warning)' : 'var(--text-dim)'}; width:35px; text-align:right;">${avgScore}</span>
+          </div>`;
+        }).join('');
+
+      const agentHtml = `
+        <div style="flex:1; min-width:220px;">
+          <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:8px;">Rendimiento por Agente</div>
+          ${agentRows}
+        </div>`;
+
+      /* ── RENDER ── */
+      el.innerHTML =
+        '<div style="display:flex; gap:24px; flex-wrap:wrap;">' +
+          '<div style="flex:1; min-width:280px;">' +
+            '<div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:10px;">Embudo de Conversión</div>' +
+            funnelHtml + lostHtml + metricsHtml +
+          '</div>' +
+          '<div style="display:flex; flex-direction:column; gap:20px; flex:1; min-width:280px;">' +
+            sourceHtml + agentHtml +
+          '</div>' +
+        '</div>';
+
+      const stamp = $('#convUpdated');
+      if (stamp) stamp.textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    } catch (err) {
+      logError('renderDashConversion:', err);
+      el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Error al cargar el análisis de conversión.</p>';
     }
   }
 
