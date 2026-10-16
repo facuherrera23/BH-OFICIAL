@@ -2332,6 +2332,10 @@ function bindLeadTaskForm(panel, lead) {
         if (ins.error) throw new Error(ins.error.message);
         await syncLeadFollowup(leadId);
         toast('Tarea creada.', 'success');
+        // Recargar solo la lista de tareas en el panel y mantener la pestaña activa
+        await loadLeadTasks(leadId, panel);
+        var tasksTabBtn = panel.querySelector('[data-crmTab="tasks"]');
+        if (tasksTabBtn) tasksTabBtn.click();
       } else if (action === 'visit') {
         if (!due) { toast('Seleccioná fecha y hora.', 'error'); return; }
         var propSel = panel.querySelector('#leadTaskProp');
