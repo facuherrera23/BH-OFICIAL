@@ -400,6 +400,7 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
           notes: data.mensaje || 'Consulta desde landing page',
           source: 'landing_page',
           preferred_zone: data.zona || '',
+          consent_at: new Date().toISOString(),
           ...(interest || {}),
         };
 
