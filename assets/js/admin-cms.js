@@ -308,7 +308,7 @@
       const fields = $$('.cms-field[data-key]');
       const updatesBySection = {};
 
-      const urlFields = ['og_url', 'og_image', 'twitter_image', 'hero_video_url', 'cta_url', 'instagram', 'facebook', 'linkedin', 'youtube', 'video_url'];
+      const urlFields = ['og_url', 'og_image', 'twitter_image', 'hero_video_url', 'cta_url', 'instagram', 'facebook', 'tiktok', 'youtube', 'video_url'];
       const requiredFields = new Set(['title', 'meta_title', 'meta_description']);
       const urlFieldsSet = new Set(urlFields);
       const errors = [];
@@ -556,7 +556,7 @@
     schedule:         { section: 'contact', path: 'schedule' },
     social_instagram: { section: 'social',  path: 'instagram' },
     social_facebook:  { section: 'social',  path: 'facebook' },
-    social_linkedin:  { section: 'social',  path: 'linkedin' },
+    social_tiktok:    { section: 'social',  path: 'tiktok' },
     social_youtube:   { section: 'social',  path: 'youtube' },
     zernio_api_key:   { section: 'zernio',  path: 'api_key' }
   };

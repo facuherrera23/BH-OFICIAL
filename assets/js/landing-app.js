@@ -926,7 +926,7 @@ function renderSocialLinks(social) {
   const platforms = [
     { cls: 'fa-instagram', url: social.instagram },
     { cls: 'fa-facebook-f', url: social.facebook },
-    { cls: 'fa-linkedin-in', url: social.linkedin },
+    { cls: 'fa-tiktok', url: social.tiktok },
     { cls: 'fa-youtube', url: social.youtube }
   ];
   document.querySelectorAll('a.social-circle').forEach(a => {
@@ -1715,7 +1715,7 @@ function renderSocialLinks(social) {
         }
         if (c.instagram) updateSocialLink('.fa-instagram', c.instagram);
         if (c.facebook) updateSocialLink('.fa-facebook-f', c.facebook);
-        if (c.linkedin) updateSocialLink('.fa-linkedin-in', c.linkedin);
+        if (c.tiktok) updateSocialLink('.fa-tiktok', c.tiktok);
         if (c.youtube) updateSocialLink('.fa-youtube', c.youtube);
         if (c.weekday_label) setText('.contact-weekday-label', c.weekday_label);
         if (c.weekday_response) setText('.contact-weekday-response', c.weekday_response);
@@ -1759,7 +1759,7 @@ function renderSocialLinks(social) {
         const platforms = [
           { cls: 'fa-instagram', url: c.instagram },
           { cls: 'fa-facebook-f', url: c.facebook },
-          { cls: 'fa-linkedin-in', url: c.linkedin },
+          { cls: 'fa-tiktok', url: c.tiktok },
           { cls: 'fa-youtube', url: c.youtube }
         ];
         document.querySelectorAll('a.social-circle').forEach(a => {
