@@ -1187,6 +1187,89 @@ function getLeadProps(id) {
     }).catch(function () { return []; });
 }
 
+/* ============================================================
+   MOTOR DE MATCH LEAD ↔ PROPIEDAD
+   Sugiere propiedades del inventario que encajan con las
+   preferencias del lead (zona, presupuesto, tipo, ambientes).
+   Score 0-100: zona 30 + presupuesto 30 + tipo 20 + ambientes 20.
+   ============================================================ */
+function computePropertyMatches(lead, allProps, linkedPropIds) {
+  if (!lead || !allProps || !allProps.length) return [];
+  var zone = (lead.preferred_zone || '').toLowerCase().trim();
+  var type = lead.preferred_type || '';
+  var rooms = lead.preferred_rooms || null;
+  var budget = Number(lead.budget_usd) || null;
+  var opType = lead.operation_type || '';
+  /* Sin preferencias cargadas → no hay match posible */
+  if (!zone && !type && !rooms && !budget) return [];
+
+  var linked = new Set(linkedPropIds || []);
+  var matches = [];
+  allProps.forEach(function(p) {
+    if (!p.is_published || p.deleted_at) return;
+    if (linked.has(p.id)) return;
+    /* Filtro duro: tipo de operación */
+    if (opType === 'compra' && p.status !== 'venta') return;
+    if (opType === 'alquiler' && p.status !== 'alquiler') return;
+
+    var score = 0;
+    var reasons = [];
+    /* Zona: exacta 30, parcial 20 */
+    if (zone && p.zone) {
+      var pz = (p.zone || '').toLowerCase().trim();
+      if (pz === zone) { score += 30; reasons.push('Zona exacta'); }
+      else if (pz.indexOf(zone) !== -1 || zone.indexOf(pz) !== -1) { score += 20; reasons.push('Zona cercana'); }
+    }
+    /* Presupuesto: dentro 30, hasta 20% sobre 15 */
+    if (budget && p.price_usd) {
+      var price = Number(p.price_usd);
+      if (price <= budget) { score += 30; reasons.push('En presupuesto'); }
+      else if (price <= budget * 1.2) { score += 15; reasons.push('Cerca del presupuesto'); }
+    }
+    /* Tipo: 20 */
+    if (type && p.property_type && p.property_type === type) { score += 20; reasons.push('Tipo correcto'); }
+    /* Ambientes: ±1 → 20 */
+    if (rooms && p.rooms && Math.abs(p.rooms - rooms) <= 1) { score += 20; reasons.push('Ambientes'); }
+
+    if (score >= 20) {
+      matches.push({ id: p.id, code: p.property_code, title: p.title, zone: p.zone,
+        price_usd: p.price_usd, price_currency: p.price_currency,
+        image: (p.image_urls || [])[0] || null, score: score, reasons: reasons });
+    }
+  });
+  return matches.sort(function(a, b) { return b.score - a.score; }).slice(0, 5);
+}
+
+function matchScoreBadge(score) {
+  var pct = Math.min(100, score);
+  var color = pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--accent)' : 'var(--warning)';
+  var bg = pct >= 80 ? 'rgba(16,185,129,0.12)' : pct >= 50 ? 'rgba(31,200,195,0.12)' : 'rgba(255,184,0,0.12)';
+  return '<span style="font-size:10px; font-weight:800; color:' + color + '; background:' + bg + '; padding:2px 8px; border-radius:6px; white-space:nowrap; flex-shrink:0;">' + pct + '%</span>';
+}
+
+function renderPropSuggestions(matches) {
+  if (!matches || !matches.length) {
+    return '<div class="crm-suggest-none"><i class="fas fa-magnifying-glass"></i><span>Sin propiedades que encajen con las preferencias de este lead.</span></div>';
+  }
+  return matches.map(function(m) {
+    var price = m.price_currency === 'ARS' ? '$' + (Number(m.price_usd) || 0).toLocaleString('es-AR') : 'U$S ' + (Number(m.price_usd) || 0).toLocaleString('es-AR');
+    var thumb = m.image
+      ? '<img class="crm-suggest-thumb" src="' + esc(m.image) + '" alt="">'
+      : '<span class="crm-suggest-thumb crm-suggest-thumb--empty"><i class="fas fa-house-chimney"></i></span>';
+    return '<div class="crm-suggest-item" data-suggest-prop="' + esc(m.id) + '">' +
+      thumb +
+      '<div class="crm-suggest-info">' +
+        '<span class="crm-suggest-code">' + esc(m.code || '—') + '</span>' +
+        '<span class="crm-suggest-title">' + esc(m.title || '') + '</span>' +
+        '<span class="crm-suggest-meta">' + esc(price) + (m.zone ? ' · ' + esc(m.zone) : '') + '</span>' +
+        '<span class="crm-suggest-reasons">' + m.reasons.map(esc).join(' · ') + '</span>' +
+      '</div>' +
+      matchScoreBadge(m.score) +
+      '<button type="button" class="btn-action crm-suggest-link" data-suggest-link="' + esc(m.id) + '" title="Vincular esta propiedad al lead"><i class="fas fa-link"></i></button>' +
+    '</div>';
+  }).join('');
+}
+
 function openDetailPanel(id) {
   /* fix de stacking/clipping: el panel vive dentro de #tab-leads, que está dentro de un contenedor con overflow.
      position:fixed quedaría restringido a ese padre (se ve cortado y los clics no escucha). Lo movemos a <body>. */
@@ -1200,7 +1283,9 @@ function openDetailPanel(id) {
   bindSideOverlayClose(panel);
   panel.classList.add('open');
 
-  Promise.all([getLeadFull(id), getLeadActivities(id), getLeadProps(id), getLeadVisits(id), getLeadTasks(id), getLeadSurveys(id)])
+  Promise.all([getLeadFull(id), getLeadActivities(id), getLeadProps(id), getLeadVisits(id), getLeadTasks(id), getLeadSurveys(id),
+    db().from('properties').select('id, title, property_code, zone, property_type, rooms, price_usd, price_currency, status, is_published, image_urls, deleted_at').eq('is_published', true).is('deleted_at', null)
+  ])
     .then(function (results) {
       var leadRes = results[0];
       if (leadRes.error) throw new Error(leadRes.error.message);
@@ -1211,15 +1296,20 @@ function openDetailPanel(id) {
       var visits = results[3] || [];
       var tasks = results[4] || [];
       var surveys = results[5] || [];
+      var propRes = results[6];
+      var allProps = (propRes && propRes.data) ? propRes.data : [];
+      var linkedIds = props.map(function(p) { return p.property_id; });
+      if (lead.property_id) linkedIds.push(lead.property_id);
+      var matches = computePropertyMatches(lead, allProps, linkedIds);
       if (!props.length && lead.property_id) {
         /* fallback a property_id directo */
         return db().from('properties').select('id, title').eq('id', lead.property_id).single()
           .then(function (pr) {
             if (pr.data) props = [{ property_id: pr.data.id, property_title: pr.data.title }];
-            renderSide(panel, lead, activities, props, visits, tasks, surveys); return null;
+            renderSide(panel, lead, activities, props, visits, tasks, surveys, matches); return null;
           });
       }
-      renderSide(panel, lead, activities, props, visits, tasks, surveys);
+      renderSide(panel, lead, activities, props, visits, tasks, surveys, matches);
       return null;
     })
     .catch(function (e) { toast('Error al cargar prospecto: ' + e.message, 'error'); closeDetailPanel(); });
@@ -1239,7 +1329,14 @@ function bindSideOverlayClose(panel) {
   panel.dataset.sideBound = '1';
 }
 
-function renderSide(panel, lead, activities, props, visits, tasks, surveys) {
+function renderSide(panel, lead, activities, props, visits, tasks, surveys, propMatches) {
+  /* Pre-computar HTML de sugerencias ANTES del innerHTML (evita issues de
+     scope en la concatenación gigante del panel). */
+  var suggestHtml = '';
+  if (propMatches && propMatches.length) {
+    suggestHtml = '<div class="crm-side-section"><h4 class="crm-side-section-title crm-suggest-title"><i class="fas fa-wand-magic-sparkles" style="color:#8b5cf6; margin-right:4px;"></i> Propiedades Sugeridas</h4>' +
+      '<div id="crmSuggestWrap">' + renderPropSuggestions(propMatches) + '</div></div>';
+  }
   var stage = normalizeStage(lead.stage || 'nuevo');
   var sopts = LEAD_STATUSES.map(function (s) { return '<option value="' + s + '"' + (stage === s ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>'; }).join('');
   var aopts = _agents.map(function (a) { return '<option value="' + a.id + '"' + (lead.assigned_to === a.id ? ' selected' : '') + '>' + esc(a.full_name) + '</option>'; }).join('');
@@ -1285,7 +1382,7 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys) {
         '<button type="button" class="crm-tab-btn" data-crm-tab="tasks">Tareas</button>' +
         '<button type="button" class="crm-tab-btn" data-crm-tab="props">Propiedades</button>' +
       '</div>' +
-      sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, buildUnifiedTimeline(activities, visits, []), tasks, props) +
+      sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, buildUnifiedTimeline(activities, visits, []), tasks, props, suggestHtml) +
       '<div class="crm-side-save"><button class="btn-luxury-action" id="crmSideSaveBtn" style="width:100%;">Guardar cambios</button></div>' +
     '</div>' +
     '</div>';
@@ -1297,6 +1394,24 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys) {
   });
   bindSideSave(lead, panel);
   bindPropSearch(panel, lead.id);
+  /* Motor de match: vincular propiedad sugerida al lead */
+  panel.querySelectorAll('.crm-suggest-link').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var propId = this.dataset.suggestLink;
+      if (!propId) return;
+      linkProperty(lead.id, propId, panel);
+      /* quitar la sugerencia de la lista tras vincular */
+      var item = this.closest('.crm-suggest-item');
+      if (item) {
+        item.style.opacity = '0.4';
+        item.style.pointerEvents = 'none';
+        this.innerHTML = '<i class="fas fa-check"></i>';
+        this.style.color = 'var(--success)';
+        this.style.borderColor = 'var(--success)';
+      }
+    });
+  });
   bindContactActions(panel, lead, (props && props[0]) || null, props);
   bindSurveyActions(panel, lead, surveys);
   bindLeadTaskForm(panel, lead);
@@ -1326,7 +1441,7 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys) {
   }
 }
 
-function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks, props) {
+function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks, props, suggestHtml) {
   var propOpts = (props || []).map(function (p) {
     return '<option value="' + p.property_id + '">' + esc(p.property_title || 'Propiedad') + '</option>';
   }).join('');
@@ -1409,6 +1524,7 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks
       '<div class="crm-side-section"><h4 class="crm-side-section-title">Historial</h4><div class="crm-timeline crm-timeline--historial">' + (timelineHtml || buildTimelineHTML([])) + '</div></div>' +
     '</div>' +
     '<div class="crm-tab-content" id="crmTab-props" style="display:none;">' +
+      suggestHtml +
       '<div class="crm-side-section">' +
         '<div class="crm-side-fields"><div id="crmDtlPropsWrap">' + ph +
           '<div class="crm-prop-add">' +
