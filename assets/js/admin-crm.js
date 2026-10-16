@@ -1277,6 +1277,49 @@ function renderPropSuggestions(matches) {
    ============================================================ */
 var OFFER_TYPE_LBL = { client: 'Oferta del cliente', counter: 'Contraoferta del dueño', accepted: 'Oferta aceptada', rejected: 'Oferta rechazada' };
 
+/* Refresca el historial de ofertas dentro del panel sin cerrarlo. */
+async function refreshOffersInPanel(leadId, panel) {
+  try {
+    var r = await db().from('lead_offers').select('*').eq('lead_id', leadId).order('created_at', { ascending: false }).limit(10);
+    if (r.error) throw new Error(r.error.message);
+    var offers = r.data || [];
+    /* Buscar la sección de negociación existente o insertarla */
+    var propsTab = panel.querySelector('#crmTab-props');
+    if (!propsTab) return;
+    var existingHistory = propsTab.querySelector('.offer-history');
+    if (existingHistory) {
+      var section = existingHistory.closest('.crm-side-section');
+      if (section) {
+        if (offers.length) {
+          section.innerHTML = '<h4 class="crm-side-section-title"><i class="fas fa-handshake" style="color:#8b5cf6; margin-right:4px;"></i> Negociación</h4>' +
+            '<div class="offer-history">' + renderOfferHistory(offers).replace(/^<div class="crm-side-section">|<\/div>$/g, '') + '</div>';
+        } else {
+          section.remove();
+        }
+      }
+    } else if (offers.length) {
+      /* No existía: insertar al final de la pestaña props */
+      var wrap = document.createElement('div');
+      wrap.innerHTML = renderOfferHistory(offers);
+      var inserted = false;
+      var sections = propsTab.querySelectorAll('.crm-side-section');
+      sections.forEach(function(s) { if (!inserted) { s.parentNode.insertBefore(wrap, s.nextSibling); inserted = true; } });
+    }
+    /* Re-bind de botones aceptar/rechazar */
+    var lead = { id: leadId };
+    panel.querySelectorAll('.offer-accept-btn, .offer-reject-btn').forEach(function(b) {
+      b.replaceWith(b.cloneNode(true));
+    });
+    /* Re-fetch lead para tener el objeto completo */
+    var lr = await db().from('leads').select('*').eq('id', leadId).single();
+    if (lr.data) {
+      bindOfferActions(panel, lr.data, offers);
+    }
+  } catch (e) {
+    console.warn('[crm] refreshOffersInPanel:', e.message);
+  }
+}
+
 function showOfferModal(lead, propId, propTitle, panel) {
   var overlay = document.createElement('div');
   overlay.className = 'crm-outcome-overlay';
@@ -1369,7 +1412,7 @@ function showOfferModal(lead, propId, propTitle, panel) {
 
       toast('Oferta registrada: ' + fmt, 'success');
       close();
-      refreshTasksInPanel(lead.id, panel);
+      refreshOffersInPanel(lead.id, panel);
       loadLeads();
     } catch (e) { toast('Error: ' + e.message, 'error'); }
   });
@@ -1423,7 +1466,7 @@ function bindOfferActions(panel, lead, offers) {
         /* Nota en el historial */
         await db().from('lead_activities').insert([{ lead_id: lead.id, activity_type: 'status_change', title: 'Oferta aceptada: ' + fmt + ' — Lead GANADO' }]);
         toast('Oferta aceptada: ' + fmt + ' · Lead ganado 🎉', 'success');
-        await refreshTasksInPanel(lead.id, panel);
+        refreshOffersInPanel(lead.id, panel);
         loadLeads();
       } catch (e) { toast('Error: ' + e.message, 'error'); }
     });
@@ -1442,7 +1485,7 @@ function bindOfferActions(panel, lead, offers) {
         await db().from('lead_offers').update({ offer_type: 'rejected' }).eq('id', offerId);
         await db().from('lead_activities').insert([{ lead_id: lead.id, activity_type: 'note', title: 'Oferta rechazada: ' + fmt }]);
         toast('Oferta rechazada.', 'info');
-        await refreshTasksInPanel(lead.id, panel);
+        refreshOffersInPanel(lead.id, panel);
       } catch (e) { toast('Error: ' + e.message, 'error'); }
     });
   });
@@ -1477,7 +1520,8 @@ function openDetailPanel(id) {
       var surveys = results[5] || [];
       var propRes = results[6];
       var allProps = (propRes && propRes.data) ? propRes.data : [];
-      var offers = results[7] || [];
+      var offerRes = results[7];
+      var offers = (offerRes && offerRes.data) ? offerRes.data : [];
       var linkedIds = props.map(function(p) { return p.property_id; });
       if (lead.property_id) linkedIds.push(lead.property_id);
       var matches = computePropertyMatches(lead, allProps, linkedIds);
