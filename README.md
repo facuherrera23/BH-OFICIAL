@@ -95,9 +95,9 @@
 ### 🔐 Administración
 | Área | Funciones |
 |---|---|
-| **Dashboard** | KPIs (volumen venta USD, volumen alquiler ARS, propiedades activas, leads, visitas), gráficos y acciones rápidas. |
-| **Propiedades** | CRUD, borradores, reordenamiento, soft-delete, publicación a ML, paginación server-side, validación Zod, precios ARS/USD, superficie cubierta/terreno. |
-| **Leads & CRM** | Pipeline Kanban, tags, scoring, exportación CSV, agendado directo de visitas. |
+| **Dashboard** | KPIs (volumen venta/alquiler, propiedades, leads, visitas, brokers), gráficos, **propiedades estancadas** (badge "bajó precio"), **razones de pérdida**, **recomendaciones** (exclusividades con countdown + leads sin contacto), **análisis de conversión** (embudo visual, fuentes, agentes), acciones rápidas. |
+| **Propiedades** | CRUD, borradores, reordenamiento, soft-delete, publicación a ML, paginación server-side, validación Zod, precios ARS/USD, superficie cubierta/terreno. **Historial de encuestas por propiedad** (📋). **Código y título clickeables** → ficha pública. **Campaña WhatsApp** (📢) a leads que encajan. | |
+| **Leads & CRM** | Pipeline Kanban, tags, scoring, exportación CSV, agendado directo de visitas. **Razón de pérdida obligatoria** (modal con 6 opciones). **Motor de match**: sugerencias automáticas de propiedades que encajan. **Deal room**: ofertas, contraofertas, aceptar/rechazar con transición a Ganado. | |
 | **Agenda** | Calendario mensual + tabla, check-in/check-out, export CSV/ICS, recordatorios. |
 | **Tasaciones** | ACM embebido en iframe + listado de tasaciones. |
 | **Propietarios** | Expedientes, documentos con vencimiento/verificación, timeline, export CSV/PDF, link de portal. |
@@ -303,7 +303,7 @@ BH-OFICIAL/
 │
 ├── supabase/
 │   ├── functions/                # 48 Edge Functions (Deno) + _shared/
-│   └── migrations/               # 101 migraciones SQL versionadas
+│   └── migrations/               # 105 migraciones SQL versionadas
 │
 ├── tests/                        # Suite E2E Playwright (11 specs)
 ├── scripts/                      # bump-busters, generate-ficha, recovery, verificación
@@ -948,13 +948,16 @@ Los tokens se guardan cifrados (AES-256-GCM) y nunca llegan al frontend. Estados
 | `20260828_fix_owners_rls` | RLS de owners |
 | `20260830_fix_properties_public_read` | Lectura pública de propiedades |
 | `20260901000001_fix_p0_security_and_functional` | Hardening P0 (RLS, REVOKEs, vistas, policies anon) |
-| *(…98 migraciones intermedias, ver `supabase/migrations/` — total 101)* | ML completo (sync, webhooks, questions, tokens cifrados), Zernio chat (5 tablas + realtime + publication), CRM revamp (stages canónicos, scoring, tareas), Agenda v2 (QR, recordatorios cron), RELA, encuesta de visita (`visit_surveys` + RPC por token + archivado + set v3), portal del propietario v2 (RPCs por token hardening), crons (backup, reminders, crm-*) |
+| *(…101 migraciones intermedias, ver `supabase/migrations/` — total 105)* | ML completo (sync, webhooks, questions, tokens cifrados), Zernio chat (5 tablas + realtime + publication), CRM revamp (stages canónicos, scoring, tareas), Agenda v2 (QR, recordatorios cron), RELA, encuesta de visita (`visit_surveys` + RPC por token + archivado + set v3), portal del propietario v2 (RPCs por token hardening), crons (backup, reminders, crm-*), deal room (`lead_offers`), historial de precios, lost reason |
 | `20261012000001_supervision_engine_fixes` | Motor de reglas: `filter.equals` con whitelist + fix de purga (`COALESCE` de fechas) |
 | `20261012000002_portal_tasaciones_type` | Portal lee tasaciones según `type` (alquiler=ARS / venta=USD) |
 | `20261012000003_survey_questions_v3` | Set de preguntas v3 de la encuesta (RPC replace full-set) |
 | `20261015000001_hardening_anon_execute_p1` | Hardening P1 de la auditoría: EXECUTE por grupos en 12 funciones internas (2 excepciones justificadas por INSERT anónimo del landing) |
 | `20261015000002_realtime_publication_crm` | Publicación realtime del CRM versionada (4 tablas, DO block idempotente) |
 | `20261015000003_supervision_digest_stats` | RPC de KPIs exactos del digest (agregación server-side; fix de los 3 bugs de `fetchDigestData`) |
+| `20261016000001_leads_lost_reason` | Columna `lost_reason` en leads — razón estructurada de pérdida (presupuesto, ubicación, encontró otra, no responde, financiamiento, otro) |
+| `20261016000002_lead_offers_deal_room` | Deal room: tabla `lead_offers` para ofertas y contraofertas (tipo, monto, moneda, condiciones) con RLS scoped al agente |
+| `20261016000003_property_price_history` | Historial de precios: tabla `property_price_history` + trigger automático en cada cambio de `price_usd` |
 
 > ⚠️ **Drift conocido (auditoría 2026-10-15)**: la publicación realtime de `lead_properties`, `lead_tasks`, `lead_activities` y `owner_tasks` se aplicó directo en producción vía MCP **sin archivo de migración** (el cambio está activo y verificado en `supabase_realtime`, pero no es reproducible desde el repo). Pendiente: crear la migración equivalente para que un rebuild desde cero quede idéntico.
 
@@ -1190,6 +1193,10 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 | 020 | Diálogos confirm/prompt a `z-index` mayor que modales (`calc(var(--z-modal)+10)`) | Al mismo z-index el último del DOM pinta encima y la confirmación quedaba invisible detrás del modal padre |
 | 021 | Tokens de portal: reutilizar el vigente, regenerar solo con confirmación | Un upsert ciega invalidaría al instante el link que el propietario ya tiene |
 | 022 | Encoding: nunca PowerShell 5.1 para archivos con acentos (usar tools/Node `fs` utf8) | Incidentes reales de doble-encoding en admin.html (2026-10-12); scripts de recovery/resolución con Node |
+| 023 | Lost reason obligatoria: modal con 6 opciones predefinidas, cancelar revierte el dropdown | 36 leads perdidos sin registro de por qué; en 2 meses el dueño sabe exactamente dónde se le escapan los clientes |
+| 024 | Motor de match lead↔propiedad: scoring por criterios (zona 30 + presupuesto 30 + tipo 20 + ambientes 20), filtro duro por operación | Convierte el CRM de registro pasivo en herramienta de venta activa: el agente abre el lead y ya ve qué propiedades ofrecer |
+| 025 | Deal room: tabla `lead_offers` separada (no notas en activities) para ofertas y contraofertas | La negociación necesita estructura (monto, tipo, estado) — las etapas visita_realizada→negociacion→cerrado_ganado existían pero nadie las usaba |
+| 026 | Campaña WhatsApp: matching reverso propiedad→leads con wa.me links individuales | WhatsApp no soporta batch sends vía wa.me; el agente ve la lista ordenada por score y envía uno por uno con click |
 
 ---
 
@@ -1214,6 +1221,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 
 | Fecha | Versión | Cambios |
 |---|---|---|
+| 2026-10-16 | — | **Día más productivo del proyecto — 8 features de negocio + fixes UI + visual overhaul**. **CRM**: tareas se quedan en pestaña tras crear + editar tareas pendientes con modal premium (título, descripción, prioridad, vencimiento). **Propiedades**: botón 📋 historial de encuestas por propiedad (visitante, puntuaciones, compraría, textos libres) + código y título clickeables → ficha pública (botón "Ver ficha" removido). **Mejoras de negocio (8 de 12 de la auditoría)**: (1) **Razón de pérdida obligatoria** — columna `lost_reason` + modal premium con 6 opciones (presupuesto, ubicación, encontró otra, no responde, financiamiento, otro) al marcar perdido desde chip o dropdown, widget en dashboard con conteo agrupado; (2) **Alerta de estancamiento** — widget en dashboard: 30 días para nunca visitadas, 60 para sin visitas recientes, badges color-codificados, "N bajó precio"; (3) **Funnel de conversión** — sección full-width en dashboard: embudo visual de 7 etapas, Lead→Visita %, Lead→Ganado %, tasa de pérdida, conversión por fuente (Landing/ML/Manual), rendimiento por agente; (4) **Motor de match lead↔propiedad** — al abrir un lead en la pestaña Propiedades aparecen automáticamente las propiedades del inventario que encajan (zona 30 + presupuesto 30 + tipo 20 + ambientes 20), con score badge, razones y botón vincular; (5) **Deal room** — tabla `lead_offers` + botón 🤝 "Ofertar" en cada propiedad vinculada, modal de oferta (monto, moneda, cliente/contrario, condiciones), historial de negociación con aceptar (→ lead GANADO + estimated_value) y rechazar, al registrar primera oferta el lead pasa a negociación; (6) **Alertas de exclusividad** — sección en recomendaciones con countdown por propietario, color-codificado (rojo ≤7d, amarillo ≤15d, naranja ≤30d); (7) **Historial de precios** — tabla `property_price_history` + trigger automático en cada cambio de price_usd, widget estancadas muestra badge "↓N%" si la propiedad bajó precio; (8) **Campaña WhatsApp masiva** — botón 📢 en cada propiedad publicada, matching reverso propiedad→leads, score de encaje, links wa.me con mensaje personalizado, registro automático en lead_activities. **Fix adicional**: botón WhatsApp individual en propiedades estaba sin handler (solo funcionaba en tasaciones) — corregido. **Visual overhaul de todos los elementos nuevos**: botones aceptar/rechazar premium (32px, gradientes, glow, uppercase), sugerencias con hover lift, btn-ghost unificado en los 4 modales nuevos |
 | 2026-10-15 (4) | — | **Hallazgo mayor durante la verificación del P2 — 3 crons de entrega rotos por `current_setting` NULL** (extensión del bug del incidente 2026-10-08): digest semanal con 401 silencioso en cada corrida (nunca llegó por cron), `owner-tasks-reminder` con **3.999 fallos consecutivos** (URL NULL), `monthly-commission-liquidation` en no-op (guard de vault con secret inexistente — **las liquidaciones de septiembre nunca se generaron**, pendiente de decisión del dueño). Fix (migración `20261015000004`): gate `x-sync-secret` contra `zernio_config` en las 3 funciones + crons con URL literal y secret leído en runtime. **Verificado end-to-end**: digest 401 sin secret / 200 con secret + email real con KPIs correctos; owner-tasks-reminder 200 (dedup nativo, sin ráfaga) |
 | 2026-10-15 (3) | — | **Fix de los P2 de la auditoría**: (1) KPIs del digest — eran 3 bugs (cap de 1000 filas de PostgREST, filtro por `severity` inexistente en `audit_log`, sample que anulaba uniqueUsers) → RPC `supervision_digest_stats` con agregación exacta server-side + rewrite de `fetchDigestData` (verificado: 17.842 acciones reales vs 1.000 mostradas antes, uniqueUsers 3, successCount 17.841); el digest ahora resuelve nombres de todos los usuarios y corta los días en ART. (2) `qr-visita.html` — la CSP bloqueaba TODO el script inline (página en "Cargando…" eterno, sin QR) → migrado a `assets/js/pages/qr-visita-page.js` + botón imprimir por listener, verificado en browser. (3) Borrado de `tmp-gen-jwt`/`cta-test`/bucket `fichas` queda documentado como manual (sin tool MCP) |
 | 2026-10-15 (2) | — | **Fix de los 2 hallazgos P1 de la auditoría**: (1) hardening de EXECUTE en 12 funciones internas `SECURITY DEFINER` ejecutables por `anon` (`20261015000001`) — clasificación por invocador real en 4 grupos (triggers de tablas anon-writable / triggers de tablas authenticated-only / crons / RPC de edge functions), con 2 excepciones documentadas que conservaron anon por el INSERT público del landing (`compute_lead_score`, `notify_new_lead`); advisor 25 → 15. (2) publicación realtime del CRM versionada (`20261015000002`, idempotente — cierra el drift DB↔repo). Verificación completa con `has_function_privilege` × 4 roles |

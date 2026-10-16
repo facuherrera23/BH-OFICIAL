@@ -142,20 +142,54 @@
 
 ---
 
-## Números del sistema (2026-10-15)
+## Números del sistema (actualizado 2026-10-16)
 
 | Métrica | Valor |
 |---|---|
-| Commits | 723 |
-| Archivos versionados | 298 |
-| JS propio (sin vendor) | ~22.8k líneas (root + pages) |
+| Commits | ~780 |
+| Archivos versionados | ~300 |
+| JS propio (sin vendor) | ~24k líneas (root + pages) |
 | Edge Functions | 48 en repo / 49 desplegadas (2 stubs debug solo-dashboard) |
-| Migraciones | 98 |
-| Tablas / RLS / Policies | 63 / 63 (100 %) / 117 |
+| Migraciones | 105 |
+| Tablas / RLS / Policies | 66 / 66 (100 %) / ~120 |
 | Crons activos | 17 |
 | Tablas en realtime | 16 |
 | Tests E2E | 65 (62 activos + 3 con credenciales) |
 | Páginas públicas | 11 HTML + fichas generadas |
+
+---
+
+## Adenda de cierre (2026-10-16): 8 de 12 mejoras de negocio implementadas
+
+Las 8 mejoras CRÍTICO + ALTO + MEDIO de la auditoría de negocio se implementaron en una sola sesión de trabajo (2026-10-16):
+
+| # | Mejora | Qué resolvió | Cómo se implementó |
+|---|---|---|---|
+| 1 | **Motor de match lead↔propiedad** | El agente tenía que buscar manualmente entre 45 propiedades | Al abrir un lead → pestaña Propiedades: sugerencias automáticas con score (zona 30 + presupuesto 30 + tipo 20 + ambientes 20), botón vincular |
+| 2 | **Deal room (ofertas/negociación)** | Las etapas visita→negociación→cierre existían pero nadie las usaba | Tabla `lead_offers`, botón 🤖 en cada propiedad vinculada, historial con aceptar (→GANADO) y rechazar |
+| 3 | **Razón de pérdida obligatoria** | 36 leads perdidos sin UN registro de por qué | Modal premium con 6 opciones (presupuesto, ubicación, encontró otra, no responde, financiamiento, otro) + widget dashboard |
+| 4 | **Alerta de estancamiento** | 28 de 29 propiedades sin visitas en 60+ días, nadie lo veía | Widget dashboard: 30d para nunca visitadas, 60d para sin visitas recientes, badges color-codificados |
+| 6 | **Funnel de conversión** | El dueño no podía ver dónde se caían los leads | Sección full-width: embudo 7 etapas, Lead→Visita %, conversión por fuente, rendimiento por agente |
+| 9 | **Campaña WhatsApp masiva** | El agente compartía propiedades una por una | Botón 📢 en propiedades: matching reverso propiedad→leads, wa.me personalizados, registro en historial |
+| 10 | **Alertas de exclusividad** | Las exclusividades por vencer estaban en filtros, no en la cara del usuario | Sección en recomendaciones con countdown color-codificado por propietario |
+| 11 | **Historial de precios** | Sin registro de cuándo bajó el precio y desde cuánto | Tabla `property_price_history` + trigger automático, badge "↓N%" en propiedades estancadas |
+
+### El antes y el después
+
+**Antes (2026-10-15)**:
+```
+70 leads → 0 con visita → 0 en negociación → 0 ganados
+0 calientes · 36 perdidos sin motivo · 28 propiedades sin visitas · 0 comisiones
+```
+
+**Después (2026-10-16)**:
+- El agente abre un lead → ve propiedades sugeridas con score → vincula → oferta → acepta → GANADO
+- Al marcar perdido → DEBE elegir la razón → el dueño ve las causas agrupadas en el dashboard
+- 28 propiedades estancadas visibles con badges → el dueño sabe cuáles necesitan acción
+- Funnel completo visible → el dueño ve la conversión por fuente y agente
+- Campaña WhatsApp: una propiedad a todos los leads que encajan en segundos
+
+**Pendiente**: Item 12 (Mobile/PWA) — queda como proyecto dedicado para una futura sesión.
 
 ---
 
