@@ -185,6 +185,7 @@ jobs:
             "check-password-hash"
             "cloudinary-sign"
             "cron_exclusivity_renewals"
+            "exclusive-expiry-alert"
             "ficha"
             "manage-users"
             "ml-callback"
