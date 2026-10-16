@@ -204,6 +204,7 @@
               ${mlButtons}
               ${relaButtons}
               ${p.is_published ? `<button class="btn-action" style="color:#25D366;" title="Compartir ficha por WhatsApp" data-wa-share="${esc(p.id)}" data-wa-code="${esc(p.property_code || '')}"><i class="fab fa-whatsapp"></i></button>` : ''}
+              ${p.is_published ? `<button class="btn-action" style="color:#FFB800;" title="Campaña WhatsApp a leads que encajan" data-prop-act="campaign" data-prop-id="${esc(p.id)}" data-prop-code="${esc(p.property_code || '')}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-bullhorn"></i></button>` : ''}
               <button class="btn-action" style="color:#8b5cf6;" title="Ver encuestas de visitas" data-prop-act="surveys" data-prop-id="${esc(p.id)}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-clipboard-list"></i></button>
               <button class="btn-action" title="Duplicar propiedad" data-prop-act="duplicate" data-prop-id="${esc(p.id)}"><i class="fas fa-copy"></i></button>
               <button class="btn-action" title="Editar" data-prop-act="edit" data-prop-id="${esc(p.id)}"><i class="fas fa-pen"></i></button>
@@ -1090,6 +1091,9 @@
     if (tbodyEl && !tbodyEl.dataset.propDelegation) {
       tbodyEl.dataset.propDelegation = '1';
       tbodyEl.addEventListener('click', (e) => {
+        /* Fix: el botón data-wa-share no tenía handler en properties (solo en tasaciones) */
+        const waBtn = e.target.closest('[data-wa-share]');
+        if (waBtn) { window.adminApp.sharePropertyWhatsApp(waBtn.dataset.waShare, waBtn.dataset.waCode || ''); return; }
         const btn = e.target.closest('[data-prop-act]');
         if (!btn) return;
         const id = btn.dataset.propId;
@@ -1101,6 +1105,7 @@
         else if (act === 'destroy') window.adminApp.destroyProperty(id);
         else if (act === 'duplicate') window.adminApp.duplicateProperty(id);
         else if (act === 'surveys') showPropertySurveys(id, btn.dataset.propTitle || '');
+        else if (act === 'campaign') showWhatsAppCampaign(id, btn.dataset.propCode || '', btn.dataset.propTitle || '');
       });
       tbodyEl.addEventListener('change', (e) => {
         const chk = e.target.closest('.prop-row-check');
@@ -1347,6 +1352,147 @@
     } catch (err) {
       logError('survey history load failed:', err);
       body.innerHTML = '<div class="survey-history-empty"><i class="fas fa-triangle-exclamation"></i><span>Error al cargar: ' + esc(err.message) + '</span></div>';
+    }
+  }
+
+  /* ============================================================
+     CAMPAÑA WHATSAPP — enviar una propiedad a todos los leads que encajan
+     Modal con matching reverso (propiedad → leads) y links wa.me
+     ============================================================ */
+  async function showWhatsAppCampaign(propertyId, propertyCode, propTitle) {
+    if (!propertyId) return;
+    const client = await getAuthedClient();
+    if (!client) return;
+
+    /* Overlay */
+    const overlay = document.createElement('div');
+    overlay.className = 'wa-campaign-overlay';
+    const box = document.createElement('div');
+    box.className = 'wa-campaign-box';
+    box.innerHTML =
+      '<div class="wa-campaign-header">' +
+        '<span class="wa-campaign-icon"><i class="fas fa-bullhorn"></i></span>' +
+        '<div><h3 class="wa-campaign-title">Campaña WhatsApp</h3>' +
+        '<p class="wa-campaign-subtitle">' + esc(propTitle || '') + (propertyCode ? ' · ' + esc(propertyCode) : '') + '</p></div>' +
+      '</div>' +
+      '<div class="wa-campaign-body"><div style="padding:20px; text-align:center; color:var(--text-dim); font-size:12px;">Buscando leads que encajan...</div></div>' +
+      '<div class="wa-campaign-footer"><button type="button" class="btn-ghost wa-campaign-close">Cerrar</button></div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    function close() { document.removeEventListener('keydown', onKey); overlay.remove(); }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+    box.querySelector('.wa-campaign-close').addEventListener('click', close);
+
+    const body = box.querySelector('.wa-campaign-body');
+    try {
+      /* Fetch propiedad + leads activos */
+      const [propRes, leadsRes] = await Promise.all([
+        client.from('properties').select('id, title, property_code, zone, property_type, rooms, price_usd, price_currency, status, address').eq('id', propertyId).single(),
+        client.from('leads').select('id, full_name, phone, whatsapp, email, preferred_zone, preferred_type, preferred_rooms, budget_usd, operation_type, stage, lead_score').is('deleted_at', null).not('stage', 'in', '("cerrado_ganado","cerrado_perdido")').limit(100)
+      ]);
+      if (propRes.error) throw propRes.error;
+      const prop = propRes.data;
+      const leads = leadsRes.data || [];
+      if (!prop) throw new Error('Propiedad no encontrada');
+      if (!leads.length) { body.innerHTML = '<div class="wa-campaign-empty"><i class="fas fa-users-slash"></i><span>No hay leads activos para enviar esta propiedad.</span></div>'; return; }
+
+      /* Matching reverso: property → leads */
+      const matches = leads.map(l => {
+        let score = 0;
+        const reasons = [];
+        const leadZone = (l.preferred_zone || '').toLowerCase().trim();
+        const propZone = (prop.zone || '').toLowerCase().trim();
+        if (leadZone && propZone) {
+          if (propZone === leadZone) { score += 30; reasons.push('Zona exacta'); }
+          else if (propZone.includes(leadZone) || leadZone.includes(propZone)) { score += 20; reasons.push('Zona cercana'); }
+        }
+        const leadBudget = Number(l.budget_usd) || 0;
+        const propPrice = Number(prop.price_usd) || 0;
+        if (leadBudget > 0 && propPrice > 0) {
+          if (propPrice <= leadBudget) { score += 30; reasons.push('En presupuesto'); }
+          else if (propPrice <= leadBudget * 1.2) { score += 15; reasons.push('Cerca del presupuesto'); }
+        }
+        if (l.preferred_type && prop.property_type && l.preferred_type === prop.property_type) { score += 20; reasons.push('Tipo correcto'); }
+        if (l.preferred_rooms && prop.rooms && Math.abs(prop.rooms - l.preferred_rooms) <= 1) { score += 20; reasons.push('Ambientes'); }
+        if (l.operation_type === 'compra' && prop.status !== 'venta') return null;
+        if (l.operation_type === 'alquiler' && prop.status !== 'alquiler') return null;
+        if (score < 20) return null;
+        const wa = l.whatsapp || l.phone || '';
+        if (!wa || wa.replace(/\D/g, '').length < 8) return null;
+        return { ...l, score, reasons, wa_digits: wa.replace(/\D/g, '') };
+      }).filter(Boolean).sort((a, b) => b.score - a.score).slice(0, 12);
+
+      if (!matches.length) {
+        body.innerHTML = '<div class="wa-campaign-empty"><i class="fas fa-user-slash"></i><span>No hay leads activos que encajen con esta propiedad.</span></div>';
+        return;
+      }
+
+      /* Template del mensaje (texto plano, sin decoración) */
+      const TYPE = { casa: 'Casa', departamento: 'Departamento', terreno: 'Terreno', local: 'Local', oficina: 'Oficina', galpon: 'Galpón', quinta: 'Quinta', otro: 'Propiedad' };
+      const priceStr = prop.price_usd ? (prop.price_currency === 'ARS' ? '$' : 'USD') + ' ' + Number(prop.price_usd).toLocaleString('es-AR') : '';
+      const feats = [];
+      if (priceStr) feats.push(priceStr);
+      if (prop.rooms) feats.push(prop.rooms + ' ambientes');
+      if (prop.zone) feats.push(prop.zone);
+      const fichaUrl = propertyCode ? 'https://bienenhaus.com.ar/fichas/' + encodeURIComponent(propertyCode) + '.html' : '';
+
+      function buildMessage(leadName) {
+        const lines = [];
+        lines.push('Hola ' + (leadName || '').split(' ')[0] + ', te contacto de Bienenhaus Propiedades.');
+        lines.push('');
+        lines.push((TYPE[prop.property_type] || 'Propiedad') + ' en ' + (prop.status === 'alquiler' ? 'alquiler' : 'venta'));
+        lines.push(prop.title || '');
+        if (feats.length) lines.push(feats.join(' · '));
+        if (fichaUrl) { lines.push(''); lines.push('Ficha completa con fotos:'); lines.push(fichaUrl); }
+        lines.push('');
+        lines.push('¿Te interesa? Respondé y coordinamos una visita.');
+        return lines.join('\n');
+      }
+
+      /* Render */
+      const sent = new Set();
+      body.innerHTML =
+        '<div class="wa-campaign-stats">' + matches.length + ' lead' + (matches.length === 1 ? '' : 's') + ' encajan con esta propiedad</div>' +
+        matches.map((l, i) => {
+          const msg = buildMessage(l.full_name);
+          const waLink = 'https://wa.me/' + l.wa_digits + '?text=' + encodeURIComponent(msg);
+          return `
+          <div class="wa-campaign-item" data-lead-id="${esc(l.id)}" data-index="${i}">
+            <div class="wa-campaign-item-info">
+              <span class="wa-campaign-item-name">${esc(l.full_name)}</span>
+              <span class="wa-campaign-item-meta">${esc(l.phone || l.whatsapp || '')}${l.reasons.length ? ' · ' + esc(l.reasons.join(' · ')) : ''}</span>
+            </div>
+            <span class="wa-campaign-item-score">${l.score}%</span>
+            <a href="${waLink}" target="_blank" rel="noopener" class="wa-campaign-item-btn" data-lead-id="${esc(l.id)}" data-index="${i}"><i class="fab fa-whatsapp"></i> Enviar</a>
+          </div>`;
+        }).join('');
+
+      /* Track sends: al hacer click en "Enviar", registrar en lead_activities */
+      body.querySelectorAll('.wa-campaign-item-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const leadId = btn.dataset.leadId;
+          if (!leadId || sent.has(leadId)) return;
+          sent.add(leadId);
+          btn.style.opacity = '.4';
+          btn.innerHTML = '<i class="fas fa-check"></i> Enviado';
+          btn.style.color = 'var(--success)';
+          btn.style.borderColor = 'var(--success)';
+          try {
+            await client.from('lead_activities').insert([{
+              lead_id: leadId,
+              activity_type: 'note',
+              title: 'Propiedad enviada por WhatsApp',
+              description: (propTitle || propertyCode || 'Propiedad') + (fichaUrl ? ' — ' + fichaUrl : '')
+            }]);
+          } catch (e) { logError('campaign activity log failed:', e); }
+        });
+      });
+    } catch (err) {
+      logError('showWhatsAppCampaign:', err);
+      body.innerHTML = '<div class="wa-campaign-empty"><i class="fas fa-triangle-exclamation"></i><span>Error: ' + esc(err.message) + '</span></div>';
     }
   }
 
