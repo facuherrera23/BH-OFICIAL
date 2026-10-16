@@ -1265,7 +1265,7 @@ function renderPropSuggestions(matches) {
         '<span class="crm-suggest-reasons">' + m.reasons.map(esc).join(' · ') + '</span>' +
       '</div>' +
       matchScoreBadge(m.score) +
-      '<button type="button" class="btn-action crm-suggest-link" data-suggest-link="' + esc(m.id) + '" title="Vincular esta propiedad al lead"><i class="fas fa-link"></i></button>' +
+      '<button type="button" class="crm-suggest-link" data-suggest-link="' + esc(m.id) + '" title="Vincular esta propiedad al lead"><i class="fas fa-link"></i></button>' +
     '</div>';
   }).join('');
 }
