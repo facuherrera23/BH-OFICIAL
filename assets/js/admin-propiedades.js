@@ -158,7 +158,9 @@
         }
 
         const codeBadge = p.property_code
-          ? `<span class="props-code">${esc(p.property_code)}</span>`
+          ? (p.is_published
+            ? `<a class="props-code props-code--link" href="fichas/${encodeURIComponent(p.property_code)}.html" target="_blank" rel="noopener" title="Ver ficha pública">${esc(p.property_code)}</a>`
+            : `<span class="props-code">${esc(p.property_code)}</span>`)
           : '<span style="color:var(--text-dim); font-size:11px;">—</span>';
 
         const stateBadges = [
@@ -179,7 +181,9 @@
             <div class="props-prop">
               <img class="props-thumb" src="${esc(thumb)}" alt="${esc(p.title || '')}" loading="lazy" />
               <div class="props-prop-body">
-                <span class="props-title" title="${esc(p.title || '')}">${esc(p.title || 'Sin título')}${mlBadge}${relaBadge}</span>
+                ${p.is_published && p.property_code
+                  ? `<a class="props-title props-title--link" title="${esc(p.title || '')} — Ver ficha pública" href="fichas/${encodeURIComponent(p.property_code)}.html" target="_blank" rel="noopener">${esc(p.title || 'Sin título')}</a>`
+                  : `<span class="props-title" title="${esc(p.title || '')}">${esc(p.title || 'Sin título')}</span>`}${mlBadge}${relaBadge}
                 <span class="props-loc" title="${esc(loc)}"><i class="fas fa-location-dot"></i>${esc(loc || 'Sin ubicación')}</span>
               </div>
             </div>
@@ -200,7 +204,7 @@
               ${mlButtons}
               ${relaButtons}
               ${p.is_published ? `<button class="btn-action" style="color:#25D366;" title="Compartir ficha por WhatsApp" data-wa-share="${esc(p.id)}" data-wa-code="${esc(p.property_code || '')}"><i class="fab fa-whatsapp"></i></button>` : ''}
-              ${p.is_published && p.property_code ? `<a class="btn-action" title="Ver ficha pública" href="fichas/${encodeURIComponent(p.property_code)}.html" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i></a>` : ''}
+              <button class="btn-action" style="color:#8b5cf6;" title="Ver encuestas de visitas" data-prop-act="surveys" data-prop-id="${esc(p.id)}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-clipboard-list"></i></button>
               <button class="btn-action" title="Duplicar propiedad" data-prop-act="duplicate" data-prop-id="${esc(p.id)}"><i class="fas fa-copy"></i></button>
               <button class="btn-action" title="Editar" data-prop-act="edit" data-prop-id="${esc(p.id)}"><i class="fas fa-pen"></i></button>
               <button class="btn-action danger" title="Eliminar (va a la papelera)" data-prop-act="delete" data-prop-id="${esc(p.id)}"><i class="fas fa-trash"></i></button>
@@ -1096,6 +1100,7 @@
         else if (act === 'restore') window.adminApp.restoreProperty(id);
         else if (act === 'destroy') window.adminApp.destroyProperty(id);
         else if (act === 'duplicate') window.adminApp.duplicateProperty(id);
+        else if (act === 'surveys') showPropertySurveys(id, btn.dataset.propTitle || '');
       });
       tbodyEl.addEventListener('change', (e) => {
         const chk = e.target.closest('.prop-row-check');
@@ -1211,6 +1216,139 @@
     return Math.min(100, Math.max(0, score));
   }
 
+
+  /* ============================================================
+     ENCUESTAS DE VISITAS — historial por propiedad
+     Botón 📋 en cada fila → modal con todas las encuestas
+     que recibió esa propiedad (visitante, puntuaciones, textos).
+     ============================================================ */
+
+  function surveyScoreBadge(label, value) {
+    if (value == null) return '';
+    const n = parseInt(value, 10);
+    const color = n >= 8 ? 'var(--success)' : n >= 5 ? 'var(--warning)' : 'var(--danger)';
+    const bg = n >= 8 ? 'rgba(16,185,129,0.12)' : n >= 5 ? 'rgba(255,184,0,0.12)' : 'rgba(239,68,68,0.12)';
+    return '<span class="survey-score" style="color:' + color + '; background:' + bg + ';">' +
+      '<span class="survey-score-num">' + n + '</span>' +
+      '<span class="survey-score-label">' + label + '</span></span>';
+  }
+
+  function surveyItemHtml(s) {
+    const a = s.answers || {};
+    const date = s.submitted_at || s.created_at;
+    const dateStr = date ? new Date(date).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+    const statusBadge = s.archived_at
+      ? '<span class="survey-status survey-status--archived">Archivada</span>'
+      : s.finalized
+        ? '<span class="survey-status survey-status--done">✓ Respondida</span>'
+        : '<span class="survey-status survey-status--pending">Enviada</span>';
+    const compraria = a.compraria
+      ? '<span class="survey-compraria ' + (a.compraria === 'si' ? 'survey-compraria--si' : a.compraria === 'no' ? 'survey-compraria--no' : '') + '">' +
+        (a.compraria === 'si' ? '✓ Compraría' : a.compraria === 'no' ? '✗ No compraría' : 'Quizás') + '</span>'
+      : '';
+    const textBlock = (key, label) => {
+      if (!a[key]) return '';
+      return '<div class="survey-text"><span class="survey-text-label">' + label + '</span><span class="survey-text-body">' + esc(String(a[key])) + '</span></div>';
+    };
+    const scores = [
+      surveyScoreBadge('Ubicación', a.ubicacion),
+      surveyScoreBadge('Superficie', a.superficie),
+      surveyScoreBadge('Distribución', a.distribucion),
+      surveyScoreBadge('Conservación', a.conservacion),
+      surveyScoreBadge('General', a.general),
+      surveyScoreBadge('Tamaño', a.tamano),
+      surveyScoreBadge('Calidad', a.calidad),
+      surveyScoreBadge('Precio', a.precio)
+    ].filter(Boolean).join('');
+
+    return '<div class="survey-card' + (s.archived_at ? ' survey-card--archived' : '') + '">' +
+      '<div class="survey-card-head">' +
+        '<div class="survey-visitor">' +
+          '<span class="survey-visitor-avatar">' + esc((s.lead_name || '?').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase()) + '</span>' +
+          '<div class="survey-visitor-info">' +
+            '<strong>' + esc(s.lead_name || 'Visitante') + '</strong>' +
+            '<span>' + [s.lead_phone, s.lead_email].filter(Boolean).map(esc).join(' · ') + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="survey-card-meta">' + statusBadge + '<span class="survey-date">' + dateStr + '</span></div>' +
+      '</div>' +
+      (scores ? '<div class="survey-scores">' + scores + '</div>' : '') +
+      compraria +
+      textBlock('mas_gusto', 'Le gustó') +
+      textBlock('menos_gusto', 'No le gustó') +
+      textBlock('por_que', 'Por qué') +
+      (!a || !Object.keys(a).length && !s.finalized ? '<div class="survey-empty">Sin respuestas registradas todavía.</div>' : '') +
+    '</div>';
+  }
+
+  async function showPropertySurveys(propertyId, propTitle) {
+    if (!propertyId) return;
+    /* Overlay */
+    const overlay = document.createElement('div');
+    overlay.className = 'survey-history-overlay';
+    const box = document.createElement('div');
+    box.className = 'survey-history-box';
+    box.innerHTML =
+      '<div class="survey-history-header">' +
+        '<span class="survey-history-icon"><i class="fas fa-clipboard-list"></i></span>' +
+        '<div><h3 class="survey-history-title">Encuestas de visitas</h3>' +
+        '<p class="survey-history-subtitle">' + esc(propTitle || '') + '</p></div>' +
+      '</div>' +
+      '<div class="survey-history-body"><div class="survey-loading">Cargando encuestas...</div></div>' +
+      '<div class="survey-history-footer"><button type="button" class="btn-ghost survey-history-close">Cerrar</button></div>';
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    function close() {
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+    }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+    box.querySelector('.survey-history-close').addEventListener('click', close);
+
+    /* Fetch: surveys + visitor data (leads) */
+    const body = box.querySelector('.survey-history-body');
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('visit_surveys')
+        .select(`
+          id, answers, finalized, submitted_at, created_at, archived_at,
+          lead:leads!inner(full_name, phone, email)
+        `)
+        .eq('property_id', propertyId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const rows = (data || []).map(s => {
+        const lead = Array.isArray(s.lead) ? s.lead[0] : s.lead;
+        return {
+          ...s,
+          lead_name: lead?.full_name || 'Visitante',
+          lead_phone: lead?.phone || null,
+          lead_email: lead?.email || null
+        };
+      });
+
+      if (!rows.length) {
+        body.innerHTML = '<div class="survey-history-empty"><i class="fas fa-clipboard-list"></i><span>Esta propiedad todavía no recibió encuestas.</span></div>';
+        return;
+      }
+      const activeCount = rows.filter(s => !s.archived_at).length;
+      const archivedCount = rows.length - activeCount;
+      body.innerHTML =
+        '<div class="survey-history-stats">' +
+          '<span>' + rows.length + ' encuesta' + (rows.length === 1 ? '' : 's') + '</span>' +
+          (activeCount ? ' · <span style="color:var(--success);">' + activeCount + ' activa' + (activeCount === 1 ? '' : 's') + '</span>' : '') +
+          (archivedCount ? ' · <span style="color:var(--text-dim);">' + archivedCount + ' archivada' + (archivedCount === 1 ? '' : 's') + '</span>' : '') +
+        '</div>' +
+        rows.map(surveyItemHtml).join('');
+    } catch (err) {
+      logError('survey history load failed:', err);
+      body.innerHTML = '<div class="survey-history-empty"><i class="fas fa-triangle-exclamation"></i><span>Error al cargar: ' + esc(err.message) + '</span></div>';
+    }
+  }
 
   window.__BH.loadProperties = loadProperties;
   if (!Object.prototype.hasOwnProperty.call(window, 'loadProperties')) Object.defineProperty(window, 'loadProperties', { get: () => loadProperties, set: (v) => { loadProperties = v; }, configurable: true });
