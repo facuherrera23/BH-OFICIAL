@@ -2477,29 +2477,38 @@ async function doEditTlTask(item, leadId, panel) {
   }
 }
 
-/* Modal de edición de tarea (mismo estilo que el de resultado de completar). */
+/* Modal de edición de tarea (misma identidad visual que el resto del panel). */
 function showEditTaskModal(task, leadId, panel) {
   var overlay = document.createElement('div');
   overlay.className = 'crm-outcome-overlay';
   overlay.dataset.taskId = task.id;
   var box = document.createElement('div');
-  box.className = 'crm-outcome crm-outcome--modal';
+  box.className = 'crm-edit-task-box';
   var prioOpts = ['baja','media','alta','urgente'].map(function (p) {
     return '<option value="' + p + '"' + (p === task.priority ? ' selected' : '') + '>' +
       (p.charAt(0).toUpperCase() + p.slice(1)) + '</option>';
   }).join('');
   var dueVal = task.due_at ? task.due_at.slice(0, 16) : '';
   box.innerHTML =
-    '<div class="crm-outcome-label">Editar tarea</div>' +
-    '<input class="crm-field-input" id="editTaskTitle" value="' + esc(task.title) + '" placeholder="Título *">' +
-    '<textarea class="crm-field-input" id="editTaskDesc" rows="2" placeholder="Descripción (opcional)">' + esc(task.description || '') + '</textarea>' +
-    '<div class="crm-side-field-row">' +
-      '<div><span class="crm-side-field-label">Prioridad</span><select class="crm-field-input" id="editTaskPriority">' + prioOpts + '</select></div>' +
-      '<div><span class="crm-side-field-label">Vence</span><input class="crm-field-input" id="editTaskDue" type="datetime-local" step="600" value="' + esc(dueVal) + '"></div>' +
+    '<div class="crm-edit-task-header">' +
+      '<span class="crm-edit-task-icon"><i class="fas fa-edit"></i></span>' +
+      '<h3 class="crm-edit-task-title">Editar tarea</h3>' +
     '</div>' +
-    '<div class="crm-outcome-actions">' +
-      '<button type="button" class="btn-action crm-outcome-cancel">Cancelar</button>' +
-      '<button type="button" class="btn-luxury-action crm-outcome-save"><i class="fas fa-save"></i> Guardar cambios</button>' +
+    '<div class="crm-edit-task-fields">' +
+      '<div class="crm-side-field"><span class="crm-side-field-label">Título</span>' +
+        '<input class="crm-field-input" id="editTaskTitle" value="' + esc(task.title) + '" placeholder="Título de la tarea"></div>' +
+      '<div class="crm-side-field"><span class="crm-side-field-label">Descripción</span>' +
+        '<textarea class="crm-field-input" id="editTaskDesc" rows="2" placeholder="Descripción (opcional)">' + esc(task.description || '') + '</textarea></div>' +
+      '<div class="crm-side-field-row">' +
+        '<div class="crm-side-field"><span class="crm-side-field-label">Prioridad</span>' +
+          '<select class="crm-field-input crm-field-input--select" id="editTaskPriority">' + prioOpts + '</select></div>' +
+        '<div class="crm-side-field"><span class="crm-side-field-label">Vence</span>' +
+          '<input class="crm-field-input" id="editTaskDue" type="datetime-local" step="600" value="' + esc(dueVal) + '"></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="crm-edit-task-actions">' +
+      '<button type="button" class="btn-ghost" id="editTaskCancel">Cancelar</button>' +
+      '<button type="button" class="btn-luxury-action" id="editTaskSave"><i class="fas fa-check"></i> Guardar</button>' +
     '</div>';
   overlay.appendChild(box);
   document.body.appendChild(overlay);
@@ -2515,8 +2524,8 @@ function showEditTaskModal(task, leadId, panel) {
   var titleInput = box.querySelector('#editTaskTitle');
   if (titleInput) titleInput.focus();
 
-  box.querySelector('.crm-outcome-cancel').addEventListener('click', close);
-  box.querySelector('.crm-outcome-save').addEventListener('click', async function () {
+  box.querySelector('#editTaskCancel').addEventListener('click', close);
+  box.querySelector('#editTaskSave').addEventListener('click', async function () {
     var title = (box.querySelector('#editTaskTitle') || {}).value.trim();
     if (!title) { toast('El título es obligatorio.', 'error'); return; }
     var data = {

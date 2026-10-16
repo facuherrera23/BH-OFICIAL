@@ -5073,6 +5073,49 @@ input[type="range"]::-moz-range-thumb {
 .crm-outcome-chip.is-active{border-color:var(--accent);color:var(--accent);background:rgba(31,200,195,0.12)}
 
 /* ============================================================
+   EDITAR TAREA — modal premium (misma identidad del panel CRM)
+   ============================================================ */
+.crm-edit-task-box{
+  width:min(480px,100%);max-height:85vh;overflow-y:auto;
+  background:var(--bg-secondary);
+  border:1px solid rgba(31,200,195,0.35);
+  border-radius:16px;padding:24px 22px 20px;
+  box-shadow:0 24px 60px rgba(0,0,0,0.55);
+}
+.crm-edit-task-header{
+  display:flex;align-items:center;gap:12px;margin-bottom:18px;
+  padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,0.06);
+}
+.crm-edit-task-icon{
+  width:36px;height:36px;border-radius:10px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(31,200,195,0.12);border:1px solid rgba(31,200,195,0.3);
+  color:var(--accent);font-size:14px;
+}
+.crm-edit-task-title{
+  font-family:var(--font-heading);font-size:17px;font-weight:600;color:#fff;
+  margin:0;line-height:1;
+}
+.crm-edit-task-fields{display:flex;flex-direction:column;gap:14px}
+.crm-edit-task-fields .crm-side-field{display:flex;flex-direction:column;gap:5px;margin:0}
+.crm-edit-task-fields .crm-side-field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.crm-edit-task-actions{
+  display:flex;justify-content:flex-end;gap:10px;margin-top:20px;
+  padding-top:16px;border-top:1px solid rgba(255,255,255,0.06);
+}
+.crm-edit-task-actions .btn-ghost{
+  height:36px;padding:0 16px;border-radius:var(--radius-btn);
+  background:rgba(255,255,255,0.04);border:1px solid var(--border-subtle);
+  color:var(--text-secondary);font-size:12px;font-weight:500;cursor:pointer;
+  display:inline-flex;align-items:center;gap:6px;
+  transition:all .15s ease;
+}
+.crm-edit-task-actions .btn-ghost:hover{
+  border-color:rgba(255,255,255,0.15);color:var(--text-primary);background:rgba(255,255,255,0.06);
+}
+.crm-edit-task-actions .btn-luxury-action{height:36px}
+
+/* ============================================================
    CRM AGENDA (visits) dentro del panel lateral del lead
    ============================================================ */
 .crm-visit-list{display:flex;flex-direction:column;gap:8px}
@@ -5172,13 +5215,20 @@ input[type="range"]::-moz-range-thumb {
    ============================================================ */
 .crm-tl-task-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .crm-tl-task-head strong{flex:1;min-width:0}
-.crm-tl-task-actions{display:flex;align-items:center;gap:2px;flex-shrink:0}
+.crm-tl-task-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.crm-tl-task-actions .crm-task-check{margin-top:0}
 .crm-tl-task-del{
   display:inline-flex;align-items:center;justify-content:center;
-  width:26px;height:26px;border-radius:6px;border:none;background:transparent;
+  width:28px;height:28px;border-radius:7px;border:none;background:transparent;
   color:var(--text-dim);font-size:12px;cursor:pointer;transition:all .12s ease;
 }
 .crm-tl-task-del:hover{color:var(--danger);background:var(--danger-bg)}
+.crm-tl-task-edit{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border-radius:7px;border:none;background:transparent;
+  color:var(--text-dim);font-size:12px;cursor:pointer;transition:all .12s ease;
+}
+.crm-tl-task-edit:hover{color:var(--accent);background:rgba(31,200,195,0.12)}
 .crm-tl-task-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .crm-tl-task--done{opacity:.55}
 .crm-tl-task--done .crm-tl-task-head strong{text-decoration:line-through}
