@@ -1091,15 +1091,17 @@ function esc(s) {
     const client = await getAuthedClient();
     if (!client) return;
     try {
-      /* Publicadas sin soft-delete, con su última visita */
-      const [propsRes, visitsRes] = await Promise.all([
-        client.from('properties').select('id, title, property_code, price_usd, price_currency, status, is_published, created_at, agent_id').eq('is_published', true).is('deleted_at', null),
-        client.from('visits').select('property_id, visit_date').is('deleted_at', null).order('visit_date', { ascending: false })
+      /* Publicadas sin soft-delete, con su última visita + historial de precios */
+      const [propsRes, visitsRes, priceHistRes] = await Promise.all([
+        client.from('properties').select('id, title, property_code, price_usd, price_currency, status, is_published, created_at, agent_id, is_retasada').eq('is_published', true).is('deleted_at', null),
+        client.from('visits').select('property_id, visit_date').is('deleted_at', null).order('visit_date', { ascending: false }),
+        client.from('property_price_history').select('property_id, old_price_usd, new_price_usd, changed_at').order('changed_at', { ascending: false })
       ]);
       if (propsRes.error) throw propsRes.error;
       if (visitsRes.error) throw visitsRes.error;
       const props = propsRes.data || [];
       const visits = visitsRes.data || [];
+      const priceHist = priceHistRes.data || [];
 
       /* Mapa: última visita por propiedad */
       const lastVisit = {};
@@ -1110,14 +1112,31 @@ function esc(s) {
         }
       });
 
-      const STALE_NEVER_VISITED = 30;  /* Nunca tuvo UNA visita y ya lleva 30+ días publicada */
-      const STALE_NO_RECENT = 60;      /* Tuvo visitas pero ninguna en los últimos 60 días */
+      /* Mapa: precio original (primer precio registrado) por propiedad */
+      const origPrice = {};
+      const priceChanges = {};
+      priceHist.forEach(h => {
+        if (!h.property_id) return;
+        if (!priceChanges[h.property_id]) priceChanges[h.property_id] = 0;
+        priceChanges[h.property_id]++;
+        /* El registro más viejo tiene el precio original */
+        if (!origPrice[h.property_id] || new Date(h.changed_at) < new Date(origPrice[h.property_id].changed_at)) {
+          origPrice[h.property_id] = h;
+        }
+      });
+
+      const STALE_NEVER_VISITED = 30;
+      const STALE_NO_RECENT = 60;
       const stale = props.map(p => {
         const hadVisit = !!lastVisit[p.id];
         const last = lastVisit[p.id] || p.created_at;
         const days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
         const threshold = hadVisit ? STALE_NO_RECENT : STALE_NEVER_VISITED;
-        return { ...p, last_activity: last, days_stale: days, had_visit: hadVisit, is_stale: days >= threshold };
+        const hist = origPrice[p.id];
+        const origP = hist ? Number(hist.old_price_usd) : null;
+        const dropPct = origP && origP > 0 ? Math.round(((origP - Number(p.price_usd)) / origP) * 100) : 0;
+        return { ...p, last_activity: last, days_stale: days, had_visit: hadVisit, is_stale: days >= threshold,
+          has_price_drop: dropPct > 0, drop_pct: dropPct, orig_price: origP, price_change_count: priceChanges[p.id] || 0 };
       }).filter(p => p.is_stale)
         .sort((a, b) => b.days_stale - a.days_stale)
         .slice(0, 6);
@@ -1128,6 +1147,7 @@ function esc(s) {
       }
 
       const neverVisited = stale.filter(p => !p.had_visit).length;
+      const withPriceDrop = stale.filter(p => p.has_price_drop).length;
       const sevColor = p => !p.had_visit && p.days_stale >= 45 ? 'var(--danger)' : p.days_stale >= 120 ? 'var(--danger)' : p.days_stale >= 90 ? 'var(--warning)' : '#FFB800';
       const sevBg = p => !p.had_visit && p.days_stale >= 45 ? 'rgba(239,68,68,0.12)' : p.days_stale >= 120 ? 'rgba(239,68,68,0.12)' : p.days_stale >= 90 ? 'rgba(255,184,0,0.12)' : 'rgba(255,184,0,0.06)';
 
@@ -1135,17 +1155,21 @@ function esc(s) {
         '<div style="margin-bottom:10px; font-size:11px; color:var(--text-dim);">' +
           stale.length + ' propiedad' + (stale.length === 1 ? '' : 'es') +
           (neverVisited ? ' · <span style="color:var(--warning);">' + neverVisited + ' nunca visitada' + (neverVisited === 1 ? '' : 's') + '</span>' : '') +
+          (withPriceDrop ? ' · <span style="color:#8b5cf6;">' + withPriceDrop + ' bajó precio</span>' : '') +
         '</div>' +
         stale.map(p => {
           const price = p.price_currency === 'ARS' ? formatPrice(p.price_usd, 'ARS') : formatPrice(p.price_usd, 'USD');
+          const priceDropBadge = p.has_price_drop
+            ? '<span style="font-size:9px; font-weight:700; color:#a78bfa; background:rgba(139,92,246,0.1); padding:2px 6px; border-radius:4px; white-space:nowrap; flex-shrink:0; margin-left:4px;" title="Precio original: ' + formatPrice(p.orig_price) + ' — bajó ' + p.drop_pct + '%">' + (p.drop_pct > 0 ? '↓' : '↑') + Math.abs(p.drop_pct) + '%</span>'
+            : '';
           return `
-          <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border-subtle);">
+          <div style="display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--border-subtle);">
             <span style="font-family:ui-monospace,monospace; font-size:10px; font-weight:700; color:var(--accent); background:rgba(31,200,195,0.1); padding:2px 6px; border-radius:4px; white-space:nowrap; flex-shrink:0;">${esc(p.property_code || '—')}</span>
             <div style="flex:1; min-width:0;">
               <div style="color:#fff; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(p.title || 'Sin título')}</div>
-              <div style="color:var(--text-dim); font-size:10.5px;">${price}</div>
+              <div style="color:var(--text-dim); font-size:10.5px; display:flex; align-items:center; gap:4px;">${price}${priceDropBadge}</div>
             </div>
-            <span style="font-size:10px; font-weight:700; padding:3px 8px; border-radius:6px; white-space:nowrap; flex-shrink:0; color:${sevColor(p)}; background:${sevBg(p)};" title="${p.had_visit ? 'Sin visitas en ' + p.days_stale + ' días' : 'NUNCA tuvo una visita'}">${p.had_visit ? p.days_stale + 'd' : '0 visitas'} · ${p.days_stale}d</span>
+            <span style="font-size:10px; font-weight:700; padding:3px 8px; border-radius:6px; white-space:nowrap; flex-shrink:0; color:${sevColor(p)}; background:${sevBg(p)};" title="${p.had_visit ? 'Sin visitas en ' + p.days_stale + ' días' : 'NUNCA tuvo una visita'}${p.has_price_drop ? ' — bajó ' + p.drop_pct + '% desde ' + formatPrice(p.orig_price) : ''}">${p.had_visit ? p.days_stale + 'd' : '0 visitas'} · ${p.days_stale}d</span>
           </div>`;
         }).join('');
     } catch (err) {
@@ -1202,9 +1226,7 @@ function esc(s) {
     const client = await getAuthedClient();
     if (!client) return;
     try {
-      /* Query combinado: leads sin contacto reciente, propiedades caras, exclusividades por vencer */
       const cutoff48h = new Date(Date.now() - 2 * 86400000).toISOString();
-      const cutoff30d = new Date(Date.now() - 30 * 86400000).toISOString();
       const [staleLeadsRes, exclusivasRes] = await Promise.all([
         client.from('leads').select('id, full_name, stage, last_contacted_at, lead_score')
           .is('deleted_at', null)
@@ -1219,39 +1241,52 @@ function esc(s) {
           .gte('exclusive_end', new Date().toISOString().slice(0, 10))
           .lte('exclusive_end', new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10))
           .order('exclusive_end', { ascending: true })
-          .limit(3)
       ]);
 
-      const recs = [];
-      const staleLeads = (staleLeadsRes.data || []);
-      if (staleLeads.length) {
-        recs.push({
-          icon: 'fas fa-phone',
-          color: 'var(--warning)',
-          text: `${staleLeads.length} lead${staleLeads.length === 1 ? '' : 's'} con score alto sin contacto en +48h`,
-          action: 'goToLeads'
-        });
-      }
+      let html = '';
+
+      /* ── EXCLUSIVIDADES POR VENCER ── */
       const exclusivas = (exclusivasRes.data || []);
       if (exclusivas.length) {
-        recs.push({
-          icon: 'fas fa-calendar-exclamation',
-          color: '#FFB800',
-          text: `${exclusivas.length} exclusividad${exclusivas.length === 1 ? '' : 'es'} vence${exclusivas.length === 1 ? '' : 'n'} en los próximos 30 días`,
-          action: 'goToProperties'
+        html += '<div class="dash-rec-section"><div class="dash-rec-title"><i class="fas fa-calendar-exclamation" style="color:#FFB800;"></i> Exclusividades por vencer</div>';
+        exclusivas.forEach(o => {
+          const days = Math.ceil((new Date(o.exclusive_end) - Date.now()) / 86400000);
+          const color = days <= 7 ? 'var(--danger)' : days <= 15 ? 'var(--warning)' : '#FFB800';
+          const bg = days <= 7 ? 'rgba(239,68,68,0.12)' : days <= 15 ? 'rgba(255,184,0,0.12)' : 'rgba(255,184,0,0.06)';
+          html += `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-subtle);">
+            <div style="flex:1;min-width:0;">
+              <div style="color:#fff;font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(o.full_name)}</div>
+              <div style="color:var(--text-dim);font-size:10px;">vence ${new Date(o.exclusive_end).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}</div>
+            </div>
+            <span style="font-size:14px;font-weight:800;color:${color};background:${bg};padding:4px 12px;border-radius:999px;white-space:nowrap;flex-shrink:0;">${days}d</span>
+          </div>`;
         });
+        html += '</div>';
       }
 
-      if (!recs.length) {
+      /* ── LEADS SIN CONTACTO ── */
+      const staleLeads = (staleLeadsRes.data || []);
+      if (staleLeads.length) {
+        html += '<div class="dash-rec-section"><div class="dash-rec-title"><i class="fas fa-phone" style="color:var(--warning);"></i> Leads sin contacto +48h</div>';
+        staleLeads.forEach(l => {
+          html += `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-subtle);cursor:pointer;" data-action="goToLeads">
+            <div style="flex:1;min-width:0;">
+              <div style="color:#fff;font-size:12px;font-weight:500;">${esc(l.full_name)}</div>
+            </div>
+            <span style="font-size:10px;font-weight:700;color:${l.lead_score >= 50 ? 'var(--warning)' : 'var(--text-dim)'};padding:2px 8px;border-radius:6px;background:rgba(255,255,255,0.04);">${l.lead_score || 0}</span>
+          </div>`;
+        });
+        html += '</div>';
+      }
+
+      if (!html) {
         el.innerHTML = '<p style="color:var(--success); font-size:12px; padding:16px 0;"><i class="fas fa-check-circle" style="margin-right:6px;"></i>Todo en orden por ahora.</p>';
         return;
       }
 
-      el.innerHTML = recs.map(r => `
-        <div style="display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border-subtle); cursor:pointer;" data-action="${r.action}">
-          <i class="${r.icon}" style="color:${r.color}; font-size:14px; flex-shrink:0;"></i>
-          <span style="color:var(--text-secondary); font-size:12px; line-height:1.3;">${r.text}</span>
-        </div>`).join('');
+      el.innerHTML = html;
     } catch (err) {
       logError('renderDashRecommendations:', err);
       el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Error al cargar.</p>';
