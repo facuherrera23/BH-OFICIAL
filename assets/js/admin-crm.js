@@ -1863,7 +1863,7 @@ function _syncHeader() {
 
 /* ctypes */
 
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty };
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel };
 
 /* --- Generación de token portal desde CRM (en modo propietarios) --- */
 (function () {
@@ -2332,10 +2332,8 @@ function bindLeadTaskForm(panel, lead) {
         if (ins.error) throw new Error(ins.error.message);
         await syncLeadFollowup(leadId);
         toast('Tarea creada.', 'success');
-        // Recargar solo la lista de tareas en el panel y mantener la pestaña activa
-        await loadLeadTasks(leadId, panel);
-        var tasksTabBtn = panel.querySelector('[data-crmTab="tasks"]');
-        if (tasksTabBtn) tasksTabBtn.click();
+        // Refrescar solo la lista de tareas en el panel actual, mantener pestaña activa
+        await refreshTasksInPanel(leadId, panel);
       } else if (action === 'visit') {
         if (!due) { toast('Seleccioná fecha y hora.', 'error'); return; }
         var propSel = panel.querySelector('#leadTaskProp');
@@ -2385,8 +2383,10 @@ function bindLeadTaskForm(panel, lead) {
         await loadLeads();
         return;
       }
-      await loadLeads();
-      openDetailPanel(leadId);
+      /* Después de crear tarea/visita/nota: refrescar la lista de leads en background
+         SIN cerrar/abrir el panel. La lista de tareas ya se refrescó arriba con
+         refreshTasksInPanel(); el panel queda donde está con los datos actualizados. */
+      loadLeads();
     } catch (e) {
       toast('Error: ' + e.message, 'error');
     } finally {
@@ -2433,6 +2433,106 @@ function bindTlTaskActions(panel, leadId) {
       del.dataset.crmTaskBound = '1';
       del.addEventListener('click', function (e) { e.stopPropagation(); doDeleteTlTask(item, leadId, panel); });
     }
+    var edit = item.querySelector('.crm-tl-task-edit');
+    if (edit && !edit.dataset.crmTaskBound) {
+      edit.dataset.crmTaskBound = '1';
+      edit.addEventListener('click', function (e) { e.stopPropagation(); doEditTlTask(item, leadId, panel); });
+    }
+  });
+}
+
+/* Refresca SOLO la lista de tareas dentro del panel actual (sin cerrar/abrir
+   el panel ni cambiar de pestaña). Re-fetch de lead_tasks → re-render del
+   contenedor .crm-timeline--cards → re-bind de acciones. */
+async function refreshTasksInPanel(leadId, panel) {
+  var cardsWrap = panel.querySelector('.crm-timeline--cards');
+  if (!cardsWrap) return;
+  try {
+    var r = await db().from('lead_tasks').select('*').eq('lead_id', leadId)
+      .order('completed_at', { ascending: false, nullsLast: true })
+      .order('due_at', { ascending: true });
+    if (r.error) throw new Error(r.error.message);
+    var tasks = r.data || [];
+    cardsWrap.innerHTML = tasks.length
+      ? buildUnifiedTimeline([], [], tasks)
+      : '<div class="crm-tasks-empty"><i class="fas fa-list-check"></i><span>Sin tareas. Creá una con el campo de arriba.</span></div>';
+    bindTlTaskActions(panel, leadId);
+  } catch (e) {
+    console.warn('[crm] refreshTasksInPanel:', e.message);
+  }
+}
+
+/* Editar una tarea desde el timeline: abre el modal de edición de CrmTasks,
+   y al guardar refresca la lista en el panel actual. */
+async function doEditTlTask(item, leadId, panel) {
+  var taskId = item.getAttribute('data-task-id');
+  if (!taskId) return;
+  try {
+    var r = await db().from('lead_tasks').select('*').eq('id', taskId).single();
+    if (r.error || !r.data) { toast('No se encontró la tarea.', 'error'); return; }
+    var task = r.data;
+    showEditTaskModal(task, leadId, panel);
+  } catch (e) {
+    toast('Error al cargar la tarea: ' + e.message, 'error');
+  }
+}
+
+/* Modal de edición de tarea (mismo estilo que el de resultado de completar). */
+function showEditTaskModal(task, leadId, panel) {
+  var overlay = document.createElement('div');
+  overlay.className = 'crm-outcome-overlay';
+  overlay.dataset.taskId = task.id;
+  var box = document.createElement('div');
+  box.className = 'crm-outcome crm-outcome--modal';
+  var prioOpts = ['baja','media','alta','urgente'].map(function (p) {
+    return '<option value="' + p + '"' + (p === task.priority ? ' selected' : '') + '>' +
+      (p.charAt(0).toUpperCase() + p.slice(1)) + '</option>';
+  }).join('');
+  var dueVal = task.due_at ? task.due_at.slice(0, 16) : '';
+  box.innerHTML =
+    '<div class="crm-outcome-label">Editar tarea</div>' +
+    '<input class="crm-field-input" id="editTaskTitle" value="' + esc(task.title) + '" placeholder="Título *">' +
+    '<textarea class="crm-field-input" id="editTaskDesc" rows="2" placeholder="Descripción (opcional)">' + esc(task.description || '') + '</textarea>' +
+    '<div class="crm-side-field-row">' +
+      '<div><span class="crm-side-field-label">Prioridad</span><select class="crm-field-input" id="editTaskPriority">' + prioOpts + '</select></div>' +
+      '<div><span class="crm-side-field-label">Vence</span><input class="crm-field-input" id="editTaskDue" type="datetime-local" step="600" value="' + esc(dueVal) + '"></div>' +
+    '</div>' +
+    '<div class="crm-outcome-actions">' +
+      '<button type="button" class="btn-action crm-outcome-cancel">Cancelar</button>' +
+      '<button type="button" class="btn-luxury-action crm-outcome-save"><i class="fas fa-save"></i> Guardar cambios</button>' +
+    '</div>';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  function close() {
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+  }
+  function onKey(e) { if (e.key === 'Escape') close(); }
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) close(); });
+
+  var titleInput = box.querySelector('#editTaskTitle');
+  if (titleInput) titleInput.focus();
+
+  box.querySelector('.crm-outcome-cancel').addEventListener('click', close);
+  box.querySelector('.crm-outcome-save').addEventListener('click', async function () {
+    var title = (box.querySelector('#editTaskTitle') || {}).value.trim();
+    if (!title) { toast('El título es obligatorio.', 'error'); return; }
+    var data = {
+      title: title,
+      description: (box.querySelector('#editTaskDesc') || {}).value.trim() || null,
+      priority: (box.querySelector('#editTaskPriority') || {}).value || 'media',
+      due_at: (box.querySelector('#editTaskDue') || {}).value || null
+    };
+    try {
+      var r = await db().from('lead_tasks').update(data).eq('id', task.id);
+      if (r.error) throw new Error(r.error.message);
+      toast('Tarea actualizada.', 'success');
+      close();
+      await refreshTasksInPanel(leadId, panel);
+      await syncLeadFollowup(leadId);
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
   });
 }
 
@@ -2510,6 +2610,7 @@ function buildUnifiedTimeline(activities, visits, tasks) {
             '<strong>' + esc(t.title || 'Tarea') + '</strong>' +
             '<span class="crm-tl-task-actions">' +
               '<label class="crm-task-check" title="Completar tarea"><input type="checkbox" class="crm-task-checkbox"' + checked + disabled + '><span class="crm-task-check-visual"></span></label>' +
+              (!isDone ? '<button class="crm-tl-task-edit" aria-label="Editar tarea" title="Editar"><i class="fas fa-edit"></i></button>' : '') +
               '<button class="crm-tl-task-del" aria-label="Eliminar tarea"><i class="fas fa-trash"></i></button>' +
             '</span>' +
           '</div>' +
