@@ -1270,6 +1270,184 @@ function renderPropSuggestions(matches) {
   }).join('');
 }
 
+/* ============================================================
+   DEAL ROOM — workflow de ofertas y contraofertas
+   El agente registra lo que el cliente ofrece, lo que el dueño
+   contraoferta, y al aceptar se actualiza estimated_value y stage.
+   ============================================================ */
+var OFFER_TYPE_LBL = { client: 'Oferta del cliente', counter: 'Contraoferta del dueño', accepted: 'Oferta aceptada', rejected: 'Oferta rechazada' };
+
+function showOfferModal(lead, propId, propTitle, panel) {
+  var overlay = document.createElement('div');
+  overlay.className = 'crm-outcome-overlay';
+  var box = document.createElement('div');
+  box.className = 'offer-modal-box';
+  box.innerHTML =
+    '<div class="offer-modal-header">' +
+      '<span class="offer-modal-icon"><i class="fas fa-handshake"></i></span>' +
+      '<div><h3 class="offer-modal-title">Registrar Oferta</h3>' +
+      '<p class="offer-modal-subtitle">' + esc(propTitle || '') + '</p></div>' +
+    '</div>' +
+    '<div class="offer-modal-fields">' +
+      '<div class="crm-side-field-row">' +
+        '<div class="crm-side-field"><span class="crm-side-field-label">Monto *</span>' +
+          '<input class="crm-field-input" id="offerAmount" type="number" step="1000" min="0" placeholder="Ej: 180000"></div>' +
+        '<div class="crm-side-field"><span class="crm-side-field-label">Moneda</span>' +
+          '<select class="crm-field-input crm-field-input--select" id="offerCurrency">' +
+            '<option value="USD">U$S</option><option value="ARS">$</option></select></div>' +
+      '</div>' +
+      '<div class="crm-side-field"><span class="crm-side-field-label">Tipo de oferta</span>' +
+        '<div class="offer-type-chips">' +
+          '<button type="button" class="offer-type-chip is-active" data-otype="client"><i class="fas fa-user"></i> Cliente ofrece</button>' +
+          '<button type="button" class="offer-type-chip" data-otype="counter"><i class="fas fa-house"></i> Dueño contraoferta</button>' +
+        '</div></div>' +
+      '<div class="crm-side-field"><span class="crm-side-field-label">Condiciones (opcional)</span>' +
+        '<textarea class="crm-field-input" id="offerConditions" rows="2" placeholder="Ej: sujeto a escritura, 30% al boleto..."></textarea></div>' +
+    '</div>' +
+    '<div class="offer-modal-actions">' +
+      '<button type="button" class="btn-ghost" id="offerCancel">Cancelar</button>' +
+      '<button type="button" class="btn-luxury-action" id="offerSave" disabled><i class="fas fa-check"></i> Registrar</button>' +
+    '</div>';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  var offerType = 'client';
+  var saveBtn = box.querySelector('#offerSave');
+  var amountInput = box.querySelector('#offerAmount');
+
+  function close() { document.removeEventListener('keydown', onKey); overlay.remove(); }
+  function onKey(e) { if (e.key === 'Escape') close(); }
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('mousedown', function(e) { if (e.target === overlay) close(); });
+  box.querySelector('#offerCancel').addEventListener('click', close);
+
+  box.querySelectorAll('.offer-type-chip').forEach(function(chip) {
+    chip.addEventListener('click', function() {
+      box.querySelectorAll('.offer-type-chip').forEach(function(c) { c.classList.remove('is-active'); });
+      this.classList.add('is-active');
+      offerType = this.dataset.otype;
+    });
+  });
+
+  amountInput.addEventListener('input', function() {
+    saveBtn.disabled = !this.value || parseFloat(this.value) <= 0;
+  });
+  if (amountInput) amountInput.focus();
+
+  saveBtn.addEventListener('click', async function() {
+    var amount = parseFloat(amountInput.value);
+    if (!amount || amount <= 0) { toast('Ingresá el monto.', 'error'); return; }
+    var currency = (box.querySelector('#offerCurrency') || {}).value || 'USD';
+    var conditions = ((box.querySelector('#offerConditions') || {}).value || '').trim() || null;
+    try {
+      var r = await db().from('lead_offers').insert([{
+        lead_id: lead.id,
+        property_id: propId,
+        offer_type: offerType,
+        amount: amount,
+        currency: currency,
+        conditions: conditions
+      }]);
+      if (r.error) throw new Error(r.error.message);
+
+      /* Nota en el historial del lead */
+      var fmt = currency === 'ARS' ? '$' + amount.toLocaleString('es-AR') : 'U$S ' + amount.toLocaleString('es-AR');
+      await db().from('lead_activities').insert([{
+        lead_id: lead.id,
+        activity_type: 'note',
+        title: OFFER_TYPE_LBL[offerType] + ': ' + fmt,
+        description: conditions || ''
+      }]);
+
+      /* Si es la primera oferta, mover el lead a negociacion */
+      if (offerType === 'client' || offerType === 'counter') {
+        var currentStage = lead.stage || 'nuevo';
+        if (['nuevo','contactado','calificado','visita_agendada','visita_realizada'].indexOf(currentStage) !== -1) {
+          await db().from('leads').update({ stage: 'negociacion' }).eq('id', lead.id);
+        }
+      }
+
+      toast('Oferta registrada: ' + fmt, 'success');
+      close();
+      refreshTasksInPanel(lead.id, panel);
+      loadLeads();
+    } catch (e) { toast('Error: ' + e.message, 'error'); }
+  });
+}
+
+function renderOfferHistory(offers) {
+  if (!offers || !offers.length) return '';
+  return '<div class="crm-side-section"><h4 class="crm-side-section-title"><i class="fas fa-handshake" style="color:#8b5cf6; margin-right:4px;"></i> Negociación</h4>' +
+    '<div class="offer-history">' +
+    offers.map(function(o) {
+      var typeLbl = OFFER_TYPE_LBL[o.offer_type] || o.offer_type;
+      var fmt = o.currency === 'ARS' ? '$' + Number(o.amount).toLocaleString('es-AR') : 'U$S ' + Number(o.amount).toLocaleString('es-AR');
+      var statusCls = o.offer_type === 'accepted' ? 'offer-status--accepted' : o.offer_type === 'rejected' ? 'offer-status--rejected' : 'offer-status--pending';
+      var statusLbl = o.offer_type === 'accepted' ? '✓ Aceptada' : o.offer_type === 'rejected' ? '✗ Rechazada' : 'Pendiente';
+      var dateStr = o.created_at ? new Date(o.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+      return '<div class="offer-history-item ' + statusCls + '" data-offer-id="' + o.id + '" data-offer-amount="' + o.amount + '" data-offer-currency="' + o.currency + '">' +
+        '<span class="offer-history-type">' + typeLbl + '</span>' +
+        '<span class="offer-history-amount">' + fmt + '</span>' +
+        (o.conditions ? '<span class="offer-history-conditions">' + esc(o.conditions) + '</span>' : '') +
+        '<span class="offer-history-date">' + dateStr + '</span>' +
+        '<span class="offer-history-status">' + statusLbl + '</span>' +
+        (o.offer_type === 'client' || o.offer_type === 'counter' ?
+          '<div class="offer-history-actions">' +
+            '<button type="button" class="btn-action offer-accept-btn" data-offer-id="' + o.id + '" title="Aceptar esta oferta"><i class="fas fa-check"></i> Aceptar</button>' +
+            '<button type="button" class="btn-action danger offer-reject-btn" data-offer-id="' + o.id + '" title="Rechazar"><i class="fas fa-times"></i></button>' +
+          '</div>' : '') +
+      '</div>';
+    }).join('') +
+    '</div></div>';
+}
+
+function bindOfferActions(panel, lead, offers) {
+  panel.querySelectorAll('.offer-accept-btn').forEach(function(btn) {
+    btn.addEventListener('click', async function(e) {
+      e.stopPropagation();
+      var offerId = this.dataset.offerId;
+      var item = this.closest('.offer-history-item');
+      var amount = parseFloat(item.dataset.offerAmount);
+      var currency = item.dataset.offerCurrency;
+      var fmt = currency === 'ARS' ? '$' + amount.toLocaleString('es-AR') : 'U$S ' + amount.toLocaleString('es-AR');
+      var ok = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog({ title: 'Aceptar oferta', message: '¿Aceptar la oferta de ' + fmt + '? El lead pasa a Ganado y el valor de cierre se actualiza.', icon: 'fas fa-check-circle', confirmText: 'Aceptar oferta' })
+        : confirm('¿Aceptar la oferta de ' + fmt + '?');
+      if (!ok) return;
+      try {
+        /* Marcar la oferta como aceptada */
+        var r = await db().from('lead_offers').update({ offer_type: 'accepted' }).eq('id', offerId);
+        if (r.error) throw new Error(r.error.message);
+        /* Actualizar el lead */
+        await db().from('leads').update({ estimated_value: amount, stage: 'cerrado_ganado', last_contacted_at: new Date().toISOString() }).eq('id', lead.id);
+        /* Nota en el historial */
+        await db().from('lead_activities').insert([{ lead_id: lead.id, activity_type: 'status_change', title: 'Oferta aceptada: ' + fmt + ' — Lead GANADO' }]);
+        toast('Oferta aceptada: ' + fmt + ' · Lead ganado 🎉', 'success');
+        await refreshTasksInPanel(lead.id, panel);
+        loadLeads();
+      } catch (e) { toast('Error: ' + e.message, 'error'); }
+    });
+  });
+  panel.querySelectorAll('.offer-reject-btn').forEach(function(btn) {
+    btn.addEventListener('click', async function(e) {
+      e.stopPropagation();
+      var offerId = this.dataset.offerId;
+      var item = this.closest('.offer-history-item');
+      var fmt = item.querySelector('.offer-history-amount').textContent;
+      var ok = typeof window.showConfirmDialog === 'function'
+        ? await window.showConfirmDialog({ title: 'Rechazar oferta', message: '¿Rechazar la oferta de ' + fmt + '?', icon: 'fas fa-times-circle', confirmText: 'Rechazar', danger: true })
+        : confirm('¿Rechazar la oferta de ' + fmt + '?');
+      if (!ok) return;
+      try {
+        await db().from('lead_offers').update({ offer_type: 'rejected' }).eq('id', offerId);
+        await db().from('lead_activities').insert([{ lead_id: lead.id, activity_type: 'note', title: 'Oferta rechazada: ' + fmt }]);
+        toast('Oferta rechazada.', 'info');
+        await refreshTasksInPanel(lead.id, panel);
+      } catch (e) { toast('Error: ' + e.message, 'error'); }
+    });
+  });
+}
+
 function openDetailPanel(id) {
   /* fix de stacking/clipping: el panel vive dentro de #tab-leads, que está dentro de un contenedor con overflow.
      position:fixed quedaría restringido a ese padre (se ve cortado y los clics no escucha). Lo movemos a <body>. */
@@ -1284,7 +1462,8 @@ function openDetailPanel(id) {
   panel.classList.add('open');
 
   Promise.all([getLeadFull(id), getLeadActivities(id), getLeadProps(id), getLeadVisits(id), getLeadTasks(id), getLeadSurveys(id),
-    db().from('properties').select('id, title, property_code, zone, property_type, rooms, price_usd, price_currency, status, is_published, image_urls, deleted_at').eq('is_published', true).is('deleted_at', null)
+    db().from('properties').select('id, title, property_code, zone, property_type, rooms, price_usd, price_currency, status, is_published, image_urls, deleted_at').eq('is_published', true).is('deleted_at', null),
+    db().from('lead_offers').select('*').eq('lead_id', id).order('created_at', { ascending: false }).limit(10)
   ])
     .then(function (results) {
       var leadRes = results[0];
@@ -1298,6 +1477,7 @@ function openDetailPanel(id) {
       var surveys = results[5] || [];
       var propRes = results[6];
       var allProps = (propRes && propRes.data) ? propRes.data : [];
+      var offers = results[7] || [];
       var linkedIds = props.map(function(p) { return p.property_id; });
       if (lead.property_id) linkedIds.push(lead.property_id);
       var matches = computePropertyMatches(lead, allProps, linkedIds);
@@ -1306,10 +1486,10 @@ function openDetailPanel(id) {
         return db().from('properties').select('id, title').eq('id', lead.property_id).single()
           .then(function (pr) {
             if (pr.data) props = [{ property_id: pr.data.id, property_title: pr.data.title }];
-            renderSide(panel, lead, activities, props, visits, tasks, surveys, matches); return null;
+            renderSide(panel, lead, activities, props, visits, tasks, surveys, matches, offers); return null;
           });
       }
-      renderSide(panel, lead, activities, props, visits, tasks, surveys, matches);
+      renderSide(panel, lead, activities, props, visits, tasks, surveys, matches, offers);
       return null;
     })
     .catch(function (e) { toast('Error al cargar prospecto: ' + e.message, 'error'); closeDetailPanel(); });
@@ -1329,7 +1509,7 @@ function bindSideOverlayClose(panel) {
   panel.dataset.sideBound = '1';
 }
 
-function renderSide(panel, lead, activities, props, visits, tasks, surveys, propMatches) {
+function renderSide(panel, lead, activities, props, visits, tasks, surveys, propMatches, offers) {
   /* Pre-computar HTML de sugerencias ANTES del innerHTML (evita issues de
      scope en la concatenación gigante del panel). */
   var suggestHtml = '';
@@ -1337,6 +1517,7 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
     suggestHtml = '<div class="crm-side-section"><h4 class="crm-side-section-title crm-suggest-title"><i class="fas fa-wand-magic-sparkles" style="color:#8b5cf6; margin-right:4px;"></i> Propiedades Sugeridas</h4>' +
       '<div id="crmSuggestWrap">' + renderPropSuggestions(propMatches) + '</div></div>';
   }
+  var offerHtml = renderOfferHistory(offers);
   var stage = normalizeStage(lead.stage || 'nuevo');
   var sopts = LEAD_STATUSES.map(function (s) { return '<option value="' + s + '"' + (stage === s ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>'; }).join('');
   var aopts = _agents.map(function (a) { return '<option value="' + a.id + '"' + (lead.assigned_to === a.id ? ' selected' : '') + '>' + esc(a.full_name) + '</option>'; }).join('');
@@ -1366,6 +1547,7 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
           svBtn += '<button type="button" class="btn-action" data-survey-action="view" data-prop-id="' + esc(p.property_id) + '" title="Ver respuestas" style="color:var(--accent); border-color:rgba(31,200,195,0.35);"><i class="fas fa-eye"></i></button>';
         }
         return '<div class="crm-prop-item"><span>' + esc(p.property_title || 'Propiedad') + '</span>' + svBadge + svBtn +
+          '<button type="button" class="btn-action" data-offer-action="new" data-prop-id="' + esc(p.property_id) + '" data-prop-title="' + esc(p.property_title || '') + '" title="Registrar oferta" style="color:#8b5cf6; border-color:rgba(139,92,246,0.3);"><i class="fas fa-handshake"></i></button>' +
           '<button class="btn-action danger" data-action="removeProp" data-prop-id="' + p.property_id + '" title="Quitar"><i class="fas fa-times"></i></button></div>';
       }).join('');
 
@@ -1382,7 +1564,7 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
         '<button type="button" class="crm-tab-btn" data-crm-tab="tasks">Tareas</button>' +
         '<button type="button" class="crm-tab-btn" data-crm-tab="props">Propiedades</button>' +
       '</div>' +
-      sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, buildUnifiedTimeline(activities, visits, []), tasks, props, suggestHtml) +
+      sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, buildUnifiedTimeline(activities, visits, []), tasks, props, suggestHtml, offerHtml) +
       '<div class="crm-side-save"><button class="btn-luxury-action" id="crmSideSaveBtn" style="width:100%;">Guardar cambios</button></div>' +
     '</div>' +
     '</div>';
@@ -1417,6 +1599,14 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
   bindLeadTaskForm(panel, lead);
   bindAgendaActions(panel, lead.id);
   bindTlTaskActions(panel, lead.id);
+  /* Deal room: botón "Ofertar" en cada propiedad vinculada */
+  panel.querySelectorAll('[data-offer-action="new"]').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      showOfferModal(lead, this.dataset.propId, this.dataset.propTitle, panel);
+    });
+  });
+  bindOfferActions(panel, lead, offers);
   if (activities.length === TIMELINE_PAGE) {
     var tl = panel.querySelector('#crmTab-tasks .crm-timeline--historial');
     if (tl) {
@@ -1441,7 +1631,7 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
   }
 }
 
-function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks, props, suggestHtml) {
+function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks, props, suggestHtml, offerHtml) {
   var propOpts = (props || []).map(function (p) {
     return '<option value="' + p.property_id + '">' + esc(p.property_title || 'Propiedad') + '</option>';
   }).join('');
@@ -1531,6 +1721,7 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks
             '<input class="crm-field-input" id="crmDtlPropSearch" placeholder="Buscar propiedad por título...">' +
             '<button class="btn-action" id="crmDtlAddProp"><i class="fas fa-plus"></i></button></div>' +
           '</div></div></div>' +
+      offerHtml +
     '</div>';
 }
 function bindSideTabs(panel) {
