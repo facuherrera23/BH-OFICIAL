@@ -1645,16 +1645,6 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
   bindLeadTaskForm(panel, lead);
   bindAgendaActions(panel, lead.id);
   bindTlTaskActions(panel, lead.id);
-  /* Historial colapsable: toggle expandir/colapsar */
-  var histToggle = panel.querySelector('#crmHistToggle');
-  if (histToggle) {
-    histToggle.addEventListener('click', function () {
-      var content = panel.querySelector('#crmHistContent');
-      if (!content) return;
-      var isOpen = content.classList.toggle('is-open');
-      histToggle.classList.toggle('is-open', isOpen);
-    });
-  }
   /* Deal room: botón "Ofertar" en cada propiedad vinculada */
   panel.querySelectorAll('[data-offer-action="new"]').forEach(function (b) {
     b.addEventListener('click', function (e) {
@@ -1685,6 +1675,8 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
       tl.appendChild(moreBtn);
     }
   }
+  /* Ajustar la altura de las dos columnas (tareas + historial) */
+  setTimeout(function () { adjustTasksGridLayout(panel); }, 60);
 }
 
 function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks, props, suggestHtml, offerHtml, histCount) {
@@ -1742,7 +1734,7 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks
         '</div>' +
         '<div class="crm-side-field" style="margin-bottom:10px;">' +
           '<span class="crm-side-field-label" id="leadTaskDescLabel">Descripción de la tarea *</span>' +
-          '<textarea class="crm-field-input" id="leadTaskDesc" rows="2" placeholder="Ej: Llamar al cliente para confirmar interés…"></textarea></div>' +
+          '<textarea class="crm-field-input" id="leadTaskDesc" rows="1" placeholder="Ej: Llamar al cliente para confirmar interés…"></textarea></div>' +
         '<div class="crm-side-field-row" id="ltfDuePrioRow">' +
           '<div class="crm-side-field" id="ltfDueWrap"><span class="crm-side-field-label" id="leadTaskDueLabel">Fecha límite *</span><input class="crm-field-input" id="leadTaskDue" type="datetime-local"></div>' +
           '<div class="crm-side-field" id="ltfPrioWrap"><span class="crm-side-field-label">Prioridad</span>' +
@@ -1766,14 +1758,14 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks
           '<button type="button" class="btn-luxury-action" id="leadTaskAddBtn"><i class="fas fa-plus"></i> <span id="leadTaskAddLabel">Agregar Tarea</span></button>' +
         '</div>' +
       '</div>' +
-      '<div class="crm-side-section"><h4 class="crm-side-section-title">Tareas' + (tasks.length > 3 ? ' <span style="font-size:10px;font-weight:600;color:var(--accent);background:rgba(31,200,195,0.1);padding:2px 6px;border-radius:999px;text-transform:none;letter-spacing:0;margin-left:4px;">' + tasks.length + '</span>' : '') + '</h4><div class="crm-timeline crm-timeline--cards">' + (tasks.length ? buildUnifiedTimeline([], [], tasks) : '<div class="crm-tasks-empty"><i class="fas fa-list-check"></i><span>Sin tareas. Creá una con el campo de arriba.</span></div>') + '</div>' + (tasks.length > 3 ? '<div class="crm-tasks-count-hint">Scroll para ver las ' + tasks.length + ' tareas</div>' : '') + '</div>' +
-      '<div class="crm-side-section">' +
-        '<button type="button" class="crm-hist-toggle" id="crmHistToggle">' +
-          '<span class="crm-hist-label">Historial <span class="crm-hist-count" id="crmHistCount">' + (histCount || 0) + '</span></span>' +
-          '<i class="fas fa-chevron-down crm-hist-arrow"></i>' +
-        '</button>' +
-        '<div class="crm-hist-content" id="crmHistContent">' +
-          '<div class="crm-timeline crm-timeline--historial" style="margin-top:10px;">' + (timelineHtml || buildTimelineHTML([])) + '</div>' +
+      '<div class="crm-tasks-grid">' +
+        '<div class="crm-tasks-col">' +
+          '<h4 class="crm-side-section-title crm-tasks-col-title">Tareas' + (tasks.length > 3 ? ' <span class="crm-tasks-col-count">' + tasks.length + '</span>' : '') + '</h4>' +
+          '<div class="crm-timeline crm-timeline--cards">' + (tasks.length ? buildUnifiedTimeline([], [], tasks) : '<div class="crm-tasks-empty"><i class="fas fa-list-check"></i><span>Sin tareas.</span></div>') + '</div>' +
+        '</div>' +
+        '<div class="crm-tasks-col">' +
+          '<h4 class="crm-side-section-title crm-tasks-col-title">Historial' + (histCount ? ' <span class="crm-tasks-col-count">' + histCount + '</span>' : '') + '</h4>' +
+          '<div class="crm-timeline crm-timeline--historial">' + (timelineHtml || buildTimelineHTML([])) + '</div>' +
         '</div>' +
       '</div>' +
     '</div>' +
@@ -1788,6 +1780,24 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks
       offerHtml +
     '</div>';
 }
+/* Calcula la altura disponible para el grid de tareas/historial y la asigna.
+   Se llama al abrir el panel, al cambiar de pestaña y al cambiar el modo del form. */
+function adjustTasksGridLayout(panel) {
+  var grid = panel.querySelector('.crm-tasks-grid');
+  var body = panel.querySelector('.crm-side-body');
+  var form = grid ? grid.previousElementSibling : null;
+  if (!grid || !body || !form) return;
+  var bodyH = body.clientHeight;
+  var formH = form.offsetHeight;
+  var gridTop = grid.getBoundingClientRect().top - body.getBoundingClientRect().top;
+  var tabsH = gridTop - formH; /* contacto + tabs + margen arriba del grid */
+  var saveBtn = panel.querySelector('.crm-side-save');
+  var saveH = saveBtn ? saveBtn.offsetHeight + 16 : 30; /* + margen */
+  var gridH = bodyH - gridTop - saveH;
+  if (gridH < 120) gridH = 120;
+  grid.style.height = gridH + 'px';
+}
+
 function bindSideTabs(panel) {
   panel.querySelectorAll('.crm-tab-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
@@ -1797,6 +1807,7 @@ function bindSideTabs(panel) {
       panel.querySelectorAll('.crm-tab-content').forEach(function (c) { c.style.display = 'none'; });
       var target = panel.querySelector('#crmTab-' + tab);
       if (target) target.style.display = 'block';
+      if (tab === 'tasks') setTimeout(function () { adjustTasksGridLayout(panel); }, 50);
     });
   });
 }
@@ -2760,6 +2771,8 @@ function bindLeadTaskForm(panel, lead) {
     addBtn.classList.toggle('crm-task-add--danger', a === 'lost');
     refreshPrio();
     refreshRemind();
+    /* Recalcular la altura de las columnas porque el form cambió de tamaño */
+    setTimeout(function () { adjustTasksGridLayout(panel); }, 50);
   }
   actionSel.addEventListener('change', applyAction);
   var chipWrap = panel.querySelector('#ltfActionChips');
@@ -2930,16 +2943,11 @@ async function refreshTimelineInPanel(leadId, panel) {
     var tl = panel.querySelector('.crm-timeline--historial');
     if (!tl) return;
     tl.innerHTML = buildUnifiedTimeline(acts, visits, []);
-    /* Actualizar el contador del toggle */
-    var countEl = panel.querySelector('#crmHistCount');
-    if (countEl) countEl.textContent = (acts || []).length;
-    /* Si el historial estaba colapsado, auto-expandir brevemente para
-       que el usuario vea que la actividad se registró */
-    var content = panel.querySelector('#crmHistContent');
-    var toggle = panel.querySelector('#crmHistToggle');
-    if (content && toggle && !content.classList.contains('is-open')) {
-      content.classList.add('is-open');
-      toggle.classList.add('is-open');
+    /* Actualizar el contador del historial */
+    var histCol = tl.closest('.crm-tasks-col');
+    if (histCol) {
+      var countEl = histCol.querySelector('.crm-tasks-col-count');
+      if (countEl) countEl.textContent = (acts || []).length;
     }
   } catch (e) {
     console.warn('[crm] refreshTimelineInPanel:', e.message);

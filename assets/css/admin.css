@@ -5216,7 +5216,7 @@ input[type="range"]::-moz-range-thumb {
 .crm-side-modal .crm-quickadd{margin-bottom:8px}
 .crm-side-modal .crm-side-save{position:sticky;bottom:0;margin-top:12px;padding:12px 0 4px;background:var(--bg-secondary);z-index:5;box-shadow:0 -12px 18px -14px rgba(0,0,0,.6)}
 .crm-row--selected{background:rgba(31,200,195,.08);box-shadow:inset 3px 0 0 var(--accent)}
-.crm-side-modal .crm-contact-row{margin:6px 0 10px}
+.crm-side-modal .crm-contact-row{margin:4px 0 6px}
 .crm-side-modal .crm-template-row{margin-bottom:12px}
 
 /* PestaÃ±a Tareas del lead: quick-add como tarjeta, chips de acciones, lista en tarjetas */
@@ -5224,7 +5224,10 @@ input[type="range"]::-moz-range-thumb {
 .crm-quickadd--card input{flex:1;background:transparent;border:none;color:#fff;font-size:13.5px;padding:6px 8px;outline:none}
 .crm-quickadd--card input::placeholder{color:var(--text-dim)}
 .crm-quickadd--card .btn-luxury-action{width:auto;padding:8px 14px;font-size:12.5px;white-space:nowrap}
-.crm-task-form{padding:12px;border:1px solid rgba(31,200,195,0.18);border-radius:12px;background:rgba(31,200,195,0.04);margin-bottom:10px}
+.crm-task-form{padding:10px;border:1px solid rgba(31,200,195,0.18);border-radius:12px;background:rgba(31,200,195,0.04);margin-bottom:8px}
+.crm-task-form textarea{min-height:38px !important}
+.crm-task-form .crm-side-field-row{gap:8px !important;margin-bottom:6px !important}
+.crm-task-form .crm-side-field{gap:4px !important}
 .crm-task-form .crm-field-input{resize:vertical}
 .crm-task-form .crm-side-field-label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.4px}
 .crm-prio-auto{display:flex;align-items:center;gap:6px;min-height:38px;padding:8px 12px;border:1px solid var(--border-subtle);border-radius:8px;background:rgba(255,255,255,0.02);font-size:12px;color:var(--text-dim)}
@@ -5257,6 +5260,45 @@ input[type="range"]::-moz-range-thumb {
 
 .crm-side-section{margin-bottom:14px}
 .crm-side-section-title{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);margin:0 0 10px}
+
+/* ============================================================
+   TAREAS + HISTORIAL — dos columnas lado a lado, igual altura
+   Ambas visibles sin scroll del panel, cada una con scroll interno
+   La altura se calcula con JS (adjustTasksGridLayout)
+   ============================================================ */
+.crm-tasks-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+  min-height:200px;
+}
+.crm-tasks-col{
+  display:flex;flex-direction:column;
+  min-height:0;min-width:0;
+}
+.crm-tasks-col-title{
+  display:flex;align-items:center;gap:6px;
+  margin:0 0 8px;flex-shrink:0;
+}
+.crm-tasks-col-count{
+  font-size:10px;font-weight:700;color:var(--accent);
+  background:rgba(31,200,195,0.1);padding:2px 8px;border-radius:999px;
+  text-transform:none;letter-spacing:0;
+}
+.crm-tasks-col .crm-timeline{
+  flex:1;overflow-y:auto;
+  padding-right:4px;
+}
+.crm-tasks-col .crm-timeline::-webkit-scrollbar{width:4px}
+.crm-tasks-col .crm-timeline::-webkit-scrollbar-thumb{background:rgba(31,200,195,0.15);border-radius:2px}
+.crm-tasks-col .crm-timeline::-webkit-scrollbar-track{background:transparent}
+/* Responsive: en pantallas angostas apilar verticalmente */
+@media (max-width: 900px) {
+  .crm-tasks-grid{
+    grid-template-columns:1fr;
+    grid-template-rows:1fr 1fr;
+  }
+}
 
 /* ============================================================
    HISTORIAL COLAPSABLE — sin scroll en la pestaña Tareas
@@ -5299,14 +5341,7 @@ input[type="range"]::-moz-range-thumb {
   margin-top:8px;
 }
 
-/* ============================================================
-   TAREAS COMPACTAS — max 3 visibles, scroll interno
-   ============================================================ */
-.crm-timeline--cards{
-  max-height:220px;overflow-y:auto;
-}
-.crm-timeline--cards::-webkit-scrollbar{width:4px}
-.crm-timeline--cards::-webkit-scrollbar-thumb{background:rgba(31,200,195,0.15);border-radius:2px}
+/* Tareas: sin max-height fijo — lo controla el grid de dos columnas */
 .crm-tasks-count-hint{
   font-size:10px;color:var(--text-dim);text-align:center;
   padding:6px 0 0;
