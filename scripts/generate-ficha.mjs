@@ -49,9 +49,11 @@ function buildHtml(p, allProps) {
      transformaciones previa (ej. /upload/f_auto,q_auto/) antes de agregar la nuestra,
      así la miniatura queda liviana y de un solo paso */
   const heroClean = hero.includes('/upload/') ? hero.replace(/\/upload\/[^/]*\/(v\d+\/)/, '/upload/$1') : hero;
+  /* og:image con fallback: si la propiedad no tiene foto, usar el og-image
+     genérico del sitio para que WhatsApp SIEMPRE muestre preview */
   const ogThumb = heroClean.includes('res.cloudinary.com') && heroClean.includes('/upload/')
     ? heroClean.replace('/upload/', '/upload/w_1200,h_630,c_fill,q_70,f_jpg/')
-    : heroClean;
+    : heroClean || 'https://bienenhaus.com.ar/og-image.jpg';
   const currency = p.price_currency === 'ARS' ? 'ARS' : 'USD';
   const price = p.price_usd
     ? `${p.price_currency === 'ARS' ? '$' : 'USD'} ${Number(p.price_usd).toLocaleString('es-AR')}`
@@ -183,9 +185,14 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="${esc(p.title)} — Foto principal">
+<meta property="og:locale" content="es_AR">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="${esc(ogThumb)}">` : ''}
+<meta name="twitter:image" content="${esc(ogThumb)}">
+<meta name="twitter:title" content="${esc(p.title)}">
+<meta name="twitter:description" content="${esc(buildMetaDescription(p.description))}">` : ''}
 <meta property="og:url" content="${esc(fichaUrl)}">
+<meta property="og:see_also" content="https://bienenhaus.com.ar/">
 <script type="application/ld+json">${jsonLdText}</script>
 <script type="application/ld+json">${jsonLdBreadcrumbText}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
