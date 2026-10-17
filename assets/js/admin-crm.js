@@ -982,7 +982,7 @@ function bindContactActions(panel, lead, firstProp, props) {
     });
   }
   /* Encuesta de visita (HOJA DE VISITA): desde Contacto, con 1 propiedad enviá directo;
-     con varias te lleva a la solapa Propiedades para elegir cuál. */
+     con varias muestra un modal selector para elegir cuál enviar sin quitar propiedades. */
   var surveyBtn = panel.querySelector('#crmSurveyBtn');
   if (surveyBtn) {
     surveyBtn.addEventListener('click', function () {
@@ -990,12 +990,62 @@ function bindContactActions(panel, lead, firstProp, props) {
       if (props.length === 1) {
         sendSurveyForProperty(lead, props[0].property_id, props[0].property_title, panel);
       } else {
-        var tabBtn = panel.querySelector('.crm-tab-btn[data-crm-tab="props"]');
-        if (tabBtn) tabBtn.click();
-        toast('Elegí la propiedad y tocá el botón “Encuesta”.', 'info');
+        showSurveyPropertyPicker(lead, props, panel);
       }
     });
   }
+}
+
+/* Modal selector de propiedad para encuesta cuando el lead tiene varias vinculadas.
+   Cada propiedad muestra su estado de encuesta y un botón para enviarla directamente. */
+function showSurveyPropertyPicker(lead, props, panel) {
+  /* Cerrar si ya hay uno abierto */
+  var old = document.querySelector('.survey-picker-overlay');
+  if (old) old.remove();
+
+  var overlay = document.createElement('div');
+  overlay.className = 'survey-picker-overlay';
+  var box = document.createElement('div');
+  box.className = 'survey-picker-box';
+  box.innerHTML =
+    '<div class="survey-picker-header">' +
+      '<span class="survey-picker-icon"><i class="fas fa-clipboard-list"></i></span>' +
+      '<div><h3 class="survey-picker-title">Enviar Encuesta</h3>' +
+      '<p class="survey-picker-subtitle">Elegí la propiedad que visitaste</p></div>' +
+    '</div>' +
+    '<div class="survey-picker-body">' +
+      props.map(function (p) {
+        return '<div class="survey-picker-item" data-prop-id="' + esc(p.property_id) + '" data-prop-title="' + esc(p.property_title || '') + '">' +
+          '<div class="survey-picker-info">' +
+            '<span class="survey-picker-prop-title">' + esc(p.property_title || 'Propiedad') + '</span>' +
+          '</div>' +
+          '<button type="button" class="survey-picker-send-btn" data-survey-picker-send="' + esc(p.property_id) + '" data-survey-picker-title="' + esc(p.property_title || '') + '">' +
+            '<i class="fab fa-whatsapp"></i> Enviar' +
+          '</button>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<div class="survey-picker-footer">' +
+      '<button type="button" class="btn-ghost survey-picker-close">Cerrar</button>' +
+    '</div>';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  function close() { document.removeEventListener('keydown', onKey); overlay.remove(); }
+  function onKey(e) { if (e.key === 'Escape') close(); }
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) close(); });
+  box.querySelector('.survey-picker-close').addEventListener('click', close);
+
+  box.querySelectorAll('.survey-picker-send-btn').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var propId = this.dataset.surveyPickerSend;
+      var propTitle = this.dataset.surveyPickerTitle;
+      close();
+      sendSurveyForProperty(lead, propId, propTitle, panel);
+    });
+  });
 }
 
 /* Tras completar la visita: ofrecer mandar la encuesta en el momento. */
@@ -1021,15 +1071,18 @@ function getLeadSurveys(id) {
 
 /* 1 encuesta por (lead, propiedad): el token queda registrado y se reusa al reenviar. */
 async function ensureSurveyToken(leadId, propertyId) {
-  var r = await db().from('visit_surveys').select('token, finalized').eq('lead_id', leadId).eq('property_id', propertyId).maybeSingle();
+  /* Solo buscar la encuesta ACTIVA (sin archivar). Sin este filtro, si hay
+     encuestas archivadas para el mismo (lead, propiedad), maybeSingle()
+     encuentra varias filas y falla con error. */
+  var r = await db().from('visit_surveys').select('token, finalized').eq('lead_id', leadId).eq('property_id', propertyId).is('archived_at', null).maybeSingle();
   if (r.error) throw new Error(r.error.message);
   if (r.data) return r.data;
   var token = crypto.randomUUID();
   var ins = await db().from('visit_surveys').insert([{ lead_id: leadId, property_id: propertyId, token: token }]);
   if (!ins.error) return { token: token, finalized: false };
-  /* carrera: dos clics simultáneos → ya existe; se relee. */
+  /* carrera: dos clics simultáneos → ya existe; se relee (solo la activa). */
   if (ins.error && ins.error.code === '23505') {
-    var r2 = await db().from('visit_surveys').select('token, finalized').eq('lead_id', leadId).eq('property_id', propertyId).maybeSingle();
+    var r2 = await db().from('visit_surveys').select('token, finalized').eq('lead_id', leadId).eq('property_id', propertyId).is('archived_at', null).maybeSingle();
     if (r2.error || !r2.data) throw new Error(r2.error ? r2.error.message : 'No se pudo crear la encuesta');
     return r2.data;
   }
