@@ -1467,6 +1467,7 @@ function bindOfferActions(panel, lead, offers) {
         await db().from('lead_activities').insert([{ lead_id: lead.id, activity_type: 'status_change', title: 'Oferta aceptada: ' + fmt + ' — Lead GANADO' }]);
         toast('Oferta aceptada: ' + fmt + ' · Lead ganado 🎉', 'success');
         refreshOffersInPanel(lead.id, panel);
+        refreshTimelineInPanel(lead.id, panel);
         loadLeads();
       } catch (e) { toast('Error: ' + e.message, 'error'); }
     });
@@ -1486,6 +1487,7 @@ function bindOfferActions(panel, lead, offers) {
         await db().from('lead_activities').insert([{ lead_id: lead.id, activity_type: 'note', title: 'Oferta rechazada: ' + fmt }]);
         toast('Oferta rechazada.', 'info');
         refreshOffersInPanel(lead.id, panel);
+        refreshTimelineInPanel(lead.id, panel);
       } catch (e) { toast('Error: ' + e.message, 'error'); }
     });
   });
@@ -2792,8 +2794,9 @@ function bindLeadTaskForm(panel, lead) {
         if (ins.error) throw new Error(ins.error.message);
         await syncLeadFollowup(leadId);
         toast('Tarea creada.', 'success');
-        // Refrescar solo la lista de tareas en el panel actual, mantener pestaña activa
+        // Refrescar solo la lista de tareas y el historial en el panel actual
         await refreshTasksInPanel(leadId, panel);
+        refreshTimelineInPanel(leadId, panel);
       } else if (action === 'visit') {
         if (!due) { toast('Seleccioná fecha y hora.', 'error'); return; }
         var propSel = panel.querySelector('#leadTaskProp');
@@ -2816,6 +2819,7 @@ function bindLeadTaskForm(panel, lead) {
         if (vIns.error) throw new Error(vIns.error.message);
         await db().from('leads').update({ last_contacted_at: new Date().toISOString(), next_followup_at: new Date(due).toISOString() }).eq('id', leadId);
         toast('Visita agendada.', 'success');
+        refreshTimelineInPanel(leadId, panel);
       } else if (action === 'note') {
         if (!desc) { toast('Escribí la nota.', 'error'); return; }
         var nIns = await db().from('lead_activities').insert([{
@@ -2827,6 +2831,7 @@ function bindLeadTaskForm(panel, lead) {
         if (nIns.error) throw new Error(nIns.error.message);
         await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', leadId);
         toast('Nota guardada.', 'success');
+        refreshTimelineInPanel(leadId, panel);
       } else if (action === 'lost') {
         if (!desc) { toast('Escribí el motivo del rechazo.', 'error'); return; }
         var lostResult = await showLostReasonModal();
@@ -2862,6 +2867,7 @@ async function doCompleteTlTask(item, leadId, panel) {
     var chip = item.querySelector('.crm-tl-status');
     if (chip) { chip.textContent = 'Completada'; chip.classList.add('crm-tl-status--done'); }
     await syncLeadFollowup(leadId);
+    refreshTimelineInPanel(leadId, panel);
     await loadLeads();
   } catch (e) { console.warn('[crm] complete task:', e.message); }
 }
@@ -2895,6 +2901,20 @@ function bindTlTaskActions(panel, leadId) {
       edit.addEventListener('click', function (e) { e.stopPropagation(); doEditTlTask(item, leadId, panel); });
     }
   });
+}
+
+/* Refresca el HISTORIAL (timeline) dentro del panel sin cerrarlo.
+   Se llama después de guardar una nota, tarea o cualquier actividad. */
+async function refreshTimelineInPanel(leadId, panel) {
+  try {
+    var acts = await getLeadActivities(leadId);
+    var visits = await getLeadVisits(leadId);
+    var tl = panel.querySelector('.crm-timeline--historial');
+    if (!tl) return;
+    tl.innerHTML = buildUnifiedTimeline(acts, visits, []);
+  } catch (e) {
+    console.warn('[crm] refreshTimelineInPanel:', e.message);
+  }
 }
 
 /* Refresca SOLO la lista de tareas dentro del panel actual (sin cerrar/abrir
