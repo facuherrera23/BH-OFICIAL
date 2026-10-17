@@ -1610,7 +1610,7 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
         '<button type="button" class="crm-tab-btn" data-crm-tab="tasks">Tareas</button>' +
         '<button type="button" class="crm-tab-btn" data-crm-tab="props">Propiedades</button>' +
       '</div>' +
-      sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, buildUnifiedTimeline(activities, visits, []), tasks, props, suggestHtml, offerHtml) +
+      sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, buildUnifiedTimeline(activities, visits, []), tasks, props, suggestHtml, offerHtml, (activities || []).length) +
       '<div class="crm-side-save"><button class="btn-luxury-action" id="crmSideSaveBtn" style="width:100%;">Guardar cambios</button></div>' +
     '</div>' +
     '</div>';
@@ -1645,6 +1645,16 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
   bindLeadTaskForm(panel, lead);
   bindAgendaActions(panel, lead.id);
   bindTlTaskActions(panel, lead.id);
+  /* Historial colapsable: toggle expandir/colapsar */
+  var histToggle = panel.querySelector('#crmHistToggle');
+  if (histToggle) {
+    histToggle.addEventListener('click', function () {
+      var content = panel.querySelector('#crmHistContent');
+      if (!content) return;
+      var isOpen = content.classList.toggle('is-open');
+      histToggle.classList.toggle('is-open', isOpen);
+    });
+  }
   /* Deal room: botón "Ofertar" en cada propiedad vinculada */
   panel.querySelectorAll('[data-offer-action="new"]').forEach(function (b) {
     b.addEventListener('click', function (e) {
@@ -1677,7 +1687,7 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
   }
 }
 
-function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks, props, suggestHtml, offerHtml) {
+function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks, props, suggestHtml, offerHtml, histCount) {
   var propOpts = (props || []).map(function (p) {
     return '<option value="' + p.property_id + '">' + esc(p.property_title || 'Propiedad') + '</option>';
   }).join('');
@@ -1756,8 +1766,16 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks
           '<button type="button" class="btn-luxury-action" id="leadTaskAddBtn"><i class="fas fa-plus"></i> <span id="leadTaskAddLabel">Agregar Tarea</span></button>' +
         '</div>' +
       '</div>' +
-      '<div class="crm-side-section"><h4 class="crm-side-section-title">Tareas</h4><div class="crm-timeline crm-timeline--cards">' + (tasks.length ? buildUnifiedTimeline([], [], tasks) : '<div class="crm-tasks-empty"><i class="fas fa-list-check"></i><span>Sin tareas. Creá una con el campo de arriba.</span></div>') + '</div></div>' +
-      '<div class="crm-side-section"><h4 class="crm-side-section-title">Historial</h4><div class="crm-timeline crm-timeline--historial">' + (timelineHtml || buildTimelineHTML([])) + '</div></div>' +
+      '<div class="crm-side-section"><h4 class="crm-side-section-title">Tareas' + (tasks.length > 3 ? ' <span style="font-size:10px;font-weight:600;color:var(--accent);background:rgba(31,200,195,0.1);padding:2px 6px;border-radius:999px;text-transform:none;letter-spacing:0;margin-left:4px;">' + tasks.length + '</span>' : '') + '</h4><div class="crm-timeline crm-timeline--cards">' + (tasks.length ? buildUnifiedTimeline([], [], tasks) : '<div class="crm-tasks-empty"><i class="fas fa-list-check"></i><span>Sin tareas. Creá una con el campo de arriba.</span></div>') + '</div>' + (tasks.length > 3 ? '<div class="crm-tasks-count-hint">Scroll para ver las ' + tasks.length + ' tareas</div>' : '') + '</div>' +
+      '<div class="crm-side-section">' +
+        '<button type="button" class="crm-hist-toggle" id="crmHistToggle">' +
+          '<span class="crm-hist-label">Historial <span class="crm-hist-count" id="crmHistCount">' + (histCount || 0) + '</span></span>' +
+          '<i class="fas fa-chevron-down crm-hist-arrow"></i>' +
+        '</button>' +
+        '<div class="crm-hist-content" id="crmHistContent">' +
+          '<div class="crm-timeline crm-timeline--historial" style="margin-top:10px;">' + (timelineHtml || buildTimelineHTML([])) + '</div>' +
+        '</div>' +
+      '</div>' +
     '</div>' +
     '<div class="crm-tab-content" id="crmTab-props" style="display:none;">' +
       suggestHtml +
@@ -2912,6 +2930,17 @@ async function refreshTimelineInPanel(leadId, panel) {
     var tl = panel.querySelector('.crm-timeline--historial');
     if (!tl) return;
     tl.innerHTML = buildUnifiedTimeline(acts, visits, []);
+    /* Actualizar el contador del toggle */
+    var countEl = panel.querySelector('#crmHistCount');
+    if (countEl) countEl.textContent = (acts || []).length;
+    /* Si el historial estaba colapsado, auto-expandir brevemente para
+       que el usuario vea que la actividad se registró */
+    var content = panel.querySelector('#crmHistContent');
+    var toggle = panel.querySelector('#crmHistToggle');
+    if (content && toggle && !content.classList.contains('is-open')) {
+      content.classList.add('is-open');
+      toggle.classList.add('is-open');
+    }
   } catch (e) {
     console.warn('[crm] refreshTimelineInPanel:', e.message);
   }
