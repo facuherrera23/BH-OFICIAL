@@ -8,7 +8,7 @@
 <!-- Font Awesome -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-<link rel="stylesheet" href="assets/css/admin.css?v=274" />
+<link rel="stylesheet" href="assets/css/admin.css?v=275" />
 </head>
 <body class="is-loading">
 <!-- PRELOADER LUXURY -->
@@ -69,6 +69,9 @@
 <span class="brand-subtitle">ADMIN &amp; CRM</span>
 </div>
 <span class="badge-env">PRO</span>
+<button type="button" id="sidebarCollapseToggle" class="sidebar-collapse-btn" title="Contraer menú" aria-label="Contraer o expandir menú">
+<i class="fas fa-angles-left"></i>
+</button>
 </div>
 <nav class="sidebar-menu">
 <div class="menu-category">Principal</div>
@@ -95,14 +98,6 @@
 <span>Leads &amp; CRM</span>
 </div>
 <span class="nav-badge" id="sideBadgeLeads">0 Activos</span>
-</div>
-<div class="nav-item" data-tab="tab-propietarios">
-<div class="nav-item-left">
-<i class="fas fa-handshake">
-</i>
-<span>Propietarios</span>
-</div>
-<span class="nav-badge" id="sideBadgeOwners">0</span>
 </div>
 <div class="nav-item" data-tab="tab-agenda">
 <div class="nav-item-left">
@@ -132,13 +127,6 @@
 </i>  <span>Portales & APIs</span>  </div>  <span class="nav-badge" id="sideBadgePortales" style="color:var(--text-dim);">
 <i class="fas fa-circle" style="font-size:8px;">
 </i> …</span>  </div>
-<div class="nav-item" data-tab="tab-agentes">
-<div class="nav-item-left">
-<i class="fas fa-user-tie">
-</i>
-<span>Agentes & Brokers</span>
-</div>
-</div>
 <div class="nav-item" data-tab="tab-chat-redes">
 <div class="nav-item-left">
 <i class="fas fa-comments">
@@ -154,19 +142,19 @@
 <span>Ficha HTML</span>
 </div>
 </div>
-<div class="menu-category">Sistema</div>
+<div class="menu-category">Equipo & Sistema</div>
+<div class="nav-item" data-tab="tab-agentes">
+<div class="nav-item-left">
+<i class="fas fa-user-tie">
+</i>
+<span>Agentes & Brokers</span>
+</div>
+</div>
 <div class="nav-item" data-tab="tab-usuarios">
 <div class="nav-item-left">
 <i class="fas fa-shield-halved">
 </i>
 <span>Usuarios & Permisos</span>
-</div>
-</div>
-<div class="nav-item" data-tab="tab-configuracion">
-<div class="nav-item-left">
-<i class="fas fa-sliders">
-</i>
-<span>Configuración</span>
 </div>
 </div>
 <div class="nav-item" data-tab="tab-supervision">
@@ -176,6 +164,13 @@
 <span style="font-weight:600;">Centro de Supervisión</span>
 </div>
 <span class="nav-badge" id="sideBadgeSupervision" style="background:rgba(239,68,68,0.15); color:var(--danger); display:none;">0</span>
+</div>
+<div class="nav-item" data-tab="tab-configuracion">
+<div class="nav-item-left">
+<i class="fas fa-sliders">
+</i>
+<span>Configuración</span>
+</div>
 </div>
 </nav>
 <div class="sidebar-footer">
@@ -534,6 +529,8 @@
 <button class="btn-luxury-action" id="btnNewLead">+ Agregar Lead</button>
 <button class="btn-luxury-action" id="btnNewOwnerCrm" style="display:none;" title="Registrar nuevo propietario"><i class="fas fa-user-plus"></i> Registrar Propietario</button>
 <button class="btn-luxury-action" id="btnGenerateTokenCrm" style="display:none; background:rgba(139,92,246,0.12); border:1px solid rgba(139,92,246,0.35); color:#a78bfa;" title="Generar token de acceso al portal"><i class="fas fa-key"></i> + Token</button>
+<button class="btn-luxury-action" id="btnExportOwnersCsvCrm" style="display:none; background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar propietarios a CSV"><i class="fas fa-file-csv"></i> .csv</button>
+<button class="btn-luxury-action" id="btnExportOwnersPdfCrm" style="display:none; background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);" title="Exportar propietarios a PDF"><i class="fas fa-file-pdf"></i> .pdf</button>
 </div>
 </div>
 
@@ -567,6 +564,7 @@
   </select>
 </div>
 
+<div id="crmOwnerAlerts" class="crm-owner-alerts" style="display:none;"></div>
 <div id="crmLeadList"></div>
 
 <div class="crm-side-panel" id="crmSidePanel"></div>
@@ -694,91 +692,6 @@
 </div>
 </section>
 <!-- 5. PADRÓN DE PROPIETARIOS -->
-<section class="tab-module" id="tab-propietarios">
-<div class="kpi-grid-6" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
-<div class="kpi-card">
-<div class="kpi-top">
-<span class="kpi-title">Propietarios Titulares</span>
-<div class="kpi-icon">
-<i class="fas fa-handshake">
-</i>
-</div>
-</div>
-<div class="kpi-value" id="ownerKpiTotal">0</div>
-<div class="kpi-trend">
-<i class="fas fa-circle-check">
-</i> En cartera activa</div>
-</div>
-<div class="kpi-card">
-<div class="kpi-top">
-<span class="kpi-title">Valor en Exclusividad</span>
-<div class="kpi-icon">
-<i class="fas fa-gem">
-</i>
-</div>
-</div>
-<div class="kpi-value" id="ownerKpiValue">USD 0</div>
-<div class="kpi-trend">
-<i class="fas fa-shield-alt">
-</i> Contratos vigentes</div>
-</div>
-<div class="kpi-card">
-<div class="kpi-top">
-<span class="kpi-title">Exclusividades por Vencer</span>
-<div class="kpi-icon">
-<i class="fas fa-stopwatch">
-</i>
-</div>
-</div>
-<div class="kpi-value" id="ownerKpiExpiring" style="color:var(--warning);">0</div>
-<div class="kpi-trend" style="color:var(--warning);">
-<i class="fas fa-bell">
-</i> Requieren renovación</div>
-</div>
-</div>
-<div id="ownerDocAlert" class="alert-banner" style="display: none; margin-bottom: 24px;">
-</div>
-<div class="glass-panel">
-<div class="panel-header">
-<div>
-<h2 class="panel-title">Padrón de Propietarios & Contratos de Venta</h2>
-<p style="color:var(--text-muted); font-size:12.5px;">Gestión de expedientes legales, cuentas bancarias, seguimiento y reportes automáticos.</p>
-</div>
-<div style="display:flex; gap:10px; flex-wrap:wrap;">
-<input type="text" id="ownerSearchInput" placeholder="Buscar por nombre, CUIT o inmueble..." style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); padding:8px 14px; border-radius:var(--radius-sm); font-size:13px; outline:none; min-width:240px; color:#fff;" autocomplete="off" />
-<button class="status-pill" id="ownerTrashToggle" title="Ver propietarios eliminados (baja lógica)">
-<i class="fas fa-trash-can"></i> Papelera</button>
-<button class="status-pill" id="btnExportOwnersCSV" title="Exportar a Excel (CSV)">
-<i class="fas fa-file-csv">
-</i> .csv</button>
-<button class="status-pill" id="btnExportOwnersPDF" title="Exportar a PDF">
-<i class="fas fa-file-pdf">
-</i> .pdf</button>
-<button class="btn-luxury-action" id="btnNewOwner">
-<i class="fas fa-user-plus">
-</i> Registrar Propietario</button>
-</div>
-</div>
-<div class="table-responsive">
-<table class="luxury-table">
-<thead>
-<tr>
-<th>Titular / CUIT</th>
-<th>Contacto & WhatsApp</th>
-<th>Estado</th>
-<th>Próx. Tarea</th>
-<th>Acciones</th>
-</tr>
-</thead>
-<tbody id="ownersTableBody">
-<tr>
-<td colspan="5" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando propietarios...</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-</section>
 <!-- 6. SITIO WEB (CMS) -->
 <section class="tab-module" id="tab-sitio-web">
 <div class="glass-panel">
@@ -3472,10 +3385,10 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 </i>Tu bloqueador de anuncios está impidiendo que el panel cargue correctamente.<strong>Desactivá las extensiones</strong> para este sitio o abrí en ventana incógnita.<a href="#" data-action="closeCdnWarning">Cerrar</a>
 </div>
 <!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Bloqueador de anuncios detectado.</strong> Desactivá las extensiones para este sitio o abrí en ventana incógnita. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="assets/js/zod.umd.js"></script><script src="assets/js/utils.js?v=185"></script><script src="assets/js/config.js?v=186"></script><script src="assets/js/supabase-client.js?v=185"></script><script src="assets/js/cloudinary.js?v=187"></script><script src="assets/js/admin-crm-tasks.js?v=14"></script>
-<script src="assets/js/admin-crm.js?v=74"></script>
+<script src="assets/js/admin-crm.js?v=76"></script>
 <script src="assets/js/disable-search-autocomplete.js?v=1"></script>
-<script src="assets/js/admin-app.js?v=471"></script>
-<script src="assets/js/admin-propietarios.js?v=17"></script>
+<script src="assets/js/admin-app.js?v=472"></script>
+<script src="assets/js/admin-propietarios.js?v=18"></script>
 <script src="assets/js/admin-usuarios.js?v=11"></script>
 <script src="assets/js/admin-agentes.js?v=10"></script>
 <script src="assets/js/admin-cms.js?v=6"></script>

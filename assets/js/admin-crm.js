@@ -47,6 +47,7 @@ var _ownerFiltered = [];
 var _ownerAgentFilter = '';
 var _ownerExclFilter = '';
 var _ownerTaskFilter = '';
+var _ownerTrash = false;
 
 function $id(id) { return document.getElementById(id); }
 function esc(s) {
@@ -256,8 +257,12 @@ async function loadOwners() {
   c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Cargando propietarios...</div>';
   closeDetailPanel();
   try {
-    var q0 = db().from('owners').select('id', { count: 'exact', head: true }).is('deleted_at', null);
-    var qw = db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, created_at, agent_id').is('deleted_at', null);
+    var q0 = _ownerTrash
+      ? db().from('owners').select('id', { count: 'exact', head: true }).not('deleted_at', 'is', null)
+      : db().from('owners').select('id', { count: 'exact', head: true }).is('deleted_at', null);
+    var qw = _ownerTrash
+      ? db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, dni_expiry, cuit_expiry, created_at, agent_id, deleted_at').not('deleted_at', 'is', null)
+      : db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, dni_expiry, cuit_expiry, created_at, agent_id').is('deleted_at', null);
     if (_ownerSearch.trim()) {
       var os = _ownerSearch.trim().replace(/[%_]/g, ' ');
       var ors = ['full_name', 'email', 'phone', 'dni_cuit', 'address'].map(function (f) { return f + '.ilike.%' + os + '%'; }).join(',');
@@ -274,7 +279,7 @@ async function loadOwners() {
     /* Filtros desplegables: exclusividad, agente asignado y tareas pendientes.
        Agente y tareas resuelven primero a un set de owner_id (agregan la condicion
        id.in. directo sobre Supabase, sin bajar toda la tabla). */
-    if (_ownerExclFilter) {
+    if (!_ownerTrash && _ownerExclFilter) {
       var todayIso = new Date().toISOString().slice(0, 10);
       var in30Iso = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
       if (_ownerExclFilter === 'exclusive') { q0 = q0.eq('exclusive', true); qw = qw.eq('exclusive', true); }
@@ -288,7 +293,7 @@ async function loadOwners() {
       }
     }
     var idConstraints = [];
-    if (_ownerAgentFilter) {
+    if (!_ownerTrash && _ownerAgentFilter) {
       var pa = await db().from('properties').select('owner_id').eq('agent_id', _ownerAgentFilter).is('deleted_at', null).limit(500);
       var oa = await db().from('owners').select('id').eq('agent_id', _ownerAgentFilter).is('deleted_at', null).limit(500);
       idConstraints.push([...new Set(
@@ -297,7 +302,7 @@ async function loadOwners() {
           .filter(Boolean)
       )]);
     }
-    if (_ownerTaskFilter) {
+    if (!_ownerTrash && _ownerTaskFilter) {
       var tq = db().from('owner_tasks').select('owner_id, status, due_date').limit(1000);
       var tr = await tq;
       var allT = tr.data || [];
@@ -323,6 +328,7 @@ async function loadOwners() {
         _owners = []; _ownerFiltered = []; _totalRows = 0; _totalPages = 1; _page = 1;
         if (emptyRes) emptyRes.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Ningún propietario coincide con los filtros.</div>';
         updateOwnerKpis();
+        renderOwnerAlerts();
         var subEmpty = $id('crmSubtitle');
         if (subEmpty) subEmpty.textContent = '0 propietarios (filtro)';
         return;
@@ -335,8 +341,12 @@ async function loadOwners() {
     _totalRows = (countRes && countRes.count) || 0;
     _totalPages = Math.max(1, Math.ceil(_totalRows / PAGE_SIZE));
     if (_page > _totalPages) _page = _totalPages;
-    var sortCol = OWNER_SERVER_SORT[_ownerSortKey];
-    if (sortCol) qw = qw.order(sortCol, { ascending: _ownerSortDir === 'asc', nullsFirst: false });
+    if (_ownerTrash) {
+      qw = qw.order('deleted_at', { ascending: false });
+    } else {
+      var sortCol = OWNER_SERVER_SORT[_ownerSortKey];
+      if (sortCol) qw = qw.order(sortCol, { ascending: _ownerSortDir === 'asc', nullsFirst: false });
+    }
     qw = qw.range((_page - 1) * PAGE_SIZE, _page * PAGE_SIZE - 1);
     var r = await qw;
     if (r.error) throw new Error(r.error.message);
@@ -384,6 +394,7 @@ async function loadOwners() {
 applyOwnerSort();
     renderOwnerList(c);
     updateOwnerKpis();
+    renderOwnerAlerts();
     var sub = $id('crmSubtitle');
     if (sub) sub.textContent = _totalRows + (_ownerSearch.trim() ? ' propietarios (filtro)' : ' propietarios');
   } catch (e) {
@@ -422,7 +433,9 @@ function renderOwnerAgentCell(owner) {
 /* -- Tabla Owners -- */
 function renderOwnerList(c) {
   if (!_owners.length) {
-    c.innerHTML = (_ownerSearch.trim()
+    c.innerHTML = (_ownerTrash
+      ? '<div style="padding:40px;text-align:center;color:var(--text-dim);">La papelera de propietarios está vacía.</div>'
+      : _ownerSearch.trim()
       ? '<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin propietarios que coincidan con la búsqueda.</div>'
       : '<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin propietarios cargados.</div>');
     return;
@@ -461,19 +474,21 @@ function renderOwnerList(c) {
       proxCell = '<span class="crm-muted">—</span>';
     }
     rows += '<tr class="crm-row" data-id="' + o.id + '" data-kind="owner">' +
-      '<td><div class="crm-client-row"><span class="crm-client-avatar" style="background:' + avColor + '">' + inits + '</span><div><strong>' + esc(o.full_name) + '</strong>' + (o.exclusive ? '<span class="crm-tipo-chip crm-tipo-chip--estado">EXCLUSIVO</span>' : '') + '<div class="crm-meta">' + esc(contactMetrics.join(' · ')) + '</div></div></div></td>' +
+      '<td><div class="crm-client-row"><span class="crm-client-avatar" style="background:' + avColor + '">' + inits + '</span><div><strong>' + esc(o.full_name) + '</strong>' + (_ownerTrash ? '<span class="crm-tipo-chip" style="background:rgba(239,68,68,0.12);color:var(--danger);">ELIMINADO</span>' : (o.exclusive ? '<span class="crm-tipo-chip crm-tipo-chip--estado">EXCLUSIVO</span>' : '')) + '<div class="crm-meta">' + esc(contactMetrics.join(' · ')) + '</div></div></div></td>' +
       '<td>' + (o.dni_cuit ? '<code style="font-size:11px;color:var(--text-secondary);">' + esc(o.dni_cuit) + '</code>' : '<span class="crm-muted">—</span>') + '</td>' +
       '<td>' + renderOwnerPropsCell(o.id) + '</td>' +
       '<td>' + renderOwnerAgentCell(o) + '</td>' +
       '<td>' + tareaCell + '</td>' +
       '<td>' + (o.exclusive && o.exclusive_end ? fmtDate(o.exclusive_end) : '<span class="crm-muted">—</span>') + '</td>' +
       '<td>' + proxCell + '</td>' +
-      '<td class="crm-td-actions">' +
+      '<td class="crm-td-actions">' + (_ownerTrash
+        ? '<button class="btn-action" data-action="restoreOwner" data-id="' + o.id + '" title="Restaurar propietario"><i class="fas fa-rotate-left"></i></button>'
+        :
         '<button class="btn-action" data-action="viewOwner" data-id="' + o.id + '" title="Ver detalle"><i class="fas fa-eye"></i></button>' +
         '<button class="btn-action crm-icon-action" data-action="addOwnerNote" data-id="' + o.id + '" title="Agregar nota"><i class="fas fa-sticky-note"></i></button>' +
         '<button class="btn-action crm-icon-action" data-action="genOwnerToken" data-id="' + o.id + '" title="Generar token portal"><i class="fas fa-key"></i></button>' +
         '<button class="btn-action" data-action="editOwner" data-id="' + o.id + '" title="Editar"><i class="fas fa-pen"></i></button>' +
-        '<button class="btn-action danger" data-action="deleteOwner" data-id="' + o.id + '" title="Eliminar"><i class="fas fa-trash"></i></button>' +
+        '<button class="btn-action danger" data-action="deleteOwner" data-id="' + o.id + '" title="Eliminar"><i class="fas fa-trash"></i></button>') +
       '</td>' +
     '</tr>';
   }
@@ -489,7 +504,20 @@ function renderOwnerList(c) {
         '<th class="crm-th-sort" data-sort="prox">Próx. tarea' + sortArrow('prox') + '</th><th></th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>' + buildPagination();
   c.querySelectorAll('.crm-row').forEach(function (r) {
-    r.addEventListener('click', function () { if (window.adminApp && window.adminApp.editOwner) window.adminApp.editOwner(this.dataset.id, 'tasks'); });
+    r.addEventListener('click', function () {
+      if (_ownerTrash) return;
+      if (window.adminApp && window.adminApp.editOwner) window.adminApp.editOwner(this.dataset.id, 'tasks');
+    });
+  });
+  c.querySelectorAll('[data-action="restoreOwner"]').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var id = this.dataset.id;
+      if (window.adminApp && window.adminApp.restoreOwner) {
+        /* restoreOwner hace el UPDATE + toast; al resolver, refrescamos la vista del CRM. */
+        window.adminApp.restoreOwner(id).then(function () { loadOwners(); }, function () { loadOwners(); });
+      }
+    });
   });
   c.querySelectorAll('[data-action="viewOwner"],[data-action="addOwnerNote"]').forEach(function (b) {
     b.addEventListener('click', function (e) {
@@ -675,6 +703,52 @@ async function updateOwnerKpis() {
     el = $id('crmKpiGanados'); if (el) el.textContent = counts[2].count || 0;
     el = $id('crmKpiPerdidos'); if (el) el.textContent = counts[3].count || 0;
   } catch (e) { console.warn('[crm] owner kpis:', e.message); }
+}
+
+/* Banner de alertas del padrón de propietarios (migrado del viejo tab Propietarios):
+   valor en exclusividad, exclusividades por vencer/vencidas y vencimientos de
+   DNI/CUIT. Reemplaza los KPIs ownerKpi* y #ownerDocAlert del módulo original. */
+async function renderOwnerAlerts() {
+  var el = $id('crmOwnerAlerts');
+  if (!el) return;
+  if (_viewMode !== 'owners' || _ownerTrash) { el.style.display = 'none'; return; }
+  try {
+    var oRes = await db().from('owners').select('id, exclusive, exclusive_end, dni_expiry, cuit_expiry').is('deleted_at', null).limit(500);
+    var owners = oRes.data || [];
+    var now = Date.now();
+    var in30 = now + 30 * 86400000;
+    var in90 = now + 90 * 86400000;
+    var docAlerts = 0, expiring = 0, expiredExcl = 0, exclIds = [];
+    owners.forEach(function (o) {
+      if (o.dni_expiry && new Date(o.dni_expiry).getTime() < in90) docAlerts++;
+      if (o.cuit_expiry && new Date(o.cuit_expiry).getTime() < in90) docAlerts++;
+      if (o.exclusive) {
+        exclIds.push(o.id);
+        if (o.exclusive_end) {
+          var t = new Date(o.exclusive_end).getTime();
+          if (t < now) expiredExcl++;
+          else if (t <= in30) expiring++;
+        }
+      }
+    });
+    /* Valor en exclusividad: suma de precio de las props publicadas de dueños exclusivos. */
+    var exclValue = 0;
+    if (exclIds.length) {
+      var pRes = await db().from('properties').select('owner_id, price_usd').in('owner_id', exclIds).eq('is_published', true).is('deleted_at', null).limit(500);
+      (pRes.data || []).forEach(function (p) { exclValue += Number(p.price_usd || 0); });
+    }
+    var chips = '';
+    if (exclValue > 0) chips += '<span class="crm-oa-chip crm-oa-chip--info"><i class="fas fa-gem"></i> Valor en exclusividad: USD ' + exclValue.toLocaleString('es-AR') + '</span>';
+    if (expiring > 0) chips += '<span class="crm-oa-chip crm-oa-chip--warn"><i class="fas fa-stopwatch"></i> ' + expiring + (expiring > 1 ? ' exclusividades vencen en 30 días' : ' exclusividad vence en 30 días') + '</span>';
+    if (expiredExcl > 0) chips += '<span class="crm-oa-chip crm-oa-chip--danger"><i class="fas fa-bell"></i> ' + expiredExcl + (expiredExcl > 1 ? ' exclusividades vencidas' : ' exclusividad vencida') + '</span>';
+    if (docAlerts > 0) chips += '<span class="crm-oa-chip crm-oa-chip--warn"><i class="fas fa-id-card"></i> ' + docAlerts + (docAlerts > 1 ? ' documentos DNI/CUIT vencidos o por vencer' : ' documento DNI/CUIT vencido o por vencer') + '</span>';
+    if (!chips) { el.style.display = 'none'; return; }
+    el.innerHTML = chips;
+    el.style.display = 'flex';
+  } catch (e) {
+    if (window.__BH && window.__BH.logError) window.__BH.logError('[crm] owner alerts:', e);
+    el.style.display = 'none';
+  }
 }
 
 async function updateKpis() {
@@ -2231,18 +2305,38 @@ if (search) search.addEventListener('input', function () {
   if (trashBtn && !trashBtn.dataset.bound) {
     trashBtn.dataset.bound = '1';
     trashBtn.addEventListener('click', function () {
+      if (_viewMode === 'owners') {
+        _ownerTrash = !_ownerTrash;
+        _page = 1;
+        closeDetailPanel();
+        _syncTrashBtn();
+        loadOwners();
+        return;
+      }
       _showTrash = !_showTrash;
       _kpiFilter = '';
       _page = 1;
       closeDetailPanel();
-      trashBtn.classList.toggle('is-active', _showTrash);
-      trashBtn.innerHTML = _showTrash
-        ? '<i class="fas fa-arrow-left"></i> Volver a activos'
-        : '<i class="fas fa-trash-can"></i> Papelera';
+      _syncTrashBtn();
       var stFilter = $id('crmStatusFilter');
       if (stFilter) stFilter.disabled = _showTrash;
       syncKpiCards();
       loadLeads();
+    });
+  }
+  /* Export CSV/PDF del padrón (funciones del engine admin-propietarios.js). */
+  var ownersCsvBtn = $id('btnExportOwnersCsvCrm');
+  if (ownersCsvBtn && !ownersCsvBtn.dataset.bound) {
+    ownersCsvBtn.dataset.bound = '1';
+    ownersCsvBtn.addEventListener('click', function () {
+      if (window.adminApp && window.adminApp.exportOwnersCSV) window.adminApp.exportOwnersCSV();
+    });
+  }
+  var ownersPdfBtn = $id('btnExportOwnersPdfCrm');
+  if (ownersPdfBtn && !ownersPdfBtn.dataset.bound) {
+    ownersPdfBtn.dataset.bound = '1';
+    ownersPdfBtn.addEventListener('click', function () {
+      if (window.adminApp && window.adminApp.exportOwnersPDF) window.adminApp.exportOwnersPDF();
     });
   }
   _bindViewModeToggle();
@@ -2260,13 +2354,17 @@ function _bindViewModeToggle() {
   btn.dataset.crmBound = '1';
   btn.addEventListener('click', function () {
     _viewMode = _viewMode === 'leads' ? 'owners' : 'leads';
-    console.log('CRM mode:', _viewMode);
     _ownerSearch = '';
     _ownerAgentFilter = ''; _ownerExclFilter = ''; _ownerTaskFilter = '';
     ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter'].forEach(function (id) { var el = $id(id); if (el) el.value = ''; });
     var sr = $id('crmSearch');
     if (sr) sr.value = '';
     _page = 1;
+    /* Al cambiar de vista la papelera vuelve al estado activos (de ambos lados). */
+    _showTrash = false; _ownerTrash = false;
+    var stFilter = $id('crmStatusFilter');
+    if (stFilter) stFilter.disabled = false;
+    _syncTrashBtn();
     _syncHeader();
     if (_viewMode === 'owners') loadOwners(); else loadLeads();
   });
@@ -2274,14 +2372,26 @@ function _bindViewModeToggle() {
   if (ownerBtn && !ownerBtn.dataset.crmBound) {
     ownerBtn.dataset.crmBound = '1';
     ownerBtn.addEventListener('click', function () {
-      var nb = document.getElementById('btnNewOwner');
-      if (nb) nb.click();
-      else {
-        var chip = document.querySelector('.quick-action-chip[data-action="openOwnerModal"]');
-        if (chip) chip.click();
-      }
+      /* Alta directa vía engine del padrón (título y form correctos); el chip
+         del dashboard queda como fallback si el engine no cargó. */
+      if (window.adminApp && window.adminApp.openNewOwner) { window.adminApp.openNewOwner(); return; }
+      var chip = document.querySelector('.quick-action-chip[data-action="openOwnerModal"]');
+      if (chip) chip.click();
     });
   }
+}
+function _syncTrashBtn() {
+  var btn = $id('crmTrashToggle');
+  if (!btn) return;
+  var on = _viewMode === 'owners' ? _ownerTrash : _showTrash;
+  btn.classList.toggle('is-active', on);
+  btn.innerHTML = on
+    ? '<i class="fas fa-arrow-left"></i> Volver a activos'
+    : '<i class="fas fa-trash-can"></i> Papelera';
+  ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter'].forEach(function (id) {
+    var el = $id(id);
+    if (el) el.disabled = _viewMode === 'owners' ? _ownerTrash : false;
+  });
 }
 function _syncHeader() {
   var ownersMode = _viewMode === 'owners';
@@ -2301,6 +2411,12 @@ function _syncHeader() {
   if (newOwnerCrm) newOwnerCrm.style.display = ownersMode ? '' : 'none';
   var tokenCrm = $id('btnGenerateTokenCrm');
   if (tokenCrm) tokenCrm.style.display = ownersMode ? '' : 'none';
+  var csvCrm = $id('btnExportOwnersCsvCrm');
+  var pdfCrm = $id('btnExportOwnersPdfCrm');
+  if (csvCrm) csvCrm.style.display = ownersMode ? '' : 'none';
+  if (pdfCrm) pdfCrm.style.display = ownersMode ? '' : 'none';
+  var alertsEl = $id('crmOwnerAlerts');
+  if (alertsEl && !ownersMode) alertsEl.style.display = 'none';
   if (searchEl) searchEl.placeholder = ownersMode ? 'Buscar propietario, CUIT o inmueble...' : 'Buscar nombre, email o teléfono...';
   leadOnly.forEach(function (id) {
     var el = $id(id);
@@ -2320,7 +2436,23 @@ function _syncHeader() {
 
 /* ctypes */
 
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel };
+/* Abre la vista Propietarios del CRM desde fuera del módulo (búsqueda global,
+   accesos directos). Si viene ownerId, abre el editor del padrón directamente. */
+function openOwners(ownerId) {
+  _viewMode = 'owners';
+  _ownerSearch = ''; _ownerAgentFilter = ''; _ownerExclFilter = ''; _ownerTaskFilter = '';
+  ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter'].forEach(function (id) { var el = $id(id); if (el) el.value = ''; });
+  var sr = $id('crmSearch');
+  if (sr) sr.value = '';
+  _page = 1;
+  _showTrash = false; _ownerTrash = false; _kpiFilter = '';
+  _syncTrashBtn();
+  _syncHeader();
+  loadOwners();
+  if (ownerId && window.adminApp && window.adminApp.editOwner) window.adminApp.editOwner(ownerId, 'tasks');
+}
+
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel };
 
 /* --- Generación de token portal desde CRM (en modo propietarios) --- */
 (function () {

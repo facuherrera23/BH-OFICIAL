@@ -212,6 +212,14 @@ ${(() => { const t = nextTaskByOwner[o.id]; if (!t) return '<div style="font-siz
     openModal('ownerModal');
   });
 
+  /* Alta de propietario desde el modo Propietarios del CRM: el tab viejo fue
+     removido del sidebar, así que el CRM entra directo por acá. Misma
+     inicialización que hacía #btnNewOwner (título + form limpio + sin edición). */
+  window.adminApp.openNewOwner = function () {
+    resetOwnerModalForNew('Expediente de Propietario');
+    openModal('ownerModal');
+  };
+
   on($('#btnAddOwnerInline'), 'click', () => {
     _ownerFormSourcePropertyModal = true;
     resetOwnerModalForNew('Nuevo Propietario');

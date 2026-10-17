@@ -694,6 +694,50 @@ function esc(s) {
     }
   });
 
+  /* ---- Sidebar: modo colapsado (solo desktop) ----
+     Contrae el menú a una franja de íconos con tooltips y persiste en localStorage.
+     En móvil (≤900px) el sidebar es un drawer off-canvas: el botón se oculta por
+     CSS y el estado colapsado nunca se aplica para no romper el menú. */
+  const SB_COLLAPSE_KEY = 'bh_sidebar_collapsed';
+  function applySidebarCollapsed(collapsed, save = true) {
+    const sb = $('#sidebar');
+    if (!sb) return;
+    const isDesktop = window.innerWidth > 900;
+    const effective = isDesktop ? !!collapsed : false;
+    sb.classList.toggle('is-collapsed', effective);
+    const btn = $('#sidebarCollapseToggle');
+    if (btn) {
+      const icon = btn.querySelector('i');
+      if (icon) icon.className = effective ? 'fas fa-angles-right' : 'fas fa-angles-left';
+      btn.title = effective ? 'Expandir menú' : 'Contraer menú';
+      btn.setAttribute('aria-label', btn.title);
+    }
+    /* Tooltip nativo con el nombre del módulo cuando está colapsado. */
+    sb.querySelectorAll('.nav-item').forEach(item => {
+      const label = item.querySelector('.nav-item-left span');
+      if (!label) return;
+      if (effective) item.title = label.textContent.trim();
+      else item.removeAttribute('title');
+    });
+    if (save && isDesktop) { try { localStorage.setItem(SB_COLLAPSE_KEY, collapsed ? '1' : '0'); } catch (_) {} }
+  }
+  $('#sidebarCollapseToggle')?.addEventListener('click', () => {
+    const sb = $('#sidebar');
+    applySidebarCollapsed(!(sb && sb.classList.contains('is-collapsed')));
+  });
+  let _sbWasDesktop = window.innerWidth > 900;
+  window.addEventListener('resize', () => {
+    const isDesktop = window.innerWidth > 900;
+    if (isDesktop !== _sbWasDesktop) {
+      _sbWasDesktop = isDesktop;
+      let stored = false;
+      try { stored = localStorage.getItem(SB_COLLAPSE_KEY) === '1'; } catch (_) {}
+      applySidebarCollapsed(isDesktop ? stored : false, false);
+    }
+  });
+  /* Estado persistido al arrancar. */
+  try { if (localStorage.getItem(SB_COLLAPSE_KEY) === '1') applySidebarCollapsed(true, false); } catch (_) {}
+
   /* Aceptación de invitación: definir contraseña del usuario invitado */
   function openInvitePasswordModal(email) {
     const emailEl = $('#inviteSetupEmail');
@@ -769,7 +813,6 @@ function esc(s) {
       'tab-portales': 'Portales & APIs',
       'tab-chat-redes': 'Chat Redes Sociales',
       'tab-agentes': 'Brokers & Asesores',
-      'tab-propietarios': 'Padrón de Propietarios',
       'tab-usuarios': 'Usuarios & Permisos',
       'tab-configuracion': 'Configuración General',
       'tab-ficha-html': 'Ficha HTML',
@@ -794,7 +837,6 @@ function esc(s) {
       'tab-tasaciones': () => window.__BH.loadTasaciones?.(),
       'tab-sitio-web': () => window.__BH.loadCMS?.(),
       'tab-agentes': () => window.__BH.loadAgents?.(),
-      'tab-propietarios': () => window.__BH.loadOwners?.(),
       'tab-usuarios': () => window.__BH.loadUsers?.(),
       'tab-portales': () => window.__BH.loadPortals?.(),
       'tab-ficha-html': () => window.__BH.loadFichaHtml?.(),
@@ -2304,6 +2346,7 @@ window.exportAnomaliesCSV = async function() {
           openModal('visitModal');
           break;
         case 'openOwnerModal':
+          if (window.adminApp && window.adminApp.openNewOwner) { window.adminApp.openNewOwner(); break; }
           editingOwnerId = null;
           $('#ownerForm')?.reset();
           openModal('ownerModal');
@@ -3414,17 +3457,11 @@ async function mutate(table, fn) {
       const propsEl = $('#sideBadgeProps');
       const leadsEl = $('#sideBadgeLeads');
       const visitsEl = $('#sideBadgeVisits');
-      const ownersEl = $('#sideBadgeOwners');
       const tasEl = $('#sideBadgeTasaciones');
 
       if (propsEl) propsEl.textContent = counts.properties || 0;
       if (leadsEl) leadsEl.textContent = (counts.leads || 0) + ' Activos';
       if (visitsEl) visitsEl.textContent = (counts.visits || 0) + ' Citas';
-      if (ownersEl) {
-        const overdueTasks = counts.owner_tasks_overdue || 0;
-        ownersEl.textContent = (counts.owners || 0) + ' Activos' + (overdueTasks > 0 ? ' · ' + overdueTasks + ' tareas vencidas' : '');
-        if (overdueTasks > 0) ownersEl.style.color = 'var(--danger)';
-      }
       if (tasEl) tasEl.textContent = counts.tasaciones || 0;
     } catch (err) {
       logError('Badge update error:', err);
@@ -3831,7 +3868,7 @@ on(document, 'keydown', (e) => {
       }
       for (const o of cache.owners) {
         if (!matches([o.full_name, o.email, o.phone])) continue;
-        results.push({ icon: 'fas fa-user-tie', text: o.full_name || 'Sin nombre', sub: o.email || o.phone || '', tab: 'tab-propietarios', color: '#F97316', action: () => { navigateTo('tab-propietarios'); window.adminApp.editOwner(o.id); } });
+        results.push({ icon: 'fas fa-user-tie', text: o.full_name || 'Sin nombre', sub: o.email || o.phone || '', tab: 'tab-leads', color: '#F97316', action: () => { navigateTo('tab-leads'); if (window.BH_CRM && window.BH_CRM.openOwners) window.BH_CRM.openOwners(o.id); } });
       }
       for (const v of cache.visits) {
         if (!matches([v.client_name, v.client_phone])) continue;

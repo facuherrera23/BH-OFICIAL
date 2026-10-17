@@ -557,6 +557,28 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     flex-shrink: 0;
 }
 
+/* Botón de colapso del sidebar (solo desktop; en móvil lo oculta el media query) */
+.sidebar-collapse-btn {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-btn);
+    border: 1px solid var(--border-subtle);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-dim);
+    font-size: 11px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color 0.15s var(--ease-out), border-color 0.15s var(--ease-out), background 0.15s var(--ease-out);
+}
+.sidebar-collapse-btn:hover {
+    color: var(--accent);
+    border-color: var(--border-accent);
+    background: rgba(31, 200, 195, 0.08);
+}
+
 .sidebar-menu {
     flex: 1;
     overflow-y: auto;
@@ -609,8 +631,17 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     background: linear-gradient(90deg, rgba(31, 200, 195, 0.15) 0%, rgba(31, 200, 195, 0.03) 100%);
     color: var(--text-main);
     font-weight: 600;
-    border-left: 3px solid var(--accent);
-    padding-left: 11px;
+}
+/* Barra indicadora del módulo activo: glow teal sobre el borde izquierdo.
+   Reemplaza al border-left (no desplaza el contenido al activarse). */
+.nav-item.is-active::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 7px; bottom: 7px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--accent);
+    box-shadow: 0 0 10px rgba(31, 200, 195, 0.55);
 }
 .nav-item.is-active i { color: var(--accent); }
 
@@ -3431,10 +3462,39 @@ input[type="range"]::-moz-range-thumb {
 .sidebar.is-collapsed .nav-badge,
 .sidebar.is-collapsed .user-info,
 .sidebar.is-collapsed .badge-env { display: none; }
+.sidebar.is-collapsed .brand-title { display: none; }
 .sidebar.is-collapsed .nav-item-left { gap: 0; justify-content: center; width: 100%; }
 .sidebar.is-collapsed .nav-item { justify-content: center; padding: 11px 8px; }
 .sidebar.is-collapsed .sidebar-brand { justify-content: center; padding: 26px 12px; }
+.sidebar.is-collapsed .sidebar-collapse-btn { width: 32px; height: 32px; font-size: 13px; }
 .sidebar.is-collapsed .user-card { justify-content: center; padding: 10px 4px; }
+
+/* ============================================================
+   BANNER DE ALERTAS DEL PADRÓN — modo Propietarios del CRM
+   (valor en exclusividad, exclusividades por vencer, DNI/CUIT).
+   Migrado del viejo tab Propietarios (KPIs ownerKpi* + ownerDocAlert).
+   ============================================================ */
+.crm-owner-alerts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+.crm-oa-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    line-height: 1.3;
+}
+.crm-oa-chip i { font-size: 12px; }
+.crm-oa-chip--info { background: rgba(31, 200, 195, 0.08); border-color: rgba(31, 200, 195, 0.25); color: var(--accent); }
+.crm-oa-chip--warn { background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.3); color: #f59e0b; }
+.crm-oa-chip--danger { background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.3); color: var(--danger); }
 
 #mobileMenuToggle { display: none; }
 
@@ -3569,6 +3629,8 @@ input[type="range"]::-moz-range-thumb {
     .topbar { padding: 0 20px; }
     .content-area { padding: 20px; }
     #mobileMenuToggle { display: flex !important; }
+    /* El colapso es desktop-only: en el drawer móvil el botón no existe. */
+    .sidebar-collapse-btn { display: none !important; }
 
     .cal-day { min-height: 56px; padding: 4px; }
     .cal-event { font-size: 9px; padding: 1px 3px; }
