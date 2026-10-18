@@ -37,6 +37,7 @@ var _hasFollowupFilter = false;
 var _searchTimer = null;
 var __initialized = false;
 var _viewMode = 'leads';
+var _kpiTaskIds = null; /* ids de leads con tareas vencidas/por vencer (filtro KPI) */
 var _owners = [];
 var _ownerTasks = {};
 var _agentMapById = {};
@@ -187,6 +188,11 @@ function applyBaseFilters(q) {
     var staleCut = new Date(Date.now() - 2 * 86400000).toISOString();
     q = q.or('last_contacted_at.is.null,last_contacted_at.lt.' + staleCut)
          .not('stage', 'in', '("cerrado_ganado","cerrado_perdido")');
+  } else if (_kpiFilter === 'tasksOverdue' || _kpiFilter === 'tasksSoon') {
+    /* Leads con tareas vencidas / por vencer en 24h. Los ids se resolvieron
+       en loadLeads (query a lead_tasks) — mismo patrón que los filtros de owners. */
+    if (_kpiTaskIds && _kpiTaskIds.length) q = q.in('id', _kpiTaskIds);
+    else q = q.eq('id', '00000000-0000-0000-0000-000000000000'); /* sin coincidencias */
   }
   if (_showTrash) return q.not('deleted_at', 'is', null);
   return q.is('deleted_at', null);
@@ -312,6 +318,10 @@ async function loadOwners() {
       var openIds = [...new Set(allT.filter(function (t) { return t.status !== 'completada'; }).map(function (t) { return t.owner_id; }))];
       if (_ownerTaskFilter === 'pendientes') ovIds = openIds;
       else if (_ownerTaskFilter === 'vencidas') ovIds = [...new Set(allT.filter(function (t) { return t.status !== 'completada' && t.due_date && t.due_date < todayOv; }).map(function (t) { return t.owner_id; }))];
+      else if (_ownerTaskFilter === 'vencen_24') {
+        var in24Iso = new Date(Date.now() + 86400000).toISOString();
+        ovIds = [...new Set(allT.filter(function (t) { var d = t.due_date ? new Date(t.due_date).getTime() : 0; return t.status !== 'completada' && t.status !== 'cancelada' && d >= Date.now() && d <= Date.now() + 86400000; }).map(function (t) { return t.owner_id; }))];
+      }
       else ovIds = [...new Set(allT.filter(function (t) { return t.status === 'completada'; }).map(function (t) { return t.owner_id; }))];
       if (_ownerTaskFilter === 'sin_pendientes') {
         var withOpen = new Set(openIds);
@@ -458,9 +468,12 @@ function renderOwnerList(c) {
     var tareaCell;
     if (tareas.length) {
       var vencidas = tareas.filter(function (tk) { return tk.due_date && new Date(tk.due_date).getTime() < Date.now(); }).length;
+      var prox24 = tareas.filter(function (tk) { var t = tk.due_date ? new Date(tk.due_date).getTime() : 0; return t >= Date.now() && t <= Date.now() + 86400000; }).length;
       var tip = tareas.map(function (tk) { return (tk.type || 'Tarea') + (tk.due_date ? ' - vence ' + fmtDate(tk.due_date) : ''); }).join(' | ');
       var cls = vencidas ? 'crm-priority crm-priority--alta' : 'crm-priority crm-priority--media';
-      tareaCell = '<span class="' + cls + '" style="cursor:pointer;" title="' + esc(tip) + '" data-action="viewOwnerTasks" data-id="' + o.id + '">' + tareas.length + ' pendiente' + (tareas.length > 1 ? 's' : '') + (vencidas ? ' <span style="color:var(--danger);font-weight:800;">(' + vencidas + ' venc.)</span>' : '') + '</span>';
+      tareaCell = '<span class="' + cls + '" style="cursor:pointer;" title="' + esc(tip) + '" data-action="viewOwnerTasks" data-id="' + o.id + '">' + tareas.length + ' pendiente' + (tareas.length > 1 ? 's' : '') +
+        (vencidas ? ' <span style="color:var(--danger);font-weight:800;">(' + vencidas + ' venc.)</span>' : '') +
+        (!vencidas && prox24 ? ' <span style="color:var(--warning);font-weight:800;">(' + prox24 + ' próx.)</span>' : '') + '</span>';
     } else {
       tareaCell = '<span class="crm-muted">—</span>';
     }
@@ -583,6 +596,17 @@ async function loadLeads() {
      en curso del lead abierto (asignar agente/propiedad y seguir creando tareas).
      Los cierres intencionales (papelera, eliminar, perdido) llaman closeDetailPanel explicitamente. */
   try {
+    /* Filtro KPI por tareas: resolver primero los lead_ids con tareas
+       vencidas / por vencer 24h (patrón de los filtros de owners). */
+    _kpiTaskIds = null;
+    if (_kpiFilter === 'tasksOverdue' || _kpiFilter === 'tasksSoon') {
+      var kpiTq = db().from('lead_tasks').select('lead_id, status, due_at, title').in('status', ['pendiente', 'en_progreso']).limit(1000);
+      if (_kpiFilter === 'tasksOverdue') kpiTq = kpiTq.lt('due_at', new Date().toISOString());
+      else kpiTq = kpiTq.gte('due_at', new Date().toISOString()).lte('due_at', new Date(Date.now() + 86400000).toISOString());
+      var kpiTr = await kpiTq;
+      var kpiIds = [...new Set((kpiTr.data || []).map(function (tk) { return tk.lead_id; }).filter(Boolean))];
+      _kpiTaskIds = kpiIds;
+    }
     var countRes = await applyBaseFilters(
       db().from('leads').select('id', { count: 'exact', head: true }));
     _totalRows = (countRes && countRes.count) || 0;
@@ -659,8 +683,24 @@ function setKpiLabels(labels) {
   for (var i = 0; i < els.length && i < labels.length; i++) els[i].textContent = labels[i];
 }
 
+/* Colores por slot: el 3er KPI es "Vencidas" (rojo) y el 4to "Vencen en 24h"
+   (ámbar) en AMBOS modos — se pintan dinámicos porque en modo leads el 3er
+   slot es "Sin contacto +48h" (neutro) y el 4to "Conversión" (teal). */
+function setKpiColors(mode) {
+  var c3 = $id('crmKpiGanados');
+  var c4 = $id('crmKpiPerdidos');
+  if (c3) {
+    c3.classList.remove('crm-kpi--win', 'crm-kpi--venc');
+    c3.classList.add(mode === 'leads' ? 'crm-kpi--win' : 'crm-kpi--venc');
+  }
+  if (c4) {
+    c4.classList.remove('crm-kpi--lost', 'crm-kpi--soon');
+    c4.classList.add(mode === 'leads' ? 'crm-kpi--lost' : 'crm-kpi--soon');
+  }
+}
+
 /* KPI clickeables: Activos=reset, Nuevos(7d), Sin contacto +48h */
-var KPI_CARD_BINDINGS = { crmKpiTotal: 'reset', crmKpiNuevo: 'nuevos7d', crmKpiGanados: 'stale48' };
+var KPI_CARD_BINDINGS = { crmKpiTotal: 'reset', crmKpiNuevo: 'nuevos7d', crmKpiGanados: 'stale48', crmKpiVenc: 'tasksOverdue', crmKpiSoon: 'tasksSoon' };
 function syncKpiCards() {
   var clickable = _viewMode === 'leads' && !_showTrash;
   Object.keys(KPI_CARD_BINDINGS).forEach(function (id) {
@@ -692,12 +732,16 @@ function bindKpiCards() {
 }
 
 async function updateOwnerKpis() {
-  setKpiLabels(['Propietarios', 'Exclusivos', 'Vencidas', 'Propiedades']);
+  setKpiLabels(['Propietarios', 'Exclusivos', 'Vencidas', 'Vencen en 24h', 'Tareas pendientes', 'Propiedades']);
+  setKpiColors('owners');
   try {
+    var in24 = new Date(Date.now() + 86400000).toISOString();
     var counts = await Promise.all([
       db().from('owners').select('id', { count: 'exact', head: true }).is('deleted_at', null),
       db().from('owners').select('id', { count: 'exact', head: true }).eq('exclusive', true).is('deleted_at', null),
       db().from('owner_tasks').select('id', { count: 'exact', head: true }).not('status', 'in', '("completada","cancelada")').lt('due_date', new Date().toISOString()),
+      db().from('owner_tasks').select('id', { count: 'exact', head: true }).not('status', 'in', '("completada","cancelada")').gte('due_date', new Date().toISOString()).lte('due_date', in24),
+      db().from('owner_tasks').select('id', { count: 'exact', head: true }).not('status', 'in', '("completada","cancelada")'),
       db().from('properties').select('id', { count: 'exact', head: true }).is('deleted_at', null).not('owner_id', 'is', null)
     ]);
     var el;
@@ -705,6 +749,8 @@ async function updateOwnerKpis() {
     el = $id('crmKpiNuevo'); if (el) el.textContent = counts[1].count || 0;
     el = $id('crmKpiGanados'); if (el) el.textContent = counts[2].count || 0;
     el = $id('crmKpiPerdidos'); if (el) el.textContent = counts[3].count || 0;
+    el = $id('crmKpiVenc'); if (el) el.textContent = counts[4].count || 0;
+    el = $id('crmKpiSoon'); if (el) el.textContent = counts[5].count || 0;
   } catch (e) { console.warn('[crm] owner kpis:', e.message); }
 }
 
@@ -757,35 +803,43 @@ async function renderOwnerAlerts() {
 async function updateKpis() {
   try {
     if (_showTrash) {
-      setKpiLabels(['Eliminados', '', '', '']);
+      setKpiLabels(['Eliminados', '', '', '', '', '']);
       var elT = $id('crmKpiTotal'); if (elT) elT.textContent = _totalRows;
-      ['crmKpiNuevo', 'crmKpiGanados', 'crmKpiPerdidos'].forEach(function (k) { var e = $id(k); if (e) e.textContent = '—'; });
+      ['crmKpiNuevo', 'crmKpiGanados', 'crmKpiPerdidos', 'crmKpiVenc', 'crmKpiSoon'].forEach(function (k) { var e = $id(k); if (e) e.textContent = '—'; });
       return;
     }
-    setKpiLabels(['Activos', 'Nuevos (7d)', 'Sin contacto +48h', 'Conversión']);
+    setKpiLabels(['Activos', 'Nuevos (7d)', 'Sin contacto +48h', 'Conversión', 'Tareas vencidas', 'Vencen en 24h']);
+    setKpiColors('leads');
     var CLOSED = ['cerrado_ganado', 'cerrado_perdido'];
     var now = Date.now();
     var sevenDays = new Date(now - 7 * 86400000).toISOString();
     var twoDays = new Date(now - 2 * 86400000).toISOString();
     var leads = db().from('leads');
+    var in24 = new Date(now + 86400000).toISOString();
     var counts = await Promise.all([
       leads.select('id', { count: 'exact', head: true }).is('deleted_at', null).neq('stage', 'cerrado_perdido'),
       leads.select('id', { count: 'exact', head: true }).gte('created_at', sevenDays).is('deleted_at', null).neq('stage', 'cerrado_perdido'),
       leads.select('id', { count: 'exact', head: true }).or('last_contacted_at.is.null,last_contacted_at.lt.' + twoDays).not('stage', 'in', '("cerrado_ganado","cerrado_perdido")').is('deleted_at', null),
       leads.select('id', { count: 'exact', head: true }).eq('stage', 'cerrado_ganado').is('deleted_at', null),
       leads.select('id', { count: 'exact', head: true }).in('stage', CLOSED).is('deleted_at', null),
+      db().from('lead_tasks').select('id', { count: 'exact', head: true }).in('status', ['pendiente', 'en_progreso']).lt('due_at', new Date().toISOString()),
+      db().from('lead_tasks').select('id', { count: 'exact', head: true }).in('status', ['pendiente', 'en_progreso']).gte('due_at', new Date().toISOString()).lte('due_at', in24),
     ]);
     var activos = counts[0].count || 0;
     var nuevos7 = counts[1].count || 0;
     var stale = counts[2].count || 0;
     var ganados = counts[3].count || 0;
     var cerrados = counts[4].count || 0;
+    var vencidas = counts[5].count || 0;
+    var pronto = counts[6].count || 0;
     var conv = cerrados > 0 ? Math.round((ganados / cerrados) * 100) + '%' : '—';
     var el;
     el = $id('crmKpiTotal'); if (el) el.textContent = activos;
     el = $id('crmKpiNuevo'); if (el) el.textContent = nuevos7;
     el = $id('crmKpiGanados'); if (el) el.textContent = stale;
     el = $id('crmKpiPerdidos'); if (el) el.textContent = conv;
+    el = $id('crmKpiVenc'); if (el) el.textContent = vencidas;
+    el = $id('crmKpiSoon'); if (el) el.textContent = pronto;
     syncKpiCards();
   } catch (e) { console.warn('[crm] kpis:', e.message); }
 }
@@ -830,7 +884,11 @@ var propCell;
     var nextTxt;
     if (rec && rec.kind === 'task') {
       var taskDate = rec.due ? fmtDate(rec.due) : null;
-      nextTxt = '<span class="crm-next-action' + (rec.due && isFollowupDue(rec.due) ? ' crm-next-action--due' : '') + '" title="' + esc(rec.label) + '">' + (taskDate || 'Tarea') + '</span>';
+      var overdueTask = rec.due && isFollowupDue(rec.due);
+      var soonTask = rec.due && !overdueTask && new Date(rec.due).getTime() <= Date.now() + 86400000;
+      nextTxt = '<span class="crm-next-action' +
+        (overdueTask ? ' crm-next-action--overdue' : (soonTask ? ' crm-next-action--due' : '')) +
+        '" title="' + esc(rec.label) + '">' + (taskDate || 'Tarea') + '</span>';
     } else if (l.next_followup_at) {
       nextTxt = '<span class="crm-next-action' + (isFollowupDue(l.next_followup_at) ? ' crm-next-action--due' : '') + '" title="' + (rec ? esc(rec.label) : 'Próx. acción programada') + '">' + fmtDate(l.next_followup_at) + '</span>';
     } else if (rec && rec.kind === 'recommend') {
@@ -2425,9 +2483,20 @@ function _syncHeader() {
   var leadOnly = ['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmAgentFilter', 'crmFollowupWrap'];
   var ownerOnly = ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter'];
   if (btn) {
-    btn.innerHTML = ownersMode
-      ? '<i class="fas fa-users"></i> Leads'
-      : '<i class="fas fa-user-tie"></i> Propietarios';
+    /* Pedido del empleador: el botón del modo contrario avisa tareas vencidas
+       (rojo) o por vencer en 24h (ámbar) — lee el cache de la RPC del sidebar. */
+    var bc = (window.__BH && window.__BH.lastBadgeCounts) || {};
+    var otherOverdue = ownersMode ? (bc.lead_tasks_overdue || 0) : (bc.owner_tasks_overdue || 0);
+    var otherSoon = ownersMode ? (bc.lead_tasks_soon || 0) : (bc.owner_tasks_soon || 0);
+    btn.classList.remove('crm-toggle--alert', 'crm-toggle--soon');
+    var countTxt = otherOverdue > 0 ? ' · ' + otherOverdue + ' venc.' : (otherSoon > 0 ? ' · ' + otherSoon + ' próx.' : '');
+    if (otherOverdue > 0) btn.classList.add('crm-toggle--alert');
+    else if (otherSoon > 0) btn.classList.add('crm-toggle--soon');
+    var baseLabel = ownersMode ? '<i class="fas fa-users"></i> Leads' : '<i class="fas fa-user-tie"></i> Propietarios';
+    btn.innerHTML = baseLabel + countTxt;
+    btn.dataset.bhTip = ownersMode
+      ? (otherOverdue > 0 ? otherOverdue + ' tareas de leads vencidas' : (otherSoon > 0 ? otherSoon + ' tareas de leads vencen en 24 h' : 'Ver leads'))
+      : (otherOverdue > 0 ? otherOverdue + ' tareas de propietarios vencidas' : (otherSoon > 0 ? otherSoon + ' tareas de propietarios vencen en 24 h' : 'Ver padrón de propietarios'));
   }
   if (newLead) newLead.style.display = ownersMode ? 'none' : '';
   if (newOwnerCrm) newOwnerCrm.style.display = ownersMode ? '' : 'none';

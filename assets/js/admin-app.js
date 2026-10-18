@@ -1114,7 +1114,13 @@ function esc(s) {
 
       /* #18: tareas del agente logueado (clickeables → panel del lead). */
       if (tasks.length) {
-        html += '<div class="st-title"><i class="fas fa-list-check"></i> Tareas</div>' +
+        var tv = tasks.filter(function (t) { return t.due_at && new Date(t.due_at).getTime() < Date.now(); }).length;
+        var tp24 = tasks.filter(function (t) { var d = t.due_at ? new Date(t.due_at).getTime() : 0; return d >= Date.now() && d <= Date.now() + 86400000; }).length;
+        var tLabel = tv > 0 ? '<span style="color:var(--danger);">' + tv + ' vencida' + (tv > 1 ? 's' : '') + '</span>' : '';
+        if (tLabel && tp24 > 0) tLabel += ' · ';
+        if (tp24 > 0) tLabel += '<span style="color:var(--warning);">' + tp24 + ' en 24h</span>';
+        if (!tLabel) tLabel = tasks.length + ' pendiente' + (tasks.length > 1 ? 's' : '');
+        html += '<div class="st-title"><i class="fas fa-list-check"></i> Tareas — ' + tLabel + '</div>' +
           tasks.map(t => {
             const overdue = t.due_at && new Date(t.due_at).getTime() < Date.now();
             const hora = t.due_at ? new Date(t.due_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '—';
@@ -4445,10 +4451,19 @@ async function mutate(table, fn) {
         propsEl.classList.toggle('nav-badge--warn', stale > 0);
       }
       if (leadsEl) {
-        /* #8: "+N hoy" en verde cuando entraron leads en las últimas 24h. */
+        /* #8: "+N hoy" en verde cuando entraron leads en las últimas 24h.
+           Señal de tareas: vencidas en rojo, próximas 24h en ámbar — el CRM
+           es donde vive el agente, la señal va también al badge del sidebar. */
         const fresh = counts.leads_new_24h || 0;
+        const venc = counts.lead_tasks_overdue || 0;
+        const soon = counts.lead_tasks_soon || 0;
         leadsEl.innerHTML = esc(String(counts.leads || 0)) + ' Activos' +
-          (fresh > 0 ? ' <span class="nav-badge-plus">+' + fresh + ' hoy</span>' : '');
+          (fresh > 0 ? ' <span class="nav-badge-plus">+' + fresh + ' hoy</span>' : '') +
+          (venc > 0 ? ' <span class="nav-badge-venc">' + venc + ' venc.</span>' : '') +
+          (venc === 0 && soon > 0 ? ' <span class="nav-badge-soon">' + soon + ' próx.</span>' : '');
+        leadsEl.dataset.bhTip = (counts.leads || 0) + ' activos' +
+          (venc > 0 ? ' · ' + venc + ' tareas vencidas' : '') +
+          (soon > 0 ? ' · ' + soon + ' vencen en 24 h' : '');
       }
       if (visitsEl) {
         /* #2: tareas vencidas totales (leads + propietarios) — la Agenda es el

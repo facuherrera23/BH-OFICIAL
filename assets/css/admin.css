@@ -716,6 +716,48 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 }
 
 /* ============================================================
+   TAREAS VENCIDAS / PRÓXIMAS 24H — sistema de 3 señales
+   Rojo = ya pasó el vencimiento (acción urgente)
+   Ámbar = vence en las próximas 24 h (acción próxima)
+   ============================================================ */
+/* Badge del sidebar. */
+.nav-badge-venc {
+    color: var(--danger);
+    font-weight: 800;
+    font-size: 10px;
+    margin-left: 2px;
+}
+.nav-badge-soon {
+    color: var(--warning);
+    font-weight: 800;
+    font-size: 10px;
+    margin-left: 2px;
+}
+/* KPI cards. */
+.crm-kpi-value.crm-kpi--venc { color: var(--danger); }
+.crm-kpi-value.crm-kpi--soon { color: var(--warning); }
+/* Botón toggle del modo (avisa de la OTRA vista). */
+.crm-toggle--alert {
+    background: rgba(239, 68, 68, 0.12) !important;
+    border: 1px solid rgba(239, 68, 68, 0.4) !important;
+    color: var(--danger) !important;
+}
+.crm-toggle--soon {
+    background: rgba(245, 158, 11, 0.1) !important;
+    border: 1px solid rgba(245, 158, 11, 0.35) !important;
+    color: var(--warning) !important;
+}
+/* Próx. acción en fila de lead: vencida = rojo (antes era ámbar). */
+.crm-next-action--overdue {
+    color: var(--danger);
+    font-weight: 800;
+}
+.crm-next-action--overdue::before {
+    content: '● ';
+    font-size: 8px;
+}
+
+/* ============================================================
    FASE 3 — acciones rápidas y orden del menú
    ============================================================ */
 /* #9: botón + de alta rápida (hover) — el badge se atenúa para darle lugar. */
