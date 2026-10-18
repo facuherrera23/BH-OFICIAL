@@ -1264,6 +1264,33 @@ function esc(s) {
     });
   }
 
+  /* #16: quick-stats al hover del ítem (tooltip premium, solo expandido —
+     en colapsado el label del módulo es la info). #24: badge del dashboard. */
+  const NAV_STAT_TIPS = {
+    'tab-propiedades': function (c) { return (c.properties || 0) + ' publicadas' + (c.properties_stale ? ' · ' + c.properties_stale + ' estancadas' : ''); },
+    'tab-leads': function (c) { return (c.leads || 0) + ' activos' + (c.leads_new_24h ? ' · +' + c.leads_new_24h + ' hoy' : ''); },
+    'tab-agenda': function (c) { return (c.visits || 0) + ' citas' + (c.tasks_overdue_total ? ' · ' + c.tasks_overdue_total + ' vencidas' : ''); },
+    'tab-tasaciones': function (c) { return (c.tasaciones || 0) + ' tasaciones'; }
+  };
+  function refreshNavStatTips() {
+    const c = (window.__BH && window.__BH.lastBadgeCounts) || null;
+    if (!c || document.getElementById('sidebar').classList.contains('is-collapsed')) return;
+    Object.keys(NAV_STAT_TIPS).forEach(function (tab) {
+      const item = document.querySelector('#sidebar .nav-item[data-tab="' + tab + '"]');
+      if (item) item.dataset.bhTip = NAV_STAT_TIPS[tab](c);
+    });
+  }
+  /* #24: el badge de Dashboard se inyecta (no existe en el HTML estático). */
+  (function ensureDashBadge() {
+    const item = document.querySelector('#sidebar .nav-item[data-tab="tab-dashboard"]');
+    if (!item || document.getElementById('sideBadgeDash')) return;
+    const b = document.createElement('span');
+    b.className = 'nav-badge';
+    b.id = 'sideBadgeDash';
+    b.style.display = 'none';
+    item.appendChild(b);
+  })();
+
   /* #33: modo compacto — ítems de altura reducida, todo visible sin scroll. */
   const DENSE_KEY = 'bh_sidebar_dense';
   function isDense() { try { return localStorage.getItem(DENSE_KEY) === '1'; } catch (_) { return false; } }
@@ -1508,10 +1535,12 @@ function esc(s) {
       if (effective) item.dataset.bhTip = label.textContent.trim();
       else { delete item.dataset.bhTip; item.removeAttribute('title'); }
     });
-    /* Al expandir, ocultar el tooltip que quedó visible del modo colapsado. */
+    /* Al expandir, ocultar el tooltip que quedó visible del modo colapsado
+       y restaurar los quick-stats (#16) que el colapso pisó con el label. */
     if (!effective) {
       const tipEl = document.getElementById('bhTooltip');
       if (tipEl) tipEl.classList.remove('is-visible');
+      refreshNavStatTips();
     }
     if (save && isDesktop) { try { localStorage.setItem(SB_COLLAPSE_KEY, collapsed ? '1' : '0'); } catch (_) {} }
   }
@@ -4317,6 +4346,34 @@ async function mutate(table, fn) {
         visitsEl.style.color = overdue > 0 ? 'var(--danger)' : '';
       }
       if (tasEl) setBadgeAnimated(tasEl, counts.tasaciones || 0, '');
+      /* #3: desglose en hover del badge (consume el cache de la RPC v2). */
+      if (leadsEl && counts.leads != null) {
+        leadsEl.dataset.bhTip = (counts.leads || 0) + ' activos' +
+          (counts.leads_new_24h ? ' · +' + counts.leads_new_24h + ' hoy' : '');
+      }
+      if (visitsEl && counts.visits != null) {
+        visitsEl.dataset.bhTip = (counts.visits || 0) + ' citas' +
+          (counts.tasks_overdue_total ? ' · ' + counts.tasks_overdue_total + ' tareas vencidas' : '');
+      }
+      if (propsEl && counts.properties != null) {
+        propsEl.dataset.bhTip = (counts.properties || 0) + ' publicadas' +
+          (counts.properties_stale ? ' · ' + counts.properties_stale + ' estancadas' : '');
+      }
+      /* #24: badge de recomendaciones en Dashboard (acciones que requieren
+         atención: estancadas + tareas vencidas) — la puerta de entrada al
+         panel de recomendaciones. */
+      const dashBadge = document.getElementById('sideBadgeDash');
+      if (dashBadge) {
+        const recs = (counts.properties_stale || 0) + (counts.tasks_overdue_total || 0);
+        if (recs > 0) {
+          dashBadge.textContent = recs > 99 ? '99+' : String(recs);
+          dashBadge.style.display = '';
+          dashBadge.classList.add('nav-badge--warn');
+          dashBadge.dataset.bhTip = recs + ' acciones requieren atención — recomendaciones del dashboard';
+        } else {
+          dashBadge.style.display = 'none';
+        }
+      }
       const chatEl = $('#sideBadgeChatRedes');
       if (chatEl) {
         /* #1: chat sin leer — al boot la RPC ya lo sabe (el módulo de chat toma
@@ -4328,6 +4385,7 @@ async function mutate(table, fn) {
       /* Cache de conteos para tooltips/desgloses (#3/#16) sin repetir la RPC.
          Dentro del try: `counts` es block-scoped — afuera del catch no existe. */
       if (window.__BH) window.__BH.lastBadgeCounts = counts;
+      refreshNavStatTips(); /* #16: quick-stats de los ítems — DESPUÉS del cache. */
       /* F4: si la sección "Hoy" está abierta, refrescarla (con su TTL de 3min). */
       const stBodyEl = document.getElementById('stBody');
       if (stBodyEl && stBodyEl.style.display !== 'none') loadTodayWidget(false);

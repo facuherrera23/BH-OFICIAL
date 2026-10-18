@@ -48,6 +48,22 @@ test.describe('Sidebar F5 — estética & pulido', () => {
     expect(js).toContain("setContext(_viewMode === 'owners' ? 'Propietarios' : null)");
   });
 
+  test('admin-app.js: desgloses hover, quick-stats y badge dashboard (#3/#16/#24)', async ({ request }) => {
+    const js = await (await request.get('/assets/js/admin-app.js')).text();
+    // #3: desglose en hover de badges (consume lastBadgeCounts):
+    expect(js).toContain("leadsEl.dataset.bhTip = (counts.leads || 0) + ' activos'");
+    expect(js).toContain("' tareas vencidas'");
+    expect(js).toContain("' estancadas'");
+    // #16: quick-stats al hover del ítem:
+    expect(js).toContain('NAV_STAT_TIPS');
+    expect(js).toContain('refreshNavStatTips');
+    // Al expandir el colapso se restauran los stats (2+ llamadas: badges + expand):
+    expect((js.match(/refreshNavStatTips\(\)/g) || []).length).toBeGreaterThanOrEqual(2);
+    // #24: badge de recomendaciones en Dashboard:
+    expect(js).toContain('sideBadgeDash');
+    expect(js).toContain('acciones requieren atención');
+  });
+
   test('admin.css: todos los estilos de F5', async ({ request }) => {
     const css = await (await request.get('/assets/css/admin.css')).text();
     // #31 bounce:
