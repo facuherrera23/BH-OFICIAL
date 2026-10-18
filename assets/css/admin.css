@@ -4070,7 +4070,7 @@ input[type="range"]::-moz-range-thumb {
 .sidebar.is-collapsed .brand-title { display: none; }
 .sidebar.is-collapsed .nav-item-left { gap: 0; justify-content: center; width: 100%; }
 .sidebar.is-collapsed .nav-item { justify-content: center; padding: 9px 8px; }
-.sidebar.is-collapsed .sidebar-brand { justify-content: center; padding: 26px 12px; }
+.sidebar.is-collapsed .sidebar-brand { justify-content: center; padding: 12px; }
 .sidebar.is-collapsed .sidebar-collapse-btn { width: 32px; height: 32px; font-size: 13px; }
 .sidebar.is-collapsed .user-card { justify-content: center; padding: 10px 4px; }
 
