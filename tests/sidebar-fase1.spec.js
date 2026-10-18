@@ -38,13 +38,21 @@ test.describe('Sidebar F1 — infraestructura', () => {
     expect(js).toContain("currentProfile?.role !== 'super_admin'");
   });
 
-  test('admin-app.js: tooltips premium (data-bh-tip)', async ({ request }) => {
+  test('admin-app.js: tooltips premium (data-bh-tip) — hide INCONDICIONAL (regresión: quedaba congelado)', async ({ request }) => {
     const js = await (await request.get('/assets/js/admin-app.js')).text();
     expect(js).toContain('bhTooltip');
     expect(js).toContain("[data-bh-tip]");
     expect(js).toContain('dataset.bhTip');
     // El colapso ya no usa title nativo para los labels:
     expect(js).toContain('delete item.dataset.bhTip');
+    // Regresión (bug real): el guard temprano comía el hide cuando
+    // _bhTipTarget ya era null — el tooltip quedaba congelado en el
+    // último ítem del sidebar. El patrón NO debe existir:
+    expect(js).not.toContain('if (!_bhTipTarget) return;');
+    // Y el hide limpia estado y clase en ese orden:
+    expect(js).toContain('_bhTipTarget = null;');
+    // El puntero que deja la ventana también oculta:
+    expect(js).toContain("documentElement.addEventListener('mouseleave', hideBhTip)");
   });
 
   test('admin-crm.js: modo persistido + carga por modo + sub-vista owners', async ({ request }) => {

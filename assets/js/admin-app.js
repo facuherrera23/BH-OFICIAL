@@ -1668,17 +1668,21 @@ function esc(s) {
     bhTip.style.top = Math.round(top) + 'px';
   }
   function hideBhTip() {
-    if (!_bhTipTarget) return;
-    bhTip.classList.remove('is-visible');
+    /* Incondicional: el guard de null temprano que había acá se comía el
+       hide — el mouseover nullea _bhTipTarget ANTES de llamar y el return
+       temprano dejaba la clase is-visible puesta → el tooltip quedaba
+       congelado sobre el último ítem (bug reportado por el empleador). */
     _bhTipTarget = null;
+    bhTip.classList.remove('is-visible');
   }
   document.addEventListener('mouseover', function (e) {
     if (window.matchMedia('(hover: none)').matches) return; /* touch: sin tooltip */
     const t = (e.target && e.target.closest) ? e.target.closest('[data-bh-tip]') : null;
     if (t === _bhTipTarget) return;
-    _bhTipTarget = t;
-    if (t) showBhTip(t); else hideBhTip();
+    if (t) { _bhTipTarget = t; showBhTip(t); } else hideBhTip();
   }, true);
+  /* El puntero deja la ventana: ningún mouseover va a llegar — ocultar igual. */
+  document.documentElement.addEventListener('mouseleave', hideBhTip);
   document.addEventListener('mousedown', hideBhTip);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideBhTip(); });
   window.addEventListener('scroll', hideBhTip, true);
