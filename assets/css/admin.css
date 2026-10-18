@@ -862,43 +862,47 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 .gs-empty { padding: 18px; text-align: center; color: var(--text-dim); font-size: 12.5px; }
 
 /* ============================================================
-   FASE 4 — contexto "Hoy", build, hover card
+   FASE 4 — widget "Hoy" (rediseño: integrado al menú, sin caja)
    ============================================================ */
 .sidebar-today {
-    margin: 10px 0 16px;
-    border: 1px solid var(--border-subtle);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.02);
-    overflow: hidden;
+    margin: 4px 0 8px;
 }
 .st-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     width: 100%;
     padding: 10px 14px;
     background: none;
     border: none;
+    border-radius: var(--radius-sm);
     color: var(--text-secondary);
     font-family: inherit;
-    font-size: 11.5px;
-    font-weight: 700;
-    letter-spacing: 0.8px;
-    text-transform: uppercase;
+    font-size: 13.5px;
+    font-weight: 500;
     cursor: pointer;
     transition: color 0.12s var(--ease-out), background 0.12s var(--ease-out);
 }
-.st-header:hover { color: #fff; background: rgba(255, 255, 255, 0.03); }
-.st-label { display: flex; align-items: center; gap: 8px; }
-.st-label i { color: #f59e0b; font-size: 12px; }
-.st-chevron { color: var(--text-dim); font-size: 9px; transition: transform 0.2s var(--ease-out); }
-.st-header.is-open .st-chevron { transform: rotate(180deg); }
-.st-body { padding: 2px 10px 10px; border-top: 1px solid var(--border-subtle); }
+.st-header:hover { color: var(--text-main); background: rgba(255, 255, 255, 0.03); }
+.st-header:hover .st-label i { color: #fbbf24; }
+.st-label { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.st-label i { color: #f59e0b; font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; transition: color 0.15s var(--ease-out); }
+.st-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.st-date { font-size: 10.5px; color: var(--text-dim); letter-spacing: 0.3px; }
+.st-chevron-i { font-size: 9px; color: var(--text-dim); transition: transform 0.2s var(--ease-out); }
+.st-header.is-open .st-chevron-i { transform: rotate(180deg); }
+/* Guía vertical sutil que cuelga del header — mismo lenguaje que el menú. */
+.st-body {
+    margin: 2px 0 6px 24px;
+    padding-left: 12px;
+    border-left: 2px solid rgba(31, 200, 195, 0.15);
+}
 .st-title {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 9px 4px 3px;
+    padding: 8px 0 3px;
     font-size: 9.5px;
     font-weight: 700;
     text-transform: uppercase;
@@ -910,24 +914,48 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 6px 8px;
+    padding: 6px 6px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--text-secondary);
     transition: background 0.12s var(--ease-out);
 }
 .st-item:hover { background: rgba(31, 200, 195, 0.08); color: #fff; }
-.st-time { font-size: 10.5px; font-weight: 800; color: var(--accent); min-width: 42px; }
-.st-time.is-overdue { color: var(--danger); }
+.st-time {
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--accent);
+    background: rgba(31, 200, 195, 0.1);
+    border-radius: 5px;
+    padding: 2px 6px;
+    min-width: 42px;
+    text-align: center;
+    flex-shrink: 0;
+}
+.st-time.is-overdue { color: var(--danger); background: rgba(239, 68, 68, 0.1); }
 .st-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.st-empty { padding: 5px 8px 8px; font-size: 11px; font-style: italic; color: var(--text-dim); }
-.st-svc-row { display: flex; align-items: center; gap: 9px; padding: 8px 4px 4px; }
+.st-clear {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 4px;
+    font-size: 11.5px;
+    font-style: italic;
+    color: var(--text-dim);
+}
+.st-clear i { color: #f59e0b; font-size: 12px; }
+.st-svc-row { display: flex; align-items: center; gap: 9px; padding: 8px 0 4px; }
 .st-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); flex-shrink: 0; }
 .st-dot.is-ok { background: #25d366; box-shadow: 0 0 8px rgba(37, 211, 102, 0.5); }
 .st-dot.is-warn { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.35); }
 .st-svc-label { margin-left: auto; font-size: 10px; color: var(--text-dim); white-space: nowrap; }
 .sidebar.is-collapsed .sidebar-today { display: none; }
+
+/* Fix colapsado: en el riel de 84px solo entra el avatar — los botones de
+   contraseña/salida y el texto del build desbordaban el user-card. */
+.sidebar.is-collapsed .user-card button { display: none; }
+.sidebar.is-collapsed .sidebar-build { display: none; }
 
 /* #22: versión del build en el footer. */
 .sidebar-build {

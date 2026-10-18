@@ -11,13 +11,14 @@ test.describe('Sidebar F4 — contexto, roles, dirty check', () => {
     expect(js).toContain('bh_today_open');
     expect(js).toContain("data-st-visit");
     expect(js).toContain("data-st-task");
-    expect(js).toContain('stVisits');
-    expect(js).toContain('stTasks');
-    expect(js).toContain('stServices');
+    // Render unificado: el body completo, secciones solo con contenido:
+    expect(js).toContain("getElementById('stBody')");
+    expect(js).toContain('Día despejado');
+    expect(js).toContain('fmtAgoMins');
     // Citas y tareas del día respetan RLS (la query va sin bypass — el rol filtra):
     expect(js).toContain(".eq('status', 'pendiente')");
     expect(js).toContain("from('lead_tasks')");
-    // Zernio: última sync desde el último mensaje:
+    // Zernio: última sync desde el último mensaje, formato legible (días/h):
     expect(js).toContain("from('zernio_conversations')");
     expect(js).toContain('last_message_at');
   });
@@ -76,7 +77,12 @@ test.describe('Sidebar F4 — contexto, roles, dirty check', () => {
     expect(css).toContain('.sidebar-build');
     expect(css).toContain('#bhHoverCard');
     expect(css).toContain('.hc-row');
-    // El sidebar colapsado oculta la sección Hoy:
+    // El sidebar colapsado oculta la sección Hoy Y no desborda el user-card:
     expect(css).toContain('.sidebar.is-collapsed .sidebar-today { display: none; }');
+    expect(css).toContain('.sidebar.is-collapsed .user-card button { display: none; }');
+    expect(css).toContain('.sidebar.is-collapsed .sidebar-build { display: none; }');
+    // Rediseño integrado: sin caja flotante, guía vertical:
+    expect(css).toContain('.st-body');
+    expect(css).toContain('.st-clear');
   });
 });

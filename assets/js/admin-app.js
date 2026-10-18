@@ -1000,24 +1000,35 @@ function esc(s) {
      ------------------------------------------------ */
   const TODAY_OPEN_KEY = 'bh_today_open';
 
-  /* Sección "Hoy" — colapsable, cerrada por defecto para no engordar el menú. */
+  /* Sección "Hoy" — colapsable, cerrada por defecto para no engordar el menú.
+     Rediseño: integrada al menú como un ítem más (sin caja flotante), con fecha
+     en el header, secciones solo cuando tienen contenido y estado "día
+     despejado" en vez de dos vacíos apilados. */
   const stWrap = document.createElement('div');
   stWrap.className = 'sidebar-today';
   stWrap.id = 'sidebarToday';
+  const stFecha = new Date().toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/\./g, '');
   stWrap.innerHTML =
     '<button type="button" class="st-header" id="stToggle" aria-expanded="false">' +
       '<span class="st-label"><i class="fas fa-sun"></i> Hoy</span>' +
-      '<span class="st-chevron"><i class="fas fa-chevron-down"></i></span>' +
+      '<span class="st-right"><span class="st-date">' + esc(stFecha) + '</span><i class="fas fa-chevron-down st-chevron-i"></i></span>' +
     '</button>' +
-    '<div class="st-body" id="stBody" style="display:none;">' +
-      '<div class="st-section" id="stVisits"></div>' +
-      '<div class="st-section" id="stTasks"></div>' +
-      '<div class="st-section" id="stServices"></div>' +
-    '</div>';
+    '<div class="st-body" id="stBody" style="display:none;"></div>';
 
   let _todayLoadedAt = 0;
   let _todayLoading = false;
   const TODAY_TTL_MS = 3 * 60 * 1000;
+
+  /* Formato legible de antigüedad: ahora / min / h / días (antes: "9504m"). */
+  function fmtAgoMins(m) {
+    if (m === null || m === undefined) return '—';
+    if (m < 1) return 'ahora';
+    if (m < 60) return 'hace ' + m + ' min';
+    const h = Math.floor(m / 60);
+    if (h < 24) return 'hace ' + h + ' h';
+    const d = Math.floor(h / 24);
+    return 'hace ' + d + (d === 1 ? ' día' : ' días');
+  }
 
   async function loadTodayWidget(force) {
     if (!currentUser || !window.supabaseClient) return;
@@ -1058,54 +1069,58 @@ function esc(s) {
           .limit(1)
       ]);
 
-      /* #17: próximas citas de hoy (clickeables → panel de la visita). */
-      const vEl = document.getElementById('stVisits');
-      if (vEl) {
-        const visitas = visRes.data || [];
-        vEl.innerHTML = '<div class="st-title"><i class="fas fa-calendar-check"></i> Citas de hoy</div>' +
-          (visitas.length
-            ? visitas.map(v =>
-                '<div class="st-item" data-st-visit="' + esc(v.id) + '">' +
-                  '<span class="st-time">' + new Date(v.visit_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + '</span>' +
-                  '<span class="st-text">' + esc(v.client_name || 'Cliente') + '</span>' +
-                '</div>').join('')
-            : '<div class="st-empty">Sin citas para hoy</div>');
+      /* Render unificado del body: secciones solo cuando tienen contenido
+         (nada de vacíos apilados) + formato de tiempo legible para Zernio. */
+      const bodyEl = document.getElementById('stBody');
+      if (!bodyEl) return;
+      const visitas = visRes.data || [];
+      let html = '';
+
+      /* #17: citas de hoy (clickeables → panel de la visita). */
+      if (visitas.length) {
+        html += '<div class="st-title"><i class="fas fa-calendar-check"></i> Citas</div>' +
+          visitas.map(v =>
+            '<div class="st-item" data-st-visit="' + esc(v.id) + '">' +
+              '<span class="st-time">' + new Date(v.visit_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + '</span>' +
+              '<span class="st-text">' + esc(v.client_name || 'Cliente') + '</span>' +
+            '</div>').join('');
       }
 
       /* #18: tareas del agente logueado (clickeables → panel del lead). */
-      const tEl = document.getElementById('stTasks');
-      if (tEl) {
-        tEl.innerHTML = '<div class="st-title"><i class="fas fa-list-check"></i> Mis tareas</div>' +
-          (tasks.length
-            ? tasks.map(t => {
-                const overdue = t.due_at && new Date(t.due_at).getTime() < Date.now();
-                const hora = t.due_at ? new Date(t.due_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '—';
-                return '<div class="st-item" data-st-task="' + esc(t.lead_id || '') + '">' +
-                  '<span class="st-time' + (overdue ? ' is-overdue' : '') + '">' + (overdue ? '<i class="fas fa-triangle-exclamation"></i> ' : '') + hora + '</span>' +
-                  '<span class="st-text">' + esc(t.title || t.type || 'Tarea') + '</span>' +
-                '</div>';
-              }).join('')
-            : '<div class="st-empty">Al día con tus tareas</div>');
+      if (tasks.length) {
+        html += '<div class="st-title"><i class="fas fa-list-check"></i> Tareas</div>' +
+          tasks.map(t => {
+            const overdue = t.due_at && new Date(t.due_at).getTime() < Date.now();
+            const hora = t.due_at ? new Date(t.due_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '—';
+            return '<div class="st-item" data-st-task="' + esc(t.lead_id || '') + '">' +
+              '<span class="st-time' + (overdue ? ' is-overdue' : '') + '">' + (overdue ? '<i class="fas fa-triangle-exclamation"></i> ' : '') + hora + '</span>' +
+              '<span class="st-text">' + esc(t.title || t.type || 'Tarea') + '</span>' +
+            '</div>';
+          }).join('');
       }
 
-      /* #19/#20: salud de servicios + última sync de Zernio. */
-      const sEl = document.getElementById('stServices');
-      if (sEl) {
-        const counts = (window.__BH && window.__BH.lastBadgeCounts) || {};
-        const rtLive = document.getElementById('sidebarUserAvatar').classList.contains('is-live');
-        const mlOk = !!(counts.ml_last_event_at && !counts.ml_failed_24h);
-        const zLast = (zernioRes.data && zernioRes.data[0] && zernioRes.data[0].last_message_at) ? new Date(zernioRes.data[0].last_message_at) : null;
-        const zMins = zLast ? Math.max(0, Math.round((Date.now() - zLast.getTime()) / 60000)) : null;
-        const zOk = zMins !== null && zMins < 30;
-        const dot = (ok, tip) => '<span class="st-dot ' + (ok ? 'is-ok' : 'is-warn') + '" data-bh-tip="' + esc(tip) + '"></span>';
-        sEl.innerHTML = '<div class="st-title"><i class="fas fa-heart-pulse"></i> Servicios</div>' +
-          '<div class="st-svc-row">' +
-            dot(rtLive, 'Realtime: ' + (rtLive ? 'conectado' : 'sin conexión')) +
-            dot(mlOk, 'Mercado Libre: ' + (counts.ml_last_event_at ? 'webhook activo' : 'sin eventos')) +
-            dot(zOk, 'Zernio: hace ' + (zMins === null ? '—' : (zMins < 1 ? 'ahora' : zMins + ' min'))) +
-            '<span class="st-svc-label">Zernio: ' + (zMins === null ? '—' : (zMins < 1 ? 'ahora' : 'hace ' + zMins + 'm')) + '</span>' +
-          '</div>';
+      /* Sin actividad → una sola línea amable, no dos vacíos apilados. */
+      if (!visitas.length && !tasks.length) {
+        html += '<div class="st-clear"><i class="fas fa-mug-hot"></i> Día despejado — sin citas ni tareas</div>';
       }
+
+      /* #19/#20: salud de servicios + última sync de Zernio (formato legible). */
+      const counts = (window.__BH && window.__BH.lastBadgeCounts) || {};
+      const rtLive = document.getElementById('sidebarUserAvatar').classList.contains('is-live');
+      const mlOk = !!(counts.ml_last_event_at && !counts.ml_failed_24h);
+      const zLast = (zernioRes.data && zernioRes.data[0] && zernioRes.data[0].last_message_at) ? new Date(zernioRes.data[0].last_message_at) : null;
+      const zMins = zLast ? Math.max(0, Math.round((Date.now() - zLast.getTime()) / 60000)) : null;
+      const zOk = zMins !== null && zMins < 30;
+      const dot = (ok, tip) => '<span class="st-dot ' + (ok ? 'is-ok' : 'is-warn') + '" data-bh-tip="' + esc(tip) + '"></span>';
+      html += '<div class="st-title"><i class="fas fa-heart-pulse"></i> Servicios</div>' +
+        '<div class="st-svc-row">' +
+          dot(rtLive, 'Realtime: ' + (rtLive ? 'conectado' : 'sin conexión')) +
+          dot(mlOk, 'Mercado Libre: ' + (counts.ml_last_event_at ? 'webhook activo' : 'sin eventos')) +
+          dot(zOk, 'Zernio: ' + fmtAgoMins(zMins)) +
+          '<span class="st-svc-label">Zernio ' + fmtAgoMins(zMins) + '</span>' +
+        '</div>';
+
+      bodyEl.innerHTML = html;
       _todayLoadedAt = Date.now();
     } catch (_) { /* el widget nunca rompe el boot */ }
     finally { _todayLoading = false; }
