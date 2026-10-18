@@ -803,7 +803,10 @@ function esc(s) {
     applyMenuOrder();
   }
 
-  /* #14: recientes — alimentan el orden (el pin es la herramienta explícita). */
+  /* #14: recientes — SOLO tracking en bh_recent_tabs (decisión de producto
+     2026-10-18: reordenar el menú automáticamente lo vuelve inestable y el
+     usuario pierde el mapa mental; el pin es la herramienta explícita).
+     Consumible a futuro desde el context menu o un panel de recientes. */
   function getRecents() { try { return JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]'); } catch (_) { return []; } }
   function trackRecent(tab) {
     if (tab === 'tab-dashboard') return;
