@@ -973,7 +973,10 @@ function esc(s) {
   });
   document.addEventListener('click', function (e) {
     if (!e.target.closest('#navContextMenu')) hideNavCtx();
-    if (!e.target.closest('#navSubPopover')) hideSubPopover();
+    /* La flechita queda EXCLUIDA: si no, el click que la abre/cierra cae en
+       este handler primero (cierra) y el toggle la re-abre — el popover se
+       volvía imposible de cerrar con la flechita (bug reportado). */
+    if (!e.target.closest('#navSubPopover') && !e.target.closest('.nav-sub-toggle')) hideSubPopover();
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { hideNavCtx(); hideSubPopover(); } });
   window.addEventListener('scroll', function () { hideNavCtx(); hideSubPopover(); }, true);

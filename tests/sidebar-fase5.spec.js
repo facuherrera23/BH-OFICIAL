@@ -64,6 +64,13 @@ test.describe('Sidebar F5 — estética & pulido', () => {
     expect(js).toContain('acciones requieren atención');
   });
 
+  test('admin-app.js: popover de canales — la flechita EXCLUIDA del "clic afuera" (regresión: se re-abría sola)', async ({ request }) => {
+    const js = await (await request.get('/assets/js/admin-app.js')).text();
+    // Ambos listeners viven en document: sin la exclusión, el click de la
+    // flechita cae en el handler de afuera (cierra) y el toggle la re-abre.
+    expect(js).toContain("&& !e.target.closest('.nav-sub-toggle')) hideSubPopover()");
+  });
+
   test('admin.css: todos los estilos de F5', async ({ request }) => {
     const css = await (await request.get('/assets/css/admin.css')).text();
     // #31 bounce:
