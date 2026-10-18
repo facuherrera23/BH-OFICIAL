@@ -615,6 +615,163 @@ function esc(s) {
 
   // -- End Visit Reminder System ------------------------------
 
+  /* #21/#36: estado de conexión del realtime. El avatar del sidebar es el
+     anillo de vida (verde = suscrito) y en offline los badges bajan a gris —
+     no tiene sentido mostrar números que dejaron de actualizarse. */
+  let _realtimeOnline = false;
+  let _realtimeWasOnline = false; /* evita toast "restablecida" en el boot */
+  function setRealtimeOnline(online) {
+    const was = _realtimeOnline;
+    _realtimeOnline = !!online;
+    const avatar = $('#sidebarUserAvatar');
+    if (avatar) {
+      avatar.classList.toggle('is-live', _realtimeOnline);
+      avatar.dataset.bhTip = _realtimeOnline ? 'Conectado en tiempo real' : 'Sin conexión — los datos pueden estar desactualizados';
+    }
+    if (was && !_realtimeOnline) {
+      document.body.classList.add('bh-offline');
+      showToast('Conexión en tiempo real perdida — reintentando…', 'warning');
+    } else if (!was && _realtimeOnline) {
+      document.body.classList.remove('bh-offline');
+      if (_realtimeWasOnline) {
+        showToast('Conexión restablecida.', 'success');
+        scheduleBadgeRefresh(); /* traer lo que pasó mientras estuvimos cortos */
+      }
+      _realtimeWasOnline = true;
+    }
+  }
+  function handleRealtimeStatus(status) {
+    if (status === 'SUBSCRIBED') setRealtimeOnline(true);
+    else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') setRealtimeOnline(false);
+  }
+  window.addEventListener('offline', () => setRealtimeOnline(false));
+  window.addEventListener('online', () => setRealtimeOnline(true));
+
+  /* Realtime core: MOVIDA desde loadChatRedes (vivía oculta ahí — showApp no
+     la veía y el canal solo existía al abrir Chat). Sus dependencias resuelven
+     por window-globals (admin-agenda.js) o por el IIFE (_coreRealtimeChannel,
+     invalidateSearchCache, handleRealtimeStatus). */
+  function setupCoreRealtime() {
+      if (_coreRealtimeChannel) {
+        _coreRealtimeChannel.unsubscribe();
+        _coreRealtimeChannel = null;
+      }
+      /* Todas las tablas que afectan al CRM (los leads ven propiedades, tareas,
+         actividades, visitas y propietarios) + las que alimentan los demás tabs. */
+      const tables = ['visits', 'leads', 'properties', 'agents', 'owners', 'owner_tasks', 'lead_properties', 'lead_tasks', 'lead_activities', 'tasaciones', 'commissions', 'commission_liquidations', 'commission_payments'];
+
+      /* Refresh del CRM con debounce: agrupa ráfagas de cambios (ML puede
+         crear 3 leads en 2 segundos) y solo dispara un reload 500ms después
+         del último evento. Sin esto, cada cambio pisa al anterior en pleno
+         render y el último response en llegar puede ser el más viejo. */
+      let _crmRefreshTimer = null;
+      function debouncedCRMRefresh() {
+        clearTimeout(_crmRefreshTimer);
+        _crmRefreshTimer = setTimeout(() => {
+          if (window.BH_CRM && typeof window.BH_CRM.refresh === 'function') window.BH_CRM.refresh();
+          if (window.BH_CRM && typeof window.BH_CRM.refreshOwners === 'function') window.BH_CRM.refreshOwners();
+        }, 500);
+      }
+
+      /* supabase-js v2 ya no acepta table: [array] en un solo .on() — la
+         suscripción muere en silencio y el canal desaparece (hallazgo F2: el
+         realtime core estaba caído). Un .on() por tabla, mismo handler. */
+      const coreChannel = window.supabaseClient.channel('core-tables');
+      const onCoreChange = payload => {
+          const table = payload.table;
+          const event = payload.eventType;
+          const newRecord = payload.new;
+          const oldRecord = payload.old;
+
+          invalidateSearchCache();
+          if (table === 'properties') invalidateFichaCache();
+          if (window.Bus) window.Bus.emit(table + ':changed', { event, new: newRecord, old: oldRecord });
+
+          switch (table) {
+            case 'visits':
+              if (event === 'INSERT') {
+                upsertVisitRow(newRecord);
+                scheduleBadgeRefresh();
+              } else if (event === 'UPDATE') {
+                upsertVisitRow(newRecord);
+                scheduleBadgeRefresh();
+              } else if (event === 'DELETE') {
+                removeVisitRow(oldRecord.id);
+                scheduleBadgeRefresh();
+              }
+              /* Visita creada/actualizada para un lead → el contexto del CRM cambia */
+              if (newRecord?.lead_id) debouncedCRMRefresh();
+              break;
+            case 'leads':
+              if (event === 'INSERT' || event === 'UPDATE') {
+                upsertLeadCard(newRecord);
+              } else if (event === 'DELETE') {
+                removeLeadCard(oldRecord.id);
+              }
+              debouncedCRMRefresh();
+              scheduleBadgeRefresh();
+              break;
+            case 'properties':
+              if (event === 'INSERT' || event === 'UPDATE') {
+                upsertPropertyRow(newRecord);
+              } else if (event === 'DELETE') {
+                removePropertyRow(oldRecord.id);
+              }
+              /* Una propiedad vinculada a un lead cambia → el CRM la muestra en el contexto */
+              debouncedCRMRefresh();
+              scheduleBadgeRefresh();
+              break;
+            case 'agents':
+              if (event === 'INSERT' || event === 'UPDATE') {
+                upsertAgentRow(newRecord);
+                populateBrokerFilters();
+              } else if (event === 'DELETE') {
+                removeAgentRow(oldRecord.id);
+              }
+              scheduleBadgeRefresh();
+              break;
+            case 'owners':
+              if (event === 'INSERT' || event === 'UPDATE') {
+                upsertOwnerRow(newRecord);
+              } else if (event === 'DELETE') {
+                removeOwnerRow(oldRecord.id);
+              }
+              debouncedCRMRefresh();
+              scheduleBadgeRefresh();
+              break;
+            case 'owner_tasks':
+              if (editingOwnerId && $('#ownerModal')?.classList.contains('is-open')) {
+                loadOwnerTasks(editingOwnerId);
+              }
+              debouncedCRMRefresh();
+              scheduleBadgeRefresh();
+              break;
+            case 'lead_properties':
+            case 'lead_tasks':
+            case 'lead_activities':
+              /* Vincular propiedad, crear tarea, agregar nota → el CRM debe enterarse */
+              debouncedCRMRefresh();
+              scheduleBadgeRefresh();
+              break;
+            case 'tasaciones':
+              if (event === 'INSERT' || event === 'UPDATE') {
+                upsertTasacionRow(newRecord);
+              } else if (event === 'DELETE') {
+                removeTasacionRow(oldRecord.id);
+              }
+              scheduleBadgeRefresh();
+              break;
+          }
+      };
+      tables.forEach(t => { coreChannel.on('postgres_changes', { event: '*', schema: 'public', table: t }, onCoreChange); });
+      coreChannel.subscribe(handleRealtimeStatus);
+      _coreRealtimeChannel = coreChannel;
+    }
+
+  /* La exposición de setupCoreRealtime va en el Object.assign de __BH (abajo):
+     acá window.__BH todavía no existe y una asignación top-level tira TypeError
+     que mata todo el IIFE (hallazgo real: el login quedaba colgado). */
+
   function showApp() {
     const loginScreen = $('#loginScreen');
     const appLayout = $('#appLayout');
@@ -623,8 +780,14 @@ function esc(s) {
     if (appLayout) appLayout.style.display = 'flex';
     hidePreloader();
     updateUserInfo();
-    updateSidebarBadges();
-    mlCheckStatus().catch(() => {});
+    /* El canal core (realtime de TODAS las tablas) arranca en el boot — antes
+       solo se creaba al abrir Chat Redes: un boot en Dashboard quedaba sin
+       realtime hasta que tocaras el chat. El anillo del avatar (#36) depende
+       de su SUBSCRIBED. Blindado: si el realtime falla, el boot sigue. */
+    try { setupCoreRealtime(); } catch (rtErr) { logError('Realtime boot error:', rtErr); window.__bhRtBootError = rtErr; }
+    /* mlCheckStatus DESPUÉS de los badges: su updatePortalsBadge lee el cache
+       de la RPC (ml_last_event_at) — antes corría en paralelo y leía vacío. */
+    updateSidebarBadges().then(() => { mlCheckStatus().catch(() => {}); }).catch(badgeErr => logError('Badge boot error:', badgeErr));
     requestNotificationPermission();
     initVisitReminders();
     if (wasHidden) {
@@ -3270,117 +3433,7 @@ on(chip, 'click', () => {
       return d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
     }
 
-function setupCoreRealtime() {
-      if (_coreRealtimeChannel) {
-        _coreRealtimeChannel.unsubscribe();
-        _coreRealtimeChannel = null;
-      }
-      /* Todas las tablas que afectan al CRM (los leads ven propiedades, tareas,
-         actividades, visitas y propietarios) + las que alimentan los demás tabs. */
-      const tables = ['visits', 'leads', 'properties', 'agents', 'owners', 'owner_tasks', 'lead_properties', 'lead_tasks', 'lead_activities', 'tasaciones', 'commissions', 'commission_liquidations', 'commission_payments'];
 
-      /* Refresh del CRM con debounce: agrupa ráfagas de cambios (ML puede
-         crear 3 leads en 2 segundos) y solo dispara un reload 500ms después
-         del último evento. Sin esto, cada cambio pisa al anterior en pleno
-         render y el último response en llegar puede ser el más viejo. */
-      let _crmRefreshTimer = null;
-      function debouncedCRMRefresh() {
-        clearTimeout(_crmRefreshTimer);
-        _crmRefreshTimer = setTimeout(() => {
-          if (window.BH_CRM && typeof window.BH_CRM.refresh === 'function') window.BH_CRM.refresh();
-          if (window.BH_CRM && typeof window.BH_CRM.refreshOwners === 'function') window.BH_CRM.refreshOwners();
-        }, 500);
-      }
-
-      _coreRealtimeChannel = window.supabaseClient.channel('core-tables')
-        .on('postgres_changes', { event: '*', schema: 'public', table: tables }, payload => {
-          const table = payload.table;
-          const event = payload.eventType;
-          const newRecord = payload.new;
-          const oldRecord = payload.old;
-
-          invalidateSearchCache();
-          if (table === 'properties') invalidateFichaCache();
-          if (window.Bus) window.Bus.emit(table + ':changed', { event, new: newRecord, old: oldRecord });
-
-          switch (table) {
-            case 'visits':
-              if (event === 'INSERT') {
-                upsertVisitRow(newRecord);
-                scheduleBadgeRefresh();
-              } else if (event === 'UPDATE') {
-                upsertVisitRow(newRecord);
-                scheduleBadgeRefresh();
-              } else if (event === 'DELETE') {
-                removeVisitRow(oldRecord.id);
-                scheduleBadgeRefresh();
-              }
-              /* Visita creada/actualizada para un lead → el contexto del CRM cambia */
-              if (newRecord?.lead_id) debouncedCRMRefresh();
-              break;
-            case 'leads':
-              if (event === 'INSERT' || event === 'UPDATE') {
-                upsertLeadCard(newRecord);
-              } else if (event === 'DELETE') {
-                removeLeadCard(oldRecord.id);
-              }
-              debouncedCRMRefresh();
-              scheduleBadgeRefresh();
-              break;
-            case 'properties':
-              if (event === 'INSERT' || event === 'UPDATE') {
-                upsertPropertyRow(newRecord);
-              } else if (event === 'DELETE') {
-                removePropertyRow(oldRecord.id);
-              }
-              /* Una propiedad vinculada a un lead cambia → el CRM la muestra en el contexto */
-              debouncedCRMRefresh();
-              scheduleBadgeRefresh();
-              break;
-            case 'agents':
-              if (event === 'INSERT' || event === 'UPDATE') {
-                upsertAgentRow(newRecord);
-                populateBrokerFilters();
-              } else if (event === 'DELETE') {
-                removeAgentRow(oldRecord.id);
-              }
-              scheduleBadgeRefresh();
-              break;
-            case 'owners':
-              if (event === 'INSERT' || event === 'UPDATE') {
-                upsertOwnerRow(newRecord);
-              } else if (event === 'DELETE') {
-                removeOwnerRow(oldRecord.id);
-              }
-              debouncedCRMRefresh();
-              scheduleBadgeRefresh();
-              break;
-            case 'owner_tasks':
-              if (editingOwnerId && $('#ownerModal')?.classList.contains('is-open')) {
-                loadOwnerTasks(editingOwnerId);
-              }
-              debouncedCRMRefresh();
-              scheduleBadgeRefresh();
-              break;
-            case 'lead_properties':
-            case 'lead_tasks':
-            case 'lead_activities':
-              /* Vincular propiedad, crear tarea, agregar nota → el CRM debe enterarse */
-              debouncedCRMRefresh();
-              scheduleBadgeRefresh();
-              break;
-            case 'tasaciones':
-              if (event === 'INSERT' || event === 'UPDATE') {
-                upsertTasacionRow(newRecord);
-              } else if (event === 'DELETE') {
-                removeTasacionRow(oldRecord.id);
-              }
-              scheduleBadgeRefresh();
-              break;
-          }
-        })
-        .subscribe();
-    }
 
     function debounce(fn, ms) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); }; }
 
@@ -3441,7 +3494,12 @@ function setupCoreRealtime() {
 
     function updateSidebarChatBadge() {
       const badge = $('#sideBadgeChatRedes');
-      if (badge) badge.textContent = _chatUnreadTotal || '0';
+      if (!badge) return;
+      const n = _chatUnreadTotal || 0;
+      badge.textContent = n || '0';
+      /* #1: verde cuando hay mensajes de clientes esperando respuesta. */
+      badge.classList.toggle('nav-badge--unread', n > 0);
+      badge.dataset.bhTip = n > 0 ? (n + (n === 1 ? ' mensaje sin leer' : ' mensajes sin leer')) : 'Chat al día';
     }
   }
   document.body.dataset.bhAfterChat = 'true';
@@ -3524,6 +3582,31 @@ async function mutate(table, fn) {
   /* ------------------------------------------------
      17. SIDEBAR BADGES
      ------------------------------------------------ */
+  /* #5: count-up — el número sube animado cuando cambia (0→29 al bootear ya
+     no es un salto seco). Guarda el último valor en data-num para animar
+     desde ahí; si el valor no cambió, escribe directo sin animar. */
+  function setBadgeAnimated(el, value, suffix) {
+    if (!el) return;
+    const to = Math.max(0, parseInt(value, 10) || 0);
+    const sfx = suffix || '';
+    const from = parseInt(el.dataset.num || '0', 10) || 0;
+    el.dataset.num = to;
+    if (from === to || typeof requestAnimationFrame !== 'function') {
+      el.textContent = to + sfx;
+      return;
+    }
+    const t0 = performance.now();
+    const DUR = 420;
+    function tick(t) {
+      const p = Math.min(1, (t - t0) / DUR);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(from + (to - from) * eased) + sfx;
+      if (p < 1) requestAnimationFrame(tick);
+      else el.textContent = to + sfx;
+    }
+    requestAnimationFrame(tick);
+  }
+
   async function updateSidebarBadges() {
     if (!currentUser || !window.supabaseClient) return;
     try {
@@ -3536,10 +3619,34 @@ async function mutate(table, fn) {
       const visitsEl = $('#sideBadgeVisits');
       const tasEl = $('#sideBadgeTasaciones');
 
-      if (propsEl) propsEl.textContent = counts.properties || 0;
-      if (leadsEl) leadsEl.textContent = (counts.leads || 0) + ' Activos';
-      if (visitsEl) visitsEl.textContent = (counts.visits || 0) + ' Citas';
-      if (tasEl) tasEl.textContent = counts.tasaciones || 0;
+      if (propsEl) {
+        /* #4: estancadas al lado del total (señal ámbar). */
+        const stale = counts.properties_stale || 0;
+        setBadgeAnimated(propsEl, counts.properties || 0, stale > 0 ? ' · ' + stale + ' estanc.' : '');
+        propsEl.classList.toggle('nav-badge--warn', stale > 0);
+      }
+      if (leadsEl) {
+        /* #8: "+N hoy" en verde cuando entraron leads en las últimas 24h. */
+        const fresh = counts.leads_new_24h || 0;
+        leadsEl.innerHTML = esc(String(counts.leads || 0)) + ' Activos' +
+          (fresh > 0 ? ' <span class="nav-badge-plus">+' + fresh + ' hoy</span>' : '');
+      }
+      if (visitsEl) {
+        /* #2: tareas vencidas totales (leads + propietarios) — la Agenda es el
+           calendario global de visitas Y tareas; hoy esas 27 no se veían nunca. */
+        const overdue = counts.tasks_overdue_total || 0;
+        setBadgeAnimated(visitsEl, counts.visits || 0, ' Citas' + (overdue > 0 ? ' · ' + overdue + ' venc.' : ''));
+        visitsEl.style.color = overdue > 0 ? 'var(--danger)' : '';
+      }
+      if (tasEl) setBadgeAnimated(tasEl, counts.tasaciones || 0, '');
+      const chatEl = $('#sideBadgeChatRedes');
+      if (chatEl) {
+        /* #1: chat sin leer — al boot la RPC ya lo sabe (el módulo de chat toma
+           el relevo con su propio realtime cuando se abre la pestaña). */
+        const unread = counts.chat_unread_total || 0;
+        chatEl.textContent = unread || '0';
+        chatEl.classList.toggle('nav-badge--unread', unread > 0);
+      }
       /* Cache de conteos para tooltips/desgloses (#3/#16) sin repetir la RPC.
          Dentro del try: `counts` es block-scoped — afuera del catch no existe. */
       if (window.__BH) window.__BH.lastBadgeCounts = counts;
@@ -3814,7 +3921,7 @@ on(document, 'keydown', (e) => {
     downloadCSV, mutate, z, zodBaseType, validateForm,
     setBtnLoading, restoreBtn,
     loadAgentSelect, loadPropertySelect, refreshOwnerSelect,
-    updateSidebarBadges, scheduleBadgeRefresh, invalidateSearchCache, navigateTo,
+    updateSidebarBadges, scheduleBadgeRefresh, invalidateSearchCache, navigateTo, setupCoreRealtime,
     updateAgendaBadge, sendBrowserNotification, requestNotificationPermission,
     formatPrice, formatNumber, checkPasswordPwned, getAuthedClient,
     setKPI, updateUserInfo, OwnerSchema, PropertySchema, LeadSchema, VisitSchema, TasacionSchema, AgentSchema,

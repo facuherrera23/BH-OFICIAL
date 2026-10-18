@@ -551,8 +551,30 @@ try {
   function updatePortalsBadge() {
     const el = document.getElementById('sideBadgePortales');
     if (!el) return;
-    el.textContent = ml_connected ? ' On' : ml_configured ? ' Parcial' : ' Off';
-    el.style.color = ml_connected ? 'var(--success)' : ml_configured ? '#FFE600' : 'var(--text-dim)';
+    /* #6: la RPC del sidebar trae la salud real del webhook — el último
+       evento recibido prueba que ML está notificando, más fuerte que el
+       chequeo de OAuth. Precedencia: errores > recibe > conectado > parcial. */
+    const counts = (window.__BH && window.__BH.lastBadgeCounts) || {};
+    const lastEv = counts.ml_last_event_at ? new Date(counts.ml_last_event_at).getTime() : 0;
+    const failed = counts.ml_failed_24h || 0;
+    const receiving = lastEv > 0 && (Date.now() - lastEv) < 48 * 3600 * 1000;
+    let label = ' Off', color = 'var(--text-dim)', tip = 'Sin conexión con Mercado Libre';
+    if (receiving && failed === 0) {
+      label = ' Live'; color = 'var(--success)';
+      tip = 'Webhook activo — último evento: ' + new Date(lastEv).toLocaleString('es-AR');
+    } else if (receiving && failed > 0) {
+      label = ' ' + failed + ' err'; color = 'var(--warning)';
+      tip = 'Webhook recibe eventos pero fallaron ' + failed + ' en 24h — ver Centro de Supervisión';
+    } else if (ml_connected) {
+      label = ' On'; color = 'var(--success)';
+      tip = 'OAuth conectado — sin eventos del webhook en 48h';
+    } else if (ml_configured) {
+      label = ' Parcial'; color = '#FFE600';
+      tip = 'Configurado sin conexión activa';
+    }
+    el.textContent = label;
+    el.style.color = color;
+    el.dataset.bhTip = tip;
   }
 
   let _mlStatusFetchedAt = 0;

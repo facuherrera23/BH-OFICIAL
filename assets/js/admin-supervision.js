@@ -1162,8 +1162,15 @@
       }
       var side = $('sideBadgeSupervision');
       if (side) {
-        if (n > 0) { side.textContent = n > 99 ? '99+' : String(n); side.style.display = ''; }
-        else side.style.display = 'none';
+        if (n > 0) {
+          side.textContent = n > 99 ? '99+' : String(n);
+          side.style.display = '';
+          /* #7: pulso mientras haya alertas abiertas sin atender. */
+          side.classList.add('nav-badge--pulse');
+        } else {
+          side.style.display = 'none';
+          side.classList.remove('nav-badge--pulse');
+        }
       }
     } catch (_) { console.error('[sup] refreshBadge:', _); }
   }
