@@ -48,6 +48,7 @@ var _ownerAgentFilter = '';
 var _ownerExclFilter = '';
 var _ownerTaskFilter = '';
 var _ownerTrash = false;
+var _loadSeq = 0; /* #27: distingue cargas disparadas por init vs deep-links (#tab-leads/owners) */
 
 function $id(id) { return document.getElementById(id); }
 function esc(s) {
@@ -252,6 +253,7 @@ async function loadOwners() {
      owners — sin el guard, una actualización de un lead en otro modo
      sobreescribiría la tabla con leads y cerraría el panel de detalle. */
   if (_viewMode !== 'owners') return;
+  _loadSeq++;
   var c = $id('crmLeadList');
   if (!c) return;
   c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Cargando propietarios...</div>';
@@ -573,6 +575,7 @@ async function loadLeads() {
      leads — sin el guard, un cambio de owners en el otro modo
      sobreescribiría la tabla con propietarios. */
   if (_viewMode === 'owners') return;
+  _loadSeq++;
   var c = $id('crmLeadList');
   if (!c) return;
   c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-dim);">Cargando prospectos...</div>';
@@ -2235,7 +2238,9 @@ async function linkProperty(leadId, propertyId, panel) {
 
 /* -- Init -- */
 function init() {
-  if (__initialized) { loadLeads(); return; }
+  /* Re-entrada: cargar la vista que corresponde al modo activo (#27) — antes
+     forzaba loadLeads() y si venías de Propietarios la lista quedaba vieja. */
+  if (__initialized) { if (_viewMode === 'owners') loadOwners(); else loadLeads(); return; }
   __initialized = true;
   var btn = $id('btnNewLead');
   if (btn && !btn.dataset.crmBound) { btn.dataset.crmBound = '1'; /* el modal existente hace submit a loadCRM */ }
@@ -2342,7 +2347,19 @@ if (search) search.addEventListener('input', function () {
   _bindViewModeToggle();
   bindKpiCards();
   syncKpiCards();
-  loadAgents().then(function () { return loadLeads(); });
+  /* #27: restaurar el último modo del CRM persistido (leads/owners). */
+  try {
+    if (localStorage.getItem('bh_crm_viewmode') === 'owners' && _viewMode === 'leads') {
+      _viewMode = 'owners';
+      _syncHeader();
+    }
+  } catch (_) { /* sin localStorage: arranca en leads */ }
+  var seqAtInit = _loadSeq;
+  loadAgents().then(function () {
+    /* Si un deep-link (#tab-leads/owners) ya disparó la carga, no pisarla. */
+    if (seqAtInit !== _loadSeq) return;
+    if (_viewMode === 'owners') loadOwners(); else loadLeads();
+  });
 }
 
 
@@ -2354,6 +2371,7 @@ function _bindViewModeToggle() {
   btn.dataset.crmBound = '1';
   btn.addEventListener('click', function () {
     _viewMode = _viewMode === 'leads' ? 'owners' : 'leads';
+    try { localStorage.setItem('bh_crm_viewmode', _viewMode); } catch (_) {}
     _ownerSearch = '';
     _ownerAgentFilter = ''; _ownerExclFilter = ''; _ownerTaskFilter = '';
     ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter'].forEach(function (id) { var el = $id(id); if (el) el.value = ''; });
@@ -2440,6 +2458,7 @@ function _syncHeader() {
    accesos directos). Si viene ownerId, abre el editor del padrón directamente. */
 function openOwners(ownerId) {
   _viewMode = 'owners';
+  try { localStorage.setItem('bh_crm_viewmode', 'owners'); } catch (_) {}
   _ownerSearch = ''; _ownerAgentFilter = ''; _ownerExclFilter = ''; _ownerTaskFilter = '';
   ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter'].forEach(function (id) { var el = $id(id); if (el) el.value = ''; });
   var sr = $id('crmSearch');
@@ -2452,7 +2471,16 @@ function openOwners(ownerId) {
   if (ownerId && window.adminApp && window.adminApp.editOwner) window.adminApp.editOwner(ownerId, 'tasks');
 }
 
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel };
+/* #28: sub-vistas del CRM para deep-links compartibles (#tab-leads/owners).
+   Va en BH_CRM porque admin-crm.js carga ANTES que admin-app.js (window.__BH
+   todavía no existe en este scope al parsear) — navigateTo la busca acá. */
+function handleSubView(tab, sub) {
+  if (tab !== 'tab-leads') return false;
+  if (sub === 'owners') { openOwners(); return true; }
+  return false;
+}
+
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel };
 
 /* --- Generación de token portal desde CRM (en modo propietarios) --- */
 (function () {

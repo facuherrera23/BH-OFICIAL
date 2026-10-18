@@ -628,11 +628,21 @@ function esc(s) {
     requestNotificationPermission();
     initVisitReminders();
     if (wasHidden) {
-      // Deep-link: respetar #tab-* del hash (ej. #tab-propiedades al recargar); fallback al dashboard
+      /* Deep-link #tab-*[/subview] al recargar; sin hash, restaurar el último
+         módulo usado (#26). Tabs de sistema requieren super_admin. */
       const h = (location.hash || '').replace(/^#/, '');
-      const hEl = document.getElementById(h);
-      const target = (/^tab-[a-z-]+$/.test(h) && hEl && hEl.classList.contains('tab-module')) ? h : 'tab-dashboard';
-      navigateTo(target);
+      const parts = h.split('/');
+      const hEl = document.getElementById(parts[0]);
+      let target = (/^tab-[a-z-]+$/.test(parts[0]) && hEl && hEl.classList.contains('tab-module')) ? parts[0] : '';
+      let sub = (parts[1] && /^[a-z-]+$/.test(parts[1])) ? parts[1] : '';
+      if (!target) {
+        try { target = localStorage.getItem('bh_last_tab') || ''; } catch (_) { target = ''; }
+        const tEl = target ? document.getElementById(target) : null;
+        if (!(/^tab-[a-z-]+$/.test(target) && tEl && tEl.classList.contains('tab-module'))) target = 'tab-dashboard';
+        sub = '';
+      }
+      if ((target === 'tab-usuarios' || target === 'tab-supervision') && currentProfile?.role !== 'super_admin') { target = 'tab-dashboard'; sub = ''; }
+      navigateTo(target, sub ? { subview: sub } : undefined);
     }
   }
 
@@ -709,16 +719,21 @@ function esc(s) {
     if (btn) {
       const icon = btn.querySelector('i');
       if (icon) icon.className = effective ? 'fas fa-angles-right' : 'fas fa-angles-left';
-      btn.title = effective ? 'Expandir menú' : 'Contraer menú';
-      btn.setAttribute('aria-label', btn.title);
+      btn.dataset.bhTip = effective ? 'Expandir menú' : 'Contraer menú';
+      btn.setAttribute('aria-label', effective ? 'Expandir menú' : 'Contraer menú');
     }
-    /* Tooltip nativo con el nombre del módulo cuando está colapsado. */
+    /* Tooltip premium (#45) con el nombre del módulo cuando está colapsado. */
     sb.querySelectorAll('.nav-item').forEach(item => {
       const label = item.querySelector('.nav-item-left span');
       if (!label) return;
-      if (effective) item.title = label.textContent.trim();
-      else item.removeAttribute('title');
+      if (effective) item.dataset.bhTip = label.textContent.trim();
+      else { delete item.dataset.bhTip; item.removeAttribute('title'); }
     });
+    /* Al expandir, ocultar el tooltip que quedó visible del modo colapsado. */
+    if (!effective) {
+      const tipEl = document.getElementById('bhTooltip');
+      if (tipEl) tipEl.classList.remove('is-visible');
+    }
     if (save && isDesktop) { try { localStorage.setItem(SB_COLLAPSE_KEY, collapsed ? '1' : '0'); } catch (_) {} }
   }
   $('#sidebarCollapseToggle')?.addEventListener('click', () => {
@@ -737,6 +752,47 @@ function esc(s) {
   });
   /* Estado persistido al arrancar. */
   try { if (localStorage.getItem(SB_COLLAPSE_KEY) === '1') applySidebarCollapsed(true, false); } catch (_) {}
+
+  /* ---- #45 Tooltip premium global (data-bh-tip) ----
+     Reemplaza el title nativo (feo y sin estilo). Flota a la derecha del target
+     (ideal para el sidebar colapsado) y se voltea si no hay lugar. Base para los
+     desgloses de badges (#3) y quick-stats (#16) de la Fase 3. */
+  const bhTip = document.createElement('div');
+  bhTip.id = 'bhTooltip';
+  bhTip.setAttribute('role', 'tooltip');
+  document.body.appendChild(bhTip);
+  let _bhTipTarget = null;
+  function showBhTip(target) {
+    const text = target.dataset.bhTip || '';
+    if (!text) { hideBhTip(); return; }
+    bhTip.textContent = text;
+    bhTip.classList.add('is-visible');
+    const r = target.getBoundingClientRect();
+    const tw = bhTip.offsetWidth, th = bhTip.offsetHeight;
+    let left = r.right + 10;
+    let top = r.top + (r.height - th) / 2;
+    if (left + tw > window.innerWidth - 8) left = r.left - tw - 10;
+    if (top < 8) top = 8;
+    if (top + th > window.innerHeight - 8) top = window.innerHeight - th - 8;
+    bhTip.style.left = Math.round(left) + 'px';
+    bhTip.style.top = Math.round(top) + 'px';
+  }
+  function hideBhTip() {
+    if (!_bhTipTarget) return;
+    bhTip.classList.remove('is-visible');
+    _bhTipTarget = null;
+  }
+  document.addEventListener('mouseover', function (e) {
+    if (window.matchMedia('(hover: none)').matches) return; /* touch: sin tooltip */
+    const t = (e.target && e.target.closest) ? e.target.closest('[data-bh-tip]') : null;
+    if (t === _bhTipTarget) return;
+    _bhTipTarget = t;
+    if (t) showBhTip(t); else hideBhTip();
+  }, true);
+  document.addEventListener('mousedown', hideBhTip);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideBhTip(); });
+  window.addEventListener('scroll', hideBhTip, true);
+  window.addEventListener('resize', hideBhTip);
 
   /* Aceptación de invitación: definir contraseña del usuario invitado */
   function openInvitePasswordModal(email) {
@@ -782,20 +838,38 @@ function esc(s) {
   /* ------------------------------------------------
      3. NAVIGATION
      ------------------------------------------------ */
-  $$('.nav-item[data-tab]').forEach(item => {
-    item.addEventListener('click', () => {
-      const tab = item.dataset.tab;
-      navigateTo(tab);
-    });
+  /* #47 Delegación de eventos: UN listener para todo el menú. Los ítems que se
+     agreguen después (favoritos, recientes) navegan sin re-bind, y desaparece
+     el doble-bind histórico (se bindeaba dos veces el mismo ítem). */
+  document.addEventListener('click', function (e) {
+    const item = e.target.closest('#sidebar .nav-item[data-tab]');
+    if (!item || !item.dataset.tab) return;
+    navigateTo(item.dataset.tab);
   });
 
-  function navigateTo(section) {
+  /* #28: despacho de sub-vistas — busca en __BH (módulos que cargan después de
+     admin-app.js) o en BH_CRM (admin-crm.js carga ANTES, ahí __BH no existe). */
+  function dispatchSubView(section, subview) {
+    let fn = null;
+    if (window.__BH && typeof window.__BH.handleSubView === 'function') fn = window.__BH.handleSubView;
+    else if (window.BH_CRM && typeof window.BH_CRM.handleSubView === 'function') fn = window.BH_CRM.handleSubView;
+    if (fn) fn(section, subview);
+  }
+
+  function navigateTo(section, opts) {
     const prevSection = currentSection;
     currentSection = section;
-    // Sincronizar hash para deep-linking (replaceState: no ensucia el historial)
-    if (('#' + section) !== location.hash) {
-      history.replaceState(null, '', location.pathname + '#' + section);
+    const subview = (opts && opts.subview && /^[a-z-]+$/.test(String(opts.subview))) ? String(opts.subview) : '';
+    /* #28/#41: pushState = entradas reales de historial → el back/forward del
+       navegador salta entre módulos. El hash admite sub-vistas compartibles
+       (ej: #tab-leads/owners). pushState no dispara hashchange → sin loops. */
+    const targetHash = '#' + section + (subview ? '/' + subview : '');
+    if (location.hash !== targetHash) {
+      /* location.search se conserva: invite/magic links pueden venir en query. */
+      history.pushState(null, '', location.pathname + location.search + targetHash);
     }
+    /* #26: recordar el último módulo — al recargar se vuelve acá (sin hash). */
+    try { localStorage.setItem('bh_last_tab', section); } catch (_) {}
 
     /* Sidebar active */
     $$('.nav-item[data-tab]').forEach(el => {
@@ -843,6 +917,8 @@ function esc(s) {
       'tab-supervision': () => window.__BH.loadSupervision?.(),
     };
     if (loaders[section]) loaders[section]();
+    /* #28: sub-vista explícita (#tab-leads/owners) — el módulo decide qué hacer. */
+    if (subview) dispatchSubView(section, subview);
 
     if (section === 'tab-tasaciones') {
       const editorView = $('#tasacionesEditorView');
@@ -3231,13 +3307,13 @@ function setupCoreRealtime() {
             case 'visits':
               if (event === 'INSERT') {
                 upsertVisitRow(newRecord);
-                updateSidebarBadges();
+                scheduleBadgeRefresh();
               } else if (event === 'UPDATE') {
                 upsertVisitRow(newRecord);
-                updateSidebarBadges();
+                scheduleBadgeRefresh();
               } else if (event === 'DELETE') {
                 removeVisitRow(oldRecord.id);
-                updateSidebarBadges();
+                scheduleBadgeRefresh();
               }
               /* Visita creada/actualizada para un lead → el contexto del CRM cambia */
               if (newRecord?.lead_id) debouncedCRMRefresh();
@@ -3249,7 +3325,7 @@ function setupCoreRealtime() {
                 removeLeadCard(oldRecord.id);
               }
               debouncedCRMRefresh();
-              updateSidebarBadges();
+              scheduleBadgeRefresh();
               break;
             case 'properties':
               if (event === 'INSERT' || event === 'UPDATE') {
@@ -3259,7 +3335,7 @@ function setupCoreRealtime() {
               }
               /* Una propiedad vinculada a un lead cambia → el CRM la muestra en el contexto */
               debouncedCRMRefresh();
-              updateSidebarBadges();
+              scheduleBadgeRefresh();
               break;
             case 'agents':
               if (event === 'INSERT' || event === 'UPDATE') {
@@ -3268,7 +3344,7 @@ function setupCoreRealtime() {
               } else if (event === 'DELETE') {
                 removeAgentRow(oldRecord.id);
               }
-              updateSidebarBadges();
+              scheduleBadgeRefresh();
               break;
             case 'owners':
               if (event === 'INSERT' || event === 'UPDATE') {
@@ -3277,20 +3353,21 @@ function setupCoreRealtime() {
                 removeOwnerRow(oldRecord.id);
               }
               debouncedCRMRefresh();
-              updateSidebarBadges();
+              scheduleBadgeRefresh();
               break;
             case 'owner_tasks':
               if (editingOwnerId && $('#ownerModal')?.classList.contains('is-open')) {
                 loadOwnerTasks(editingOwnerId);
               }
               debouncedCRMRefresh();
-              updateSidebarBadges();
+              scheduleBadgeRefresh();
               break;
             case 'lead_properties':
             case 'lead_tasks':
             case 'lead_activities':
               /* Vincular propiedad, crear tarea, agregar nota → el CRM debe enterarse */
               debouncedCRMRefresh();
+              scheduleBadgeRefresh();
               break;
             case 'tasaciones':
               if (event === 'INSERT' || event === 'UPDATE') {
@@ -3298,7 +3375,7 @@ function setupCoreRealtime() {
               } else if (event === 'DELETE') {
                 removeTasacionRow(oldRecord.id);
               }
-              updateSidebarBadges();
+              scheduleBadgeRefresh();
               break;
           }
         })
@@ -3463,10 +3540,27 @@ async function mutate(table, fn) {
       if (leadsEl) leadsEl.textContent = (counts.leads || 0) + ' Activos';
       if (visitsEl) visitsEl.textContent = (counts.visits || 0) + ' Citas';
       if (tasEl) tasEl.textContent = counts.tasaciones || 0;
+      /* Cache de conteos para tooltips/desgloses (#3/#16) sin repetir la RPC.
+         Dentro del try: `counts` es block-scoped — afuera del catch no existe. */
+      if (window.__BH) window.__BH.lastBadgeCounts = counts;
     } catch (err) {
       logError('Badge update error:', err);
     }
     loadNotifications();
+  }
+
+  /* #48 Bus de badges: un único refresh con debounce por ráfaga de eventos
+     realtime. Antes cada cambio de tabla disparaba updateSidebarBadges()
+     directo — una ráfaga de 5 inserts (ML crea leads en serie) eran 5 RPCs
+     seguidas piteando la misma respuesta. */
+  const BADGE_REFRESH_MS = 800;
+  let _badgeTimer = null;
+  function scheduleBadgeRefresh() {
+    if (_badgeTimer) return;
+    _badgeTimer = setTimeout(() => {
+      _badgeTimer = null;
+      updateSidebarBadges();
+    }, BADGE_REFRESH_MS);
   }
 
   /* ------------------------------------------------
@@ -3720,7 +3814,7 @@ on(document, 'keydown', (e) => {
     downloadCSV, mutate, z, zodBaseType, validateForm,
     setBtnLoading, restoreBtn,
     loadAgentSelect, loadPropertySelect, refreshOwnerSelect,
-    updateSidebarBadges, invalidateSearchCache, navigateTo,
+    updateSidebarBadges, scheduleBadgeRefresh, invalidateSearchCache, navigateTo,
     updateAgendaBadge, sendBrowserNotification, requestNotificationPermission,
     formatPrice, formatNumber, checkPasswordPwned, getAuthedClient,
     setKPI, updateUserInfo, OwnerSchema, PropertySchema, LeadSchema, VisitSchema, TasacionSchema, AgentSchema,
@@ -3973,17 +4067,17 @@ on(document, 'keydown', (e) => {
        FIX: Robust navigation event listeners + Ficha HTML loader
        ------------------------------------------------ */
     (function attachNavListeners() {
-      $$('.nav-item[data-tab]').forEach(item => {
-        if (!item.dataset.bhNavBound) {
-          item.dataset.bhNavBound = 'true';
-          item.addEventListener('click', () => navigateTo(item.dataset.tab));
-        }
-      });
-      // Back/forward del navegador y links externos con #tab-*
+      /* Nav: por delegación (section 3 de arriba) — nada que bindear por ítem. */
+      // Back/forward del navegador y links externos con #tab-*[/subview]
       window.addEventListener('hashchange', () => {
         const h = (location.hash || '').replace(/^#/, '');
-        const el = document.getElementById(h);
-        if (/^tab-[a-z-]+$/.test(h) && el && el.classList.contains('tab-module') && h !== currentSection) navigateTo(h);
+        const parts = h.split('/');
+        const el = document.getElementById(parts[0]);
+        const sub = (parts[1] && /^[a-z-]+$/.test(parts[1])) ? parts[1] : '';
+        if (/^tab-[a-z-]+$/.test(parts[0]) && el && el.classList.contains('tab-module')) {
+          if (parts[0] !== currentSection) navigateTo(parts[0], sub ? { subview: sub } : undefined);
+          else if (sub) dispatchSubView(parts[0], sub);
+        }
       });
       if ($('#tab-ficha-html')) {
         window.loadFichaHtml = async function() {

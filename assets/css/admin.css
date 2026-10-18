@@ -579,6 +579,31 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     background: rgba(31, 200, 195, 0.08);
 }
 
+/* #45 Tooltip premium global (data-bh-tip) — reemplaza el title nativo.
+   Flota a la derecha del target (sidebar colapsado) y se voltea si no hay lugar. */
+#bhTooltip {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 100000;
+    pointer-events: none;
+    max-width: 280px;
+    padding: 6px 11px;
+    background: rgba(8, 11, 15, 0.97);
+    border: 1px solid rgba(31, 200, 195, 0.22);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    color: var(--text-main);
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.35;
+    white-space: pre-line;
+    opacity: 0;
+    transform: translateY(3px);
+    transition: opacity 0.12s var(--ease-out), transform 0.12s var(--ease-out);
+}
+#bhTooltip.is-visible { opacity: 1; transform: translateY(0); }
+
 .sidebar-menu {
     flex: 1;
     overflow-y: auto;
