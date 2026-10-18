@@ -71,6 +71,20 @@ test.describe('Sidebar F5 — estética & pulido', () => {
     expect(js).toContain("&& !e.target.closest('.nav-sub-toggle')) hideSubPopover()");
   });
 
+  test('admin-app.js: auto-compactado — el menú completo visible sin scroll', async ({ request }) => {
+    const js = await (await request.get('/assets/js/admin-app.js')).text();
+    expect(js).toContain('function autoFitSidebar');
+    expect(js).toContain("classList.add('sidebar-autofit')");
+    // Se re-mide al abrir/cerrar el Hoy (cambia la altura del menú):
+    expect(js).toContain('setTimeout(autoFitSidebar, open ? 300 : 50)');
+    // Y en boot con doble pasada (el Hoy carga async):
+    expect(js).toContain('setTimeout(autoFitSidebar, 500)');
+    const css = await (await request.get('/assets/css/admin.css')).text();
+    // El compacto comparte reglas con el manual (dense):
+    expect(css).toContain('body.sidebar-dense .nav-item,');
+    expect(css).toContain('body.sidebar-autofit .nav-item');
+  });
+
   test('admin.css: todos los estilos de F5', async ({ request }) => {
     const css = await (await request.get('/assets/css/admin.css')).text();
     // #31 bounce:

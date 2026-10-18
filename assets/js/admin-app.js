@@ -1161,6 +1161,8 @@ function esc(s) {
     btn.classList.toggle('is-open', open);
     try { localStorage.setItem(TODAY_OPEN_KEY, open ? '1' : '0'); } catch (_) {}
     if (open) loadTodayWidget();
+    /* El widget cambia la altura del menú → re-medir el auto-fit. */
+    setTimeout(autoFitSidebar, open ? 300 : 50);
   }
 
   /* Interacciones del widget por delegación (toggle + items). */
@@ -1476,6 +1478,25 @@ function esc(s) {
     sb.appendChild(edge);
   })();
 
+  /* Auto-compactado (pedido del empleador: el menú completo se ve SIN scroll):
+     si a ritmo normal el menú desborda la ventana, se aplica sidebar-autofit
+     (filas 30px). Se miden AMBOS estados cada vez — si la decisión dependiera
+     solo del estado actual, la clase oscilaría al aplicar/quitar. El manual
+     (context menu → "menú compacto") manda: con dense activo no se mete. */
+  function autoFitSidebar() {
+    const menu = document.querySelector('#sidebar .sidebar-menu');
+    if (!menu || !document.getElementById('appLayout').style.display || document.getElementById('appLayout').style.display === 'none') return;
+    if (document.body.classList.contains('sidebar-dense')) { document.body.classList.remove('sidebar-autofit'); return; }
+    document.body.classList.remove('sidebar-autofit');
+    const overflowNormal = menu.scrollHeight > menu.clientHeight + 2;
+    if (overflowNormal) document.body.classList.add('sidebar-autofit');
+  }
+  let _autofitTimer = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(_autofitTimer);
+    _autofitTimer = setTimeout(autoFitSidebar, 150);
+  });
+
   function showApp() {
     const loginScreen = $('#loginScreen');
     const appLayout = $('#appLayout');
@@ -1507,6 +1528,11 @@ function esc(s) {
     applyAccent(getAccent());
     injectSubNav();
     setBadgesSkeleton();
+    /* Auto-fit: tras renderizar todo (widget, reorden, badges), medir si
+       el menú desborda y compactar si hace falta. Doble pasada: los datos
+       del "Hoy" llegan async y cambian la altura. */
+    setTimeout(autoFitSidebar, 500);
+    setTimeout(autoFitSidebar, 1800);
     /* Canal core del realtime en el boot (antes solo existía al abrir Chat
        Redes). Blindado: si falla, el boot sigue. */
     try { setupCoreRealtime(); } catch (rtErr) { logError('Realtime boot error:', rtErr); window.__bhRtBootError = rtErr; }

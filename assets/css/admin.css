@@ -518,7 +518,7 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 }
 
 .sidebar-brand {
-    padding: 26px 24px;
+    padding: 12px 20px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -608,10 +608,10 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 18px 14px;
+    padding: 10px 14px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
 }
 /* FIX RAÍZ del "se ve mal": los hijos JAMÁS se encogen — cuando el contenido
    excede la altura de la ventana el menú SCROLLEA (para eso son su
@@ -624,7 +624,7 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     text-transform: uppercase;
     letter-spacing: 1.5px;
     color: var(--text-dim);
-    padding: 14px 12px 6px;
+    padding: 7px 12px 3px;
 }
 .menu-category:first-child { padding-top: 0; }
 
@@ -632,8 +632,8 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 11px 14px;
-    min-height: 42px; /* ritmo uniforme: con o sin badge, todos miden igual */
+    padding: 9px 14px;
+    min-height: 38px; /* ritmo compacto: 14 módulos + categorías + Hoy visibles sin scroll */
     border-radius: var(--radius-sm);
     color: var(--text-secondary);
     font-size: 13.5px;
@@ -887,8 +887,8 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     justify-content: space-between;
     gap: 8px;
     width: 100%;
-    padding: 11px 14px; /* idéntico al nav-item: mismo ritmo vertical */
-    min-height: 42px; /* misma altura de fila que los ítems del menú */
+    padding: 9px 14px; /* idéntico al nav-item: mismo ritmo vertical */
+    min-height: 38px; /* misma altura de fila que los ítems del menú */
     background: none;
     border: none;
     border-radius: var(--radius-sm);
@@ -903,7 +903,8 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 .st-header:hover { color: var(--text-main); background: rgba(255, 255, 255, 0.03); }
 .st-header:hover .st-label i { color: #fbbf24; }
 .st-header:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-body.sidebar-dense .st-header { padding: 7px 14px; min-height: 34px; }
+body.sidebar-dense .st-header,
+body.sidebar-autofit .st-header { padding: 5px 14px; min-height: 30px; }
 .st-label { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .st-label i { color: #f59e0b; font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; transition: color 0.15s var(--ease-out); }
 .st-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -982,7 +983,7 @@ body.sidebar-dense .st-header { padding: 7px 14px; min-height: 34px; }
     letter-spacing: 0.6px;
     color: var(--text-dim);
     text-align: center;
-    padding-top: 8px;
+    padding-top: 5px;
     cursor: default;
 }
 
@@ -1050,13 +1051,23 @@ body.sidebar-dense .st-header { padding: 7px 14px; min-height: 34px; }
     animation: badgeShimmer 1.1s linear infinite;
 }
 
-/* #33: modo compacto — todo visible sin scroll. */
-body.sidebar-dense .nav-item { padding: 7px 14px; font-size: 12.5px; min-height: 34px; }
-body.sidebar-dense .nav-item i { font-size: 14px; width: 18px; }
-body.sidebar-dense .menu-category { padding: 10px 12px 4px; }
-body.sidebar-dense .st-item { padding: 4px 8px; }
-body.sidebar-dense .st-title { padding: 7px 4px 2px; }
-body.sidebar-dense .sidebar-today { margin: 6px 0 10px; }
+/* #33: modo compacto — manual (context menu) o AUTO (pantallas bajas, para
+   que el menú completo se vea sin scroll). 28px de fila: entra hasta en
+   ventanas de ~700px con el widget Hoy abierto. */
+body.sidebar-dense .nav-item,
+body.sidebar-autofit .nav-item { padding: 4px 14px; font-size: 11.5px; min-height: 28px; }
+body.sidebar-dense .nav-item i,
+body.sidebar-autofit .nav-item i { font-size: 12px; width: 17px; }
+body.sidebar-dense .menu-category,
+body.sidebar-autofit .menu-category { padding: 4px 12px 1px; font-size: 9.5px; }
+body.sidebar-dense .st-header,
+body.sidebar-autofit .st-header { padding: 4px 14px; min-height: 28px; font-size: 11.5px; }
+body.sidebar-dense .st-item,
+body.sidebar-autofit .st-item { padding: 3px 6px; font-size: 11px; }
+body.sidebar-dense .st-title,
+body.sidebar-autofit .st-title { padding: 5px 4px 1px; }
+body.sidebar-dense .sidebar-today,
+body.sidebar-autofit .sidebar-today { margin: 0; }
 
 /* #34: acento del menú por usuario — solo el sidebar, la identidad
    del sistema queda teal (los componentes usan var(--accent) del :root). */
@@ -1262,7 +1273,7 @@ button.nav-badge.user-status-toggle:hover { filter: brightness(1.2); transform: 
 button.nav-badge.user-status-toggle:active { transform: translateY(0); }
 
 .sidebar-footer {
-    padding: 16px;
+    padding: 8px 16px;
     border-top: 1px solid var(--border-subtle);
     background: rgba(0, 0, 0, 0.3);
 }
@@ -4058,7 +4069,7 @@ input[type="range"]::-moz-range-thumb {
 .sidebar.is-collapsed .badge-env { display: none; }
 .sidebar.is-collapsed .brand-title { display: none; }
 .sidebar.is-collapsed .nav-item-left { gap: 0; justify-content: center; width: 100%; }
-.sidebar.is-collapsed .nav-item { justify-content: center; padding: 11px 8px; }
+.sidebar.is-collapsed .nav-item { justify-content: center; padding: 9px 8px; }
 .sidebar.is-collapsed .sidebar-brand { justify-content: center; padding: 26px 12px; }
 .sidebar.is-collapsed .sidebar-collapse-btn { width: 32px; height: 32px; font-size: 13px; }
 .sidebar.is-collapsed .user-card { justify-content: center; padding: 10px 4px; }
