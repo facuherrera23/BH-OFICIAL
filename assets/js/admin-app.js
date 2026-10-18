@@ -4476,7 +4476,9 @@ async function mutate(table, fn) {
       /* #3: desglose en hover del badge (consume el cache de la RPC v2). */
       if (leadsEl && counts.leads != null) {
         leadsEl.dataset.bhTip = (counts.leads || 0) + ' activos' +
-          (counts.leads_new_24h ? ' · +' + counts.leads_new_24h + ' hoy' : '');
+          (counts.leads_new_24h ? ' · +' + counts.leads_new_24h + ' hoy' : '') +
+          (counts.lead_tasks_overdue ? ' · ' + counts.lead_tasks_overdue + ' tareas vencidas' : '') +
+          (counts.lead_tasks_soon ? ' · ' + counts.lead_tasks_soon + ' vencen en 24 h' : '');
       }
       if (visitsEl && counts.visits != null) {
         visitsEl.dataset.bhTip = (counts.visits || 0) + ' citas' +
@@ -4486,6 +4488,19 @@ async function mutate(table, fn) {
         propsEl.dataset.bhTip = (counts.properties || 0) + ' publicadas' +
           (counts.properties_stale ? ' · ' + counts.properties_stale + ' estancadas' : '');
       }
+      /* Señal de tareas de propietarios en el badge de Propietarios (si existe).
+     El módulo Propietarios fue movido al CRM, así que este badge ya no existe
+     en el sidebar. Código eliminado porque el badge ya no existe. */
+      if (ownersEl) {
+        const oVenc = counts.owner_tasks_overdue || 0;
+        const oSoon = counts.owner_tasks_soon || 0;
+        ownersEl.textContent = (counts.owners || 0) + ' Activos' +
+          (oVenc > 0 ? ' <span class="nav-badge-venc">' + oVenc + ' venc.</span>' : '') +
+          (oVenc === 0 && oSoon > 0 ? ' <span class="nav-badge-soon">' + oSoon + ' próx.</span>' : '');
+        ownersEl.dataset.bhTip = (counts.owners || 0) + ' propietarios' +
+          (oVenc > 0 ? ' · ' + oVenc + ' tareas vencidas' : '') +
+          (oSoon > 0 ? ' · ' + oSoon + ' vencen en 24 h' : '');
+      } */
       /* #24: badge de recomendaciones en Dashboard (acciones que requieren
          atención: estancadas + tareas vencidas) — la puerta de entrada al
          panel de recomendaciones. */
