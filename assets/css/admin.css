@@ -613,6 +613,11 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     flex-direction: column;
     gap: 4px;
 }
+/* FIX RAÍZ del "se ve mal": los hijos JAMÁS se encogen — cuando el contenido
+   excede la altura de la ventana el menú SCROLLEA (para eso son su
+   overflow-y y su barra de progreso). Antes, flex-shrink aplastaba cada
+   ítem a ~24px con el contenido recortado (ventanas de ~720px de alto). */
+.sidebar-menu > * { flex-shrink: 0; }
 .menu-category {
     font-size: 11px;
     font-weight: 700;
@@ -628,10 +633,12 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     align-items: center;
     justify-content: space-between;
     padding: 11px 14px;
+    min-height: 42px; /* ritmo uniforme: con o sin badge, todos miden igual */
     border-radius: var(--radius-sm);
     color: var(--text-secondary);
     font-size: 13.5px;
     font-weight: 500;
+    line-height: 1.2;
     transition: var(--transition);
     cursor: pointer;
     position: relative;
@@ -803,6 +810,11 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 
 /* #11: badges clickeables. */
 .nav-item .nav-badge { cursor: pointer; }
+.nav-item .nav-badge:hover { filter: brightness(1.18); }
+
+/* Focus-visible de los microcontroles (flechita y +). */
+.nav-sub-toggle:focus-visible,
+.nav-plus:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* #13: búsqueda global en el topbar (el motor ya existía sin UI). */
 .topbar-search {
@@ -865,7 +877,7 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
    FASE 4 — widget "Hoy" (rediseño: integrado al menú, sin caja)
    ============================================================ */
 .sidebar-today {
-    margin: 4px 0 8px;
+    margin: 0; /* ritmo puro: el gap de 4px del menú hace el espaciado */
 }
 .st-header {
     display: flex;
@@ -873,7 +885,8 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     justify-content: space-between;
     gap: 8px;
     width: 100%;
-    padding: 10px 14px;
+    padding: 11px 14px; /* idéntico al nav-item: mismo ritmo vertical */
+    min-height: 42px; /* misma altura de fila que los ítems del menú */
     background: none;
     border: none;
     border-radius: var(--radius-sm);
@@ -881,11 +894,14 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     font-family: inherit;
     font-size: 13.5px;
     font-weight: 500;
+    line-height: 1.2;
     cursor: pointer;
     transition: color 0.12s var(--ease-out), background 0.12s var(--ease-out);
 }
 .st-header:hover { color: var(--text-main); background: rgba(255, 255, 255, 0.03); }
 .st-header:hover .st-label i { color: #fbbf24; }
+.st-header:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+body.sidebar-dense .st-header { padding: 7px 14px; min-height: 34px; }
 .st-label { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .st-label i { color: #f59e0b; font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; transition: color 0.15s var(--ease-out); }
 .st-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -945,7 +961,8 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     color: var(--text-dim);
 }
 .st-clear i { color: #f59e0b; font-size: 12px; }
-.st-svc-row { display: flex; align-items: center; gap: 9px; padding: 8px 0 4px; }
+.st-svc-row { display: flex; align-items: center; gap: 9px; padding: 8px 8px 4px; border-radius: 8px; cursor: pointer; transition: background 0.12s var(--ease-out); }
+.st-svc-row:hover { background: rgba(31, 200, 195, 0.06); }
 .st-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); flex-shrink: 0; }
 .st-dot.is-ok { background: #25d366; box-shadow: 0 0 8px rgba(37, 211, 102, 0.5); }
 .st-dot.is-warn { background: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.35); }
@@ -1032,7 +1049,7 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 }
 
 /* #33: modo compacto — todo visible sin scroll. */
-body.sidebar-dense .nav-item { padding: 7px 14px; font-size: 12.5px; }
+body.sidebar-dense .nav-item { padding: 7px 14px; font-size: 12.5px; min-height: 34px; }
 body.sidebar-dense .nav-item i { font-size: 14px; width: 18px; }
 body.sidebar-dense .menu-category { padding: 10px 12px 4px; }
 body.sidebar-dense .st-item { padding: 4px 8px; }
@@ -1091,6 +1108,8 @@ body[data-accent='ambar'] .sidebar { --accent: #fbbf24; --border-accent: rgba(25
     .nav-badge.is-skeleton { animation: none; }
     .sidebar.is-open .nav-item { animation: none; }
     .nav-ripple { display: none; }
+    .nav-new-tag { animation: none; }
+    .nav-badge--pulse { animation: none; }
     .nav-sub-popover.is-visible,
     .nav-context-menu.is-visible { animation: none; }
     #bhTooltip, #bhHoverCard { transition: none; }

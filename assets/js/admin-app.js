@@ -991,11 +991,19 @@ function esc(s) {
     if (target) { e.preventDefault(); navigateTo(target.dataset.tab); }
   });
 
-  /* A11y: Enter/Espacio navega desde el ítem enfocado (Tab recorre el menú). */
+  /* A11y: Enter/Espacio opera los microcontroles enfocados y navega desde
+     el ítem (Tab recorre el menú completo). */
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     if (!e.target.closest) return;
-    if (e.target.closest('.nav-plus, .nav-sub-toggle')) return; /* botones propios */
+    const toggle = e.target.closest('.nav-sub-toggle');
+    if (toggle) { e.preventDefault(); toggleSubPopover(toggle); return; }
+    const plus = e.target.closest('.nav-plus');
+    if (plus) {
+      e.preventDefault();
+      if (plus.dataset.plusAction) triggerQuickAction(plus.dataset.plusAction);
+      return;
+    }
     const item = e.target.closest('#sidebar .nav-item[data-tab]');
     if (!item || !item.dataset.tab) return;
     e.preventDefault();
@@ -1131,7 +1139,7 @@ function esc(s) {
       const zOk = zMins !== null && zMins < 30;
       const dot = (ok, tip) => '<span class="st-dot ' + (ok ? 'is-ok' : 'is-warn') + '" data-bh-tip="' + esc(tip) + '"></span>';
       html += '<div class="st-title"><i class="fas fa-heart-pulse"></i> Servicios</div>' +
-        '<div class="st-svc-row">' +
+        '<div class="st-svc-row" data-bh-tip="Ver estado en detalle">' +
           dot(rtLive, 'Realtime: ' + (rtLive ? 'conectado' : 'sin conexión')) +
           dot(mlOk, 'Mercado Libre: ' + (counts.ml_last_event_at ? 'webhook activo' : 'sin eventos')) +
           dot(zOk, 'Zernio: ' + fmtAgoMins(zMins)) +
@@ -1163,7 +1171,7 @@ function esc(s) {
     if (sv) { e.stopPropagation(); navigateTo('tab-agenda'); if (window.adminApp && window.adminApp.editVisit) window.adminApp.editVisit(sv.dataset.stVisit); return; }
     const tk = e.target.closest('[data-st-task]');
     if (tk) { e.stopPropagation(); if (tk.dataset.stTask && window.BH_CRM) { navigateTo('tab-leads'); window.BH_CRM.open(tk.dataset.stTask); } else navigateTo('tab-leads'); return; }
-    const svc = e.target.closest('#stServices');
+    const svc = e.target.closest('#stServices .st-svc-row');
     if (svc) {
       e.stopPropagation();
       const isAdmin = window.currentProfile && window.currentProfile.role === 'super_admin';
@@ -1395,6 +1403,7 @@ function esc(s) {
     tog.dataset.bhTip = 'Canales';
     tog.setAttribute('role', 'button');
     tog.setAttribute('aria-label', 'Ver canales de chat');
+    tog.tabIndex = 0; /* teclado: Tab la enfoca, Enter/Espacio la opera */
     tog.innerHTML = '<i class="fas fa-chevron-down"></i>';
     item.appendChild(tog);
     /* Popover flotante a nivel body: el despliegue NO modifica el flujo del
@@ -1416,6 +1425,7 @@ function esc(s) {
     if (pop.classList.contains('is-visible')) { hideSubPopover(); return; }
     hideHoverCard();
     hideNavCtx();
+    hideBhTip(); /* el tooltip de la flechita no queda latente encima */
     pop.classList.add('is-visible');
     const r = fromToggle.getBoundingClientRect();
     const sbr = document.getElementById('sidebar').getBoundingClientRect();
