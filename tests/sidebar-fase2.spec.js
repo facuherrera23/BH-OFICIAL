@@ -8,7 +8,9 @@ test.describe('Sidebar F2 — señales & badges', () => {
     const js = await (await request.get('/assets/js/admin-app.js')).text();
     // #1 boot: el chat se pinta desde la RPC hasta que el módulo toma el relevo:
     expect(js).toContain('chat_unread_total');
-    expect(js).toContain("nav-badge--unread', unread > 0");
+    expect(js).toContain("chatEl.classList.add('nav-badge--unread')");
+    // Sin unread el badge desaparece (nada de "0" fijo):
+    expect(js).toContain("chatEl.style.display = 'none'");
     // #2: tareas vencidas totales en el badge de Agenda:
     expect(js).toContain('tasks_overdue_total');
     expect(js).toContain("' venc.'");
@@ -52,7 +54,7 @@ test.describe('Sidebar F2 — señales & badges', () => {
   test('admin-app.js: writer del chat con clase verde + tooltip (#1)', async ({ request }) => {
     const js = await (await request.get('/assets/js/admin-app.js')).text();
     expect(js).toContain('function updateSidebarChatBadge');
-    expect(js).toContain("badge.classList.toggle('nav-badge--unread', n > 0)");
+    expect(js).toContain("badge.classList.add('nav-badge--unread')");
     expect(js).toContain("' mensajes sin leer'");
   });
 

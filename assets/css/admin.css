@@ -1113,7 +1113,10 @@ body[data-accent='ambar'] .sidebar { --accent: #fbbf24; --border-accent: rgba(25
     animation: navRippleAnim 0.45s var(--ease-out) forwards;
 }
 
-/* #42: sub-navegación expandible (chat por canal). */
+/* #42: sub-navegación expandible (chat por canal) — rediseño de calidad:
+   el chevron es un botón flex centrado AL LADO del badge (antes absoluto
+   en la esquina inferior, apilado contra el badge) y los canales llevan
+   su color de marca. */
 .nav-item { overflow: hidden; }
 .nav-sub {
     padding-left: 46px;
@@ -1121,6 +1124,7 @@ body[data-accent='ambar'] .sidebar { --accent: #fbbf24; --border-accent: rgba(25
     flex-direction: column;
     gap: 2px;
     margin: 2px 0 4px;
+    animation: fadeIn 0.15s var(--ease-out);
 }
 .nav-sub-item {
     display: flex;
@@ -1134,18 +1138,27 @@ body[data-accent='ambar'] .sidebar { --accent: #fbbf24; --border-accent: rgba(25
     transition: color 0.12s var(--ease-out), background 0.12s var(--ease-out);
 }
 .nav-sub-item:hover { color: #fff; background: rgba(31, 200, 195, 0.07); }
-.nav-sub-item i { font-size: 12px; width: 16px; text-align: center; }
+.nav-sub-item i { font-size: 12px; width: 16px; text-align: center; transition: transform 0.15s var(--ease-out); }
+.nav-sub-item:hover i { transform: scale(1.12); }
+/* Colores de marca por canal (Instagram/Facebook/WhatsApp — "Todas" en teal). */
+.nav-sub-item[data-sub='1'] i { color: #e1306c; }
+.nav-sub-item[data-sub='2'] i { color: #1877f2; }
+.nav-sub-item[data-sub='3'] i { color: #25d366; }
 .nav-sub-toggle {
-    position: absolute;
-    right: 6px;
-    bottom: 2px;
-    font-size: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-left: 4px;
+    border-radius: 6px;
     color: var(--text-dim);
     cursor: pointer;
-    padding: 3px 4px;
+    flex-shrink: 0;
+    transition: color 0.12s var(--ease-out), background 0.12s var(--ease-out);
 }
-.nav-sub-toggle:hover { color: var(--accent); }
-.nav-sub-toggle i { transition: transform 0.15s var(--ease-out); }
+.nav-sub-toggle:hover { color: var(--accent); background: rgba(31, 200, 195, 0.1); }
+.nav-sub-toggle i { font-size: 8px; transition: transform 0.18s var(--ease-out); }
 .nav-sub-toggle.is-open i { transform: rotate(180deg); }
 .sidebar.is-collapsed .nav-sub,
 .sidebar.is-collapsed .nav-sub-toggle { display: none !important; }

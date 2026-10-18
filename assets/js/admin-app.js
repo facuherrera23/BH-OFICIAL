@@ -4216,10 +4216,18 @@ on(chip, 'click', () => {
       const badge = $('#sideBadgeChatRedes');
       if (!badge) return;
       const n = _chatUnreadTotal || 0;
-      badge.textContent = n || '0';
-      /* #1: verde cuando hay mensajes de clientes esperando respuesta. */
-      badge.classList.toggle('nav-badge--unread', n > 0);
-      badge.dataset.bhTip = n > 0 ? (n + (n === 1 ? ' mensaje sin leer' : ' mensajes sin leer')) : 'Chat al día';
+      /* Rediseño del item de Chat Redes: sin unread el badge desaparece
+         (antes un "0" fijo); con mensajes, pill verde con el conteo. */
+      if (n > 0) {
+        badge.style.display = '';
+        badge.textContent = n > 99 ? '99+' : String(n);
+        badge.classList.add('nav-badge--unread');
+        badge.dataset.bhTip = n + (n === 1 ? ' mensaje sin leer' : ' mensajes sin leer');
+      } else {
+        badge.style.display = 'none';
+        badge.classList.remove('nav-badge--unread');
+        badge.dataset.bhTip = 'Chat al día';
+      }
     }
   }
   document.body.dataset.bhAfterChat = 'true';
@@ -4391,11 +4399,17 @@ async function mutate(table, fn) {
       }
       const chatEl = $('#sideBadgeChatRedes');
       if (chatEl) {
-        /* #1: chat sin leer — al boot la RPC ya lo sabe (el módulo de chat toma
-           el relevo con su propio realtime cuando se abre la pestaña). */
+        /* #1: chat sin leer. Sin unread el badge DESAPARECE — un "0" fijo
+           es ruido; cuando hay mensajes, pill verde con el conteo. */
         const unread = counts.chat_unread_total || 0;
-        chatEl.textContent = unread || '0';
-        chatEl.classList.toggle('nav-badge--unread', unread > 0);
+        if (unread > 0) {
+          chatEl.style.display = '';
+          chatEl.textContent = unread > 99 ? '99+' : String(unread);
+          chatEl.classList.add('nav-badge--unread');
+        } else {
+          chatEl.style.display = 'none';
+          chatEl.classList.remove('nav-badge--unread');
+        }
       }
       /* Cache de conteos para tooltips/desgloses (#3/#16) sin repetir la RPC.
          Dentro del try: `counts` es block-scoped — afuera del catch no existe. */
