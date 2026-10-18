@@ -1645,6 +1645,8 @@ function openDetailPanel(id) {
       if (leadRes.error) throw new Error(leadRes.error.message);
       var lead = leadRes.data;
       if (!lead) throw new Error('Prospecto no encontrado');
+      /* #46: breadcrumb contextual — dónde estás: CRM › <lead>. */
+      if (window.__BH && window.__BH.setContext) window.__BH.setContext(lead.full_name || 'Lead');
       var activities = results[1] || [];
       var props = results[2] || [];
       var visits = results[3] || [];
@@ -1676,6 +1678,8 @@ function closeDetailPanel() {
   var panel = $id('crmSidePanel');
   if (panel) panel.classList.remove('open');
   document.querySelectorAll('.crm-row--selected').forEach(function (r) { r.classList.remove('crm-row--selected'); });
+  /* #46: panel cerrado → el breadcrumb vuelve al modo (lo repone _syncHeader). */
+  if (window.__BH && window.__BH.setContext) window.__BH.setContext(_viewMode === 'owners' ? 'Propietarios' : null);
 }
 
 /* El panel del lead NO se cierra con clic fuera de la card: un clic accidental
@@ -2446,6 +2450,10 @@ function _syncHeader() {
   });
   if (titleEl) {
     titleEl.textContent = ownersMode ? 'Propietarios y Asignaciones' : 'Leads & CRM';
+  }
+  /* #46: breadcrumb del modo en el topbar. */
+  if (window.__BH && window.__BH.setContext && !document.getElementById('crmSidePanel')?.classList.contains('open')) {
+    window.__BH.setContext(ownersMode ? 'Propietarios' : null);
   }
   if (ownersMode) { _kpiFilter = ''; }
   syncKpiCards();

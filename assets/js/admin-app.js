@@ -848,7 +848,17 @@ function esc(s) {
         if (rp > -1) return 1000 + rp;
         return 100000 + _origNavOrder.indexOf(el.dataset.tab);
       };
-      items.sort((a, b) => score(a) - score(b)).forEach(el => menu.insertBefore(el, siblings[end]));
+      /* #42: el sub-nav viaja PEGADO a su ítem — el menú es plano y si solo se
+         mueven los nav-item, el .nav-sub queda huérfano (bug real detectado:
+         tras reorder, el toggle apuntaba al vecino equivocado). */
+      const movable = [];
+      items.sort((a, b) => score(a) - score(b)).forEach(el => {
+        movable.push(el);
+        if (el.nextElementSibling && el.nextElementSibling.classList.contains('nav-sub')) {
+          movable.push(el.nextElementSibling);
+        }
+      });
+      movable.forEach(el => menu.insertBefore(el, siblings[end]));
     });
     menu.querySelectorAll('.nav-item').forEach(el => {
       el.classList.toggle('is-pinned', isPinned(el.dataset.tab));
@@ -936,6 +946,9 @@ function esc(s) {
     if (PLUS_BY_TAB[tab]) rows.push({ icon: 'fas fa-plus', text: PLUS_BY_TAB[tab].label, fn: () => triggerQuickAction(PLUS_BY_TAB[tab].action) });
     if (tab === 'tab-leads') rows.push({ icon: 'fas fa-user-tie', text: 'Ver padrón de propietarios', fn: () => navigateTo('tab-leads', { subview: 'owners' }) });
     if (tab === 'tab-dashboard') rows.push({ icon: 'fas fa-rotate', text: 'Refrescar dashboard', fn: () => { const b = document.getElementById('dashRefreshBtn'); if (b) b.click(); } });
+    /* #33/#34: preferencias de menú al alcance del click derecho. */
+    rows.push({ icon: isDense() ? 'fas fa-compress' : 'fas fa-expand', text: (isDense() ? 'Desactivar' : 'Activar') + ' menú compacto', fn: () => applyDense(!isDense()) });
+    rows.push({ icon: 'fas fa-palette', text: 'Acento del menú: ' + getAccent() + ' — cambiar', fn: () => cycleAccent() });
     const idx = visibleNavItems().indexOf(item);
     const hint = (idx > -1 && idx < 9) ? '<div class="nav-ctx-hint">Atajo: Alt+' + (idx + 1) + '</div>' : '';
     navCtx._actions = rows.map(r => r.fn);
@@ -1235,6 +1248,125 @@ function esc(s) {
     if (typeof getSearchCache === 'function') { _prefetchAt = Date.now(); getSearchCache().catch(() => {}); }
   }, true);
 
+  /* ------------------------------------------------
+     20. SIDEBAR F5 — estética & pulido (cierre del plan)
+     (#31 bounce, #32 skeleton, #33 compacto, #34 acento, #35 separadores,
+      #37 scroll, #38 activo, #39 stagger móvil, #40 ripple, #42 sub-nav,
+      #46 breadcrumb, #49 borde)
+     ------------------------------------------------ */
+  /* #32: skeleton de badges hasta la primera respuesta de la RPC —
+     en vez de un "0" falso mientras llega el dato real. */
+  const SKELETON_BADGES = ['sideBadgeProps', 'sideBadgeLeads', 'sideBadgeVisits', 'sideBadgeTasaciones', 'sideBadgeChatRedes'];
+  function setBadgesSkeleton() {
+    SKELETON_BADGES.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.classList.add('is-skeleton'); el.textContent = '···'; }
+    });
+  }
+
+  /* #33: modo compacto — ítems de altura reducida, todo visible sin scroll. */
+  const DENSE_KEY = 'bh_sidebar_dense';
+  function isDense() { try { return localStorage.getItem(DENSE_KEY) === '1'; } catch (_) { return false; } }
+  function applyDense(on) {
+    document.body.classList.toggle('sidebar-dense', !!on);
+    try { localStorage.setItem(DENSE_KEY, on ? '1' : '0'); } catch (_) {}
+  }
+
+  /* #34: acento del menú (solo el sidebar — la identidad del sistema queda teal). */
+  const ACCENT_KEY = 'bh_accent';
+  const ACCENTS = ['teal', 'violeta', 'ambar'];
+  function getAccent() { try { return localStorage.getItem(ACCENT_KEY) || 'teal'; } catch (_) { return 'teal'; } }
+  function applyAccent(name) {
+    document.body.dataset.accent = ACCENTS.includes(name) ? name : 'teal';
+    try { localStorage.setItem(ACCENT_KEY, document.body.dataset.accent); } catch (_) {}
+  }
+  function cycleAccent() {
+    const next = ACCENTS[(ACCENTS.indexOf(getAccent()) + 1) % ACCENTS.length];
+    applyAccent(next);
+    showToast('Acento del menú: ' + next, 'info', 1800);
+  }
+
+  /* #37: barra de progreso de scroll del menú (visible solo si desborda). */
+  (function initMenuScrollbar() {
+    const sbMenu = document.querySelector('#sidebar .sidebar-menu');
+    if (!sbMenu) return;
+    const sbar = document.createElement('div');
+    sbar.className = 'sidebar-menu-scroll';
+    sbMenu.appendChild(sbar);
+    sbMenu.addEventListener('scroll', function () {
+      const max = sbMenu.scrollHeight - sbMenu.clientHeight;
+      sbar.style.width = (max > 8 ? Math.min(100, (sbMenu.scrollTop / max) * 100) : 0) + '%';
+    });
+  })();
+
+  /* #40: ripple suave al click. */
+  function navRipple(item, e) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const r = document.createElement('span');
+    r.className = 'nav-ripple';
+    const rect = item.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height) * 1.2;
+    r.style.width = r.style.height = size + 'px';
+    r.style.left = ((e.clientX || (rect.left + rect.width / 2)) - rect.left - size / 2) + 'px';
+    r.style.top = ((e.clientY || (rect.top + rect.height / 2)) - rect.top - size / 2) + 'px';
+    item.appendChild(r);
+    setTimeout(function () { if (r.parentNode) r.remove(); }, 480);
+  }
+
+  /* #42: sub-navegación expandible — Chat Redes por canal. */
+  const CHAT_SUBS = [
+    { label: 'Todas', icon: 'fas fa-inbox', platform: 'all' },
+    { label: 'Instagram', icon: 'fab fa-instagram', platform: 'instagram' },
+    { label: 'Facebook', icon: 'fab fa-facebook', platform: 'facebook' },
+    { label: 'WhatsApp', icon: 'fab fa-whatsapp', platform: 'whatsapp' }
+  ];
+  function injectSubNav() {
+    const item = document.querySelector('#sidebar .nav-item[data-tab="tab-chat-redes"]');
+    if (!item || item.querySelector('.nav-sub-toggle')) return;
+    const tog = document.createElement('span');
+    tog.className = 'nav-sub-toggle';
+    tog.dataset.bhTip = 'Canales';
+    tog.innerHTML = '<i class="fas fa-chevron-down"></i>';
+    item.appendChild(tog);
+    const sub = document.createElement('div');
+    sub.className = 'nav-sub';
+    sub.style.display = 'none';
+    sub.innerHTML = CHAT_SUBS.map(function (s, i) {
+      return '<div class="nav-sub-item" data-sub="' + i + '"><i class="' + s.icon + '"></i>' + esc(s.label) + '</div>';
+    }).join('');
+    item.parentNode.insertBefore(sub, item.nextSibling);
+  }
+
+  /* #46: breadcrumb contextual en el título del topbar (módulo › entidad). */
+  function setTopbarContext(label) {
+    const t = document.getElementById('moduleTitle');
+    if (!t) return;
+    let ctx = document.getElementById('topbarContext');
+    if (!label) { if (ctx) ctx.remove(); return; }
+    if (!ctx) {
+      ctx = document.createElement('span');
+      ctx.id = 'topbarContext';
+      ctx.className = 'topbar-context';
+      t.appendChild(ctx);
+    }
+    ctx.textContent = '› ' + label;
+  }
+
+  /* #49: handle en el borde del sidebar (estilo VSCode) — doble affordance. */
+  (function initSidebarEdge() {
+    const sb = document.getElementById('sidebar');
+    if (!sb) return;
+    const edge = document.createElement('div');
+    edge.className = 'sidebar-edge';
+    edge.dataset.bhTip = 'Contraer / expandir menú';
+    edge.setAttribute('aria-hidden', 'true');
+    edge.addEventListener('click', function () {
+      const btn = document.getElementById('sidebarCollapseToggle');
+      if (btn) btn.click();
+    });
+    sb.appendChild(edge);
+  })();
+
   function showApp() {
     const loginScreen = $('#loginScreen');
     const appLayout = $('#appLayout');
@@ -1261,6 +1393,11 @@ function esc(s) {
     let todayOpen = false;
     try { todayOpen = localStorage.getItem('bh_today_open') === '1'; } catch (_) {}
     setTodayOpen(todayOpen);
+    /* F5: preferencias (compacto, acento), sub-nav y skeleton de badges. */
+    applyDense(isDense());
+    applyAccent(getAccent());
+    injectSubNav();
+    setBadgesSkeleton();
     /* Canal core del realtime en el boot (antes solo existía al abrir Chat
        Redes). Blindado: si falla, el boot sigue. */
     try { setupCoreRealtime(); } catch (rtErr) { logError('Realtime boot error:', rtErr); window.__bhRtBootError = rtErr; }
@@ -1492,8 +1629,41 @@ function esc(s) {
       if (plus.dataset.plusAction) triggerQuickAction(plus.dataset.plusAction);
       return;
     }
+    /* #42: toggle de sub-navegación (chevron) y sub-items. */
+    const subTog = e.target.closest('.nav-sub-toggle');
+    if (subTog) {
+      e.stopPropagation();
+      const item = subTog.closest('.nav-item');
+      const sub = item && item.nextElementSibling;
+      if (sub && sub.classList.contains('nav-sub')) {
+        const open = sub.style.display !== 'none';
+        sub.style.display = open ? 'none' : '';
+        subTog.classList.toggle('is-open', !open);
+      }
+      return;
+    }
+    const subItem = e.target.closest('.nav-sub-item');
+    if (subItem) {
+      e.stopPropagation();
+      const sub = subItem.closest('.nav-sub');
+      const item = sub.previousElementSibling;
+      const tab = item.dataset.tab;
+      navigateTo(tab);
+      if (tab === 'tab-chat-redes') {
+        const conf = CHAT_SUBS[parseInt(subItem.dataset.sub, 10)];
+        if (conf) setTimeout(function () {
+          const chip = document.querySelector('.filter-chip[data-platform="' + conf.platform + '"]');
+          if (chip) chip.click();
+        }, 450);
+      }
+      sub.style.display = 'none';
+      const tog = item.querySelector('.nav-sub-toggle');
+      if (tog) tog.classList.remove('is-open');
+      return;
+    }
     const item = e.target.closest('#sidebar .nav-item[data-tab]');
     if (!item || !item.dataset.tab) return;
+    navRipple(item, e); /* #40 */
     navigateTo(item.dataset.tab);
   });
 
@@ -1523,6 +1693,8 @@ function esc(s) {
     }
     const prevSection = currentSection;
     currentSection = section;
+    /* #46: el breadcrumb contextual es del módulo — al navegar se limpia. */
+    if (window.__BH && typeof window.__BH.setContext === 'function' && prevSection !== section) window.__BH.setContext(null);
     const subview = (opts && opts.subview && /^[a-z-]+$/.test(String(opts.subview))) ? String(opts.subview) : '';
     /* #28/#41: pushState = entradas reales de historial → el back/forward del
        navegador salta entre módulos. El hash admite sub-vistas compartibles
@@ -4122,6 +4294,8 @@ async function mutate(table, fn) {
       const leadsEl = $('#sideBadgeLeads');
       const visitsEl = $('#sideBadgeVisits');
       const tasEl = $('#sideBadgeTasaciones');
+      /* #32: llegó la primera respuesta real → fuera el skeleton. */
+      SKELETON_BADGES.forEach(id => { const sk = document.getElementById(id); if (sk) sk.classList.remove('is-skeleton'); });
 
       if (propsEl) {
         /* #4: estancadas al lado del total (señal ámbar). */
@@ -4428,7 +4602,7 @@ on(document, 'keydown', (e) => {
     downloadCSV, mutate, z, zodBaseType, validateForm,
     setBtnLoading, restoreBtn,
     loadAgentSelect, loadPropertySelect, refreshOwnerSelect,
-    updateSidebarBadges, scheduleBadgeRefresh, invalidateSearchCache, navigateTo, setupCoreRealtime, refreshNewTags, applyRoleVisibility,
+    updateSidebarBadges, scheduleBadgeRefresh, invalidateSearchCache, navigateTo, setupCoreRealtime, refreshNewTags, applyRoleVisibility, setContext: setTopbarContext,
     updateAgendaBadge, sendBrowserNotification, requestNotificationPermission,
     formatPrice, formatNumber, checkPasswordPwned, getAuthedClient,
     setKPI, updateUserInfo, OwnerSchema, PropertySchema, LeadSchema, VisitSchema, TasacionSchema, AgentSchema,

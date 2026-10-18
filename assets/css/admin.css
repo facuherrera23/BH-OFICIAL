@@ -658,7 +658,8 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     font-weight: 600;
 }
 /* Barra indicadora del módulo activo: glow teal sobre el borde izquierdo.
-   Reemplaza al border-left (no desplaza el contenido al activarse). */
+   Reemplaza al border-left (no desplaza el contenido al activarse).
+   El glow se proyecta hacia adentro: el ripple necesita overflow hidden. */
 .nav-item.is-active::before {
     content: '';
     position: absolute;
@@ -666,7 +667,7 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     width: 3px;
     border-radius: 0 3px 3px 0;
     background: var(--accent);
-    box-shadow: 0 0 10px rgba(31, 200, 195, 0.55);
+    box-shadow: 4px 0 10px -2px rgba(31, 200, 195, 0.55);
 }
 .nav-item.is-active i { color: var(--accent); }
 
@@ -982,6 +983,162 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 }
 .hc-preview { margin-top: 2px; font-size: 10.5px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hc-foot { padding: 7px 14px; font-size: 10px; color: var(--text-dim); text-align: center; font-style: italic; }
+
+/* ============================================================
+   FASE 5 — estética & pulido (cierre del plan)
+   ============================================================ */
+/* #31: micro-bounce del ícono al hover. */
+.nav-item i { transition: color 0.2s, transform 0.18s var(--ease-out); }
+.nav-item:hover .nav-item-left i { transform: translateY(-1px) scale(1.06); }
+
+/* #32: skeleton shimmer de badges mientras llega la primera RPC. */
+@keyframes badgeShimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+.nav-badge.is-skeleton {
+    color: transparent !important;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.14) 50%, rgba(255, 255, 255, 0.05) 75%);
+    background-size: 200% 100%;
+    animation: badgeShimmer 1.1s linear infinite;
+}
+
+/* #33: modo compacto — todo visible sin scroll. */
+body.sidebar-dense .nav-item { padding: 7px 14px; font-size: 12.5px; }
+body.sidebar-dense .nav-item i { font-size: 14px; width: 18px; }
+body.sidebar-dense .menu-category { padding: 10px 12px 4px; }
+body.sidebar-dense .st-item { padding: 4px 8px; }
+body.sidebar-dense .st-title { padding: 7px 4px 2px; }
+body.sidebar-dense .sidebar-today { margin: 6px 0 10px; }
+
+/* #34: acento del menú por usuario — solo el sidebar, la identidad
+   del sistema queda teal (los componentes usan var(--accent) del :root). */
+body[data-accent='violeta'] .sidebar { --accent: #a78bfa; --border-accent: rgba(167, 139, 250, 0.4); }
+body[data-accent='ambar'] .sidebar { --accent: #fbbf24; --border-accent: rgba(251, 191, 36, 0.4); }
+
+/* #35: separadores de categoría con línea degradada. */
+.menu-category { position: relative; }
+.menu-category::after {
+    content: '';
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(31, 200, 195, 0.28), transparent);
+}
+.menu-category:first-child::after { display: none; }
+
+/* #37: barra de progreso de scroll del menú (solo si desborda). */
+.sidebar-menu { position: relative; }
+.sidebar-menu-scroll {
+    position: sticky;
+    top: 0;
+    left: 0;
+    height: 2px;
+    width: 0;
+    margin-bottom: -2px;
+    z-index: 3;
+    pointer-events: none;
+    border-radius: 0 2px 2px 0;
+    background: linear-gradient(90deg, var(--accent), rgba(31, 200, 195, 0.15));
+    transition: width 0.12s var(--ease-out);
+}
+
+/* #38: activo reforzado — icono con glow + interior sutil. */
+.nav-item.is-active i { filter: drop-shadow(0 0 6px rgba(31, 200, 195, 0.45)); }
+.nav-item.is-active { box-shadow: inset 0 0 24px rgba(31, 200, 195, 0.05); }
+
+/* #39: entrada escalonada del drawer móvil. */
+@media (max-width: 900px) {
+    @keyframes navItemIn {
+        from { opacity: 0; transform: translateX(-8px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+    .sidebar.is-open .nav-item { animation: navItemIn 0.25s var(--ease-out) both; }
+    .sidebar.is-open .nav-item:nth-child(2) { animation-delay: 0.02s; }
+    .sidebar.is-open .nav-item:nth-child(4) { animation-delay: 0.05s; }
+    .sidebar.is-open .nav-item:nth-child(5) { animation-delay: 0.07s; }
+    .sidebar.is-open .nav-item:nth-child(6) { animation-delay: 0.09s; }
+    .sidebar.is-open .nav-item:nth-child(7) { animation-delay: 0.11s; }
+    .sidebar.is-open .nav-item:nth-child(9) { animation-delay: 0.13s; }
+    .sidebar.is-open .nav-item:nth-child(10) { animation-delay: 0.15s; }
+    .sidebar.is-open .nav-item:nth-child(11) { animation-delay: 0.17s; }
+    .sidebar.is-open .nav-item:nth-child(12) { animation-delay: 0.19s; }
+    .sidebar.is-open .nav-item:nth-child(14) { animation-delay: 0.21s; }
+    .sidebar.is-open .nav-item:nth-child(15) { animation-delay: 0.23s; }
+    .sidebar.is-open .nav-item:nth-child(16) { animation-delay: 0.25s; }
+    .sidebar.is-open .nav-item:nth-child(17) { animation-delay: 0.27s; }
+    .sidebar.is-open .nav-item:nth-child(n + 18) { animation-delay: 0.29s; }
+}
+
+/* #40: ripple al click. */
+@keyframes navRippleAnim {
+    from { transform: scale(0); opacity: 0.45; }
+    to { transform: scale(1.4); opacity: 0; }
+}
+.nav-ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(31, 200, 195, 0.22);
+    pointer-events: none;
+    animation: navRippleAnim 0.45s var(--ease-out) forwards;
+}
+
+/* #42: sub-navegación expandible (chat por canal). */
+.nav-item { overflow: hidden; }
+.nav-sub {
+    padding-left: 46px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 2px 0 4px;
+}
+.nav-sub-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: color 0.12s var(--ease-out), background 0.12s var(--ease-out);
+}
+.nav-sub-item:hover { color: #fff; background: rgba(31, 200, 195, 0.07); }
+.nav-sub-item i { font-size: 12px; width: 16px; text-align: center; }
+.nav-sub-toggle {
+    position: absolute;
+    right: 6px;
+    bottom: 2px;
+    font-size: 7px;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 3px 4px;
+}
+.nav-sub-toggle:hover { color: var(--accent); }
+.nav-sub-toggle i { transition: transform 0.15s var(--ease-out); }
+.nav-sub-toggle.is-open i { transform: rotate(180deg); }
+.sidebar.is-collapsed .nav-sub,
+.sidebar.is-collapsed .nav-sub-toggle { display: none !important; }
+
+/* #46: breadcrumb contextual del topbar. */
+.topbar-context { color: var(--accent); font-weight: 600; margin-left: 8px; font-size: 0.72em; letter-spacing: 0.3px; }
+
+/* #49: handle del borde (estilo VSCode) — hover lo enciende, click alterna. */
+.sidebar-edge {
+    position: absolute;
+    top: 0;
+    right: -4px;
+    width: 8px;
+    height: 100%;
+    cursor: pointer;
+    z-index: 6;
+    background: transparent;
+    transition: background 0.15s var(--ease-out);
+}
+.sidebar-edge:hover { background: linear-gradient(90deg, transparent, rgba(31, 200, 195, 0.35)); }
+@media (max-width: 900px) { .sidebar-edge { display: none; } }
 @media (max-width: 900px) {
     .topbar-search { display: none; }
 }
