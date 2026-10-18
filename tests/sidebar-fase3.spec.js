@@ -59,7 +59,7 @@ test.describe('Sidebar F3 — acciones rápidas y orden', () => {
     expect(js).toContain('applyMenuOrder();');
     expect(js).toContain('refreshNewTags();');
     expect(js).toContain('injectBadgeTips();');
-    expect(js).toContain("loadProfile().then(() => { updateUserInfo(); applyMenuOrder(); })");
+    expect(js).toContain("loadProfile().then(() => { updateUserInfo(); applyMenuOrder(); applyRoleVisibility(); })");
   });
 
   test('admin.css: estilos F3 — plus, pin, NUEVO, context menu, búsqueda', async ({ request }) => {

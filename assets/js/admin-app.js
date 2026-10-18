@@ -365,7 +365,7 @@ function esc(s) {
       if (session) {
         currentUser = session.user;
         showApp();
-        loadProfile().then(() => { updateUserInfo(); applyMenuOrder(); }).catch(() => {});
+        loadProfile().then(() => { updateUserInfo(); applyMenuOrder(); applyRoleVisibility(); }).catch(() => {});
         if (isInviteLink && !inviteError) {
           openInvitePasswordModal(session.user?.email || '');
         }
@@ -385,7 +385,7 @@ function esc(s) {
         currentUser = session.user;
         window._bhCurrentUser = currentUser;
         showApp();
-        loadProfile().then(() => { updateUserInfo(); applyMenuOrder(); }).catch(() => {});
+        loadProfile().then(() => { updateUserInfo(); applyMenuOrder(); applyRoleVisibility(); }).catch(() => {});
         /* Track last sign-in para el módulo Usuarios (fire-and-forget) */
         window.supabaseClient.from('profiles').update({ last_sign_in_at: new Date().toISOString() }).eq('id', session.user.id).then(() => {}, () => {});
       } else if (event === 'SIGNED_OUT') {
@@ -980,6 +980,261 @@ function esc(s) {
     }
   });
 
+  /* ------------------------------------------------
+     19. SIDEBAR F4 — contexto "Hoy", roles, dirty check y prefetch
+     (#17 citas, #18 tareas, #19 servicios, #20 sync Zernio, #22 build,
+      #23 hover card chat, #25 items por rol, #43 dirty check, #44 prefetch)
+     ------------------------------------------------ */
+  const TODAY_OPEN_KEY = 'bh_today_open';
+
+  /* Sección "Hoy" — colapsable, cerrada por defecto para no engordar el menú. */
+  const stWrap = document.createElement('div');
+  stWrap.className = 'sidebar-today';
+  stWrap.id = 'sidebarToday';
+  stWrap.innerHTML =
+    '<button type="button" class="st-header" id="stToggle" aria-expanded="false">' +
+      '<span class="st-label"><i class="fas fa-sun"></i> Hoy</span>' +
+      '<span class="st-chevron"><i class="fas fa-chevron-down"></i></span>' +
+    '</button>' +
+    '<div class="st-body" id="stBody" style="display:none;">' +
+      '<div class="st-section" id="stVisits"></div>' +
+      '<div class="st-section" id="stTasks"></div>' +
+      '<div class="st-section" id="stServices"></div>' +
+    '</div>';
+
+  let _todayLoadedAt = 0;
+  let _todayLoading = false;
+  const TODAY_TTL_MS = 3 * 60 * 1000;
+
+  async function loadTodayWidget(force) {
+    if (!currentUser || !window.supabaseClient) return;
+    if (_todayLoading) return;
+    if (!force && _todayLoadedAt && (Date.now() - _todayLoadedAt) < TODAY_TTL_MS) return;
+    _todayLoading = true;
+    try {
+      const hoy0 = new Date(); hoy0.setHours(0, 0, 0, 0);
+      const hoy24 = new Date(); hoy24.setHours(23, 59, 59, 999);
+
+      const tasksJob = (async () => {
+        try {
+          const ag = await window.supabaseClient.from('agents').select('id').eq('profile_id', currentUser.id).maybeSingle();
+          if (!ag.data) return [];
+          const t = await window.supabaseClient.from('lead_tasks')
+            .select('id, title, type, status, due_at, lead_id, leads(full_name)')
+            .in('status', ['pendiente', 'en_progreso'])
+            .eq('assigned_to', ag.data.id)
+            .lte('due_at', hoy24.toISOString())
+            .order('due_at', { ascending: true })
+            .limit(3);
+          return t.data || [];
+        } catch (_) { return []; }
+      })();
+
+      const [visRes, tasks, zernioRes] = await Promise.all([
+        window.supabaseClient.from('visits')
+          .select('id, client_name, visit_date')
+          .eq('status', 'pendiente')
+          .gte('visit_date', hoy0.toISOString())
+          .lte('visit_date', hoy24.toISOString())
+          .order('visit_date', { ascending: true })
+          .limit(3),
+        tasksJob,
+        window.supabaseClient.from('zernio_conversations')
+          .select('last_message_at')
+          .order('last_message_at', { ascending: false })
+          .limit(1)
+      ]);
+
+      /* #17: próximas citas de hoy (clickeables → panel de la visita). */
+      const vEl = document.getElementById('stVisits');
+      if (vEl) {
+        const visitas = visRes.data || [];
+        vEl.innerHTML = '<div class="st-title"><i class="fas fa-calendar-check"></i> Citas de hoy</div>' +
+          (visitas.length
+            ? visitas.map(v =>
+                '<div class="st-item" data-st-visit="' + esc(v.id) + '">' +
+                  '<span class="st-time">' + new Date(v.visit_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + '</span>' +
+                  '<span class="st-text">' + esc(v.client_name || 'Cliente') + '</span>' +
+                '</div>').join('')
+            : '<div class="st-empty">Sin citas para hoy</div>');
+      }
+
+      /* #18: tareas del agente logueado (clickeables → panel del lead). */
+      const tEl = document.getElementById('stTasks');
+      if (tEl) {
+        tEl.innerHTML = '<div class="st-title"><i class="fas fa-list-check"></i> Mis tareas</div>' +
+          (tasks.length
+            ? tasks.map(t => {
+                const overdue = t.due_at && new Date(t.due_at).getTime() < Date.now();
+                const hora = t.due_at ? new Date(t.due_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '—';
+                return '<div class="st-item" data-st-task="' + esc(t.lead_id || '') + '">' +
+                  '<span class="st-time' + (overdue ? ' is-overdue' : '') + '">' + (overdue ? '<i class="fas fa-triangle-exclamation"></i> ' : '') + hora + '</span>' +
+                  '<span class="st-text">' + esc(t.title || t.type || 'Tarea') + '</span>' +
+                '</div>';
+              }).join('')
+            : '<div class="st-empty">Al día con tus tareas</div>');
+      }
+
+      /* #19/#20: salud de servicios + última sync de Zernio. */
+      const sEl = document.getElementById('stServices');
+      if (sEl) {
+        const counts = (window.__BH && window.__BH.lastBadgeCounts) || {};
+        const rtLive = document.getElementById('sidebarUserAvatar').classList.contains('is-live');
+        const mlOk = !!(counts.ml_last_event_at && !counts.ml_failed_24h);
+        const zLast = (zernioRes.data && zernioRes.data[0] && zernioRes.data[0].last_message_at) ? new Date(zernioRes.data[0].last_message_at) : null;
+        const zMins = zLast ? Math.max(0, Math.round((Date.now() - zLast.getTime()) / 60000)) : null;
+        const zOk = zMins !== null && zMins < 30;
+        const dot = (ok, tip) => '<span class="st-dot ' + (ok ? 'is-ok' : 'is-warn') + '" data-bh-tip="' + esc(tip) + '"></span>';
+        sEl.innerHTML = '<div class="st-title"><i class="fas fa-heart-pulse"></i> Servicios</div>' +
+          '<div class="st-svc-row">' +
+            dot(rtLive, 'Realtime: ' + (rtLive ? 'conectado' : 'sin conexión')) +
+            dot(mlOk, 'Mercado Libre: ' + (counts.ml_last_event_at ? 'webhook activo' : 'sin eventos')) +
+            dot(zOk, 'Zernio: hace ' + (zMins === null ? '—' : (zMins < 1 ? 'ahora' : zMins + ' min'))) +
+            '<span class="st-svc-label">Zernio: ' + (zMins === null ? '—' : (zMins < 1 ? 'ahora' : 'hace ' + zMins + 'm')) + '</span>' +
+          '</div>';
+      }
+      _todayLoadedAt = Date.now();
+    } catch (_) { /* el widget nunca rompe el boot */ }
+    finally { _todayLoading = false; }
+  }
+
+  function setTodayOpen(open) {
+    const body = document.getElementById('stBody');
+    const btn = document.getElementById('stToggle');
+    if (!body || !btn) return;
+    body.style.display = open ? '' : 'none';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.classList.toggle('is-open', open);
+    try { localStorage.setItem(TODAY_OPEN_KEY, open ? '1' : '0'); } catch (_) {}
+    if (open) loadTodayWidget();
+  }
+
+  /* Interacciones del widget por delegación (toggle + items). */
+  document.addEventListener('click', function (e) {
+    const tog = e.target.closest('#stToggle');
+    if (tog) { e.stopPropagation(); setTodayOpen(tog.getAttribute('aria-expanded') !== 'true'); return; }
+    const sv = e.target.closest('[data-st-visit]');
+    if (sv) { e.stopPropagation(); navigateTo('tab-agenda'); if (window.adminApp && window.adminApp.editVisit) window.adminApp.editVisit(sv.dataset.stVisit); return; }
+    const tk = e.target.closest('[data-st-task]');
+    if (tk) { e.stopPropagation(); if (tk.dataset.stTask && window.BH_CRM) { navigateTo('tab-leads'); window.BH_CRM.open(tk.dataset.stTask); } else navigateTo('tab-leads'); return; }
+    const svc = e.target.closest('#stServices');
+    if (svc) {
+      e.stopPropagation();
+      const isAdmin = window.currentProfile && window.currentProfile.role === 'super_admin';
+      if (isAdmin) navigateTo('tab-supervision');
+      else navigateTo('tab-portales');
+    }
+  });
+
+  /* #22: versión del build — el propio ?v= del script es el número real. */
+  function paintSidebarBuild() {
+    const el = document.getElementById('sidebarBuild');
+    if (!el) return;
+    const src = document.querySelector('script[src*="admin-app.js"]');
+    const m = src ? /admin-app\.js\?v=(\d+)/.exec(src.src || '') : null;
+    el.textContent = m ? 'v.' + m[1] : '';
+    el.dataset.bhTip = 'Build ' + (m ? m[1] : '?') + ' — ' + new Date(document.lastModified).toLocaleDateString('es-AR');
+  }
+
+  /* #23: hover card con los últimos chats sin leer. */
+  const hoverCard = document.createElement('div');
+  hoverCard.id = 'bhHoverCard';
+  hoverCard.setAttribute('role', 'tooltip');
+  document.body.appendChild(hoverCard);
+  let _hcTimer = null;
+  let _hcTarget = null;
+  function hideHoverCard() { hoverCard.classList.remove('is-visible'); }
+  function showHoverCardAt(target, html) {
+    hoverCard.innerHTML = html;
+    hoverCard.classList.add('is-visible');
+    const r = target.getBoundingClientRect();
+    const hw = hoverCard.offsetWidth, hh = hoverCard.offsetHeight;
+    let left = r.right + 10, top = r.top;
+    if (left + hw > window.innerWidth - 8) left = r.left - hw - 10;
+    if (top + hh > window.innerHeight - 8) top = Math.max(8, window.innerHeight - hh - 8);
+    hoverCard.style.left = Math.round(left) + 'px';
+    hoverCard.style.top = Math.round(top) + 'px';
+  }
+  document.addEventListener('mouseover', function (e) {
+    if (window.matchMedia('(hover: none)').matches) return;
+    const t = e.target.closest ? e.target.closest('[data-bh-hover-card]') : null;
+    if (t === _hcTarget) return;
+    clearTimeout(_hcTimer);
+    if (!t) { _hcTarget = null; hideHoverCard(); return; }
+    _hcTarget = t;
+    _hcTimer = setTimeout(async function () {
+      try {
+        const counts = (window.__BH && window.__BH.lastBadgeCounts) || {};
+        if (!counts.chat_unread_total) return;
+        const { data } = await window.supabaseClient.from('zernio_conversations')
+          .select('contact_name, platform, last_message_preview, unread_count, last_message_at')
+          .gt('unread_count', 0)
+          .order('last_message_at', { ascending: false })
+          .limit(3);
+        if (!data || !data.length || _hcTarget !== t) return;
+        const rows = data.map(c =>
+          '<div class="hc-row">' +
+            '<div class="hc-name">' + esc(c.contact_name || c.platform || 'Contacto') + ' <span class="hc-unread">' + (c.unread_count || 1) + '</span></div>' +
+            '<div class="hc-preview">' + esc((c.last_message_preview || '').slice(0, 64)) + '</div>' +
+          '</div>').join('');
+        showHoverCardAt(t, '<div class="hc-title"><i class="fas fa-comments"></i> Sin leer</div>' + rows + '<div class="hc-foot">Click para abrir el chat</div>');
+      } catch (_) { /* silent */ }
+    }, 350);
+  }, true);
+  document.addEventListener('mousedown', hideHoverCard);
+  window.addEventListener('scroll', hideHoverCard, true);
+  window.addEventListener('resize', hideHoverCard);
+
+  /* #25: ítems de sistema solo para super_admin. */
+  function applyRoleVisibility() {
+    const isAdmin = window.currentProfile && window.currentProfile.role === 'super_admin';
+    ['tab-usuarios', 'tab-supervision'].forEach(tab => {
+      const item = document.querySelector('#sidebar .nav-item[data-tab="' + tab + '"]');
+      if (item) item.style.display = isAdmin ? '' : 'none';
+    });
+  }
+
+  /* #43: dirty check — solo los 5 forms críticos y solo con el modal abierto.
+     El flag se limpia en submit (delegado) y al cerrar el modal (MO por class). */
+  const DIRTY_FORMS = ['propertyForm', 'leadForm', 'visitForm', 'ownerForm', 'newTasacionForm'];
+  document.addEventListener('input', function (e) {
+    const f = e.target.closest && e.target.closest('form');
+    if (f && DIRTY_FORMS.includes(f.id)) f.dataset.bhDirty = '1';
+  }, true);
+  document.addEventListener('submit', function (e) {
+    if (e.target && DIRTY_FORMS.includes(e.target.id)) { delete e.target.dataset.bhDirty; }
+  }, true);
+  const dirtyMO = new MutationObserver(function () {
+    DIRTY_FORMS.forEach(id => {
+      const f = document.getElementById(id);
+      const modal = f && f.closest('.admin-modal');
+      if (f && modal && !modal.classList.contains('is-open')) delete f.dataset.bhDirty;
+    });
+  });
+  DIRTY_FORMS.forEach(id => {
+    const f = document.getElementById(id);
+    const modal = f && f.closest('.admin-modal');
+    if (modal) dirtyMO.observe(modal, { attributes: true, attributeFilter: ['class'] });
+  });
+  function pendingDirtyForm() {
+    return DIRTY_FORMS.some(id => {
+      const f = document.getElementById(id);
+      const modal = f && f.closest('.admin-modal');
+      return !!(f && f.dataset.bhDirty === '1' && modal && modal.classList.contains('is-open'));
+    });
+  }
+
+  /* #44: prefetch de la caché de búsqueda al primer hover del sidebar
+     (throttle 30s). Los loaders RENDERIZAN al llamarse — no son prefetchables
+     sin pisar el tab visible; lo que se precarga es la caché compartida
+     (8 entidades) que acelera el primer Ctrl+K y los mapas de búsqueda. */
+  let _prefetchAt = 0;
+  document.addEventListener('mouseover', function (e) {
+    if ((Date.now() - _prefetchAt) < 30000) return;
+    if (!e.target.closest || !e.target.closest('#sidebar')) return;
+    if (typeof getSearchCache === 'function') { _prefetchAt = Date.now(); getSearchCache().catch(() => {}); }
+  }, true);
+
   function showApp() {
     const loginScreen = $('#loginScreen');
     const appLayout = $('#appLayout');
@@ -993,6 +1248,19 @@ function esc(s) {
     applyMenuOrder();
     refreshNewTags();
     injectBadgeTips();
+    /* F4: sección "Hoy" (después del Dashboard), roles, build, hover card. */
+    const menuEl = document.querySelector('#sidebar .sidebar-menu');
+    const dashEl = document.querySelector('#sidebar .nav-item[data-tab="tab-dashboard"]');
+    if (menuEl && dashEl && !document.getElementById('sidebarToday')) {
+      menuEl.insertBefore(stWrap, dashEl.nextSibling);
+    }
+    applyRoleVisibility();
+    paintSidebarBuild();
+    const chatItem = document.querySelector('#sidebar .nav-item[data-tab="tab-chat-redes"]');
+    if (chatItem && !chatItem.dataset.bhHoverCard) chatItem.dataset.bhHoverCard = 'chat';
+    let todayOpen = false;
+    try { todayOpen = localStorage.getItem('bh_today_open') === '1'; } catch (_) {}
+    setTodayOpen(todayOpen);
     /* Canal core del realtime en el boot (antes solo existía al abrir Chat
        Redes). Blindado: si falla, el boot sigue. */
     try { setupCoreRealtime(); } catch (rtErr) { logError('Realtime boot error:', rtErr); window.__bhRtBootError = rtErr; }
@@ -1239,6 +1507,20 @@ function esc(s) {
   }
 
   function navigateTo(section, opts) {
+    /* #43: form crítico con cambios en un modal abierto → confirmar antes.
+       El modal sigue abierto aunque navegues; esto evita perder el hilo. */
+    if ((!opts || !opts.force) && section !== currentSection && pendingDirtyForm()) {
+      showConfirmDialog({
+        title: 'Cambios sin guardar',
+        message: 'Tenés un formulario abierto con cambios sin guardar (propiedad, lead, visita, propietario o tasación). Podés navegar igual — el formulario queda abierto — pero conviene guardar primero.',
+        icon: 'fas fa-triangle-exclamation',
+        confirmText: 'Navegar igual',
+        cancelText: 'Quedarme'
+      }).then(function (ok) {
+        if (ok) navigateTo(section, Object.assign({}, opts, { force: true }));
+      });
+      return;
+    }
     const prevSection = currentSection;
     currentSection = section;
     const subview = (opts && opts.subview && /^[a-z-]+$/.test(String(opts.subview))) ? String(opts.subview) : '';
@@ -3872,6 +4154,9 @@ async function mutate(table, fn) {
       /* Cache de conteos para tooltips/desgloses (#3/#16) sin repetir la RPC.
          Dentro del try: `counts` es block-scoped — afuera del catch no existe. */
       if (window.__BH) window.__BH.lastBadgeCounts = counts;
+      /* F4: si la sección "Hoy" está abierta, refrescarla (con su TTL de 3min). */
+      const stBodyEl = document.getElementById('stBody');
+      if (stBodyEl && stBodyEl.style.display !== 'none') loadTodayWidget(false);
     } catch (err) {
       logError('Badge update error:', err);
     }
@@ -4143,7 +4428,7 @@ on(document, 'keydown', (e) => {
     downloadCSV, mutate, z, zodBaseType, validateForm,
     setBtnLoading, restoreBtn,
     loadAgentSelect, loadPropertySelect, refreshOwnerSelect,
-    updateSidebarBadges, scheduleBadgeRefresh, invalidateSearchCache, navigateTo, setupCoreRealtime, refreshNewTags,
+    updateSidebarBadges, scheduleBadgeRefresh, invalidateSearchCache, navigateTo, setupCoreRealtime, refreshNewTags, applyRoleVisibility,
     updateAgendaBadge, sendBrowserNotification, requestNotificationPermission,
     formatPrice, formatNumber, checkPasswordPwned, getAuthedClient,
     setKPI, updateUserInfo, OwnerSchema, PropertySchema, LeadSchema, VisitSchema, TasacionSchema, AgentSchema,
