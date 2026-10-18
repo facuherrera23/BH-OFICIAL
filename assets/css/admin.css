@@ -736,6 +736,8 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
 /* KPI cards. */
 .crm-kpi-value.crm-kpi--venc { color: var(--danger); }
 .crm-kpi-value.crm-kpi--soon { color: var(--warning); }
+.crm-kpi-value.crm-kpi--pend { color: var(--text-secondary); }
+.crm-kpi-value.crm-kpi--prop { color: var(--accent); }
 /* Botón toggle del modo (avisa de la OTRA vista). */
 .crm-toggle--alert {
     background: rgba(239, 68, 68, 0.12) !important;

@@ -700,7 +700,7 @@ function setKpiColors(mode) {
 }
 
 /* KPI clickeables: Activos=reset, Nuevos(7d), Sin contacto +48h */
-var KPI_CARD_BINDINGS = { crmKpiTotal: 'reset', crmKpiNuevo: 'nuevos7d', crmKpiGanados: 'stale48', crmKpiVenc: 'tasksOverdue', crmKpiSoon: 'tasksSoon' };
+var KPI_CARD_BINDINGS = { crmKpiTotal: 'reset', crmKpiNuevo: 'nuevos7d', crmKpiGanados: 'stale48', crmKpiPerdidos: 'conversion', crmKpiVenc: 'tasksOverdue', crmKpiSoon: 'tasksSoon', crmKpiPend: 'tasksPending', crmKpiProp: 'properties' };
 function syncKpiCards() {
   var clickable = _viewMode === 'leads' && !_showTrash;
   Object.keys(KPI_CARD_BINDINGS).forEach(function (id) {
