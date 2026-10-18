@@ -848,17 +848,10 @@ function esc(s) {
         if (rp > -1) return 1000 + rp;
         return 100000 + _origNavOrder.indexOf(el.dataset.tab);
       };
-      /* #42: el sub-nav viaja PEGADO a su ítem — el menú es plano y si solo se
-         mueven los nav-item, el .nav-sub queda huérfano (bug real detectado:
-         tras reorder, el toggle apuntaba al vecino equivocado). */
-      const movable = [];
-      items.sort((a, b) => score(a) - score(b)).forEach(el => {
-        movable.push(el);
-        if (el.nextElementSibling && el.nextElementSibling.classList.contains('nav-sub')) {
-          movable.push(el.nextElementSibling);
-        }
-      });
-      movable.forEach(el => menu.insertBefore(el, siblings[end]));
+      /* El popover de canales es flotante (body-level) — ya no viaja con los
+        ítems (la versión inline necesitaba mover el .nav-sub junto a su
+        ítem; con popover ese problema no existe). */
+      items.sort((a, b) => score(a) - score(b)).forEach(el => menu.insertBefore(el, siblings[end]));
     });
     menu.querySelectorAll('.nav-item').forEach(el => {
       el.classList.toggle('is-pinned', isPinned(el.dataset.tab));
@@ -889,12 +882,17 @@ function esc(s) {
   }
 
   /* #11: badges con cursor + tooltip "Ir a X" (el click ya navega por
-     propagación — acá se hace explícito y se enseña). */
+     propagación — acá se hace explícito y se enseña). A11y: los ítems del
+     menú son navegables por teclado (Tab + Enter/Espacio). */
   function injectBadgeTips() {
     document.querySelectorAll('#sidebar .nav-item[data-tab]').forEach(item => {
       const badge = item.querySelector('.nav-badge');
       const label = item.querySelector('.nav-item-left span');
       if (badge && label) badge.dataset.bhTip = 'Ir a ' + label.textContent.trim();
+      if (!item.hasAttribute('tabindex')) {
+        item.tabIndex = 0;
+        item.setAttribute('role', 'link');
+      }
     });
   }
 
@@ -970,10 +968,13 @@ function esc(s) {
     hideNavCtx();
     if (typeof fn === 'function') fn();
   });
-  document.addEventListener('click', function (e) { if (!e.target.closest('#navContextMenu')) hideNavCtx(); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideNavCtx(); });
-  window.addEventListener('scroll', hideNavCtx, true);
-  window.addEventListener('resize', hideNavCtx);
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('#navContextMenu')) hideNavCtx();
+    if (!e.target.closest('#navSubPopover')) hideSubPopover();
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { hideNavCtx(); hideSubPopover(); } });
+  window.addEventListener('scroll', function () { hideNavCtx(); hideSubPopover(); }, true);
+  window.addEventListener('resize', function () { hideNavCtx(); hideSubPopover(); });
 
   /* #12: Alt+1..9 salta al N-ésimo módulo visible. */
   document.addEventListener('keydown', function (e) {
@@ -982,6 +983,17 @@ function esc(s) {
     if (!(n >= 1 && n <= 9)) return;
     const target = visibleNavItems()[n - 1];
     if (target) { e.preventDefault(); navigateTo(target.dataset.tab); }
+  });
+
+  /* A11y: Enter/Espacio navega desde el ítem enfocado (Tab recorre el menú). */
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (!e.target.closest) return;
+    if (e.target.closest('.nav-plus, .nav-sub-toggle')) return; /* botones propios */
+    const item = e.target.closest('#sidebar .nav-item[data-tab]');
+    if (!item || !item.dataset.tab) return;
+    e.preventDefault();
+    navigateTo(item.dataset.tab);
   });
 
   /* #13: Ctrl+K enfoca la búsqueda global (el motor ya existía sin UI). */
@@ -1080,7 +1092,7 @@ function esc(s) {
       if (visitas.length) {
         html += '<div class="st-title"><i class="fas fa-calendar-check"></i> Citas</div>' +
           visitas.map(v =>
-            '<div class="st-item" data-st-visit="' + esc(v.id) + '">' +
+            '<div class="st-item" data-st-visit="' + esc(v.id) + '" data-bh-tip="Abrir en la agenda">' +
               '<span class="st-time">' + new Date(v.visit_date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + '</span>' +
               '<span class="st-text">' + esc(v.client_name || 'Cliente') + '</span>' +
             '</div>').join('');
@@ -1092,7 +1104,7 @@ function esc(s) {
           tasks.map(t => {
             const overdue = t.due_at && new Date(t.due_at).getTime() < Date.now();
             const hora = t.due_at ? new Date(t.due_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '—';
-            return '<div class="st-item" data-st-task="' + esc(t.lead_id || '') + '">' +
+            return '<div class="st-item" data-st-task="' + esc(t.lead_id || '') + '" data-bh-tip="Abrir el lead">' +
               '<span class="st-time' + (overdue ? ' is-overdue' : '') + '">' + (overdue ? '<i class="fas fa-triangle-exclamation"></i> ' : '') + hora + '</span>' +
               '<span class="st-text">' + esc(t.title || t.type || 'Tarea') + '</span>' +
             '</div>';
@@ -1186,9 +1198,13 @@ function esc(s) {
   document.addEventListener('mouseover', function (e) {
     if (window.matchMedia('(hover: none)').matches) return;
     const t = e.target.closest ? e.target.closest('[data-bh-hover-card]') : null;
-    if (t === _hcTarget) return;
     clearTimeout(_hcTimer);
     if (!t) { _hcTarget = null; hideHoverCard(); return; }
+    /* Convivencia con el tooltip: si el hover cae en un elemento con su
+       propio data-bh-tip (ej. el badge del chat), gana el tooltip — sin esto
+       el pill y el card se solapan (hallazgo de auditoría). */
+    if (e.target.closest('[data-bh-tip]')) { _hcTarget = null; hideHoverCard(); return; }
+    if (t === _hcTarget) return;
     _hcTarget = t;
     _hcTimer = setTimeout(async function () {
       try {
@@ -1273,6 +1289,9 @@ function esc(s) {
      en vez de un "0" falso mientras llega el dato real. */
   const SKELETON_BADGES = ['sideBadgeProps', 'sideBadgeLeads', 'sideBadgeVisits', 'sideBadgeTasaciones', 'sideBadgeChatRedes'];
   function setBadgesSkeleton() {
+    /* Solo el primer boot: en re-logins los badges ya tienen valores reales y
+        el '···' sería un flash innecesario. */
+    if (window.__bhBadgesPainted) return;
     SKELETON_BADGES.forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.classList.add('is-skeleton'); el.textContent = '···'; }
@@ -1368,15 +1387,47 @@ function esc(s) {
     const tog = document.createElement('span');
     tog.className = 'nav-sub-toggle';
     tog.dataset.bhTip = 'Canales';
+    tog.setAttribute('role', 'button');
+    tog.setAttribute('aria-label', 'Ver canales de chat');
     tog.innerHTML = '<i class="fas fa-chevron-down"></i>';
     item.appendChild(tog);
-    const sub = document.createElement('div');
-    sub.className = 'nav-sub';
-    sub.style.display = 'none';
-    sub.innerHTML = CHAT_SUBS.map(function (s, i) {
-      return '<div class="nav-sub-item" data-sub="' + i + '"><i class="' + s.icon + '"></i>' + esc(s.label) + '</div>';
+    /* Popover flotante a nivel body: el despliegue NO modifica el flujo del
+       menú (bug reportado: la versión inline empujaba todos los ítems). */
+    const pop = document.createElement('div');
+    pop.id = 'navSubPopover';
+    pop.className = 'nav-sub-popover';
+    pop.setAttribute('role', 'menu');
+    pop.innerHTML = CHAT_SUBS.map(function (s, i) {
+      return '<div class="nav-sub-item" data-sub="' + i + '" role="menuitem"><i class="' + s.icon + '"></i>' + esc(s.label) + '</div>';
     }).join('');
-    item.parentNode.insertBefore(sub, item.nextSibling);
+    document.body.appendChild(pop);
+  }
+
+  function toggleSubPopover(fromToggle) {
+    const pop = document.getElementById('navSubPopover');
+    const tog = document.querySelector('#sidebar .nav-sub-toggle');
+    if (!pop) return;
+    if (pop.classList.contains('is-visible')) { hideSubPopover(); return; }
+    hideHoverCard();
+    hideNavCtx();
+    pop.classList.add('is-visible');
+    const r = fromToggle.getBoundingClientRect();
+    const sbr = document.getElementById('sidebar').getBoundingClientRect();
+    const pw = pop.offsetWidth || 190, ph = pop.offsetHeight || 150;
+    /* Anclado bajo el item, pegado al borde derecho del sidebar (mismo
+       ancho visual que el menú contextual). */
+    let top = r.bottom + 6;
+    let left = sbr.right - pw - 10;
+    if (top + ph > window.innerHeight - 8) top = Math.max(8, sbr.top + 60);
+    pop.style.top = Math.round(top) + 'px';
+    pop.style.left = Math.round(left) + 'px';
+    if (tog) tog.classList.add('is-open');
+  }
+  function hideSubPopover() {
+    const pop = document.getElementById('navSubPopover');
+    const tog = document.querySelector('#sidebar .nav-sub-toggle');
+    if (pop) pop.classList.remove('is-visible');
+    if (tog) tog.classList.remove('is-open');
   }
 
   /* #46: breadcrumb contextual en el título del topbar (módulo › entidad). */
@@ -1673,36 +1724,23 @@ function esc(s) {
       if (plus.dataset.plusAction) triggerQuickAction(plus.dataset.plusAction);
       return;
     }
-    /* #42: toggle de sub-navegación (chevron) y sub-items. */
+    /* #42: popover de canales (flotante — el menú NUNCA cambia de tamaño). */
     const subTog = e.target.closest('.nav-sub-toggle');
     if (subTog) {
       e.stopPropagation();
-      const item = subTog.closest('.nav-item');
-      const sub = item && item.nextElementSibling;
-      if (sub && sub.classList.contains('nav-sub')) {
-        const open = sub.style.display !== 'none';
-        sub.style.display = open ? 'none' : '';
-        subTog.classList.toggle('is-open', !open);
-      }
+      toggleSubPopover(subTog);
       return;
     }
     const subItem = e.target.closest('.nav-sub-item');
     if (subItem) {
       e.stopPropagation();
-      const sub = subItem.closest('.nav-sub');
-      const item = sub.previousElementSibling;
-      const tab = item.dataset.tab;
-      navigateTo(tab);
-      if (tab === 'tab-chat-redes') {
-        const conf = CHAT_SUBS[parseInt(subItem.dataset.sub, 10)];
-        if (conf) setTimeout(function () {
-          const chip = document.querySelector('.filter-chip[data-platform="' + conf.platform + '"]');
-          if (chip) chip.click();
-        }, 450);
-      }
-      sub.style.display = 'none';
-      const tog = item.querySelector('.nav-sub-toggle');
-      if (tog) tog.classList.remove('is-open');
+      hideSubPopover();
+      navigateTo('tab-chat-redes');
+      const conf = CHAT_SUBS[parseInt(subItem.dataset.sub, 10)];
+      if (conf) setTimeout(function () {
+        const chip = document.querySelector('.filter-chip[data-platform="' + conf.platform + '"]');
+        if (chip) chip.click();
+      }, 450);
       return;
     }
     const item = e.target.closest('#sidebar .nav-item[data-tab]');
@@ -1754,9 +1792,12 @@ function esc(s) {
     trackRecent(section);
     markNewSeen(section);
 
-    /* Sidebar active */
+    /* Sidebar active + aria-current para lectores de pantalla */
     $$('.nav-item[data-tab]').forEach(el => {
-      el.classList.toggle('is-active', el.dataset.tab === section);
+      const active = el.dataset.tab === section;
+      el.classList.toggle('is-active', active);
+      if (active) el.setAttribute('aria-current', 'page');
+      else el.removeAttribute('aria-current');
     });
 
     /* Module title */
@@ -4319,7 +4360,8 @@ async function mutate(table, fn) {
     const sfx = suffix || '';
     const from = parseInt(el.dataset.num || '0', 10) || 0;
     el.dataset.num = to;
-    if (from === to || typeof requestAnimationFrame !== 'function') {
+    if (from === to || typeof requestAnimationFrame !== 'function' ||
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       el.textContent = to + sfx;
       return;
     }
@@ -4348,6 +4390,7 @@ async function mutate(table, fn) {
       const tasEl = $('#sideBadgeTasaciones');
       /* #32: llegó la primera respuesta real → fuera el skeleton. */
       SKELETON_BADGES.forEach(id => { const sk = document.getElementById(id); if (sk) sk.classList.remove('is-skeleton'); });
+      window.__bhBadgesPainted = true;
 
       if (propsEl) {
         /* #4: estancadas al lado del total (señal ámbar). */

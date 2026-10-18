@@ -91,6 +91,17 @@ Cada HTML tiene su meta CSP propia. Al agregar cualquier recurso externo (API, t
 - El webhook push (`zernio-webhook`) está construido y defendido (HMAC timing-safe, dedup por event id) pero **Zernio no tiene API para registrarlo** — solo el dashboard del dueño (ver `docs/integrations/CONECTAR_ZERNIO_CHAT.md` §4). Mientras tanto, el pull lo cubre con ≤2 min de latencia.
 - `zernio-proxy` exige **staff** (super_admin: todo; **broker**: `send_message`/`typing`/`mark_read` solo en conversaciones donde su `broker_id` es el dueño — la key de Zernio solo la usan funciones server-side).
 
+## Sidebar admin (gotchas — plan de 50 mejoras 2026-10-18)
+
+- **supabase-js v2 ya no acepta `table: [array]` en un solo `.on()` de postgres_changes**: la suscripción muere en silencio y el canal desaparece de `getChannels()`. `setupCoreRealtime` va con **UN `.on()` por tabla** compartiendo el handler (`tables.forEach(...)`). Bug real: el realtime de TODO el admin estuvo caído por esto (solo el chat de Zernio, que usa tablas individuales, seguía vivo).
+- **Orden de carga**: `admin-crm.js` parsea ANTES que `admin-app.js` — `window.__BH` no existe ahí. Lo que el CRM expone va en `BH_CRM` (la búsqueda de sub-vistas lo sabe). Y al revés: una asignación top-level sobre `window.__BH` antes de su `Object.assign` (línea ~4400) tira TypeError que **mata el IIFE entero** — síntoma: login colgado, sin error visible (`logError` gated por DEBUG).
+- `setupCoreRealtime` vive en el **top-level del IIFE** y se llama en `showApp` (blindada con try/catch — el realtime jamás rompe el boot). Antes vivía DENTRO de `loadChatRedes`: `showApp` no la veía y el canal solo se creaba al abrir Chat Redes.
+- **El IIFE de resultados de búsqueda** (`#globalSearchResults`) tiene anidado `attachNavListeners` (hashchange + loader de fichas) con un early-return por DOM faltante: sin ese DOM, TODO lo anidado queda muerto (el back/forward cambiaba la URL pero la UI no seguía).
+- **Despliegues flotantes, jamás inline**: el popover de canales (`#navSubPopover`), el context menu (`#navContextMenu`), el hover card (`#bhHoverCard`) y el tooltip (`#bhTooltip`) son **body-level** — un despliegue inline en el menú plano empuja todos los ítems (bug reportado por el empleador) y además viaja mal con `applyMenuOrder`.
+- RPC `get_sidebar_badge_counts` v2: alimenta TODOS los badges y quick-stats en UNA llamada (props/leads/visits/tasaciones/owners + `leads_new_24h` + `lead_tasks_overdue`/`owner_tasks_overdue`/`tasks_overdue_total` + `chat_unread_*` + `properties_stale` + `ml_*` + `visits_today`). SECURITY DEFINER, EXECUTE solo authenticated (verificado). El cache va en `__BH.lastBadgeCounts`.
+- Refresco de badges: SIEMPRE por `scheduleBadgeRefresh()` (bus con debounce 800ms) — nunca llamar `updateSidebarBadges()` directo desde realtime (una ráfaga de ML eran 5 RPCs seguidas).
+- Keys de localStorage: `bh_last_tab`, `bh_crm_viewmode`, `bh_sidebar_pins`, `bh_recent_tabs`, `bh_new_seen`, `bh_today_open`, `bh_sidebar_dense`, `bh_accent`, `bh_sidebar_collapsed`.
+
 ## Imágenes y performance
 
 - Cloudinary cloud `jpyigjrh`; hero del landing = URL Cloudinary con fallback local `assets/images/hero-bg.webp`. Preferir `f_auto,q_auto` de Cloudinary antes que Unsplash.
