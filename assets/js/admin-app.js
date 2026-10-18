@@ -365,7 +365,7 @@ function esc(s) {
       if (session) {
         currentUser = session.user;
         showApp();
-        loadProfile().then(updateUserInfo).catch(() => {});
+        loadProfile().then(() => { updateUserInfo(); applyMenuOrder(); }).catch(() => {});
         if (isInviteLink && !inviteError) {
           openInvitePasswordModal(session.user?.email || '');
         }
@@ -385,7 +385,7 @@ function esc(s) {
         currentUser = session.user;
         window._bhCurrentUser = currentUser;
         showApp();
-        loadProfile().then(updateUserInfo).catch(() => {});
+        loadProfile().then(() => { updateUserInfo(); applyMenuOrder(); }).catch(() => {});
         /* Track last sign-in para el módulo Usuarios (fire-and-forget) */
         window.supabaseClient.from('profiles').update({ last_sign_in_at: new Date().toISOString() }).eq('id', session.user.id).then(() => {}, () => {});
       } else if (event === 'SIGNED_OUT') {
@@ -772,6 +772,214 @@ function esc(s) {
      acá window.__BH todavía no existe y una asignación top-level tira TypeError
      que mata todo el IIFE (hallazgo real: el login quedaba colgado). */
 
+  /* ------------------------------------------------
+     18. SIDEBAR F3 — acciones rápidas y orden del menú
+     (#9 alta con +, #10 menú contextual, #11 badges clickeables, #12 Alt+N,
+      #13 Ctrl+K, #14 recientes, #15 favoritos, #29 orden por rol, #30 NUEVO)
+     ------------------------------------------------ */
+  const PINS_KEY = 'bh_sidebar_pins';
+  const RECENTS_KEY = 'bh_recent_tabs';
+  const NEW_SEEN_KEY = 'bh_new_seen';
+  /* #29: prioridad por rol dentro de cada categoría (después de favoritos). */
+  const ROLE_PRIORITY = {
+    agente: ['tab-leads', 'tab-agenda'],
+    broker: ['tab-propiedades', 'tab-leads'],
+    super_admin: []
+  };
+  /* #9: alta rápida — reusa los chips del dashboard como disparadores. */
+  const PLUS_BY_TAB = {
+    'tab-propiedades': { action: 'openPropertyModal', label: 'Nueva propiedad' },
+    'tab-leads': { action: 'openLeadModal', label: 'Cargar lead' },
+    'tab-agenda': { action: 'openVisitModal', label: 'Agendar visita' }
+  };
+
+  function getPins() { try { return JSON.parse(localStorage.getItem(PINS_KEY) || '[]'); } catch (_) { return []; } }
+  function isPinned(tab) { return getPins().some(p => p.tab === tab); }
+  function togglePin(tab) {
+    let pins = getPins();
+    if (pins.some(p => p.tab === tab)) pins = pins.filter(p => p.tab !== tab);
+    else pins.push({ tab: tab, at: Date.now() });
+    try { localStorage.setItem(PINS_KEY, JSON.stringify(pins)); } catch (_) {}
+    applyMenuOrder();
+  }
+
+  /* #14: recientes — alimentan el orden (el pin es la herramienta explícita). */
+  function getRecents() { try { return JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]'); } catch (_) { return []; } }
+  function trackRecent(tab) {
+    if (tab === 'tab-dashboard') return;
+    try {
+      const r = getRecents().filter(t => t !== tab);
+      r.unshift(tab);
+      localStorage.setItem(RECENTS_KEY, JSON.stringify(r.slice(0, 6)));
+    } catch (_) {}
+  }
+
+  function visibleNavItems() {
+    return [...document.querySelectorAll('#sidebar .nav-item[data-tab]')].filter(el => el.offsetParent !== null);
+  }
+
+  /* Motor de orden (#15/#29): dentro de cada categoría, favoritos (orden de
+     pineado) → prioridad del rol → resto en su orden original. El menú es
+     plano (labels + items hermanos), así que se reordena por tramos.
+     El orden original se captura UNA vez (primer boot, DOM del HTML) — si se
+     usara la posición viva del DOM, quitar un pin no restauraría el orden. */
+  let _origNavOrder = null;
+  function applyMenuOrder() {
+    const menu = document.querySelector('#sidebar .sidebar-menu');
+    if (!menu) return;
+    if (!_origNavOrder) {
+      _origNavOrder = [...menu.querySelectorAll('.nav-item[data-tab]')].map(el => el.dataset.tab);
+    }
+    const pins = getPins();
+    const rolePrio = ROLE_PRIORITY[(window.currentProfile && window.currentProfile.role) || ''] || [];
+    [...menu.querySelectorAll(':scope > .menu-category')].forEach(label => {
+      const siblings = [...menu.children];
+      const start = siblings.indexOf(label) + 1;
+      let end = siblings.length;
+      for (let i = start; i < siblings.length; i++) {
+        if (siblings[i].classList.contains('menu-category')) { end = i; break; }
+      }
+      const items = siblings.slice(start, end).filter(el => el.classList.contains('nav-item') && el.dataset.tab);
+      if (items.length < 2) return;
+      const score = (el) => {
+        const pinIdx = pins.findIndex(p => p.tab === el.dataset.tab);
+        if (pinIdx > -1) return pinIdx;
+        const rp = rolePrio.indexOf(el.dataset.tab);
+        if (rp > -1) return 1000 + rp;
+        return 100000 + _origNavOrder.indexOf(el.dataset.tab);
+      };
+      items.sort((a, b) => score(a) - score(b)).forEach(el => menu.insertBefore(el, siblings[end]));
+    });
+    menu.querySelectorAll('.nav-item').forEach(el => {
+      el.classList.toggle('is-pinned', isPinned(el.dataset.tab));
+    });
+  }
+
+  function triggerQuickAction(action) {
+    const chip = document.querySelector('.quick-action-chip[data-action="' + action + '"]');
+    if (chip) { chip.click(); return true; }
+    return false;
+  }
+
+  /* #9: inyecta el botón + en los items con alta rápida. */
+  function injectPlusButtons() {
+    Object.keys(PLUS_BY_TAB).forEach(tab => {
+      const item = document.querySelector('#sidebar .nav-item[data-tab="' + tab + '"]');
+      if (!item || item.querySelector('.nav-plus')) return;
+      const conf = PLUS_BY_TAB[tab];
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'nav-plus';
+      btn.dataset.plusAction = conf.action;
+      btn.dataset.bhTip = conf.label;
+      btn.setAttribute('aria-label', conf.label);
+      btn.innerHTML = '<i class="fas fa-plus"></i>';
+      item.appendChild(btn);
+    });
+  }
+
+  /* #11: badges con cursor + tooltip "Ir a X" (el click ya navega por
+     propagación — acá se hace explícito y se enseña). */
+  function injectBadgeTips() {
+    document.querySelectorAll('#sidebar .nav-item[data-tab]').forEach(item => {
+      const badge = item.querySelector('.nav-badge');
+      const label = item.querySelector('.nav-item-left span');
+      if (badge && label) badge.dataset.bhTip = 'Ir a ' + label.textContent.trim();
+    });
+  }
+
+  /* #30: items marcados data-sidebar-new="1" muestran NUEVO hasta el primer
+     click (visto persistido). Ninguno marcado hoy: mecanismo listo para el
+     próximo módulo que aterrice. */
+  function getNewSeen() { try { return JSON.parse(localStorage.getItem(NEW_SEEN_KEY) || '[]'); } catch (_) { return []; } }
+  function markNewSeen(tab) {
+    try {
+      const item = document.querySelector('#sidebar .nav-item[data-tab="' + tab + '"]');
+      if (!item || !item.hasAttribute('data-sidebar-new')) return;
+      const seen = getNewSeen();
+      if (!seen.includes(tab)) { seen.push(tab); localStorage.setItem(NEW_SEEN_KEY, JSON.stringify(seen)); }
+      item.classList.remove('is-new-module');
+      const tag = item.querySelector('.nav-new-tag');
+      if (tag) tag.remove();
+    } catch (_) {}
+  }
+  function refreshNewTags() {
+    document.querySelectorAll('#sidebar .nav-item[data-sidebar-new]').forEach(item => {
+      const tab = item.dataset.tab;
+      if (!tab || getNewSeen().includes(tab)) return;
+      if (!item.querySelector('.nav-new-tag')) {
+        const tag = document.createElement('span');
+        tag.className = 'nav-new-tag';
+        tag.textContent = 'NUEVO';
+        item.appendChild(tag);
+      }
+      item.classList.add('is-new-module');
+    });
+  }
+
+  /* #10: menú contextual del sidebar. */
+  const navCtx = document.createElement('div');
+  navCtx.id = 'navContextMenu';
+  navCtx.className = 'nav-context-menu';
+  navCtx.setAttribute('role', 'menu');
+  document.body.appendChild(navCtx);
+  function hideNavCtx() { navCtx.classList.remove('is-visible'); }
+  document.addEventListener('contextmenu', function (e) {
+    const item = e.target.closest('#sidebar .nav-item[data-tab]');
+    if (!item) { hideNavCtx(); return; }
+    e.preventDefault();
+    const tab = item.dataset.tab;
+    const labelEl = item.querySelector('.nav-item-left span');
+    const label = labelEl ? labelEl.textContent.trim() : tab;
+    const rows = [];
+    rows.push({ icon: 'fas fa-thumbtack', text: isPinned(tab) ? 'Quitar de favoritos' : 'Fijar arriba (favorito)', fn: () => togglePin(tab) });
+    if (PLUS_BY_TAB[tab]) rows.push({ icon: 'fas fa-plus', text: PLUS_BY_TAB[tab].label, fn: () => triggerQuickAction(PLUS_BY_TAB[tab].action) });
+    if (tab === 'tab-leads') rows.push({ icon: 'fas fa-user-tie', text: 'Ver padrón de propietarios', fn: () => navigateTo('tab-leads', { subview: 'owners' }) });
+    if (tab === 'tab-dashboard') rows.push({ icon: 'fas fa-rotate', text: 'Refrescar dashboard', fn: () => { const b = document.getElementById('dashRefreshBtn'); if (b) b.click(); } });
+    const idx = visibleNavItems().indexOf(item);
+    const hint = (idx > -1 && idx < 9) ? '<div class="nav-ctx-hint">Atajo: Alt+' + (idx + 1) + '</div>' : '';
+    navCtx._actions = rows.map(r => r.fn);
+    navCtx.innerHTML = rows.map((r, i) =>
+      '<div class="nav-ctx-item" data-ctx="' + i + '" role="menuitem"><i class="' + r.icon + '"></i>' + esc(r.text) + '</div>'
+    ).join('') + hint;
+    navCtx.classList.add('is-visible');
+    const mw = navCtx.offsetWidth || 210, mh = navCtx.offsetHeight || 90;
+    let x = e.clientX, y = e.clientY;
+    if (x + mw > window.innerWidth - 8) x = window.innerWidth - mw - 8;
+    if (y + mh > window.innerHeight - 8) y = Math.max(8, window.innerHeight - mh - 8);
+    navCtx.style.left = x + 'px';
+    navCtx.style.top = y + 'px';
+  });
+  navCtx.addEventListener('click', function (e) {
+    const it = e.target.closest('.nav-ctx-item');
+    if (!it) return;
+    const fn = navCtx._actions && navCtx._actions[parseInt(it.dataset.ctx, 10)];
+    hideNavCtx();
+    if (typeof fn === 'function') fn();
+  });
+  document.addEventListener('click', function (e) { if (!e.target.closest('#navContextMenu')) hideNavCtx(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideNavCtx(); });
+  window.addEventListener('scroll', hideNavCtx, true);
+  window.addEventListener('resize', hideNavCtx);
+
+  /* #12: Alt+1..9 salta al N-ésimo módulo visible. */
+  document.addEventListener('keydown', function (e) {
+    if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const n = parseInt(e.key, 10);
+    if (!(n >= 1 && n <= 9)) return;
+    const target = visibleNavItems()[n - 1];
+    if (target) { e.preventDefault(); navigateTo(target.dataset.tab); }
+  });
+
+  /* #13: Ctrl+K enfoca la búsqueda global (el motor ya existía sin UI). */
+  document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      const input = $('#globalSearchInput');
+      if (input) { input.focus(); input.select(); }
+    }
+  });
+
   function showApp() {
     const loginScreen = $('#loginScreen');
     const appLayout = $('#appLayout');
@@ -780,10 +988,13 @@ function esc(s) {
     if (appLayout) appLayout.style.display = 'flex';
     hidePreloader();
     updateUserInfo();
-    /* El canal core (realtime de TODAS las tablas) arranca en el boot — antes
-       solo se creaba al abrir Chat Redes: un boot en Dashboard quedaba sin
-       realtime hasta que tocaras el chat. El anillo del avatar (#36) depende
-       de su SUBSCRIBED. Blindado: si el realtime falla, el boot sigue. */
+    /* F3: acciones rápidas + orden del menú (favoritos, rol). */
+    injectPlusButtons();
+    applyMenuOrder();
+    refreshNewTags();
+    injectBadgeTips();
+    /* Canal core del realtime en el boot (antes solo existía al abrir Chat
+       Redes). Blindado: si falla, el boot sigue. */
     try { setupCoreRealtime(); } catch (rtErr) { logError('Realtime boot error:', rtErr); window.__bhRtBootError = rtErr; }
     /* mlCheckStatus DESPUÉS de los badges: su updatePortalsBadge lee el cache
        de la RPC (ml_last_event_at) — antes corría en paralelo y leía vacío. */
@@ -1005,6 +1216,14 @@ function esc(s) {
      agreguen después (favoritos, recientes) navegan sin re-bind, y desaparece
      el doble-bind histórico (se bindeaba dos veces el mismo ítem). */
   document.addEventListener('click', function (e) {
+    /* #9: el + dispara el alta, no la navegación. */
+    const plus = e.target.closest('.nav-plus');
+    if (plus) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (plus.dataset.plusAction) triggerQuickAction(plus.dataset.plusAction);
+      return;
+    }
     const item = e.target.closest('#sidebar .nav-item[data-tab]');
     if (!item || !item.dataset.tab) return;
     navigateTo(item.dataset.tab);
@@ -1033,6 +1252,9 @@ function esc(s) {
     }
     /* #26: recordar el último módulo — al recargar se vuelve acá (sin hash). */
     try { localStorage.setItem('bh_last_tab', section); } catch (_) {}
+    /* #14: recientes para el orden del menú. #30: tag NUEVO se ve una sola vez. */
+    trackRecent(section);
+    markNewSeen(section);
 
     /* Sidebar active */
     $$('.nav-item[data-tab]').forEach(el => {
@@ -3921,7 +4143,7 @@ on(document, 'keydown', (e) => {
     downloadCSV, mutate, z, zodBaseType, validateForm,
     setBtnLoading, restoreBtn,
     loadAgentSelect, loadPropertySelect, refreshOwnerSelect,
-    updateSidebarBadges, scheduleBadgeRefresh, invalidateSearchCache, navigateTo, setupCoreRealtime,
+    updateSidebarBadges, scheduleBadgeRefresh, invalidateSearchCache, navigateTo, setupCoreRealtime, refreshNewTags,
     updateAgendaBadge, sendBrowserNotification, requestNotificationPermission,
     formatPrice, formatNumber, checkPasswordPwned, getAuthedClient,
     setKPI, updateUserInfo, OwnerSchema, PropertySchema, LeadSchema, VisitSchema, TasacionSchema, AgentSchema,
