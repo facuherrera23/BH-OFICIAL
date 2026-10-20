@@ -594,14 +594,22 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
     }
 
     let propContext = '';
+    let propAgentId: string | null = null;
     if (propertyId) {
         const { data: prop } = await supabase
             .from('properties')
-            .select('property_code, title')
+            .select('property_code, title, agent_id')
             .eq('id', propertyId)
             .maybeSingle();
         if (prop?.property_code) {
             propContext += `\nPropiedad: ${prop.property_code}${prop.title ? ' · ' + prop.title : ''}`;
+        }
+        /* Pedido del empleador (2026-10-19): el lead de ML entra YA asignado al
+           agente de la propiedad — sin esto llegaba sin assigned_to y nadie lo
+           tomaba hasta que un admin lo repartiera a mano. */
+        if (prop?.agent_id) {
+            propAgentId = prop.agent_id as string;
+            propContext += `\nAgente asignado automáticamente (propietario de la propiedad)`;
         }
     }
     if (mlPermalink) propContext += `\nAviso ML: ${mlPermalink}`;
@@ -652,6 +660,7 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
                 source: 'ml',
                 stage: 'nuevo',
                 property_id: propertyId,
+                assigned_to: propAgentId,
                 ml_lead_id: leadId,
                 notes: `[Contacto Mercado Libre · ${contactLabel}] ${
                     questionText || `Interesado vía ${contactLabel}`

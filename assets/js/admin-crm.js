@@ -3157,7 +3157,7 @@ function bindLeadTaskForm(panel, lead) {
         if (!desc) { toast('Escribí el motivo del rechazo.', 'error'); return; }
         var lostResult = await showLostReasonModal();
         if (!lostResult) return;
-        var lUp = await db().from('leads').update({ stage: 'cerrado_perdido', lost_reason: lostResult.reason, lost_reason_detail: lostResult.detail || null, last_contacted_at: new Date().toISOString() }).eq('id', leadId);
+        var lUp = await db().from('leads').update({ stage: 'cerrado_perdido', lost_reason: lostResult.reason, last_contacted_at: new Date().toISOString() }).eq('id', leadId);
         if (lUp.error) throw new Error(lUp.error.message);
         await db().from('lead_activities').insert([{ lead_id: leadId, activity_type: 'note', title: 'Motivo del rechazo: ' + lostResult.label, description: desc + (lostResult.detail ? ' — ' + lostResult.detail : '') }]);
         toast('Marcado como perdido: ' + lostResult.label, 'success');
