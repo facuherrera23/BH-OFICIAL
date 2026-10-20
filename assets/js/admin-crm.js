@@ -1355,7 +1355,7 @@ function bindSurveyActions(panel, lead, surveys) {
 
 /* -- Panel lateral -- */
 function getLeadFull(id) {
-  return db().from('leads').select('id, full_name, email, phone, whatsapp, stage, source, tipo_cliente, operation_type, lead_score, lead_score_breakdown, assigned_to, property_id, next_followup_at, last_contacted_at, created_at, notes, ml_lead_id, preferred_zone, lost_reason, consent_at').eq('id', id).single();
+  return db().from('leads').select('id, full_name, email, phone, whatsapp, stage, source, tipo_cliente, operation_type, lead_score, lead_score_breakdown, assigned_to, property_id, next_followup_at, last_contacted_at, created_at, notes, ml_lead_id, preferred_zone, preferred_type, preferred_rooms, preferred_contact_method, budget_usd, estimated_value, lost_reason, consent_at').eq('id', id).single();
 }
 var TIMELINE_PAGE = 50;
 function getLeadActivities(id, offset) {
