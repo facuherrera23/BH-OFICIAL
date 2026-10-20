@@ -138,7 +138,7 @@
             <td colspan="3" style="color:var(--text-dim);">Eliminado el ${o.deleted_at ? new Date(o.deleted_at).toLocaleDateString('es-AR') : '?'}</td>
             <td>
               <div style="display:flex; gap:6px;">
-                <button class="btn-action" title="Restaurar" onclick="window.adminApp.restoreOwner('${o.id}')"><i class="fas fa-rotate-left"></i></button>
+                <button class="btn-action" title="Restaurar" data-action="restoreOwner" data-id="${o.id}"><i class="fas fa-rotate-left"></i></button>
               </div>
             </td>
           </tr>`).join('');
@@ -169,8 +169,8 @@ ${(() => { const t = nextTaskByOwner[o.id]; if (!t) return '<div style="font-siz
           </td>
           <td>
             <div style="display:flex; gap:6px;">
-              <button class="btn-action" title="Editar" onclick="window.adminApp.editOwner('${o.id}')"><i class="fas fa-pen"></i></button>
-              <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteOwner('${o.id}')"><i class="fas fa-trash"></i></button>
+              <button class="btn-action" title="Editar" data-action="editOwner" data-id="${o.id}"><i class="fas fa-pen"></i></button>
+              <button class="btn-action danger" title="Eliminar" data-action="deleteOwner" data-id="${o.id}"><i class="fas fa-trash"></i></button>
             </div>
           </td>
         </tr>
@@ -811,9 +811,9 @@ closeModal('ownerModal');
             </div>
             ${!isDone ? `
             <div style="display:flex; gap:6px; flex-shrink:0;">
-              <button type="button" class="btn-icon btn-icon--accent" title="Completar" onclick="window.adminApp.completeOwnerTask('${t.id}')"><i class="fas fa-check"></i></button>
-              <button type="button" class="btn-icon" title="Cancelar" onclick="window.adminApp.cancelOwnerTask('${t.id}')"><i class="fas fa-ban"></i></button>
-              <button type="button" class="btn-icon" title="Eliminar" style="color:var(--danger);" onclick="window.adminApp.deleteOwnerTask('${t.id}')"><i class="fas fa-trash"></i></button>
+              <button type="button" class="btn-icon btn-icon--accent" title="Completar" data-action="completeOwnerTask" data-id="${t.id}"><i class="fas fa-check"></i></button>
+              <button type="button" class="btn-icon" title="Cancelar" data-action="cancelOwnerTask" data-id="${t.id}"><i class="fas fa-ban"></i></button>
+              <button type="button" class="btn-icon" title="Eliminar" style="color:var(--danger);" data-action="deleteOwnerTask" data-id="${t.id}"><i class="fas fa-trash"></i></button>
             </div>` : ''}
           </div>
         `;
@@ -1043,7 +1043,7 @@ closeModal('ownerModal');
           </div>
           <div style="display:flex; gap:6px;">
             ${d.url ? `<a href="${esc(d.url)}" target="_blank" class="btn-action" title="Ver"><i class="fas fa-eye"></i></a>` : ''}
-            <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteOwnerDoc('${ownerId}', '${esc(d.id)}')"><i class="fas fa-trash"></i></button>
+            <button class="btn-action danger" title="Eliminar" data-action="deleteOwnerDoc" data-id="${ownerId}" data-id2="${esc(d.id)}"><i class="fas fa-trash"></i></button>
           </div>
         </div>
       `).join('');
@@ -1226,13 +1226,13 @@ closeModal('ownerModal');
 
         const actions = doc
 
-          ? '<a href="#" class="btn-action" title="Ver" onclick="event.preventDefault(); window.adminApp.openPropertyDoc(\'' + propertyId + '\', \'' + t.key + '\')"><i class="fas fa-eye"></i></a>' +
+          ? '<a href="#" class="btn-action" title="Ver" data-action="openPropertyDoc" data-id="' + propertyId + '" data-id2="' + t.key + '"><i class="fas fa-eye"></i></a>' +
 
-            '<button type="button" class="btn-action danger" title="Eliminar" onclick="window.adminApp.deletePropertyDoc(\'' + propertyId + '\', \'' + t.key + '\')"><i class="fas fa-trash"></i></button>'
+            '<button type="button" class="btn-action danger" title="Eliminar" data-action="deletePropertyDoc" data-id="' + propertyId + '" data-id2="' + t.key + '"><i class="fas fa-trash"></i></button>'
 
           : '';
 
-        const uploadBtn = '<button type="button" class="btn-action" title="' + (doc ? 'Reemplazar' : 'Subir') + '" onclick="window.adminApp.uploadPropertyDoc(\'' + propertyId + '\', \'' + t.key + '\')"><i class="fas fa-upload"></i></button>';
+        const uploadBtn = '<button type="button" class="btn-action" title="' + (doc ? 'Reemplazar' : 'Subir') + '" data-action="uploadPropertyDoc" data-id="' + propertyId + '" data-id2="' + t.key + '"><i class="fas fa-upload"></i></button>';
 
         return `
 
@@ -1554,7 +1554,7 @@ closeModal('ownerModal');
             <div style="font-weight:500; color:#fff;">${esc(p.property_code || 'S/Código')} · ${esc(p.title || 'Sin título')}</div>
             <div style="font-size:11px; color:var(--text-dim);">${esc(p.zone || 'S/Zona')} · ${p.price_usd ? 'USD ' + formatNumber(p.price_usd) : 'S/Precio'} · ${esc(p.status || 'draft')}</div>
           </div>
-          <button class="btn-action" title="Ver Propiedad" onclick="window.adminApp.editProperty('${p.id}')"><i class="fas fa-external-link-alt"></i></button>
+          <button class="btn-action" title="Ver Propiedad" data-action="editProperty" data-id="${p.id}"><i class="fas fa-external-link-alt"></i></button>
         </div>
       `).join('');
     } catch (_) { /* silent */ }
@@ -1601,7 +1601,7 @@ closeModal('ownerModal');
           ? '<span style="font-size:10px; font-weight:700; color:var(--accent); background:rgba(31,200,195,0.12); border-radius:999px; padding:1px 8px; margin-left:6px;">Directa</span>'
           : '<span style="font-size:10px; font-weight:700; color:var(--warning); background:rgba(255,184,0,0.12); border-radius:999px; padding:1px 8px; margin-left:6px;" title="Vinculada porque la propiedad es de este propietario">Por propiedad</span>';
         const unlinkBtn = t._direct
-          ? `<button class="btn-action" title="Desvincular del propietario" onclick="window.adminApp.unlinkTasacion('${ownerId}', '${t.id}')"><i class="fas fa-link-slash"></i></button>`
+          ? `<button class="btn-action" title="Desvincular del propietario" data-action="unlinkTasacion" data-id="${ownerId}" data-id2="${t.id}"><i class="fas fa-link-slash"></i></button>`
           : '';
         return `
         <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 12px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:8px; margin-bottom:8px; font-size:13px;">
@@ -1611,7 +1611,7 @@ closeModal('ownerModal');
           </div>
           <div style="display:flex; gap:6px;">
             ${unlinkBtn}
-            <button class="btn-action" title="Ver Tasación" onclick="window.adminApp.editTasacion?.('${t.id}')"><i class="fas fa-external-link-alt"></i></button>
+            <button class="btn-action" title="Ver Tasación" data-action="editTasacion" data-id="${t.id}"><i class="fas fa-external-link-alt"></i></button>
           </div>
         </div>`;
       }).join('');
@@ -1800,7 +1800,7 @@ closeModal('ownerModal');
             <div style="font-weight:500; color:#fff;">${esc(entry.text || '')}</div>
             <div style="font-size:10px; color:var(--text-dim);">${(entry.type || 'note').toUpperCase()} · ${entry.created_at ? new Date(entry.created_at).toLocaleString('es-AR') : ''}</div>
           </div>
-          <button class="btn-action" title="Eliminar" onclick="window.adminApp.deleteTimelineEntry('${ownerId}', '${entry.id}')"><i class="fas fa-trash" style="font-size:10px;"></i></button>
+          <button class="btn-action" title="Eliminar" data-action="deleteTimelineEntry" data-id="${ownerId}" data-id2="${entry.id}"><i class="fas fa-trash" style="font-size:10px;"></i></button>
         </div>
       `).join('');
     } catch (err) {

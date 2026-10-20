@@ -1801,6 +1801,32 @@ function esc(s) {
     navigateTo(item.dataset.tab);
   });
 
+  /* ─── Delegación genérica de data-action (reemplaza los 39 onclick inline
+     que violaban la CSP — auditoría 2026-10-20). Un único listener rutea
+     TODOS los botones con data-action a window.adminApp[data-action](id, id2).
+     Los módulos registran sus funciones en window.adminApp como siempre. ─── */
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    /* El sidebar tiene su propio delegation — no capturar sus data-tab */
+    if (btn.closest('#sidebar')) return;
+    e.stopPropagation();
+    const fn = window.adminApp && window.adminApp[btn.dataset.action];
+    if (typeof fn === 'function') fn(btn.dataset.id, btn.dataset.id2);
+  });
+
+  /* Delegación del chat: limpiar preview de attachment (ex-onclick inline). */
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('[data-action="clearAttachment"]');
+    if (!btn) return;
+    e.stopPropagation();
+    const preview = document.getElementById('chatAttachPreview');
+    if (preview) preview.style.display = 'none';
+    const input = document.getElementById('chatAttachmentInput');
+    if (input) input.value = '';
+    if (preview) { delete preview.dataset.type; delete preview.dataset.url; delete preview.dataset.name; }
+  });
+
   /* #28: despacho de sub-vistas — busca en __BH (módulos que cargan después de
      admin-app.js) o en BH_CRM (admin-crm.js carga ANTES, ahí __BH no existe). */
   function dispatchSubView(section, subview) {
@@ -2721,7 +2747,7 @@ function esc(s) {
               return;
             }
           }
-        } catch (_) {}
+        } catch (_) { logError('Lead dedup check failed (non-blocking):', _); }
       }
 
 
@@ -3790,7 +3816,7 @@ on(chip, 'click', () => {
           if (attachPreview) {
             const ext = (file.name.split('.').pop() || '').toLowerCase();
             const type = file.type.startsWith('image') ? 'image' : file.type.startsWith('video') ? 'video' : file.type.startsWith('audio') ? 'audio' : 'file';
-            attachPreview.innerHTML = `<span style="display:flex;align-items:center;gap:6px;"><i class="fas fa-paperclip" style="color:var(--accent);"></i> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;">${esc(file.name)} (${(file.size/1024).toFixed(0)} KB)</span><button type="button" onclick="this.parentElement.parentElement.style.display='none'; document.getElementById('chatAttachmentInput').value='';" style="background:none;border:none;color:var(--danger);cursor:pointer;"><i class="fas fa-times"></i></button></span>`;
+            attachPreview.innerHTML = `<span style="display:flex;align-items:center;gap:6px;"><i class="fas fa-paperclip" style="color:var(--accent);"></i> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;">${esc(file.name)} (${(file.size/1024).toFixed(0)} KB)</span><button type="button" data-action="clearAttachment" style="background:none;border:none;color:var(--danger);cursor:pointer;"><i class="fas fa-times"></i></button></span>`;
             attachPreview.dataset.type = type;
             attachPreview.dataset.url = url;
             attachPreview.dataset.name = file.name;

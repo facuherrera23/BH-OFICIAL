@@ -1070,7 +1070,7 @@
       : '-';
     const lead = v.leads;
     const leadLink = lead
-      ? `<button class="btn-action" style="font-size:10px; color:var(--accent);" title="Ver en CRM" onclick="event.stopPropagation(); window.adminApp.editLead('${lead.id}')">
+      ? `<button class="btn-action" style="font-size:10px; color:var(--accent);" title="Ver en CRM" data-action="editLead" data-id="${lead.id}">
            <i class="fas fa-user"></i> ${esc(lead.full_name)} <i class="fas fa-external-link-alt" style="font-size:9px; margin-left:2px;"></i>
          </button>`
       : '<span style="color:var(--text-dim); font-size:12px;">—</span>';
@@ -1092,9 +1092,9 @@
     /* Check-in / Check-out buttons for pending/confirmed visits */
     let checkinHtml = '';
     if ((v.status === 'pendiente' || v.status === 'confirmada') && !v.check_in) {
-      checkinHtml = `<button class="btn-action" title="Marcar llegada" onclick="window.adminApp.checkinVisit('${v.id}')" style="background:rgba(0,200,120,0.15); color:var(--success);"><i class="fas fa-sign-in-alt"></i></button>`;
+      checkinHtml = `<button class="btn-action" title="Marcar llegada" data-action="checkinVisit" data-id="${v.id}" style="background:rgba(0,200,120,0.15); color:var(--success);"><i class="fas fa-sign-in-alt"></i></button>`;
     } else if (v.check_in && !v.check_out) {
-      checkinHtml = `<button class="btn-action" title="Marcar salida" onclick="window.adminApp.checkoutVisit('${v.id}')" style="background:rgba(31,200,195,0.15); color:var(--accent);"><i class="fas fa-sign-out-alt"></i></button>`;
+      checkinHtml = `<button class="btn-action" title="Marcar salida" data-action="checkoutVisit" data-id="${v.id}" style="background:rgba(31,200,195,0.15); color:var(--accent);"><i class="fas fa-sign-out-alt"></i></button>`;
     }
 
     /* Show check-in/out times if set */
@@ -1118,11 +1118,11 @@
         <td style="font-size:12px; color:var(--text-dim);">${v.leads?.full_name ? esc(v.leads.full_name) : '—'}</td>
         <td>
           <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
-            ${v.confirmation_token && v.client_email ? '<button class="btn-action" title="Copiar link de confirmacion" onclick="window.adminApp.copyVisitLink(\'${v.id}\')"><i class="fas fa-link"></i></button>' : ''}
-            <button class="btn-action" title="Editar" onclick="window.adminApp.editVisit('${v.id}')"><i class="fas fa-pen"></i></button>
+            ${v.confirmation_token && v.client_email ? '<button class="btn-action" title="Copiar link de confirmacion" data-action="copyVisitLink" data-id="' + v.id + '"><i class="fas fa-link"></i></button>' : ''}
+            <button class="btn-action" title="Editar" data-action="editVisit" data-id="${v.id}"><i class="fas fa-pen"></i></button>
             ${checkinHtml}
             ${checkinTimeHtml}
-            <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteVisit('${v.id}')"><i class="fas fa-trash"></i></button>
+            <button class="btn-action danger" title="Eliminar" data-action="deleteVisit" data-id="${v.id}"><i class="fas fa-trash"></i></button>
           </div>
         </td>
       </tr>`;
@@ -1166,7 +1166,7 @@
           '</button>';
       }
       return `
-        <div class="lead-card" data-lead-id="${l.id}" style="background:var(--surface-2); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:14px; margin-bottom:10px; cursor:pointer;" onclick="window.adminApp.editLead('${esc(l.id)}')">
+        <div class="lead-card" data-lead-id="${l.id}" style="background:var(--surface-2); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:14px; margin-bottom:10px; cursor:pointer;" data-action="editLead" data-id="${esc(l.id)}">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
             <div style="font-weight:600; color:#fff; font-size:13px;">${esc(l.full_name || 'Sin nombre')}</div>
             <span class="nav-badge" style="font-size:10px; background:rgba(31,200,195,0.12); color:var(--accent); font-weight:600; padding:2px 6px; border-radius:10px;">${l.score || 0}</span>
@@ -1178,8 +1178,8 @@
           <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:8px; border-top:1px solid var(--border-subtle);">
             <span style="color:var(--text-dim); font-size:10px;">${new Date(l.created_at).toLocaleDateString('es-AR')}</span>
             <div style="display:flex; gap:4px;">
-              <button class="btn-action" style="padding:4px 6px; font-size:10px;" title="Editar" onclick="event.stopPropagation(); window.adminApp.editLead('${esc(l.id)}')"><i class="fas fa-pen"></i></button>
-              <button class="btn-action danger" style="padding:4px 6px; font-size:10px;" title="Eliminar" onclick="event.stopPropagation(); window.adminApp.deleteLead('${esc(l.id)}')"><i class="fas fa-trash"></i></button>
+              <button class="btn-action" style="padding:4px 6px; font-size:10px;" title="Editar" data-action="editLead" data-id="${esc(l.id)}"><i class="fas fa-pen"></i></button>
+              <button class="btn-action danger" style="padding:4px 6px; font-size:10px;" title="Eliminar" data-action="deleteLead" data-id="${esc(l.id)}"><i class="fas fa-trash"></i></button>
             </div>
           </div>
         </div>`;
@@ -1209,8 +1209,8 @@
         </td>
         <td>
           <div style="display:flex; gap:6px; align-items:center;">
-            <button class="btn-action" title="Editar" onclick="window.adminApp.editProperty(\'${p.id}\')"><i class="fas fa-pen"></i></button>
-            <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteProperty(\'${p.id}\')"><i class="fas fa-trash"></i></button>
+            <button class="btn-action" title="Editar" data-action="editProperty" data-id="' + p.id + '"><i class="fas fa-pen"></i></button>
+            <button class="btn-action danger" title="Eliminar" data-action="deleteProperty" data-id="' + p.id + '"><i class="fas fa-trash"></i></button>
           </div>
         </td>
       </tr>`;
@@ -1233,8 +1233,8 @@
           <td>${esc(a.phone || '-')}</td>
           <td>
             <div style="display:flex; gap:6px;">
-              <button class="btn-action" title="Editar" onclick="window.adminApp.editAgent(\'${a.id}\')"><i class="fas fa-pen"></i></button>
-              <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteAgent(\'${a.id}\')"><i class="fas fa-trash"></i></button>
+              <button class="btn-action" title="Editar" data-action="editAgent" data-id="' + a.id + '"><i class="fas fa-pen"></i></button>
+              <button class="btn-action danger" title="Eliminar" data-action="deleteAgent" data-id="' + a.id + '"><i class="fas fa-trash"></i></button>
             </div>
           </td>
         </tr>`;
@@ -1273,8 +1273,8 @@
         <td>${esc(o.address || '-')}</td>
         <td>
           <div style="display:flex; gap:6px;">
-            <button class="btn-action" title="Editar" onclick="window.adminApp.editOwner('${o.id}')"><i class="fas fa-pen"></i></button>
-            <button class="btn-action danger" title="Eliminar" onclick="window.adminApp.deleteOwner('${o.id}')"><i class="fas fa-trash"></i></button>
+            <button class="btn-action" title="Editar" data-action="editOwner" data-id="${o.id}"><i class="fas fa-pen"></i></button>
+            <button class="btn-action danger" title="Eliminar" data-action="deleteOwner" data-id="${o.id}"><i class="fas fa-trash"></i></button>
           </div>
         </td>
       </tr>`;

@@ -62,9 +62,9 @@
           ? `<p style="font-size:11px; color:${pendingQuestions > 0 ? 'var(--warning)' : 'var(--text-dim)'}; margin-top:4px;">${pendingQuestions > 0 ? '⚠ ' : ''}${pendingQuestions} pregunta${pendingQuestions !== 1 ? 's' : ''} sin responder</p>`
           : '';
         const mlBtnHtml = ml_connected
-          ? `<button class="btn-action danger" style="font-size:11px; padding:6px 12px; white-space:nowrap;" onclick="window.adminApp.mlDisconnect()"><i class="fas fa-link-slash"></i> Desconectar</button>`
+          ? `<button class="btn-action danger" style="font-size:11px; padding:6px 12px; white-space:nowrap;" data-action="mlDisconnect"><i class="fas fa-link-slash"></i> Desconectar</button>`
           : ml_configured
-            ? `<button class="btn-action" style="font-size:11px; padding:6px 12px; background:rgba(255,230,0,0.15); color:#FFE600; border:1px solid rgba(255,230,0,0.3);" onclick="window.adminApp.mlConnect()"><i class="fas fa-link"></i> Conectar ML</button>`
+            ? `<button class="btn-action" style="font-size:11px; padding:6px 12px; background:rgba(255,230,0,0.15); color:#FFE600; border:1px solid rgba(255,230,0,0.3);" data-action="mlConnect"><i class="fas fa-link"></i> Conectar ML</button>`
             : '';
         /* ml_listings guarda el estado en la columna ml_status */
         const activeListings = ml_connected ? ml_listings.filter(l => l.ml_status === 'active').length : 0;
@@ -119,7 +119,7 @@
               <label>SECRET KEY</label>
               <input type="password" id="mlSecretInput" placeholder="NGRD...tu-secret-key" class="ml-config-input" />
             </div>
-            <button class="btn-action" style="width:100%; margin-top:8px; background:rgba(255,230,0,0.15); color:#FFE600; border:1px solid rgba(255,230,0,0.3);" onclick="window.adminApp.mlSaveCredentials()">
+            <button class="btn-action" style="width:100%; margin-top:8px; background:rgba(255,230,0,0.15); color:#FFE600; border:1px solid rgba(255,230,0,0.3);" data-action="mlSaveCredentials">
               <i class="fas fa-save"></i> Guardar Credenciales
             </button>
           </div>` : '';
@@ -141,9 +141,9 @@
         ${webhooksHtml}
         <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-top:12px; flex-wrap:wrap; ${canManagePortals ? '' : 'opacity:.5; pointer-events:none;'}">
           ${mlBtnHtml}
-          ${ml_connected ? `<button class="btn-action" title="Re-registrar notificaciones (consultas) ante Mercado Libre" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlRegisterWebhooks()"><i class="fas fa-bell"></i></button>` : ''}
-          ${!ml_configured ? `<button class="btn-action" title="Configurar credenciales" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlToggleConfig()"><i class="fas fa-cog"></i></button>` : ''}
-          ${ml_connected ? `<button class="btn-action" title="Importar desde ML" style="font-size:11px; padding:6px 12px;" onclick="window.adminApp.mlImportFromML()"><i class="fas fa-file-import"></i></button>` : ''}
+          ${ml_connected ? `<button class="btn-action" title="Re-registrar notificaciones (consultas) ante Mercado Libre" style="font-size:11px; padding:6px 12px;" data-action="mlRegisterWebhooks"><i class="fas fa-bell"></i></button>` : ''}
+          ${!ml_configured ? `<button class="btn-action" title="Configurar credenciales" style="font-size:11px; padding:6px 12px;" data-action="mlToggleConfig"><i class="fas fa-cog"></i></button>` : ''}
+          ${ml_connected ? `<button class="btn-action" title="Importar desde ML" style="font-size:11px; padding:6px 12px;" data-action="mlImportFromML"><i class="fas fa-file-import"></i></button>` : ''}
         </div>
         ${canManagePortals ? configPanelHtml : ''}
         ${canManagePortals ? '' : '<p style="font-size:11px; color:var(--text-dim); margin-top:10px;">Solo lectura para tu rol</p>'}
@@ -170,7 +170,7 @@
           <button type="button" role="switch" aria-checked="${isActive}" data-portal-toggle="${esc(p.name)}" class="portal-toggle${isActive ? ' is-on' : ''}" ${canManagePortals && backendAvailable ? '' : 'disabled title="' + (backendAvailable ? 'Solo super_admin o broker' : 'Sin integración todavía') + '"'}>
             <span class="portal-toggle-knob"></span>
           </button>
-          <button class="btn-action" title="${canManagePortals ? 'Configurar API' : 'Solo super_admin o broker'}" onclick="window.adminApp.openPortalConfig(${i})"><i class="fas fa-cog"></i></button>
+          <button class="btn-action" title="${canManagePortals ? 'Configurar API' : 'Solo super_admin o broker'}" data-action="openPortalConfig" data-id="${i}"><i class="fas fa-cog"></i></button>
         </div>
         ${zonaLinkHtml}
         ${canManagePortals ? '' : '<p style="font-size:11px; color:var(--text-dim); margin-top:10px;">Solo lectura para tu rol</p>'}
@@ -949,9 +949,9 @@ try {
           </div>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;${canManage ? '' : ' opacity:.5; pointer-events:none;'}" title="${canManage ? '' : 'Solo super_admin o broker'}">
             ${status?.dry_run ? '<span class="nav-badge" style="background:rgba(255,184,0,0.15); color:var(--warning); font-size:11px; flex-shrink:0; white-space:nowrap;"><i class="fas fa-flask"></i> DRY-RUN activo</span>' : ''}
-            <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" onclick="window.adminApp.relaSyncCatalogs()"><i class="fas fa-rotate"></i> Catálogos</button>
-            <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" onclick="window.adminApp.relaReconcile()"><i class="fas fa-arrows-rotate"></i> Reconciliar</button>
-            <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" onclick="window.adminApp.openRelaConfig()"><i class="fas fa-cog"></i> Configurar</button>
+            <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" data-action="relaSyncCatalogs"><i class="fas fa-rotate"></i> Catálogos</button>
+            <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" data-action="relaReconcile"><i class="fas fa-arrows-rotate"></i> Reconciliar</button>
+            <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" data-action="openRelaConfig"><i class="fas fa-cog"></i> Configurar</button>
           </div>
         </div>
         <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-top:16px;">
