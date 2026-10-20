@@ -903,7 +903,6 @@ try {
         showToast('RELA bloqueó la publicación: ' + (result.errors || []).join(' | '), 'error');
       } else if (result.dry_run) {
         showToast(`DRY-RUN: el payload es válido (codigo ${result.codigo_aviso}). Desactivá DRY_RUN en Portales → RELA para publicar en serio.`, 'success');
-        console.log('[RELA DRY-RUN payload]', result.payload);
       } else if (result.skipped) {
         showToast('RELA: ' + (result.reason || 'sin cambios'), 'info');
       } else {

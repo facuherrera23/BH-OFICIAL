@@ -5099,7 +5099,6 @@ window.supabaseClient.from('agents').select('id, full_name, phone, email').eq('s
             window._fichaPropsCache = propsRes.data || [];
             window._fichaAgentsCache = agentsRes.data || [];
             window.startFichaFooterRotator();
-            console.log('[Ficha HTML] CRM data loaded:', window._fichaPropsCache.length, 'properties');
           } catch (err) {
             logError('Ficha HTML load error:', err);
             window.showToast?.('No se pudieron cargar los datos de la ficha', 'error');
