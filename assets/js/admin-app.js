@@ -2780,7 +2780,7 @@ function esc(s) {
   window.adminApp.editLead = async function (id) {
     try {
       const [{ data: lead, error: leadErr }, { data: visits, error: visitsErr }] = await Promise.all([
-        window.supabaseClient.from('leads').select('*').eq('id', id).single(),
+        window.supabaseClient.from('leads').select('id, full_name, email, phone, whatsapp, stage, source, tipo_cliente, operation_type, lead_score, lead_score_breakdown, assigned_to, property_id, next_followup_at, last_contacted_at, created_at, notes, ml_lead_id, preferred_zone, lost_reason').eq('id', id).single(),
         window.supabaseClient.from('visits').select('id, visit_date, status, client_name, property_id').eq('lead_id', id).order('visit_date', { ascending: true }),
       ]);
       if (leadErr) throw leadErr;
@@ -4009,7 +4009,7 @@ on(chip, 'click', () => {
       try {
         const { data, error } = await window.supabaseClient
           .from('zernio_messages')
-          .select('*')
+          .select('id, direction, body, status, attachment, occurred_at')
           .eq('conversation_id', convId)
           .order('occurred_at', { ascending: true })
           .limit(100);
@@ -5379,9 +5379,9 @@ let _execToDate = '';
 
     try {
       const [alertsRes, anomaliesRes, auditRes] = await Promise.all([
-        window.supabaseClient.from('supervision_alerts').select('*').eq('status', 'open').in('severity', ['critical', 'high']).order('created_at', { ascending: false }).limit(5),
-        window.supabaseClient.from('supervision_anomalies').select('*').eq('status', 'open').in('severity', ['critical', 'high']).order('created_at', { ascending: false }).limit(5),
-        window.supabaseClient.from('audit_log').select('*').eq('status', 'critical').gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).order('created_at', { ascending: false }).limit(5)
+        window.supabaseClient.from('supervision_alerts').select('id, severity, title, module, user_id, created_at, status, description').eq('status', 'open').in('severity', ['critical', 'high']).order('created_at', { ascending: false }).limit(5),
+        window.supabaseClient.from('supervision_anomalies').select('id, severity, module, user_id, action, created_at, status').eq('status', 'open').in('severity', ['critical', 'high']).order('created_at', { ascending: false }).limit(5),
+        window.supabaseClient.from('audit_log').select('id, action, user_id, table_name, status, error_code, created_at').eq('status', 'critical').gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).order('created_at', { ascending: false }).limit(5)
       ]);
 
       const alerts = alertsRes.data || [];

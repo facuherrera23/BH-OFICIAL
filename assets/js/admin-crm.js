@@ -982,7 +982,7 @@ function bindListHandlers(c) {
 
 
 function getLeadTasks(id) {
-  return db().from('lead_tasks').select('*').eq('lead_id', id).order('created_at', { ascending: false }).limit(50)
+  return db().from('lead_tasks').select('id, lead_id, title, description, priority, status, due_at, completed_at, type, contact_type, assigned_to, completed_note, remind_before_minutes').eq('lead_id', id).order('created_at', { ascending: false }).limit(50)
     .then(function (r) { return r.data || []; }).catch(function () { return []; });
 }
 
@@ -1355,12 +1355,12 @@ function bindSurveyActions(panel, lead, surveys) {
 
 /* -- Panel lateral -- */
 function getLeadFull(id) {
-  return db().from('leads').select('*').eq('id', id).single();
+  return db().from('leads').select('id, full_name, email, phone, whatsapp, stage, source, tipo_cliente, operation_type, lead_score, lead_score_breakdown, assigned_to, property_id, next_followup_at, last_contacted_at, created_at, notes, ml_lead_id, preferred_zone, lost_reason, consent_at').eq('id', id).single();
 }
 var TIMELINE_PAGE = 50;
 function getLeadActivities(id, offset) {
   var from = offset || 0;
-  return db().from('lead_activities').select('*').eq('lead_id', id).order('created_at', { ascending: false }).range(from, from + TIMELINE_PAGE - 1)
+  return db().from('lead_activities').select('id, lead_id, activity_type, title, description, created_at, user_id').eq('lead_id', id).order('created_at', { ascending: false }).range(from, from + TIMELINE_PAGE - 1)
     .then(function (r) { return r.data || []; }).catch(function () { return []; });
 }
 function getLeadProps(id) {
@@ -1468,7 +1468,7 @@ var OFFER_TYPE_LBL = { client: 'Oferta del cliente', counter: 'Contraoferta del 
 /* Refresca el historial de ofertas dentro del panel sin cerrarlo. */
 async function refreshOffersInPanel(leadId, panel) {
   try {
-    var r = await db().from('lead_offers').select('*').eq('lead_id', leadId).order('created_at', { ascending: false }).limit(10);
+    var r = await db().from('lead_offers').select('id, lead_id, property_id, offer_type, amount, currency, counterparty, status, conditions, created_at, updated_at').eq('lead_id', leadId).order('created_at', { ascending: false }).limit(10);
     if (r.error) throw new Error(r.error.message);
     var offers = r.data || [];
     /* Buscar la sección de negociación existente o insertarla */
@@ -1499,7 +1499,7 @@ async function refreshOffersInPanel(leadId, panel) {
       b.replaceWith(b.cloneNode(true));
     });
     /* Re-fetch lead para tener el objeto completo */
-    var lr = await db().from('leads').select('*').eq('id', leadId).single();
+    var lr = await db().from('leads').select('id, full_name, email, phone, whatsapp, stage, source, tipo_cliente, operation_type, lead_score, assigned_to, property_id, next_followup_at, notes, ml_lead_id, preferred_zone').eq('id', leadId).single();
     if (lr.data) {
       bindOfferActions(panel, lr.data, offers);
     }
@@ -1696,7 +1696,7 @@ function openDetailPanel(id) {
 
   Promise.all([getLeadFull(id), getLeadActivities(id), getLeadProps(id), getLeadVisits(id), getLeadTasks(id), getLeadSurveys(id),
     db().from('properties').select('id, title, property_code, zone, property_type, rooms, price_usd, price_currency, status, is_published, image_urls, deleted_at').eq('is_published', true).is('deleted_at', null),
-    db().from('lead_offers').select('*').eq('lead_id', id).order('created_at', { ascending: false }).limit(10)
+    db().from('lead_offers').select('id, lead_id, property_id, offer_type, amount, currency, counterparty, status, conditions, created_at, updated_at').eq('lead_id', id).order('created_at', { ascending: false }).limit(10)
   ])
     .then(function (results) {
       var leadRes = results[0];
@@ -2842,7 +2842,7 @@ function bindAgendaActions(panel, leadId) {
 
 async function duplicateVisit(vid, leadId, panel) {
   try {
-    var r = await db().from('visits').select('*').eq('id', vid).single();
+    var r = await db().from('visits').select('id, lead_id, property_id, visit_date, status, client_name, client_phone, client_email, notes, agent_id').eq('id', vid).single();
     if (r.error || !r.data) throw new Error(r.error && r.error.message);
     var v = r.data;
     var copy = {
@@ -3251,7 +3251,7 @@ async function refreshTasksInPanel(leadId, panel) {
   var cardsWrap = panel.querySelector('.crm-timeline--cards');
   if (!cardsWrap) return;
   try {
-    var r = await db().from('lead_tasks').select('*').eq('lead_id', leadId)
+    var r = await db().from('lead_tasks').select('id, lead_id, title, description, priority, status, due_at, completed_at, type, contact_type, assigned_to, completed_note').eq('lead_id', leadId)
       .order('completed_at', { ascending: false, nullsLast: true })
       .order('due_at', { ascending: true });
     if (r.error) throw new Error(r.error.message);
@@ -3271,7 +3271,7 @@ async function doEditTlTask(item, leadId, panel) {
   var taskId = item.getAttribute('data-task-id');
   if (!taskId) return;
   try {
-    var r = await db().from('lead_tasks').select('*').eq('id', taskId).single();
+    var r = await db().from('lead_tasks').select('id, lead_id, title, description, priority, status, due_at, completed_at, type, contact_type, assigned_to, completed_note').eq('id', taskId).single();
     if (r.error || !r.data) { toast('No se encontró la tarea.', 'error'); return; }
     var task = r.data;
     showEditTaskModal(task, leadId, panel);
