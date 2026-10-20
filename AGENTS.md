@@ -26,6 +26,20 @@ Sistema CRM inmobiliario **en producción real** (bienenhaus.com.ar) con datos d
 - Globals: `window.supabaseClient`, `window.BHUtils` (`esc`, `escAttr`, `safeUrl`, `safeImageUrl`), `window.BH_Cloudinary`, `window.adminApp`, `window.__BH`.
 - `esc()`/`escAttr()` SIEMPRE antes de `innerHTML`; cero `onclick` inline (la CSP no tiene unsafe-inline).
 
+## ⚠️ Código vs schema real (auditoría 2026-10-20: 13 bugs de la MISMA raíz)
+
+La clase de bug más cara del proyecto: **código escrito contra columnas/tablas imaginarias**. Como casi todos los flows tragan errores con `.catch(() => ...)` o ignoran `result.error`, fallan en silencio total (features que "existen" pero jamás funcionaron). Hallazgos reales ya corregidos:
+
+- `lead_offers` NO tenía `status`/`counterparty`/`updated_at` — el deal room guardaba aceptar/rechazar en `offer_type`, **destruyendo el tipo real**. Ahora el estado va en `lead_offers.status` (`pending|accepted|rejected`) y `offer_type` es SOLO el tipo (cliente/counter). Migración `20261020000001`.
+- `audit_log` usa `user_id` — `actor_id` no existe (ml-disconnect/ml-publish insertaban audit muerto). Y **`activity_log` NO existe** — la tabla es `audit_log` (ml-oauth insertaba a una tabla fantasma); requiere `action` + `module` NOT NULL.
+- `properties`: la fuente de verdad del precio es **`price_usd` + `price_currency`** (el trigger `sync_property_price_fields` pisa `price`/`currency` desde ellas en cada INSERT/UPDATE; `price_ars` es columna GENERADA — enviarla da error). `property_code` lo genera el trigger `set_property_code_on_insert` (prefijo `ML-` si `source_type='ml'`). **NO existen**: `code`, `slug`, `location_id`, `amenities`, `expenses`, `floors`, `operation_type`, `favorites_count`, `views_count` — el import de ML (`ml-import-listings`/`ml-sync-import`) estaba 100% roto por esto hasta 2026-10-20.
+- `property_ml_meta` solo tiene: `property_id, ml_item_id, status, price, permalink, last_sync_at, last_sync_status, created_at, updated_at` — `category_id`/`listing_type_id`/`raw` no existen.
+- `owner_tasks` usa **`assigned_to`** (FK agents) y **NO tiene `title`** (el título va en `description`); `lead_tasks` SÍ tiene `title` y usa `due_at` mientras `owner_tasks` usa `due_date`.
+- `lead_activities` usa `created_by` — `user_id` no existe (el timeline del lead pasó meses mostrándose vacío por esto).
+- `leads`: contactos son `full_name`/`phone`/`email` — `contact_name`/`contact_phone`/`contact_email`/`tags`/`score`/`broker_id` NO existen (agente = `assigned_to`). Al mostrar un objeto en un panel, **verificar que el SELECT traiga todos los campos que el render lee** — el bug corruptor de `preferred_contact_method` era exactamente esto (el select del panel no lo traía, el dropdown caía al fallback WhatsApp y al guardar PISABA el valor real; `computePropertyMatches` quedó medio ciego por lo mismo con `preferred_type`/`preferred_rooms`/`budget_usd`).
+
+**Cómo detectar antes de deployar**: comparar columnas de `.from('x').select/insert/update` contra `information_schema.columns` (script de un solo query + regex; los falsos positivos son embeds `tabla(col, ...)` y keys de JSONB). Los catch silenciosos son el amplificador: si un flow nuevo "no hace nada", asumir schema mismatch y mirar el `result.error` real.
+
 ## CSP por página (caída real ya ocurrida)
 
 Cada HTML tiene su meta CSP propia. Al agregar cualquier recurso externo (API, tiles, imágenes, fonts) hay que actualizar `connect-src`/`img-src` en **cada página afectada**. Caso real: el mapa Leaflet de tasaciones quedó mudo porque faltaban Nominatim (`connect-src`) y tiles OSM (`img-src`).
