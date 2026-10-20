@@ -1167,8 +1167,10 @@ function esc(s) {
     btn.classList.toggle('is-open', open);
     try { localStorage.setItem(TODAY_OPEN_KEY, open ? '1' : '0'); } catch (_) {}
     if (open) loadTodayWidget();
-    /* El widget cambia la altura del menú → re-medir el auto-fit. */
-    setTimeout(autoFitSidebar, open ? 300 : 50);
+    /* NO llamar autoFitSidebar acá: el widget es contenido OPCIONAL que el
+       usuario eligió ver — abrirlo debe permitir un poco de scroll del menú,
+       no compactar TODO a 28px (reportado por el empleador como feo).
+       El auto-fit solo responde a resize de ventana (viewport real). */
   }
 
   /* Interacciones del widget por delegación (toggle + items). */

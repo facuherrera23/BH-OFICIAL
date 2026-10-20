@@ -75,9 +75,12 @@ test.describe('Sidebar F5 — estética & pulido', () => {
     const js = await (await request.get('/assets/js/admin-app.js')).text();
     expect(js).toContain('function autoFitSidebar');
     expect(js).toContain("classList.add('sidebar-autofit')");
-    // Se re-mide al abrir/cerrar el Hoy (cambia la altura del menú):
-    expect(js).toContain('setTimeout(autoFitSidebar, open ? 300 : 50)');
-    // Y en boot con doble pasada (el Hoy carga async):
+    // El auto-fit SOLO responde a resize de ventana — NO al abrir/cerrar el
+    // widget Hoy (pedido del empleador: abrir el desplegable no debe compactar
+    // todo el menú a 28px; el widget es contenido opcional que el usuario
+    // eligió ver, un poco de scroll es aceptable)
+    expect(js).not.toContain('setTimeout(autoFitSidebar, open');
+    // En boot con doble pasada (el Hoy carga async):
     expect(js).toContain('setTimeout(autoFitSidebar, 500)');
     const css = await (await request.get('/assets/css/admin.css')).text();
     // El compacto comparte reglas con el manual (dense):
