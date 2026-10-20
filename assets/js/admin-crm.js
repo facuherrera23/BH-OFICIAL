@@ -23,7 +23,7 @@ var OPERATION_OPTS = ['compra','venta','alquiler'];
 
 var PAGE_SIZE = 25;
 var _page = 1, _totalPages = 1, _totalRows = 0;
-var _sortKey = 'created', _sortDir = 'desc';
+var _sortKey = 'prox', _sortDir = 'asc'; /* default del dueño (2026-10-20): próximos a atender arriba — los NUEVOS sin próxima tarea van PRIMERO, luego por próxima tarea asc */
 var DEFAULT_SORT_DIR = { created: 'desc', cliente: 'asc', propiedad: 'asc', estado: 'asc', prioridad: 'desc', actividad: 'desc', prox: 'asc' };
 var SERVER_SORT_COLUMNS = { created: 'created_at', cliente: 'full_name', estado: 'stage', prioridad: 'lead_score', actividad: 'last_contacted_at', prox: 'next_followup_at' };
 var _showTrash = false;
@@ -615,7 +615,14 @@ async function loadLeads() {
 
     var sortCol = SERVER_SORT_COLUMNS[_sortKey];
     var q = applyBaseFilters(db().from('leads').select('id, full_name, email, phone, whatsapp, stage, source, tipo_cliente, operation_type, lead_score, lead_score_breakdown, assigned_to, property_id, next_followup_at, last_contacted_at, created_at'));
-    if (sortCol) q = q.order(sortCol, { ascending: _sortDir === 'asc', nullsFirst: false });
+    if (sortCol) {
+      /* Sort por próxima tarea (default): NULLS FIRST — los leads NUEVOS sin próxima
+         tarea quedan arriba de todo (el dueño no tiene que ir a buscar el dato que
+         acaba de entrar); entre iguales gana el más reciente. */
+      var proxNullsFirst = (_sortKey === 'prox' && _sortDir === 'asc');
+      q = q.order(sortCol, { ascending: _sortDir === 'asc', nullsFirst: proxNullsFirst });
+      if (_sortKey === 'prox') q = q.order('created_at', { ascending: false });
+    }
     q = q.range((_page - 1) * PAGE_SIZE, _page * PAGE_SIZE - 1);
     var r = await q;
     if (r.error) { throw new Error(r.error.message); }
@@ -2873,7 +2880,9 @@ var CONTACT_TYPE_LABELS = { telefono: 'Teléfono', whatsapp: 'WhatsApp', email: 
 
 async function syncLeadFollowup(leadId) {
   try {
-    var r = await db().from('lead_tasks').select('due_at').eq('lead_id', leadId).eq('type', 'contact')
+    /* 2026-10-20: misma definición que el chip recommendedNextAction — TODAS las
+       tareas pendientes (antes solo type='contact', y divergía del sort/listado). */
+    var r = await db().from('lead_tasks').select('due_at').eq('lead_id', leadId)
       .in('status', ['pendiente', 'en_progreso']).not('due_at', 'is', null).order('due_at', { ascending: true }).limit(1);
     if (r.error) return;
     var next = (r.data && r.data[0] && r.data[0].due_at) || null;

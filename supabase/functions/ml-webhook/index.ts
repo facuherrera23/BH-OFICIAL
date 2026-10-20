@@ -543,7 +543,11 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
                sigue el flujo normal y el upsert final vincula el ledger. */
             questionClaimedByOther = true;
         }
-        if (claimErr) throw new Error('claim ledger vis: ' + claimErr.message);
+        /* FIX 2026-10-20: cuando perdemos el claim pero el ganador era anónimo y
+           tenemos identidad, claimErr queda seteado del INSERT perdedor y este
+           throw mataba el flujo JUSTO cuando tocaba crear el lead. Incidente real
+           01:33: la consulta se respondió en ML pero nunca entró al CRM. */
+        if (claimErr && !questionClaimedByOther) throw new Error('claim ledger vis: ' + claimErr.message);
 
         try {
             const qRes = await fetch(`${ML_API}/questions/${externalId}?api_version=4`, {
@@ -683,41 +687,64 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
     /* Preguntas de inmuebles: registro en ml_questions (ledger compartido con el
        flujo clásico, con lead_id vinculado) + auto-reply con plantilla activa. */
     if (isQuestion && externalId) {
-        await supabase.from('ml_questions').upsert(
-            {
-                question_id: externalId,
+        if (questionClaimedByOther) {
+            /* FIX 2026-10-20: el claim lo ganó la vía questions, que puede haber
+               respondido ya — vinculamos el lead SIN pisar status/answer_text. */
+            await supabase.from('ml_questions').update({
                 property_id: propertyId,
                 ml_item_id: itemId,
                 lead_id: newLead ? newLead.id : null,
-                received_at: new Date().toISOString(),
                 question_text: questionText || null,
                 from_user_id: buyerId,
                 from_user_nickname: buyerName,
                 date_created: createdAt,
-                status: 'unanswered',
-            },
-            { onConflict: 'question_id' },
-        );
-
-        const template = await getActiveTemplate(supabase, 'new_question');
-        if (template) {
-            try {
-                await sendQuestionAnswer(supabase, externalId, template.message, token);
-                await supabase
-                    .from('ml_questions')
-                    .update({
-                        status: 'answered',
-                        answer_text: template.message,
-                        date_updated: new Date().toISOString(),
-                    })
-                    .eq('question_id', externalId);
-            } catch (err) {
-                logWarn({
-                    function: 'ml-webhook',
-                    topic: 'vis_leads',
+            }).eq('question_id', externalId);
+        } else {
+            await supabase.from('ml_questions').upsert(
+                {
                     question_id: externalId,
-                    error: 'auto_reply: ' + (err as Error).message,
-                });
+                    property_id: propertyId,
+                    ml_item_id: itemId,
+                    lead_id: newLead ? newLead.id : null,
+                    received_at: new Date().toISOString(),
+                    question_text: questionText || null,
+                    from_user_id: buyerId,
+                    from_user_nickname: buyerName,
+                    date_created: createdAt,
+                    status: 'unanswered',
+                },
+                { onConflict: 'question_id' },
+            );
+        }
+
+        /* Auto-reply: solo si la pregunta sigue sin responder — la vía clásica
+           pudo responderla mientras esperábamos el claim (carrera del 01:33). */
+        const { data: qcurrent } = await supabase
+            .from('ml_questions')
+            .select('status')
+            .eq('question_id', externalId)
+            .maybeSingle();
+        if (qcurrent?.status !== 'answered') {
+            const template = await getActiveTemplate(supabase, 'new_question');
+            if (template) {
+                try {
+                    await sendQuestionAnswer(supabase, externalId, template.message, token);
+                    await supabase
+                        .from('ml_questions')
+                        .update({
+                            status: 'answered',
+                            answer_text: template.message,
+                            date_updated: new Date().toISOString(),
+                        })
+                        .eq('question_id', externalId);
+                } catch (err) {
+                    logWarn({
+                        function: 'ml-webhook',
+                        topic: 'vis_leads',
+                        question_id: externalId,
+                        error: 'auto_reply: ' + (err as Error).message,
+                    });
+                }
             }
         }
     }
