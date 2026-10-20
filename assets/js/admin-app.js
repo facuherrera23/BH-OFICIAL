@@ -4488,19 +4488,6 @@ async function mutate(table, fn) {
         propsEl.dataset.bhTip = (counts.properties || 0) + ' publicadas' +
           (counts.properties_stale ? ' · ' + counts.properties_stale + ' estancadas' : '');
       }
-      /* Señal de tareas de propietarios en el badge de Propietarios (si existe).
-     El módulo Propietarios fue movido al CRM, así que este badge ya no existe
-     en el sidebar. Código eliminado porque el badge ya no existe. */
-      if (ownersEl) {
-        const oVenc = counts.owner_tasks_overdue || 0;
-        const oSoon = counts.owner_tasks_soon || 0;
-        ownersEl.textContent = (counts.owners || 0) + ' Activos' +
-          (oVenc > 0 ? ' <span class="nav-badge-venc">' + oVenc + ' venc.</span>' : '') +
-          (oVenc === 0 && oSoon > 0 ? ' <span class="nav-badge-soon">' + oSoon + ' próx.</span>' : '');
-        ownersEl.dataset.bhTip = (counts.owners || 0) + ' propietarios' +
-          (oVenc > 0 ? ' · ' + oVenc + ' tareas vencidas' : '') +
-          (oSoon > 0 ? ' · ' + oSoon + ' vencen en 24 h' : '');
-      } */
       /* #24: badge de recomendaciones en Dashboard (acciones que requieren
          atención: estancadas + tareas vencidas) — la puerta de entrada al
          panel de recomendaciones. */
