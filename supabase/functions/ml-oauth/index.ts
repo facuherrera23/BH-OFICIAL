@@ -305,8 +305,10 @@ Deno.serve(async (req) => {
             .eq('provider', 'mercadolibre')
             .neq('id', insertedConnection.id);
 
-        await supabase.from('activity_log').insert({
+        /* FIX 2026-10-20: activity_log no existe — es audit_log (los inserts fallaban silenciosos) */
+        await supabase.from('audit_log').insert({
             action: 'ml_sync',
+            module: 'portales',
             entity_type: 'ml_connection',
             metadata: { event: 'oauth_connect', ml_user_id: user.id, nickname: user.nickname },
         });
@@ -319,8 +321,9 @@ Deno.serve(async (req) => {
             const failed = webhookResults.filter((r) => !r.ok);
             if (failed.length > 0) {
                 console.warn('ml-oauth: algunos webhooks fallaron al registrar', failed);
-                await supabase.from('activity_log').insert({
+                await supabase.from('audit_log').insert({
                     action: 'ml_sync',
+                    module: 'portales',
                     entity_type: 'ml_connection',
                     metadata: {
                         event: 'oauth_webhook_partial',
@@ -330,8 +333,9 @@ Deno.serve(async (req) => {
                     },
                 });
             } else {
-                await supabase.from('activity_log').insert({
+                await supabase.from('audit_log').insert({
                     action: 'ml_sync',
+                    module: 'portales',
                     entity_type: 'ml_connection',
                     metadata: { event: 'oauth_webhook_registered', ml_user_id: user.id, topics: ML_WEBHOOK_TOPICS },
                 });

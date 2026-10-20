@@ -422,7 +422,7 @@ async function auditLog(entry: {
         entity_type: 'ml_listing',
         entity_id: entry.propertyId ?? null,
         entity_label: entry.mlItemId ?? null,
-        actor_id: entry.userId,
+        user_id: entry.userId, /* FIX 2026-10-20: actor_id no existe en audit_log -> insert silenciosamente fallido */
         metadata: entry.metadata ?? {},
     });
 }

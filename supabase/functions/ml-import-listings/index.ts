@@ -59,8 +59,8 @@ interface ImportResult {
 interface PropertyInsertData {
     title: string;
     description: string | null;
-    price: number | null;
-    currency: string;
+    price_usd: number | null;
+    price_currency: string;
     address: string | null;
     area_total: number | null;
     area_covered: number | null;
@@ -71,31 +71,19 @@ interface PropertyInsertData {
     status: string;
     latitude: number | null;
     longitude: number | null;
-    location_id: string | null;
-    amenities: Record<string, unknown>;
     video_url: string | null;
     year_built: number | null;
-    expenses: number | null;
-    floors: number | null;
     property_type: string | null;
-    operation_type: string | null;
+    /* FIX 2026-10-20: se eliminaron location_id, amenities, expenses, floors,
+       operation_type — columnas que no existen en public.properties (el import
+       fallaba con PGRST204 en TODAS las operaciones). */
 }
 
 // ============================================================
 // Helpers
 // ============================================================
-function slugify(text: string): string {
-    return text
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/(^-|-$)/g, '');
-}
-
-function generatePropertyCode(): number {
-    return Math.floor(1000 + Math.random() * 9000);
-}
+/* FIX 2026-10-20: slugify/generatePropertyCode/extractAttributes eliminados —
+   slug y code no existen en properties (el código lo genera el trigger). */
 
 function mapMlStatusToProperty(status: string): string {
     switch (status) {
@@ -124,14 +112,6 @@ function mapMlListingType(listingTypeId: string): string {
     }
 }
 
-function mapMlOperationType(opType: string | undefined): string | null {
-    if (!opType) return null;
-    const normalized = opType.toLowerCase();
-    if (normalized.includes('venta') || normalized.includes('sell')) return 'venta';
-    if (normalized.includes('alquiler') || normalized.includes('rent')) return 'alquiler';
-    if (normalized.includes('temporario') || normalized.includes('short')) return 'alquiler_temporario';
-    return null;
-}
 
 function mapMlPropertyType(propType: string | undefined): string | null {
     if (!propType) return null;
@@ -145,17 +125,6 @@ function mapMlPropertyType(propType: string | undefined): string | null {
     if (normalized.includes('cochera') || normalized.includes('garage') || normalized.includes('parking')) return 'cochera';
     if (normalized.includes('campo') || normalized.includes('farm') || normalized.includes('rural')) return 'campo';
     return null;
-}
-
-function extractAttributes(attributes: MlItem['attributes']): Record<string, unknown> {
-    if (!attributes) return {};
-    const result: Record<string, unknown> = {};
-    for (const attr of attributes) {
-        if (attr.value_name) {
-            result[attr.id] = attr.value_name;
-        }
-    }
-    return result;
 }
 
 function extractLocationData(item: MlItem): { latitude: number | null; longitude: number | null; address: string | null; location_id: string | null } {
@@ -323,16 +292,16 @@ function mapMlItemToProperty(item: MlItem, description: string | null): Property
     const antiquity = extractIntegerFromAttributes(attrs, 'ANTIQUITY'); // years
     const totalArea = extractAreaFromAttributes(attrs, 'TOTAL_AREA');
     const coveredArea = extractAreaFromAttributes(attrs, 'COVERED_AREA');
-    const floors = extractIntegerFromAttributes(attrs, 'FLOORS');
-    const operationType = attrs.find((a) => a.id === 'OPERATION_TYPE' || a.id === 'OPERATION')?.value_name;
     const propertyType = attrs.find((a) => a.id === 'PROPERTY_TYPE' || a.id === 'TYPE')?.value_name;
     const parkingLots = extractIntegerFromAttributes(attrs, 'PARKING_LOTS');
 
     return {
         title: item.title.slice(0, 200),
         description: description ?? item.description ?? null,
-        price: item.price,
-        currency: item.currency_id ?? 'ARS',
+        /* FIX 2026-10-20: price_usd/price_currency son la fuente de verdad (el trigger
+           sync_property_price_fields pisa price/currency desde ellas). */
+        price_usd: item.price,
+        price_currency: item.currency_id ?? 'ARS',
         address: loc.address,
         area_total: totalArea ?? coveredArea,
         area_covered: coveredArea,
@@ -343,14 +312,9 @@ function mapMlItemToProperty(item: MlItem, description: string | null): Property
         status: mapMlStatusToProperty(item.status),
         latitude: loc.latitude,
         longitude: loc.longitude,
-        location_id: loc.location_id,
-        amenities: extractAttributes(attrs),
         video_url: videoUrl,
         year_built: antiquity ? new Date().getFullYear() - antiquity : null,
-        expenses: null,
-        floors,
         property_type: mapMlPropertyType(propertyType),
-        operation_type: mapMlOperationType(operationType),
     };
 }
 
@@ -411,7 +375,7 @@ async function upsertPropertyAndMeta(
             .from('properties')
             .update({
                 ...propertyData,
-                slug: `${slugify(propertyData.title)}-${existingMeta.property_id.slice(0, 8)}`,
+                /* FIX 2026-10-20: slug no existe en properties — rompía TODO update de re-import */
                 updated_at: new Date().toISOString(),
             })
             .eq('id', existingMeta.property_id);
@@ -425,9 +389,7 @@ async function upsertPropertyAndMeta(
                 status: mlItemData.status,
                 price: mlItemData.price,
                 permalink: mlItemData.permalink,
-                category_id: (mlItemData as Record<string, unknown>).category_id as string | null,
-                listing_type_id: parseInt(mlItemData.listing_type_id.replace(/\D/g, ''), 10) || null,
-                raw: mlItemData as unknown as Record<string, unknown>,
+                /* FIX 2026-10-20: category_id/listing_type_id/raw no existen en property_ml_meta */
                 last_sync_at: new Date().toISOString(),
                 last_sync_status: 'success',
                 updated_at: new Date().toISOString(),
@@ -440,18 +402,14 @@ async function upsertPropertyAndMeta(
     }
 
     // Create new property
-    const propertyCode = generatePropertyCode();
-    const slug = `${slugify(propertyData.title)}-${propertyCode}`;
-
+    /* FIX 2026-10-20: code/slug/favorites_count/views_count no existen en properties.
+       El código lo genera el trigger set_property_code_on_insert (prefijo ML vía source_type). */
     const { data: property, error: propError } = await supabase
         .from('properties')
         .insert({
             ...propertyData,
-            code: propertyCode,
-            slug,
             created_by: createdBy,
-            favorites_count: 0,
-            views_count: 0,
+            source_type: 'ml',
             featured: false,
         })
         .select('id')
@@ -468,9 +426,7 @@ async function upsertPropertyAndMeta(
             status: mlItemData.status,
             price: mlItemData.price,
             permalink: mlItemData.permalink,
-            category_id: (mlItemData as Record<string, unknown>).category_id as string | null,
-            listing_type_id: parseInt(mlItemData.listing_type_id.replace(/\D/g, ''), 10) || null,
-            raw: mlItemData as unknown as Record<string, unknown>,
+            /* FIX 2026-10-20: category_id/listing_type_id/raw no existen en property_ml_meta */
             last_sync_at: new Date().toISOString(),
             last_sync_status: 'success',
         });

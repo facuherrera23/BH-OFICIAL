@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
         entity_type: 'ml_connection',
         entity_id: active.id,
         entity_label: active.nickname ?? active.user_id,
-        actor_id: adminId,
+        user_id: adminId, /* FIX 2026-10-20: actor_id no existe en audit_log -> el insert fallaba silencioso */
         metadata: { event: 'oauth_disconnect', ml_user_id: active.user_id },
     });
 

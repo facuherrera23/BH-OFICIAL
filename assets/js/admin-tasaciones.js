@@ -67,37 +67,41 @@
       if (error || !t) return;
 
       if (t.owner_id) {
-        const { data: existingLead } = await window.supabaseClient
-          .from('leads')
-          .select('id')
-          .eq('source', 'tasacion')
-          .eq('contact_name', t.title || 'Propietario')
-          .maybeSingle();
-        if (existingLead) return;
-
         const ownerRes = t.owner_id ? await window.supabaseClient.from('owners').select('full_name, phone, email').eq('id', t.owner_id).single() : null;
         const owner = ownerRes?.data;
         if (!owner) return;
 
-        await window.supabaseClient.from('leads').insert({
+        /* Dedup: no recrear el lead si ya existe uno de tasación para este propietario */
+        const { data: existingLead } = await window.supabaseClient
+          .from('leads')
+          .select('id')
+          .eq('source', 'tasacion')
+          .eq('full_name', owner.full_name || 'Propietario')
+          .maybeSingle();
+        if (existingLead) return;
+
+        const { error: insErr } = await window.supabaseClient.from('leads').insert({
           property_id: t.property_id || null,
-          broker_id: t.broker_id || null,
+          assigned_to: t.broker_id || null,
           source: 'tasacion',
           stage: 'contactado',
-          tags: ['tasacion', t.type || 'venta'],
-          score: 40,
-          contact_name: owner.full_name || 'Propietario',
-          contact_phone: owner.phone || null,
-          contact_email: owner.email || null,
-          notes: 'Lead generado desde tasación ' + (t.title || '') + (
+          full_name: owner.full_name || 'Propietario',
+          phone: owner.phone || null,
+          email: owner.email || null,
+          notes: 'Lead generado desde tasación (' + (t.type || 'venta') + ') ' + (t.title || '') + (
             t.type === 'alquiler'
               ? (t.valuation_ars ? '. Valor estimado: $ ' + Number(t.valuation_ars).toLocaleString('es-AR') + ' (alquiler mensual)' : '')
               : (t.valuation_usd ? '. Valor estimado: USD ' + Number(t.valuation_usd).toLocaleString('es-AR') : '')
           ),
         });
+        if (insErr) throw insErr;
         showToast('Lead creado desde tasación para ' + (owner.full_name || 'propietario'), 'success');
       }
-    } catch (_) { /* silent */ }
+    } catch (err) {
+      /* Antes este catch era 100% silencioso y el insert fallaba con columnas inexistentes */
+      console.warn('[tasaciones] No se pudo crear el lead desde tasación:', err?.message || err);
+      showToast('No se pudo crear el lead desde la tasación.', 'error');
+    }
   }
 
   async function loadTasaciones() {

@@ -199,21 +199,24 @@ Deno.serve(async (req: Request) => {
 
         // Crear tarea al agente asignado (o genérica)
         const agentId = owner.agent_id || owner.agents?.[0]?.id;
+        let taskCreated = false;
         if (agentId) {
           const taskTitle = `Exclusividad ${daysLeft === 0 ? 'VENCIDA' : 'vence en ' + daysLeft + 'd'} — ${owner.full_name}`;
+          /* FIX 2026-10-20: el insert usaba columnas inexistentes (agent_id, title) y el
+             error se ignoraba -> la tarea nunca se creaba (email sí, tarea no). */
           const { error: taskError } = await supabase
             .from('owner_tasks')
             .insert([{
               owner_id: owner.id,
-              agent_id: agentId,
-              title: taskTitle,
-              description: `La exclusividad de ${owner.full_name} vence el ${expiryDate}. Contactar para renovar o cerrar. ${propCount || 0} propiedad(es) afectada(s).`,
+              assigned_to: agentId,
+              description: taskTitle + '. Contactar para renovar o cerrar. ' + (propCount || 0) + ' propiedad(es) afectada(s).',
               type: 'contact',
               priority: daysLeft <= 1 ? 'urgente' : daysLeft <= 7 ? 'alta' : 'media',
               status: 'pendiente',
               due_date: dateStr,
             }]);
-          if (!taskError) results.tasks++;
+          if (!taskError) { results.tasks++; taskCreated = true; }
+          else console.warn(`[exclusive-alert] task insert failed for ${owner.full_name}: ${taskError.message}`);
         }
 
         // Registrar en owner_notifications (trail legal)
@@ -232,7 +235,7 @@ Deno.serve(async (req: Request) => {
               days_left: daysLeft,
               prop_count: propCount || 0,
               email_sent: !!emailMessageId,
-              task_created: !!agentId,
+              task_created: taskCreated,
             },
           }]);
 
@@ -245,7 +248,7 @@ Deno.serve(async (req: Request) => {
           owner: owner.full_name,
           type: alert.type,
           email_sent: !!emailMessageId,
-          task_created: !!agentId,
+          task_created: taskCreated,
         });
       }
     }

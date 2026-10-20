@@ -1360,7 +1360,7 @@ function getLeadFull(id) {
 var TIMELINE_PAGE = 50;
 function getLeadActivities(id, offset) {
   var from = offset || 0;
-  return db().from('lead_activities').select('id, lead_id, activity_type, title, description, created_at, user_id').eq('lead_id', id).order('created_at', { ascending: false }).range(from, from + TIMELINE_PAGE - 1)
+  return db().from('lead_activities').select('id, lead_id, activity_type, title, description, created_at, created_by').eq('lead_id', id).order('created_at', { ascending: false }).range(from, from + TIMELINE_PAGE - 1)
     .then(function (r) { return r.data || []; }).catch(function () { return []; });
 }
 function getLeadProps(id) {
@@ -1463,7 +1463,7 @@ function renderPropSuggestions(matches) {
    El agente registra lo que el cliente ofrece, lo que el dueño
    contraoferta, y al aceptar se actualiza estimated_value y stage.
    ============================================================ */
-var OFFER_TYPE_LBL = { client: 'Oferta del cliente', counter: 'Contraoferta del dueño', accepted: 'Oferta aceptada', rejected: 'Oferta rechazada' };
+var OFFER_TYPE_LBL = { client: 'Oferta del cliente', counter: 'Contraoferta del dueño' };
 
 /* Refresca el historial de ofertas dentro del panel sin cerrarlo. */
 async function refreshOffersInPanel(leadId, panel) {
@@ -1566,8 +1566,10 @@ function showOfferModal(lead, propId, propTitle, panel) {
   if (amountInput) amountInput.focus();
 
   saveBtn.addEventListener('click', async function() {
+    if (saveBtn.disabled) return; /* anti double-click: doble clic creaba 2 ofertas */
     var amount = parseFloat(amountInput.value);
     if (!amount || amount <= 0) { toast('Ingresá el monto.', 'error'); return; }
+    saveBtn.disabled = true;
     var currency = (box.querySelector('#offerCurrency') || {}).value || 'USD';
     var conditions = ((box.querySelector('#offerConditions') || {}).value || '').trim() || null;
     try {
@@ -1602,7 +1604,7 @@ function showOfferModal(lead, propId, propTitle, panel) {
       close();
       refreshOffersInPanel(lead.id, panel);
       loadLeads();
-    } catch (e) { toast('Error: ' + e.message, 'error'); }
+    } catch (e) { toast('Error: ' + e.message, 'error'); saveBtn.disabled = false; }
   });
 }
 
@@ -1613,8 +1615,8 @@ function renderOfferHistory(offers) {
     offers.map(function(o) {
       var typeLbl = OFFER_TYPE_LBL[o.offer_type] || o.offer_type;
       var fmt = o.currency === 'ARS' ? '$' + Number(o.amount).toLocaleString('es-AR') : 'U$S ' + Number(o.amount).toLocaleString('es-AR');
-      var statusCls = o.offer_type === 'accepted' ? 'offer-status--accepted' : o.offer_type === 'rejected' ? 'offer-status--rejected' : 'offer-status--pending';
-      var statusLbl = o.offer_type === 'accepted' ? '✓ Aceptada' : o.offer_type === 'rejected' ? '✗ Rechazada' : 'Pendiente';
+      var statusCls = o.status === 'accepted' ? 'offer-status--accepted' : o.status === 'rejected' ? 'offer-status--rejected' : 'offer-status--pending';
+      var statusLbl = o.status === 'accepted' ? '✓ Aceptada' : o.status === 'rejected' ? '✗ Rechazada' : 'Pendiente';
       var dateStr = o.created_at ? new Date(o.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
       return '<div class="offer-history-item ' + statusCls + '" data-offer-id="' + o.id + '" data-offer-amount="' + o.amount + '" data-offer-currency="' + o.currency + '">' +
         '<span class="offer-history-type">' + typeLbl + '</span>' +
@@ -1647,7 +1649,7 @@ function bindOfferActions(panel, lead, offers) {
       if (!ok) return;
       try {
         /* Marcar la oferta como aceptada */
-        var r = await db().from('lead_offers').update({ offer_type: 'accepted' }).eq('id', offerId);
+        var r = await db().from('lead_offers').update({ status: 'accepted' }).eq('id', offerId);
         if (r.error) throw new Error(r.error.message);
         /* Actualizar el lead */
         await db().from('leads').update({ estimated_value: amount, stage: 'cerrado_ganado', last_contacted_at: new Date().toISOString() }).eq('id', lead.id);
@@ -1671,7 +1673,7 @@ function bindOfferActions(panel, lead, offers) {
         : confirm('¿Rechazar la oferta de ' + fmt + '?');
       if (!ok) return;
       try {
-        await db().from('lead_offers').update({ offer_type: 'rejected' }).eq('id', offerId);
+        await db().from('lead_offers').update({ status: 'rejected' }).eq('id', offerId);
         await db().from('lead_activities').insert([{ lead_id: lead.id, activity_type: 'note', title: 'Oferta rechazada: ' + fmt }]);
         toast('Oferta rechazada.', 'info');
         refreshOffersInPanel(lead.id, panel);
