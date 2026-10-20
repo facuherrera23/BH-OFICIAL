@@ -115,6 +115,7 @@ Cada HTML tiene su meta CSP propia. Al agregar cualquier recurso externo (API, t
 - RPC `get_sidebar_badge_counts` v2: alimenta TODOS los badges y quick-stats en UNA llamada (props/leads/visits/tasaciones/owners + `leads_new_24h` + `lead_tasks_overdue`/`owner_tasks_overdue`/`tasks_overdue_total` + `chat_unread_*` + `properties_stale` + `ml_*` + `visits_today`). SECURITY DEFINER, EXECUTE solo authenticated (verificado). El cache va en `__BH.lastBadgeCounts`.
 - Refresco de badges: SIEMPRE por `scheduleBadgeRefresh()` (bus con debounce 800ms) — nunca llamar `updateSidebarBadges()` directo desde realtime (una ráfaga de ML eran 5 RPCs seguidas).
 - Keys de localStorage: `bh_last_tab`, `bh_crm_viewmode`, `bh_sidebar_pins`, `bh_recent_tabs`, `bh_new_seen`, `bh_today_open`, `bh_sidebar_dense`, `bh_accent`, `bh_sidebar_collapsed`.
+- **Anti-pestaña-vieja** (2026-10-20): `checkStaleBuild` en admin-app.js — al volver a una pestaña del admin que quedó abierta, compara los `?v=` de admin-app.js/admin-crm.js contra el HTML de producción y tira UN toast "Hay una versión nueva del panel" si el deploy cambió versiones. Throttle 10 min. Nació del incidente lost_reason_detail: el empleador siguió viendo un error 12h después del fix porque el SPA viejo seguía vivo en una pestaña abierta. No duplicar ni cambiar la firma.
 
 ## Imágenes y performance
 

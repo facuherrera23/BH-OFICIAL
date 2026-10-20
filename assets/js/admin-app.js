@@ -1200,6 +1200,49 @@ function esc(s) {
     el.dataset.bhTip = 'Build ' + (m ? m[1] : '?') + ' — ' + new Date(document.lastModified).toLocaleDateString('es-AR');
   }
 
+  /* Anti-pestaña-vieja (2026-10-20): el admin es un SPA que queda abierto días —
+     tras un deploy, el JS viejo sigue VIVO en memoria y los fixes "no llegan nunca"
+     (caso real: el empleador siguió viendo el error de lost_reason_detail 12h
+     después de que el fix estaba en producción). Al volver a la pestaña,
+     comparamos las versiones locales contra el HTML que sirve producción y
+     avisamos UNA vez si hay una más nueva. */
+  let _staleCheckAt = 0;
+  let _staleNotified = false;
+  function _runningAssetVersions() {
+    const out = {};
+    ['admin-app.js', 'admin-crm.js'].forEach(function (name) {
+      const s = document.querySelector('script[src*="' + name + '"]');
+      const m = s ? new RegExp(name.replace('.', '\\.') + '\\?v=(\\d+)').exec(s.src || '') : null;
+      if (m) out[name] = m[1];
+    });
+    return out;
+  }
+  function checkStaleBuild() {
+    if (_staleNotified) return;
+    const now = Date.now();
+    if (now - _staleCheckAt < 10 * 60 * 1000) return; /* throttle 10 min */
+    _staleCheckAt = now;
+    const local = _runningAssetVersions();
+    if (!Object.keys(local).length) return; /* sin ?v= no hay nada que comparar */
+    fetch('./admin.html', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (html) {
+        if (!html) return;
+        const stale = Object.keys(local).some(function (name) {
+          const m = new RegExp(name.replace('.', '\\.') + '\\?v=(\\d+)').exec(html);
+          return m && m[1] !== local[name];
+        });
+        if (stale) {
+          _staleNotified = true;
+          showToast('Hay una versión nueva del panel — recargá la página (F5) para aplicar los últimos cambios.', 'info');
+        }
+      })
+      .catch(function () { /* offline u otro error: silencio, se reintenta en el próximo foco */ });
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') checkStaleBuild();
+  });
+
   /* #23: hover card con los últimos chats sin leer. */
   const hoverCard = document.createElement('div');
   hoverCard.id = 'bhHoverCard';
