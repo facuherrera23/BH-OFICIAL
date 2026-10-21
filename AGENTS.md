@@ -40,6 +40,12 @@ La clase de bug más cara del proyecto: **código escrito contra columnas/tablas
 
 **Cómo detectar antes de deployar**: comparar columnas de `.from('x').select/insert/update` contra `information_schema.columns` (script de un solo query + regex; los falsos positivos son embeds `tabla(col, ...)` y keys de JSONB). Los catch silenciosos son el amplificador: si un flow nuevo "no hace nada", asumir schema mismatch y mirar el `result.error` real.
 
+## Higiene de código (estado tras la purga 2026-10-21)
+
+- **admin.css purgado**: 246 reglas muertas removidas (256→222 KB) con verificación triple (strings HTML+JS+tests, DOM vivo con todos los tabs/modals abiertos, prefijos dinámicos de concatenación `'crm-status-dot--' + stage`). Regla para próximas purgas: detectar prefijos con regex `/['"]([^'"]*-)['"]\s*\+/` (los strings multi-clase con espacio como `'crm-status-dot crm-status-dot--'` rompen el detector simple).
+- **`loadOwners` en admin-propietarios.js es un no-op legacy documentado**: hace early-return porque `#ownersTableBody` no existe (tab vieja). NO borrarlo — sus llamadores están vivos (deleteOwner/restoreOwner/save del modal de owners) y el refresh real de la lista lo hace el `loadOwners` del CRM. Costo cero (retorna antes de cualquier query).
+- Código muerto restante conocido: `process-retention-policies` (edge function aspiracional, requiere tabla `trash_retention_policies` que nunca existió — dejar como stub documentado), tabla `notification_preferences` sin consumidor.
+
 ## CSP por página (caída real ya ocurrida)
 
 Cada HTML tiene su meta CSP propia. Al agregar cualquier recurso externo (API, tiles, imágenes, fonts) hay que actualizar `connect-src`/`img-src` en **cada página afectada**. Caso real: el mapa Leaflet de tasaciones quedó mudo porque faltaban Nominatim (`connect-src`) y tiles OSM (`img-src`).
