@@ -6597,6 +6597,46 @@ input[type="range"]::-moz-range-thumb {
    CRM â€” Mobile (<768px)
    Tabla con scroll horizontal + panel lateral full-screen
    ============================================================ */
+/* ============================================================
+   MOBILE LISTAS DENSA — CRM + Propiedades (fix 2026-10-21)
+   Diagnóstico: .panel-header envuelve, pero las botoneras inline
+   div[style*="display:flex"] SIN flex-wrap empujaban el ancho de
+   la página (CRM 527px / Props 571px contra 435px de pantalla) —
+   scroll lateral en el celular. Las tablas ya scrollean dentro de
+   sus wrappers (.crm-table-wrap / .table-responsive con overflow-x).
+   ============================================================ */
+@media (max-width: 768px) {
+  /* Botoneras de los headers: envolver en vez de empujar el ancho */
+  .panel-header > div[style*="display:flex"],
+  .panel-header > div[style*="display: flex"] {
+    flex-wrap: wrap;
+  }
+  /* El buscador dentro de la botonera (ej. propiedades) toma su propia fila */
+  .panel-header > div[style*="display:flex"] > input,
+  .panel-header > div[style*="display: flex"] > input {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+  }
+  /* Primera columna sticky: al scrollear la tabla horizontal en el
+     celular, cliente/propietario/propiedad quedan siempre visibles */
+  .crm-table th:first-child,
+  .crm-table td:first-child,
+  .props-table th:first-child,
+  .props-table td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: #0E131A; /* --bg-surface: tapa el contenido al scrollear */
+    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.3);
+  }
+  .crm-table thead th:first-child,
+  .props-table thead th:first-child {
+    z-index: 3; /* sobre las celdas sticky del body */
+  }
+  /* Panels más compactos en pantallas chicas */
+  .glass-panel { padding: 16px; }
+
 @media (max-width: 768px) {
   .crm-filters{flex-direction:column;align-items:stretch}
   .crm-filters .crm-field-input,.crm-filters select{width:100%}
@@ -6901,43 +6941,5 @@ input[type="range"]::-moz-range-thumb {
   margin:4px 0 14px;
 }
 
-/* ============================================================
-   MOBILE LISTAS DENSA — CRM + Propiedades (fix 2026-10-21)
-   Diagnóstico: .panel-header envuelve, pero las botoneras inline
-   div[style*="display:flex"] SIN flex-wrap empujaban el ancho de
-   la página (CRM 527px / Props 571px contra 435px de pantalla) —
-   scroll lateral en el celular. Las tablas ya scrollean dentro de
-   sus wrappers (.crm-table-wrap / .table-responsive con overflow-x).
-   ============================================================ */
-@media (max-width: 768px) {
-  /* Botoneras de los headers: envolver en vez de empujar el ancho */
-  .panel-header > div[style*="display:flex"],
-  .panel-header > div[style*="display: flex"] {
-    flex-wrap: wrap;
-  }
-  /* El buscador dentro de la botonera (ej. propiedades) toma su propia fila */
-  .panel-header > div[style*="display:flex"] > input,
-  .panel-header > div[style*="display: flex"] > input {
-    flex: 1 1 100%;
-    width: 100%;
-    min-width: 0;
-  }
-  /* Primera columna sticky: al scrollear la tabla horizontal en el
-     celular, cliente/propietario/propiedad quedan siempre visibles */
-  .crm-table th:first-child,
-  .crm-table td:first-child,
-  .props-table th:first-child,
-  .props-table td:first-child {
-    position: sticky;
-    left: 0;
-    z-index: 2;
-    background: #0E131A; /* --bg-surface: tapa el contenido al scrollear */
-    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.3);
-  }
-  .crm-table thead th:first-child,
-  .props-table thead th:first-child {
-    z-index: 3; /* sobre las celdas sticky del body */
-  }
-  /* Panels más compactos en pantallas chicas */
-  .glass-panel { padding: 16px; }
+
 }
