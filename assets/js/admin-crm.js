@@ -275,7 +275,9 @@ async function loadOwners() {
       ? db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, dni_expiry, cuit_expiry, created_at, agent_id, deleted_at').not('deleted_at', 'is', null)
       : db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, dni_expiry, cuit_expiry, created_at, agent_id').is('deleted_at', null);
     if (_ownerSearch.trim()) {
-      var os = _ownerSearch.trim().replace(/[%_]/g, ' ');
+      /* FIX 2026-10-21: solo se sanitiza % — el _ como wildcard de ilike hace
+         encontrables los emails con guión bajo (antes se convertía en espacio). */
+      var os = _ownerSearch.trim().replace(/[%]/g, ' ');
       var ors = ['full_name', 'email', 'phone', 'dni_cuit', 'address'].map(function (f) { return f + '.ilike.%' + os + '%'; }).join(',');
       var ownerIdsByProp = [];
       try {
@@ -2276,7 +2278,8 @@ function bindPropSearch(panel, leadId) {
   });
   var timer;
   function doSearch(val) {
-    var q = val.trim().replace(/[%_]/g, ' ');
+    /* FIX 2026-10-21: solo % — el _ es wildcard inofensivo de ilike. */
+    var q = val.trim().replace(/[%]/g, ' ');
     if (q.length < 2) {
       document.querySelectorAll('.crm-prop-results').forEach(function (el) { el.remove(); });
       return;

@@ -1242,9 +1242,19 @@
     });
 
     var feedSearch = $('supFeedSearch');
-    if (feedSearch) feedSearch.addEventListener('keydown', function(ev) {
-      if (ev.key === 'Enter') { _feedPage = 0; loadFeed(); }
-    });
+    if (feedSearch) {
+      /* FIX 2026-10-21 (pedido del dueño): filtrado en vivo con debounce — igual
+         que el resto de los buscadores del panel. Antes solo funcionaba con Enter
+         y parecía no hacer nada al tipear. Enter sigue andando (corta el debounce). */
+      var _feedSearchTimer = null;
+      feedSearch.addEventListener('input', function() {
+        clearTimeout(_feedSearchTimer);
+        _feedSearchTimer = setTimeout(function() { _feedPage = 0; loadFeed(); }, 350);
+      });
+      feedSearch.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter') { clearTimeout(_feedSearchTimer); _feedPage = 0; loadFeed(); }
+      });
+    }
 
     var feedMore = $('supFeedLoadMore');
     if (feedMore) feedMore.addEventListener('click', function() {
@@ -1259,13 +1269,26 @@
     if (userExport) userExport.addEventListener('click', exportUserActivity);
 
     var detSearch = $('supDetailSearch');
-    if (detSearch) detSearch.addEventListener('keydown', function(ev) {
-      if (ev.key === 'Enter') {
-        _detSearch = this.value.trim();
-        _detPage = 0;
-        if (_currentUserId) loadDetailActivity().catch(function(err) { showErr('supEmployeeActivity', err); });
-      }
-    });
+    if (detSearch) {
+      /* FIX 2026-10-21: mismo criterio que supFeedSearch — en vivo con debounce. */
+      var _detSearchTimer = null;
+      detSearch.addEventListener('input', function() {
+        clearTimeout(_detSearchTimer);
+        _detSearchTimer = setTimeout(function() {
+          _detSearch = detSearch.value.trim();
+          _detPage = 0;
+          if (_currentUserId) loadDetailActivity().catch(function(err) { showErr('supEmployeeActivity', err); });
+        }, 350);
+      });
+      detSearch.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter') {
+          clearTimeout(_detSearchTimer);
+          _detSearch = this.value.trim();
+          _detPage = 0;
+          if (_currentUserId) loadDetailActivity().catch(function(err) { showErr('supEmployeeActivity', err); });
+        }
+      });
+    }
 
     ['supGlobalFeed', 'supEmployeeActivity'].forEach(function(cid) {
       var c = $(cid);

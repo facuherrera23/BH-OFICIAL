@@ -3205,7 +3205,9 @@ function esc(s) {
       .limit(5000);
     const sv = document.getElementById('crmSearch');
     if (sv && sv.value.trim()) {
-      const s = sv.value.trim().replace(/[%_]/g, ' ');
+      /* FIX 2026-10-21: solo % — mismo criterio que applyBaseFilters (el _ como
+         wildcard de ilike hace encontrables los emails con guión bajo). */
+      const s = sv.value.trim().replace(/[%]/g, ' ');
       q = q.or(['full_name', 'email', 'phone', 'whatsapp', 'notes', 'preferred_zone'].map(f => f + '.ilike.%' + s + '%').join(','));
     }
     const stSel = document.getElementById('crmStatusFilter');

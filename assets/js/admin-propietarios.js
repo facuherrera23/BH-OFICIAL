@@ -1713,7 +1713,8 @@ closeModal('ownerModal');
         .order('created_at', { ascending: false })
         .limit(30);
       q = includeLinked ? q.neq('owner_id', ownerId) : q.is('owner_id', null);
-      if (search) q = q.ilike('title', '%' + search.replace(/[%_]/g, ' ') + '%');
+      /* FIX 2026-10-21: solo % — el _ es wildcard inofensivo de ilike (antes rompía títulos con guión bajo). */
+      if (search) q = q.ilike('title', '%' + search.replace(/[%]/g, ' ') + '%');
       const { data, error } = await q;
       if (error) throw error;
       const rows = (data || []).filter(t => t.owner_id !== ownerId);

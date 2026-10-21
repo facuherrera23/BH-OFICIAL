@@ -72,7 +72,10 @@
     else q = q.is('deleted_at', null);
     if (_agStatusFilter) q = q.eq('status', _agStatusFilter);
     if (_agSearchQuery) {
-      const s = _agSearchQuery.replace(/[%_]/g, ' ');
+      /* FIX 2026-10-21: solo se sanitiza % (rompe el patrón ilike). El _ queda como
+         wildcard inofensivo — antes lo convertía en espacio y los emails con guión
+         bajo no se encontraban. */
+      const s = _agSearchQuery.replace(/[%]/g, ' ');
       q = q.or(['full_name', 'email', 'matricula'].map(f => f + '.ilike.%' + s + '%').join(','));
     }
     if (!opts.noOrder) q = q.order(_agSortCol, { ascending: _agSortAsc, nullsFirst: false });
