@@ -83,12 +83,6 @@
 </div>
 <div class="menu-category">Gestión &amp; CRM</div>
 
-<div class="nav-item" data-tab="tab-executive" style="display:none;" title="Panel ejecutivo del negocio (solo Super Admin)">
-  <div class="nav-item-left">
-    <i class="fas fa-chart-line"> </i>
-    <span>Alta Dirección</span>
-  </div>
-</div>
 <div class="nav-item" data-tab="tab-propiedades">
 <div class="nav-item-left">
 <i class="fas fa-home">
@@ -433,59 +427,6 @@
 </div>
 </div>
 </section>
-<!-- 1B. ALTA DIRECCIÓN (solo Super Admin — activado 2026-10-21) -->
-<section class="tab-module" id="tab-executive">
-<header class="tab-header">
-<h2 style="font-family:var(--font-heading); font-size:24px; color:#fff; margin:0;">Alta Dirección</h2>
-<p style="color:var(--text-muted); font-size:13px; margin:4px 0 0;">Cómo va el negocio: conversión, cartera, tendencias y alertas estratégicas</p>
-</header>
-<div class="panel-header">
-<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-<label style="font-size:12px; color:var(--text-dim);">Desde</label>
-<input type="date" id="execFromDate" class="crm-field-input" style="width:auto;" />
-<label style="font-size:12px; color:var(--text-dim);">Hasta</label>
-<input type="date" id="execToDate" class="crm-field-input" style="width:auto;" />
-</div>
-<div style="display:flex; gap:10px;">
-<button type="button" class="btn-luxury-action" id="execRefreshBtn" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);"><i class="fas fa-sync"></i> Actualizar</button>
-<button type="button" class="btn-luxury-action" id="execExportBtn" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);"><i class="fas fa-download"></i> CSV</button>
-</div>
-</div>
-<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin:18px 0 22px;">
-<div class="kpi-card"><div class="kpi-top"><span class="kpi-title">Conversión Lead→Cierre</span><div class="kpi-icon"><i class="fas fa-percent"></i></div></div><div class="kpi-value" id="execConvRate">—</div></div>
-<div class="kpi-card"><div class="kpi-top"><span class="kpi-title">Tiempo medio de cierre</span><div class="kpi-icon"><i class="fas fa-stopwatch"></i></div></div><div class="kpi-value" id="execAvgCloseTime">—</div></div>
-<div class="kpi-card"><div class="kpi-top"><span class="kpi-title">Cartera en venta</span><div class="kpi-icon"><i class="fas fa-dollar-sign"></i></div></div><div class="kpi-value" id="execPortfolioVenta">—</div></div>
-<div class="kpi-card"><div class="kpi-top"><span class="kpi-title">Cartera en alquiler</span><div class="kpi-icon"><i class="fas fa-key"></i></div></div><div class="kpi-value" id="execPortfolioAlquiler">—</div></div>
-<div class="kpi-card"><div class="kpi-top"><span class="kpi-title">Ritmo de leads</span><div class="kpi-icon"><i class="fas fa-bolt"></i></div></div><div class="kpi-value" id="execLeadsPerDay">—</div></div>
-<div class="kpi-card"><div class="kpi-top"><span class="kpi-title">Productividad brokers</span><div class="kpi-icon"><i class="fas fa-user-tie"></i></div></div><div class="kpi-value" id="execBrokerProd">—</div></div>
-<div class="kpi-card"><div class="kpi-top"><span class="kpi-title">Leads atendidos</span><div class="kpi-icon"><i class="fas fa-headset"></i></div></div><div class="kpi-value" id="execSLAResponse">—</div></div>
-</div>
-<div class="exec-grid-2" style="display:grid; grid-template-columns:1.4fr 1fr; gap:18px; margin-bottom:22px;">
-<div class="glass-panel">
-<h3 style="margin:0 0 14px; font-size:15px; color:#fff;"><i class="fas fa-chart-column" style="color:var(--accent); margin-right:8px;"></i>Tendencia — últimos 12 meses</h3>
-<div id="execTrendChart"></div>
-</div>
-<div class="glass-panel">
-<h3 style="margin:0 0 14px; font-size:15px; color:#fff;"><i class="fas fa-fire" style="color:#F59E0B; margin-right:8px;"></i>Oportunidades</h3>
-<div id="execTopOpps"></div>
-</div>
-</div>
-<div class="glass-panel" style="margin-bottom:22px;">
-<h3 style="margin:0 0 14px; font-size:15px; color:#fff;"><i class="fas fa-radar" style="color:#EF4444; margin-right:8px;"></i>Alertas estratégicas</h3>
-<div id="execStrategicAlerts"></div>
-</div>
-<div class="glass-panel">
-<h3 style="margin:0 0 14px; font-size:15px; color:#fff;"><i class="fas fa-table" style="color:#3B82F6; margin-right:8px;"></i>Resumen mensual</h3>
-<div class="table-responsive">
-<table class="luxury-table">
-<thead><tr><th>Mes</th><th style="text-align:right;">Leads</th><th style="text-align:right;">Visitas</th><th style="text-align:right;">Cierres</th><th style="text-align:right;">Valor cerrado</th><th style="text-align:right;">Conversión</th><th style="text-align:right;">T. medio cierre</th><th style="text-align:right;">Ticket promedio</th></tr></thead>
-<tbody id="execMonthlyTableBody">
-</tbody>
-</table>
-</div>
-</div>
-</section>
-
 <!-- 2. PROPIEDADES -->
 <section class="tab-module" id="tab-propiedades">
 <div class="glass-panel">

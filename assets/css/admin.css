@@ -5880,7 +5880,5 @@ input[type="range"]::-moz-range-thumb {
 
 }
 
-/* Alta Dirección: el grid de 2 columnas colapsa en pantallas chicas (2026-10-21) */
-@media (max-width: 900px) {
-  .exec-grid-2 { grid-template-columns: 1fr !important; }
+
 }
