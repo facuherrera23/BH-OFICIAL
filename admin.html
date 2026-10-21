@@ -8,7 +8,7 @@
 <!-- Font Awesome -->
 <link rel="stylesheet" href="assets/vendor/fontawesome/css/all.min.css?v=1" />
 <link rel="stylesheet" href="assets/vendor/leaflet/leaflet.min.css?v=1" />
-<link rel="stylesheet" href="assets/css/admin.css?v=332" />
+<link rel="stylesheet" href="assets/css/admin.css?v=333" />
 </head>
 <body class="is-loading">
 <!-- PRELOADER LUXURY -->
@@ -82,6 +82,13 @@
 </div>
 </div>
 <div class="menu-category">Gestión &amp; CRM</div>
+
+<div class="nav-item" data-tab="tab-executive" style="display:none;" title="Panel ejecutivo del negocio (solo Super Admin)">
+  <div class="nav-item-left">
+    <i class="fas fa-chart-line"> </i>
+    <span>Alta Dirección</span>
+  </div>
+</div>
 <div class="nav-item" data-tab="tab-propiedades">
 <div class="nav-item-left">
 <i class="fas fa-home">
@@ -426,6 +433,59 @@
 </div>
 </div>
 </section>
+<!-- 1B. ALTA DIRECCIÓN (solo Super Admin — activado 2026-10-21) -->
+<section class="tab-module" id="tab-executive">
+<header class="tab-header">
+<h2 style="font-family:var(--font-heading); font-size:24px; color:#fff; margin:0;">Alta Dirección</h2>
+<p style="color:var(--text-muted); font-size:13px; margin:4px 0 0;">Cómo va el negocio: conversión, cartera, tendencias y alertas estratégicas</p>
+</header>
+<div class="panel-header">
+<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+<label style="font-size:12px; color:var(--text-dim);">Desde</label>
+<input type="date" id="execFromDate" class="crm-field-input" style="width:auto;" />
+<label style="font-size:12px; color:var(--text-dim);">Hasta</label>
+<input type="date" id="execToDate" class="crm-field-input" style="width:auto;" />
+</div>
+<div style="display:flex; gap:10px;">
+<button type="button" class="btn-luxury-action" id="execRefreshBtn" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);"><i class="fas fa-sync"></i> Actualizar</button>
+<button type="button" class="btn-luxury-action" id="execExportBtn" style="background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle);"><i class="fas fa-download"></i> CSV</button>
+</div>
+</div>
+<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin:18px 0 22px;">
+<div class="kpi-card"><div class="kpi-top"><span class="kpi-title">Conversión Lead→Cierre</span><div class="kpi-icon"><i class="fas fa-percent"></i></div></div><div class="kpi-value" id="execConvRate">—</div></div>
+<div class="kpi-card"><div class="kpi-top"><span class="kpi-title">Tiempo medio de cierre</span><div class="kpi-icon"><i class="fas fa-stopwatch"></i></div></div><div class="kpi-value" id="execAvgCloseTime">—</div></div>
+<div class="kpi-card"><div class="kpi-top"><span class="kpi-title">Cartera en venta</span><div class="kpi-icon"><i class="fas fa-dollar-sign"></i></div></div><div class="kpi-value" id="execPortfolioVenta">—</div></div>
+<div class="kpi-card"><div class="kpi-top"><span class="kpi-title">Cartera en alquiler</span><div class="kpi-icon"><i class="fas fa-key"></i></div></div><div class="kpi-value" id="execPortfolioAlquiler">—</div></div>
+<div class="kpi-card"><div class="kpi-top"><span class="kpi-title">Ritmo de leads</span><div class="kpi-icon"><i class="fas fa-bolt"></i></div></div><div class="kpi-value" id="execLeadsPerDay">—</div></div>
+<div class="kpi-card"><div class="kpi-top"><span class="kpi-title">Productividad brokers</span><div class="kpi-icon"><i class="fas fa-user-tie"></i></div></div><div class="kpi-value" id="execBrokerProd">—</div></div>
+<div class="kpi-card"><div class="kpi-top"><span class="kpi-title">Leads atendidos</span><div class="kpi-icon"><i class="fas fa-headset"></i></div></div><div class="kpi-value" id="execSLAResponse">—</div></div>
+</div>
+<div class="exec-grid-2" style="display:grid; grid-template-columns:1.4fr 1fr; gap:18px; margin-bottom:22px;">
+<div class="glass-panel">
+<h3 style="margin:0 0 14px; font-size:15px; color:#fff;"><i class="fas fa-chart-column" style="color:var(--accent); margin-right:8px;"></i>Tendencia — últimos 12 meses</h3>
+<div id="execTrendChart"></div>
+</div>
+<div class="glass-panel">
+<h3 style="margin:0 0 14px; font-size:15px; color:#fff;"><i class="fas fa-fire" style="color:#F59E0B; margin-right:8px;"></i>Oportunidades</h3>
+<div id="execTopOpps"></div>
+</div>
+</div>
+<div class="glass-panel" style="margin-bottom:22px;">
+<h3 style="margin:0 0 14px; font-size:15px; color:#fff;"><i class="fas fa-radar" style="color:#EF4444; margin-right:8px;"></i>Alertas estratégicas</h3>
+<div id="execStrategicAlerts"></div>
+</div>
+<div class="glass-panel">
+<h3 style="margin:0 0 14px; font-size:15px; color:#fff;"><i class="fas fa-table" style="color:#3B82F6; margin-right:8px;"></i>Resumen mensual</h3>
+<div class="table-responsive">
+<table class="luxury-table">
+<thead><tr><th>Mes</th><th style="text-align:right;">Leads</th><th style="text-align:right;">Visitas</th><th style="text-align:right;">Cierres</th><th style="text-align:right;">Valor cerrado</th><th style="text-align:right;">Conversión</th><th style="text-align:right;">T. medio cierre</th><th style="text-align:right;">Ticket promedio</th></tr></thead>
+<tbody id="execMonthlyTableBody">
+</tbody>
+</table>
+</div>
+</div>
+</section>
+
 <!-- 2. PROPIEDADES -->
 <section class="tab-module" id="tab-propiedades">
 <div class="glass-panel">
@@ -3442,7 +3502,7 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 <!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Recursos críticos no cargaron.</strong> Revisá tu conexión a internet y recargá la página (F5). Si persiste, tus datos están a salvo — reintentá más tarde. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script src="assets/vendor/supabase-js.umd.js?v=1"></script><script src="assets/js/zod.umd.js"></script><script src="assets/js/utils.js?v=214"></script><script src="assets/js/config.js?v=215"></script><script src="assets/js/supabase-client.js?v=214"></script><script src="assets/js/cloudinary.js?v=216"></script><script src="assets/js/admin-crm-tasks.js?v=14"></script>
 <script src="assets/js/admin-crm.js?v=93"></script>
 <script src="assets/js/disable-search-autocomplete.js?v=3"></script>
-<script src="assets/js/admin-app.js?v=531"></script>
+<script src="assets/js/admin-app.js?v=532"></script>
 <script src="assets/js/admin-propietarios.js?v=20"></script>
 <script src="assets/js/admin-usuarios.js?v=11"></script>
 <script src="assets/js/admin-agentes.js?v=11"></script>

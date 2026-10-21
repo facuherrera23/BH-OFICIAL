@@ -1299,7 +1299,7 @@ function esc(s) {
   /* #25: ítems de sistema solo para super_admin. */
   function applyRoleVisibility() {
     const isAdmin = window.currentProfile && window.currentProfile.role === 'super_admin';
-    ['tab-usuarios', 'tab-supervision'].forEach(tab => {
+    ['tab-usuarios', 'tab-supervision', 'tab-executive'].forEach(tab => {
       const item = document.querySelector('#sidebar .nav-item[data-tab="' + tab + '"]');
       if (item) item.style.display = isAdmin ? '' : 'none';
     });
@@ -1606,7 +1606,7 @@ function esc(s) {
         if (!(/^tab-[a-z-]+$/.test(target) && tEl && tEl.classList.contains('tab-module'))) target = 'tab-dashboard';
         sub = '';
       }
-      if ((target === 'tab-usuarios' || target === 'tab-supervision') && currentProfile?.role !== 'super_admin') { target = 'tab-dashboard'; sub = ''; }
+      if ((target === 'tab-usuarios' || target === 'tab-supervision' || target === 'tab-executive') && currentProfile?.role !== 'super_admin') { target = 'tab-dashboard'; sub = ''; }
       navigateTo(target, sub ? { subview: sub } : undefined);
     }
   }
@@ -1938,6 +1938,7 @@ function esc(s) {
       'tab-configuracion': 'Configuración General',
       'tab-ficha-html': 'Ficha HTML',
       'tab-supervision': 'Centro de Supervisión',
+  'tab-executive': 'Alta Dirección',
     };
     const titleEl = $('#moduleTitle');
     if (titleEl) titleEl.textContent = titles[section] || 'Panel';
@@ -1962,6 +1963,7 @@ function esc(s) {
       'tab-portales': () => window.__BH.loadPortals?.(),
       'tab-ficha-html': () => window.__BH.loadFichaHtml?.(),
       'tab-supervision': () => window.__BH.loadSupervision?.(),
+  'tab-executive': () => window.loadExecutiveDashboard?.(),
     };
     if (loaders[section]) loaders[section]();
     /* #28: sub-vista explícita (#tab-leads/owners) — el módulo decide qué hacer. */
@@ -5182,15 +5184,32 @@ const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
 let _execFromDate = '';
 let _execToDate = '';
 
+/* FIX 2026-10-21: este IIFE es TOP-LEVEL — setKPI/formatPrice/logError/esc del
+   IIFE principal NO están en su scope (ReferenceError instantáneo: el dashboard
+   ejecutivo jamás pudo correr). Helpers autocontenidos vía window.__BH. */
+const esc = (window.__BH && window.__BH.esc) || (window.BHUtils && window.BHUtils.esc) || String;
+const logError = function () { (window.__BH && window.__BH.logError ? window.__BH.logError : console.error).apply(null, ['[exec]'].concat([].slice.call(arguments))); };
+const showToast = (window.__BH && window.__BH.showToast) || function () {};
+function setKPI(id, value) { const el = document.getElementById(id); if (el) el.textContent = String(value); }
+function formatPrice(n, currency) {
+  const num = Number(n) || 0;
+  return (currency === 'ARS' ? '$ ' : 'U$S ') + num.toLocaleString('es-AR', { maximumFractionDigits: 0 });
+}
+
   // Load Executive Dashboard
   window.loadExecutiveDashboard = async function() {
-    const currentUser = window._bhCurrentUser;
-    const currentProfile = window._bhCurrentProfile;
+    /* FIX 2026-10-21: los globals reales son window.currentUser/currentProfile —
+       _bhCurrentUser no existe y el guard mataba la función en silencio. */
+    const currentUser = window.currentUser;
+    const currentProfile = window.currentProfile;
     if (!currentUser || !window.supabaseClient) return;
     if (currentProfile?.role !== 'super_admin') return;
 
-    _execFromDate = $('#execFromDate').value || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    _execToDate = $('#execToDate').value || new Date().toISOString().split('T')[0];
+    _execFromDate = ($('#execFromDate') ? $('#execFromDate').value : '') || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    _execToDate = ($('#execToDate') ? $('#execToDate').value : '') || new Date().toISOString().split('T')[0];
+    /* UX: mostrar el rango activo en los inputs al primer load */
+    const fdEl = $('#execFromDate'); if (fdEl && !fdEl.value) fdEl.value = _execFromDate;
+    const tdEl = $('#execToDate'); if (tdEl && !tdEl.value) tdEl.value = _execToDate;
 
     await Promise.all([
       loadExecKPIs(),
@@ -5219,7 +5238,7 @@ let _execToDate = '';
         window.supabaseClient.from('leads').select('id, stage, created_at, budget_usd').gte('created_at', _execFromDate).lte('created_at', _execToDate),
         window.supabaseClient.from('visits').select('id, visit_date, lead_id').gte('visit_date', _execFromDate).lte('visit_date', _execToDate),
         window.supabaseClient.from('leads').select('id, stage, created_at, budget_usd').eq('stage', 'cerrado_ganado').gte('updated_at', _execFromDate).lte('updated_at', _execToDate),
-        window.supabaseClient.from('properties').select('price_usd, price_currency, status, is_published').eq('is_published', true).neq('status', 'vendido'),
+        window.supabaseClient.from('properties').select('price_usd, price_currency, status, is_published').eq('is_published', true).eq('is_vendida', false),
         window.supabaseClient.from('audit_log').select('user_id, action, status, created_at, metadata').gte('created_at', new Date(_execFromDate).toISOString()).lte('created_at', new Date(_execToDate).toISOString()),
         window.supabaseClient.from('agents').select('id, full_name, sales_ytd').eq('status', 'activo').is('deleted_at', null)
       ]);
@@ -5250,17 +5269,21 @@ let _execToDate = '';
         setKPI('execAvgCloseTime', '—');
       }
 
-      const _execPropsVenta = properties.filter(p => p.status === 'venta' || (!p.status && (p.price_currency || 'USD') === 'USD'));
-      const _execPropsAlquiler = properties.filter(p => p.status === 'alquiler' || p.price_currency === 'ARS');
+      /* FIX 2026-10-21: split por status real (venta/alquiler) — antes mezclaba
+         status con price_currency y el neq('status','vendido') no filtraba nada
+         (lo vendido se marca con is_vendida, ya filtrada en la query). */
+      const _execPropsVenta = properties.filter(p => p.status === 'venta');
+      const _execPropsAlquiler = properties.filter(p => p.status === 'alquiler');
       const _execVenta = _execPropsVenta.reduce((s, p) => s + (p.price_usd || 0), 0);
       const _execAlquiler = _execPropsAlquiler.reduce((s, p) => s + (p.price_usd || 0), 0);
       setKPI('execPortfolioVenta', formatPrice(_execVenta, 'USD'));
       setKPI('execPortfolioAlquiler', formatPrice(_execAlquiler, 'ARS'));
 
-      // KPI: ROI Marketing (leads por USD invertido - estimado)
-      const marketingSpend = 10000; // USD estimado mensual
-      const leadsPerDollar = marketingSpend > 0 ? (totalLeads / marketingSpend).toFixed(2) : 0;
-      setKPI('execMarketingROI', leadsPerDollar + ' leads/USD');
+      // KPI: Ritmo de leads (leads/día del período) — dato real.
+      // (El viejo "ROI Marketing" dividía contra USD 10.000 inventados.)
+      const daysIn = Math.max(1, Math.round((new Date(_execToDate).getTime() - new Date(_execFromDate).getTime()) / 86400000) + 1);
+      const leadsPerDay = (totalLeads / daysIn).toFixed(1);
+      setKPI('execLeadsPerDay', leadsPerDay);
 
       // KPI: Productividad Brokers
       const activeBrokers = brokers.filter(b => b.sales_ytd && b.sales_ytd > 0).length;
@@ -5273,9 +5296,6 @@ let _execToDate = '';
       const contactedLeads = leads.filter(l => ['contactado', 'calificado', 'visita_agendada', 'visita_realizada', 'negociacion', 'cerrado_ganado'].includes(l.stage)).length;
       const slaRate = totalLeads > 0 ? ((contactedLeads / totalLeads) * 100).toFixed(1) : 0;
       setKPI('execSLAResponse', slaRate + '%');
-
-      // Update sidebar badges
-      updateSidebarBadges();
     } catch (err) {
       logError('loadExecKPIs error:', err);
     }
@@ -5361,10 +5381,10 @@ let _execToDate = '';
       // Get top properties by value that are not sold
       const { data: props } = await window.supabaseClient
         .from('properties')
-        .select('id, title, price_usd, zone, status, created_at')
+        .select('id, title, price_usd, price_currency, zone, status, created_at')
         .eq('is_published', true)
-        .neq('status', 'vendido')
-        .neq('status', 'alquilado')
+        .eq('is_vendida', false)
+        .eq('is_reservada', false)
         .order('price_usd', { ascending: false })
         .limit(10);
 
@@ -5382,8 +5402,8 @@ let _execToDate = '';
         props.forEach((p, i) => {
           html += `<div style="padding:10px; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
             <div>
-              <div style="font-weight:600; color:#fff;">${i + 1}. ${p.title || 'Sin título'}</div>
-              <div style="font-size:11px; color:var(--text-dim);">${p.zone || 'Sin zona'} • ${p.status}</div>
+              <div style="font-weight:600; color:#fff;">${i + 1}. ${esc(p.title || 'Sin título')}</div>
+              <div style="font-size:11px; color:var(--text-dim);">${esc(p.zone || 'Sin zona')} • ${esc(p.status || '—')}</div>
             </div>
             <div style="color:var(--accent); font-weight:700;">${formatPrice(p.price_usd, p.price_currency)}</div>
           </div>`;
@@ -5403,7 +5423,7 @@ let _execToDate = '';
         });
       }
 
-      if (!props.length && !leads.length) {
+      if (!props?.length && !leads?.length) {
         html = '<p style="color:var(--text-dim); text-align:center; padding:20px;">Sin oportunidades destacadas</p>';
       }
 
@@ -5426,8 +5446,12 @@ let _execToDate = '';
     try {
       const [alertsRes, anomaliesRes, auditRes] = await Promise.all([
         window.supabaseClient.from('supervision_alerts').select('id, severity, title, module, user_id, created_at, status, description').eq('status', 'open').in('severity', ['critical', 'high']).order('created_at', { ascending: false }).limit(5),
-        window.supabaseClient.from('supervision_anomalies').select('id, severity, module, user_id, action, created_at, status').eq('status', 'open').in('severity', ['critical', 'high']).order('created_at', { ascending: false }).limit(5),
-        window.supabaseClient.from('audit_log').select('id, action, user_id, table_name, status, error_code, created_at').eq('status', 'critical').gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).order('created_at', { ascending: false }).limit(5)
+        /* FIX 2026-10-21: el render usa metric/observed/expected/z/percentile — antes
+           no venían en el SELECT y todo mostraba "undefined". */
+        window.supabaseClient.from('supervision_anomalies').select('id, severity, module, user_id, action, metric, observed_value, expected_mean, z_score, percentile_rank, created_at, status').eq('status', 'open').in('severity', ['critical', 'high']).order('created_at', { ascending: false }).limit(5),
+        /* FIX 2026-10-21: audit_log.status es success|error — 'critical' no existe
+           y traía 0 filas para siempre. */
+        window.supabaseClient.from('audit_log').select('id, action, module, user_id, status, error_code, created_at').eq('status', 'error').gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()).order('created_at', { ascending: false }).limit(5)
       ]);
 
       const alerts = alertsRes.data || [];
@@ -5437,31 +5461,31 @@ let _execToDate = '';
       let html = '<div style="display:flex; flex-direction:column; gap:12px;">';
 
       if (alerts.length) {
-        html += '<div><strong style="color:#EF4444;">?? Alertas Críticas/Alta</strong></div>';
+        html += '<div><strong style="color:#EF4444;"><i class="fas fa-bell" style="margin-right:6px;"></i>Alertas Críticas/Altas</strong></div>';
         alerts.forEach(a => {
           html += `<div style="padding:10px; background:rgba(239,68,68,0.1); border:1px solid #EF4444; border-radius:8px;">
-            <div style="font-weight:600; color:#EF4444;">${a.title || a.rule_name || a.alert_type}</div>
-            <div style="font-size:11px; color:var(--text-dim);">${a.module} • ${a.user_name || a.user_id} • ${new Date(a.created_at).toLocaleString('es-AR')}</div>
+            <div style="font-weight:600; color:#EF4444;">${esc(a.title || a.alert_type || 'Alerta')}</div>
+            <div style="font-size:11px; color:var(--text-dim);">${esc(a.module || '—')} • ${new Date(a.created_at).toLocaleString('es-AR')}</div>
           </div>`;
         });
       }
 
       if (anomalies.length) {
-        html += '<div style="margin-top:8px;"><strong style="color:#F97316;">?? Anomalías Detectadas</strong></div>';
+        html += '<div style="margin-top:8px;"><strong style="color:#F97316;"><i class="fas fa-wave-square" style="margin-right:6px;"></i>Anomalías Detectadas</strong></div>';
         anomalies.forEach(a => {
           html += `<div style="padding:10px; background:rgba(249,115,22,0.1); border:1px solid #F97316; border-radius:8px;">
-            <div style="font-weight:600; color:#F97316;">${a.module} • ${a.action} (${a.metric})</div>
-            <div style="font-size:11px; color:var(--text-dim);">Valor: ${a.observed_value} vs Esperado: ${a.expected_mean} • Z-Score: ${a.z_score?.toFixed(2) || 'N/A'} • Percentil: ${a.percentile_rank}%</div>
+            <div style="font-weight:600; color:#F97316;">${esc(a.module || '—')} • ${esc(a.action || '—')} (${esc(a.metric || '—')})</div>
+            <div style="font-size:11px; color:var(--text-dim);">Valor: ${esc(a.observed_value)} vs Esperado: ${esc(a.expected_mean)} • Z: ${a.z_score != null ? Number(a.z_score).toFixed(2) : 'N/A'} • Percentil: ${esc(a.percentile_rank)}%</div>
           </div>`;
         });
       }
 
       if (criticalAudit.length) {
-        html += '<div style="margin-top:8px;"><strong style="color:#EF4444;">?? Eventos Críticos (24h)</strong></div>';
+        html += '<div style="margin-top:8px;"><strong style="color:#EF4444;"><i class="fas fa-bug" style="margin-right:6px;"></i>Errores del sistema (24h)</strong></div>';
         criticalAudit.forEach(a => {
           html += `<div style="padding:10px; background:rgba(239,68,68,0.1); border:1px solid #EF4444; border-radius:8px;">
-            <div style="font-weight:600; color:#EF4444;">${a.action} en ${a.module}</div>
-            <div style="font-size:11px; color:var(--text-dim);">${a.user_id} • ${new Date(a.created_at).toLocaleString('es-AR')}</div>
+            <div style="font-weight:600; color:#EF4444;">${esc(a.action || '—')} en ${esc(a.module || '—')}</div>
+            <div style="font-size:11px; color:var(--text-dim);">${new Date(a.created_at).toLocaleString('es-AR')}</div>
           </div>`;
         });
       }
@@ -5500,7 +5524,7 @@ let _execToDate = '';
       const [leadsRes, visitsRes, closedRes, propsRes] = await Promise.all([
         window.supabaseClient.from('leads').select('created_at, budget_usd, stage').gte('created_at', new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString()),
         window.supabaseClient.from('visits').select('visit_date').gte('visit_date', new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString()),
-        window.supabaseClient.from('leads').select('updated_at, budget_usd').eq('stage', 'cerrado_ganado').gte('updated_at', new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString()),
+        window.supabaseClient.from('leads').select('updated_at, created_at, budget_usd').eq('stage', 'cerrado_ganado').gte('updated_at', new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString()),
         window.supabaseClient.from('properties').select('created_at, price_usd, status').eq('is_published', true).gte('created_at', new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString())
       ]);
 
@@ -5555,14 +5579,22 @@ let _execToDate = '';
     if (!window.supabaseClient) return;
     // Export executive KPIs
     const kpis = {};
-    ['execConvRate', 'execAvgCloseTime', 'execPortfolioVenta', 'execPortfolioAlquiler', 'execMarketingROI', 'execBrokerProd', 'execSLAResponse'].forEach(id => {
-      const el = $('#' + id);
+    ['execConvRate', 'execAvgCloseTime', 'execPortfolioVenta', 'execPortfolioAlquiler', 'execLeadsPerDay', 'execBrokerProd', 'execSLAResponse'].forEach(id => {
+      const el = document.getElementById(id);
       if (el) kpis[id] = el.textContent;
     });
-    const headers = ['KPI', 'Valor'];
     const rows = Object.entries(kpis).map(([k, v]) => [k, v]);
     const date = new Date().toISOString().slice(0, 10);
-    downloadCSV('ejecutivo-kpis-' + date + '.csv', rows, headers);
+    /* CSV autocontenido: downloadCSV del IIFE principal no está en scope acá. */
+    const csv = 'KPI,Valor\n' + rows.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'ejecutivo-kpis-' + date + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
     showToast('KPIs ejecutivos exportados', 'success');
   }
 
