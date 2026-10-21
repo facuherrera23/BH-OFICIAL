@@ -982,19 +982,23 @@
     var detail = $('supEmployeeDetail');
     var alerts = $('supAlertsView');
     var errors = $('supErrorsView');
+    var anomalies = $('supAnomaliesView');
     if (team) team.style.display = name === 'team' ? 'block' : 'none';
     if (feed) feed.style.display = name === 'feed' ? 'block' : 'none';
     if (detail) detail.style.display = name === 'detail' ? 'block' : 'none';
     if (alerts) alerts.style.display = name === 'alerts' ? 'block' : 'none';
     if (errors) errors.style.display = name === 'errors' ? 'block' : 'none';
+    if (anomalies) anomalies.style.display = name === 'anomalies' ? 'block' : 'none';
     var tabTeam = $('supTabTeam');
     var tabFeed = $('supTabFeed');
     var tabAlerts = $('supTabAlerts');
     var tabErrors = $('supTabErrors');
+    var tabAnomalies = $('supTabAnomalies');
     if (tabTeam) tabTeam.classList.toggle('is-active', name === 'team' || name === 'detail');
     if (tabFeed) tabFeed.classList.toggle('is-active', name === 'feed');
     if (tabAlerts) tabAlerts.classList.toggle('is-active', name === 'alerts');
     if (tabErrors) tabErrors.classList.toggle('is-active', name === 'errors');
+    if (tabAnomalies) tabAnomalies.classList.toggle('is-active', name === 'anomalies');
   }
 
   function openDetail(uid, uname, urole, uemail) {
@@ -1185,6 +1189,173 @@
     } catch (_) { console.error('[sup] refreshErrorsBadge:', _); }
   }
 
+  /* ==================== VISTA ANOMALÍAS (motor estadístico) ====================
+     El cron de detección corre solo y acumula supervision_anomalies; la vista
+     supervision_anomalies_recent expone la ventana reciente. Hasta hoy esa
+     data se calculaba al vacío (5.167 filas sin UI). La vista ANOMALÍAS trae:
+     resumen por módulo, filtros, paginación y acciones reconocer/resolver
+     (escrituras a la tabla BASE — la vista solo es de lectura). */
+  var _anomPage = 0;
+
+  function anomalyFilters() {
+    return {
+      module: $('supAnomalyModuleFilter') ? $('supAnomalyModuleFilter').value : '',
+      status: $('supAnomalyStatusFilter') ? $('supAnomalyStatusFilter').value : 'open',
+      severity: $('supAnomalySeverityFilter') ? $('supAnomalySeverityFilter').value : ''
+    };
+  }
+
+  async function fetchAnomalies(page) {
+    var from = page * PAGE_SIZE;
+    var f = anomalyFilters();
+    var q = db().from('supervision_anomalies_recent')
+      .select('id, metric, module, action, observed_value, expected_mean, z_score, percentile_rank, severity, status, time_window, user_id, created_at, acknowledged_at, resolved_at')
+      .order('created_at', { ascending: false });
+    if (f.module) q = q.eq('module', f.module);
+    if (f.status) q = q.eq('status', f.status);
+    if (f.severity) q = q.eq('severity', f.severity);
+    var res = await q.range(from, from + PAGE_SIZE - 1);
+    if (res.error) throw res.error;
+    return res.data || [];
+  }
+
+  async function fetchAnomalySummary() {
+    var res = await db().from('supervision_anomalies_recent').select('module, status');
+    if (res.error) throw res.error;
+    var rows = res.data || [];
+    var byModule = {};
+    rows.forEach(function(r) {
+      if (!byModule[r.module]) byModule[r.module] = { total: 0, open: 0 };
+      byModule[r.module].total++;
+      if (r.status === 'open') byModule[r.module].open++;
+    });
+    return { total: rows.length, byModule: byModule };
+  }
+
+  function fmtAnomalyNum(v) {
+    var n = Number(v);
+    if (!isFinite(n)) return '—';
+    if (n === 0) return '0';
+    if (Math.abs(n) >= 1000) return n.toLocaleString('es-AR', { maximumFractionDigits: 0 });
+    return n.toLocaleString('es-AR', { maximumFractionDigits: 2 });
+  }
+
+  function renderAnomalySummary(summary) {
+    var el = $('supAnomalySummary');
+    if (!el) return;
+    var mods = Object.keys(summary.byModule).sort(function(a, b) {
+      return summary.byModule[b].total - summary.byModule[a].total;
+    });
+    var html = '<div class="sup-kpi"><div class="sup-kpi-label">Anomalías recientes</div><div class="sup-kpi-num" style="color:var(--warning);">' + summary.total + '</div><div class="sup-kpi-sub">ventana del motor estadístico</div></div>';
+    html += mods.map(function(m) {
+      var meta = MODULE_META[m] || { icon: 'fa-shield-alt', color: '#94A3B8' };
+      var mm = summary.byModule[m];
+      return '<div class="sup-kpi"><div class="sup-kpi-label"><i class="fas ' + meta.icon + '" style="color:' + meta.color + '; margin-right:6px;"></i>' + esc(m) + '</div><div class="sup-kpi-num" style="color:' + meta.color + ';">' + mm.total + '</div><div class="sup-kpi-sub">' + mm.open + ' abiertas</div></div>';
+    }).join('');
+    el.innerHTML = html;
+  }
+
+  function renderAnomalies(list, append) {
+    var el = $('supAnomaliesList');
+    if (!el) return;
+    if (!list.length && !append) {
+      el.innerHTML = '<div class="sup-act-empty" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:16px;"><i class="fas fa-check-circle" style="color:#10B981;"></i>No hay anomalías con esos filtros</div>';
+      setText('supAnomaliesCount', '');
+      return;
+    }
+    var html = list.map(function(a) {
+      var meta = SEVERITY_META[a.severity] || SEVERITY_META.medium;
+      var p = a.user_id ? _profilesById[a.user_id] : null;
+      var actor = p ? p.full_name : 'Sistema';
+      var moduleMeta = MODULE_META[a.module] || { label: a.module };
+      var actionLabel = ACTION_VERBS[a.action] || a.action || '—';
+      var zNum = Number(a.z_score);
+      /* z=0 + observado==esperado → flag por percentil en ventana de baja
+         actividad: es señal débil y se marca como tal para no alarmar al dueño. */
+      var weakSignal = (zNum === 0 && Number(a.observed_value) === Number(a.expected_mean));
+      return '<div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-left:4px solid ' + meta.color + '; border-radius:12px; padding:16px 18px;' + (weakSignal ? ' opacity:0.75;' : '') + '">' +
+        '<div style="display:flex; gap:12px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap;">' +
+          '<div style="flex:1; min-width:0;">' +
+            '<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:6px;">' +
+              '<span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; padding:3px 8px; border-radius:6px; background:' + meta.color + '22; color:' + meta.color + ';">' + meta.label + '</span>' +
+              '<span style="font-size:11px; color:var(--text-dim);">' + esc(moduleMeta.label || a.module || '—') + ' · ' + esc(a.metric || '—') + '</span>' +
+              '<span style="font-size:11px; color:var(--text-dim);">·</span>' +
+              '<span style="font-size:11px; color:var(--text-dim);">' + esc(actionLabel) + '</span>' +
+              '<span style="font-size:11px; color:var(--text-dim);">·</span>' +
+              '<span style="font-size:11px; color:var(--text-dim);">ventana ' + esc(a.time_window || '—') + '</span>' +
+              '<span style="font-size:11px; color:var(--text-dim);">·</span>' +
+              '<span style="font-size:11px; color:var(--text-dim);">' + timeAgo(a.created_at) + '</span>' +
+              (a.user_id ? '<span style="font-size:11px; color:var(--text-dim);">· ' + esc(actor) + '</span>' : '') +
+              (weakSignal ? '<span style="font-size:10px; color:var(--text-dim); background:rgba(255,255,255,0.04); padding:2px 8px; border-radius:6px;">señal débil (percentil en ventana de baja actividad)</span>' : '') +
+            '</div>' +
+            '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+              '<span style="font-size:11px; background:rgba(255,255,255,0.04); padding:3px 8px; border-radius:6px; color:var(--text-dim);">Observado: <strong style="color:#fff;">' + fmtAnomalyNum(a.observed_value) + '</strong></span>' +
+              '<span style="font-size:11px; background:rgba(255,255,255,0.04); padding:3px 8px; border-radius:6px; color:var(--text-dim);">Esperado: ' + fmtAnomalyNum(a.expected_mean) + '</span>' +
+              '<span style="font-size:11px; background:rgba(255,255,255,0.04); padding:3px 8px; border-radius:6px; color:var(--text-dim);">z: ' + fmtAnomalyNum(a.z_score) + '</span>' +
+              '<span style="font-size:11px; background:rgba(255,255,255,0.04); padding:3px 8px; border-radius:6px; color:var(--text-dim);">percentil: ' + fmtAnomalyNum(a.percentile_rank) + '</span>' +
+            '</div>' +
+          '</div>' +
+          (a.status === 'open'
+            ? '<div style="display:flex; gap:8px; flex-shrink:0;">' +
+              '<button type="button" class="status-pill active sup-anomaly-act" data-aid="' + esc(a.id) + '" data-act="acknowledged" style="padding:6px 12px; font-size:11px; cursor:pointer;"><i class="fas fa-check"></i> Reconocer</button>' +
+              '<button type="button" class="status-pill pending sup-anomaly-act" data-aid="' + esc(a.id) + '" data-act="resolved" style="padding:6px 12px; font-size:11px; cursor:pointer;"><i class="fas fa-check-double"></i> Resolver</button>' +
+            '</div>'
+            : '<span style="font-size:11px; color:' + meta.color + '; font-weight:600; text-transform:uppercase;">' + esc(a.status) + '</span>') +
+        '</div></div>';
+    }).join('');
+    if (append) el.insertAdjacentHTML('beforeend', html);
+    else el.innerHTML = html;
+    setText('supAnomaliesCount', (append ? (_anomPage + 1) * PAGE_SIZE - (PAGE_SIZE - list.length) : list.length) + ' mostradas');
+  }
+
+  async function updateAnomalyStatus(id, newStatus) {
+    var uid = null;
+    try { var s = await window.supabaseClient.auth.getSession(); uid = s && s.data && s.data.session && s.data.session.user ? s.data.session.user.id : null; } catch (_) {}
+    var patch = { status: newStatus, updated_at: new Date().toISOString() };
+    if (newStatus === 'acknowledged') { patch.acknowledged_by = uid; patch.acknowledged_at = new Date().toISOString(); }
+    if (newStatus === 'resolved') { patch.resolved_by = uid; patch.resolved_at = new Date().toISOString(); }
+    /* La vista _recent es de lectura: la escritura va a la tabla base (mismo id). */
+    var res = await db().from('supervision_anomalies').update(patch).eq('id', id);
+    if (res.error) throw res.error;
+  }
+
+  async function loadAnomalies() {
+    var el = $('supAnomaliesList');
+    if (el) el.innerHTML = '<div class="sup-act-empty" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:16px;"><i class="fas fa-spinner fa-spin"></i>Cargando anomalías...</div>';
+    _anomPage = 0;
+    try {
+      var summary = await fetchAnomalySummary();
+      renderAnomalySummary(summary);
+      var list = await fetchAnomalies(0);
+      renderAnomalies(list, false);
+      var more = $('supAnomalyLoadMore');
+      if (more) more.style.display = list.length === PAGE_SIZE ? 'inline-flex' : 'none';
+    } catch (err) {
+      console.error('[sup] anomalies:', err);
+      if (el) el.innerHTML = '<div class="sup-act-empty" style="color:var(--danger);"><i class="fas fa-exclamation-triangle"></i>Error: ' + esc(err.message) + '</div>';
+    }
+  }
+
+  async function loadMoreAnomalies() {
+    _anomPage++;
+    var list = await fetchAnomalies(_anomPage);
+    renderAnomalies(list, true);
+    var more = $('supAnomalyLoadMore');
+    if (more) more.style.display = list.length === PAGE_SIZE ? 'inline-flex' : 'none';
+  }
+
+  async function refreshAnomaliesBadge() {
+    try {
+      var res = await db().from('supervision_anomalies_recent').select('id', { count: 'exact', head: true }).eq('status', 'open');
+      var n = res.count || 0;
+      var badge = $('supAnomaliesBadge');
+      if (badge) {
+        if (n > 0) { badge.textContent = n > 99 ? '99+' : String(n); badge.style.display = ''; }
+        else badge.style.display = 'none';
+      }
+    } catch (_) { console.error('[sup] refreshAnomaliesBadge:', _); }
+  }
+
   function bind() {
     if (_bound) return;
     _bound = true;
@@ -1200,6 +1371,24 @@
       showView('feed');
       _feedPage = 0;
       loadFeed();
+    });
+
+    var tabAnomalies = $('supTabAnomalies');
+    if (tabAnomalies) tabAnomalies.addEventListener('click', function() {
+      showView('anomalies');
+      loadAnomalies();
+    });
+    var anomModule = $('supAnomalyModuleFilter');
+    if (anomModule) anomModule.addEventListener('change', loadAnomalies);
+    var anomStatus = $('supAnomalyStatusFilter');
+    if (anomStatus) anomStatus.addEventListener('change', loadAnomalies);
+    var anomSeverity = $('supAnomalySeverityFilter');
+    if (anomSeverity) anomSeverity.addEventListener('change', loadAnomalies);
+    var anomRefresh = $('supAnomalyRefreshBtn');
+    if (anomRefresh) anomRefresh.addEventListener('click', function() { loadAnomalies(); refreshAnomaliesBadge(); });
+    var anomMore = $('supAnomalyLoadMore');
+    if (anomMore) anomMore.addEventListener('click', function() {
+      loadMoreAnomalies().catch(function(err) { console.error('[sup] anomalyMore:', err); });
     });
 
     var refresh = $('supRefreshBtn');
@@ -1369,6 +1558,22 @@
     if (alertSeverity) alertSeverity.addEventListener('change', loadAlerts);
 
     document.addEventListener('click', function(ev) {
+      var abtn = ev.target.closest('.sup-anomaly-act');
+      if (abtn) {
+        var aid2 = abtn.getAttribute('data-aid');
+        var act2 = abtn.getAttribute('data-act');
+        abtn.disabled = true;
+        abtn.style.opacity = '0.5';
+        updateAnomalyStatus(aid2, act2).then(function() {
+          loadAnomalies();
+          refreshAnomaliesBadge();
+        }).catch(function(err) {
+          console.error('[sup] updateAnomaly:', err);
+          abtn.disabled = false;
+          abtn.style.opacity = '1';
+        });
+        return;
+      }
       var btn = ev.target.closest('.sup-alert-act');
       if (!btn) return;
       var aid = btn.getAttribute('data-aid');
@@ -1396,19 +1601,23 @@
       bind();
       refreshAlertsBadge();
       refreshErrorsBadge();
+      refreshAnomaliesBadge();
       if (_view === 'feed') {
         loadFeed();
       } else if (_view === 'alerts') {
         loadAlerts();
       } else if (_view === 'errors') {
         loadErrors();
+      } else if (_view === 'anomalies') {
+        loadAnomalies();
       } else if (_view === 'detail' && _currentUserId) {
         loadDetailActivity().catch(console.error);
       } else {
         showView('team');
         await loadBoard();
       }
-    }
+    },
+    loadAnomalies: loadAnomalies
   };
 
   function initBadge() {

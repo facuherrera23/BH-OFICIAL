@@ -2010,6 +2010,7 @@
     <button type="button" class="sup-viewtab" id="supTabFeed"><i class="fas fa-stream"></i> Actividad Global</button>
     <button type="button" class="sup-viewtab" id="supTabErrors"><i class="fas fa-bug"></i> Errores <span id="supErrorsBadge" style="display:none; background:var(--danger); color:#fff; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:4px;"></span></button>
     <button type="button" class="sup-viewtab" id="supTabAlerts"><i class="fas fa-bell"></i> Alertas <span id="supAlertsBadge" style="display:none; background:var(--danger); color:#fff; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:4px;"></span></button>
+<button type="button" class="sup-viewtab" id="supTabAnomalies"><i class="fas fa-wave-square"></i> Anomalías <span id="supAnomaliesBadge" style="display:none; background:var(--warning); color:#000; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:4px;"></span></button>
   </div>
 
   <!-- ===== VISTA EQUIPO (default) ===== -->
@@ -2162,7 +2163,50 @@
     <div id="supAlertsList" style="display:flex; flex-direction:column; gap:12px;"></div>
   </div>
 
-  <!-- ===== VISTA DETALLE EMPLEADO ===== -->
+  <!-- ===== VISTA ANOMALÍAS (motor estadístico — UI 2026-10-21) ===== -->
+<div id="supAnomaliesView" style="display:none;">
+<div style="display:flex; gap:12px; align-items:center; margin-bottom:16px; flex-wrap:wrap;">
+<select id="supAnomalyModuleFilter" class="sup-filter">
+<option value="">Todos los módulos</option>
+<option value="crm">CRM</option>
+<option value="portales">Portales</option>
+<option value="supervision">Supervisión</option>
+<option value="agenda">Agenda</option>
+<option value="properties">Propiedades</option>
+<option value="owners">Propietarios</option>
+<option value="tasaciones">Tasaciones</option>
+</select>
+<select id="supAnomalyStatusFilter" class="sup-filter">
+<option value="open">Abiertas</option>
+<option value="acknowledged">Reconocidas</option>
+<option value="resolved">Resueltas</option>
+<option value="">Todas</option>
+</select>
+<select id="supAnomalySeverityFilter" class="sup-filter">
+<option value="">Toda severidad</option>
+<option value="critical">Críticas</option>
+<option value="high">Altas</option>
+<option value="medium">Medias</option>
+<option value="low">Bajas</option>
+</select>
+<div style="flex:1;">
+</div>
+<button type="button" class="status-pill active" id="supAnomalyRefreshBtn" style="padding:6px 12px; font-size:11px; cursor:pointer;"><i class="fas fa-sync"></i> Actualizar</button>
+</div>
+<div id="supAnomalySummary" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:16px;">
+</div>
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+<span id="supAnomaliesCount" style="font-size:12px; color:var(--text-dim);">
+</span>
+<span style="font-size:11px; color:var(--text-dim);"><i class="fas fa-info-circle"></i> Detección automática por percentil y desvío estándar contra la baseline histórica de cada métrica</span>
+</div>
+<div id="supAnomaliesList" style="display:flex; flex-direction:column; gap:12px;">
+</div>
+<div style="text-align:center; margin-top:14px;">
+<button type="button" class="status-pill active" id="supAnomalyLoadMore" style="display:none; padding:8px 18px; font-size:12px; cursor:pointer;">Cargar más</button>
+</div>
+</div>
+<!-- ===== VISTA DETALLE EMPLEADO ===== -->
   <div id="supEmployeeDetail" style="display:none;">
     <div style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap;">
       <button type="button" class="btn-luxury-action" id="supBackToTeamBtn" style="padding:8px 18px; font-size:13px;">
@@ -3411,5 +3455,5 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 <script src="assets/js/admin-propiedades.js?v=18"></script>
 <script src="assets/js/tasacion-calc.js?v=1"></script>
 <script src="assets/js/admin-agenda.js?v=21"></script>
-<script src="assets/js/admin-supervision.js?v=27"></script></body>
+<script src="assets/js/admin-supervision.js?v=29"></script></body>
 </html>
