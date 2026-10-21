@@ -480,18 +480,65 @@ export function mlUpdateItem(
     );
 }
 
+/* ============================================================
+   toMlPlainText — sanitiza texto para la API de descripciones de ML.
+   ML RECHAZA emojis/pictogramas en plain_text con 400
+   DESCRIPTION_PLAIN_TEXT_NOT_ALLOWED ("The description must be in plain text").
+   Incidente real 2026-10-21: DA-P0026 tenía 📲 (U+1F4F2) y todas las
+   actualizaciones de descripción fallaban con ese error. El texto queda
+   limpio para ML; el CRM/ficha/landing conservan el original.
+   ============================================================ */
+export function toMlPlainText(input: string | null | undefined): string {
+    if (!input) return '';
+    let text = String(input);
+    /* HTML pegado desde editores externos → texto (defensa futura: hoy las
+       descripciones del CRM no llevan HTML, pero un copy-paste lo puede meter). */
+    text = text
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(p|div|li|h\d)>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&/gi, '&')
+        .replace(/</gi, '<')
+        .replace(/>/gi, '>');
+    /* Emojis y pictogramas que ML no acepta en plain_text.
+       NOTA: á é í ó ú ñ ¡ ¿ ° ² × – etc. (U+00A1-U+00BF, U+2013) SÍ están
+       permitidos — no tocarlos. Rangos emoji:
+       - U+1F000-1FAFF: todos los emojis del SMP (📲 ✅ ❌ ⭐ 🏠 …)
+       - U+2600-27BF: misc symbols & dingbats (☀ ☎ ✓ ✗ ✂ …)
+       - U+2B00-2BFF: flechas decorativas y estrellas (⭐ ya cubierto, ⬆ ⮕)
+       - U+FE00-FE0F: variation selectors (️) — convierten chars en emoji
+       - U+200D: zero-width joiner (familias/flags compuestas)
+       - U+20E3: combining enclosing keycap (1️⃣) */
+    text = text
+        .replace(/[\u{1F000}-\u{1FAFF}]/gu, '')
+        .replace(/[\u{2600}-\u{27BF}]/gu, '')
+        .replace(/[\u{2B00}-\u{2BFF}]/gu, '')
+        .replace(/[\u{FE00}-\u{FE0F}]/gu, '')
+        .replace(/\u{200D}/gu, '')
+        .replace(/\u{20E3}/gu, '')
+        /* limpieza tras las remociones: espacios dobles, saltos huérfanos */
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/\n{3,}/g, '\n\n');
+    return text.trim();
+}
+
 export function mlSetDescription(
     accessToken: string,
     itemId: string,
     plainText: string,
     idempotencyKey?: string,
 ): Promise<unknown> {
+    /* FIX 2026-10-21: sanitizar SIEMPRE antes de enviar a ML —
+       los emojis del CRM mataban la actualización de descripción. */
+    const safeText = toMlPlainText(plainText);
+    if (!safeText) return Promise.resolve(null); /* texto que era solo emoji → no enviar */
     return api(
         `/items/${itemId}/description`,
         accessToken,
         {
             method: 'PUT',
-            body: JSON.stringify({ plain_text: plainText.slice(0, 20000) }),
+            body: JSON.stringify({ plain_text: safeText.slice(0, 20000) }),
         },
         idempotencyKey,
     );

@@ -11,6 +11,7 @@ import {
     mlUpdateItem,
     mlUploadPictures,
     setMlCooldown,
+    toMlPlainText,
     type MlConnectionRow,
     type MlItem,
 } from '../_shared/ml.ts';
@@ -401,6 +402,11 @@ async function mlSetDescriptionValidated(
     plainText: string,
     idempotencyKey?: string,
 ): Promise<void> {
+    /* FIX 2026-10-21: los emojis en la descripción mataban TODA la actualización
+       con 400 DESCRIPTION_PLAIN_TEXT_NOT_ALLOWED (incidente DA-P0026 📲).
+       toMlPlainText los remueve ANTES de enviar a ML. */
+    const safeText = toMlPlainText(plainText);
+    if (!safeText) return; /* texto que era solo emoji → nada que enviar */
     const start = Date.now();
     const res = await fetchWithTimeout(`${ML_API}/items/${itemId}/description`, {
         method: 'PUT',
@@ -410,7 +416,7 @@ async function mlSetDescriptionValidated(
             Accept: 'application/json',
             ...(idempotencyKey ? { 'X-Idempotency-Key': idempotencyKey } : {}),
         },
-        body: JSON.stringify({ plain_text: plainText.slice(0, 20000) }),
+        body: JSON.stringify({ plain_text: safeText.slice(0, 20000) }),
     });
     const latency = Date.now() - start;
     const text = await res.text();

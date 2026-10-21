@@ -4,6 +4,7 @@ import {
     fetchWithTimeout,
     getAccessToken,
     setMlCooldown,
+    toMlPlainText,
     type MlConnectionRow,
     type MlItem,
 } from '../_shared/ml.ts';
@@ -303,6 +304,11 @@ async function setDescription(
     itemId: string,
     plainText: string,
 ): Promise<void> {
+    /* FIX 2026-10-21: los emojis en la descripción mataban el update con 400
+       DESCRIPTION_PLAIN_TEXT_NOT_ALLOWED (incidente DA-P0026 📲).
+       toMlPlainText remueve emojis/pictogramas ANTES de enviar a ML. */
+    const safeText = toMlPlainText(plainText);
+    if (!safeText) return; /* texto que era solo emoji → nada que enviar */
     const res = await fetchWithTimeout(`${ML_API}/items/${itemId}/description`, {
         method: 'PUT',
         headers: {
@@ -310,7 +316,7 @@ async function setDescription(
             'Content-Type': 'application/json',
             Accept: 'application/json',
         },
-        body: JSON.stringify({ plain_text: plainText.slice(0, 20000) }),
+        body: JSON.stringify({ plain_text: safeText.slice(0, 20000) }),
     });
     if (!res.ok) {
         const text = await res.text();
