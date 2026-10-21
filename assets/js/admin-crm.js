@@ -169,7 +169,10 @@ async function loadAgents() {
 
 function applyBaseFilters(q) {
   var sv = $id('crmSearch'); if (sv && sv.value.trim()) {
-    var s = sv.value.trim().replace(/[%_]/g, ' ');
+    /* Solo se sanitiza % (rompería el patrón ilike). El _ se DEJA: es wildcard
+       inofensivo y hace encontrables los emails con guión bajo (bug real: buscar
+       'pame_cucu' lo reemplazaba por 'pame cucu' con espacio y no encontraba nada). */
+    var s = sv.value.trim().replace(/[%]/g, ' ');
     var ors = ['full_name', 'email', 'phone', 'whatsapp', 'notes', 'preferred_zone'].map(function (f) {
       return f + '.ilike.%' + s + '%';
     }).join(',');
