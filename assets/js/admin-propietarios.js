@@ -396,7 +396,9 @@ closeModal('ownerModal');
       }
       const title = $('#ownerModalTitle');
       if (title) {
-        title.textContent = 'Editar Propietario';
+        /* FIX 2026-10-22 (pedido del dueño): mostrar el NOMBRE del propietario,
+           no el texto genérico 'Editar Propietario'. */
+        title.textContent = data.full_name || 'Editar Propietario';
         let contactRow = title.parentElement && title.parentElement.querySelector('.owner-contact-row');
         if (!contactRow) {
           contactRow = document.createElement('div');
@@ -882,39 +884,46 @@ closeModal('ownerModal');
     dueInput.addEventListener('input', refreshOwnerTaskPrioAuto);
   })();
 
+  /* FIX 2026-10-22: guard anti double-submit — un click rápido o una delegación
+     duplicada podían pasar el dup-check dos veces antes de que la primera
+     inserción confirmara. El flag se limpia en finally (éxito, error o return). */
+  let _ownerTaskCreating = false;
   window.adminApp.createOwnerTask = async function () {
+    if (_ownerTaskCreating) return; /* ya hay una inserción en vuelo */
     if (!editingOwnerId) return showToast('Primero guarde el propietario', 'warning');
     if (!window.supabaseClient) return;
-
-    const description = $('#ownerTaskDescription')?.value?.trim();
-    const dueDateLocal = $('#ownerTaskDueDate')?.value;
-    const type = 'contact';
-    const contactType = $('#ownerTaskContactType')?.value || null;
-    const priority = $('#ownerTaskPriority')?.value || 'media';
-    const remindBefore = parseInt($('#ownerTaskRemind')?.value, 10) || 1440;
-
-    if (!description) return showToast('Ingresá una descripción', 'warning');
-    if (!dueDateLocal) return showToast('Ingresá la fecha límite', 'warning');
-
-    // Dup-check: misma descripción para el mismo propietario el mismo día
-    const dayStart = new Date(dueDateLocal); dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(dueDateLocal); dayEnd.setHours(23, 59, 59, 999);
-    const { data: existingTask } = await window.supabaseClient
-      .from('owner_tasks')
-      .select('id')
-      .eq('owner_id', editingOwnerId)
-      .ilike('description', description)
-      .gte('due_date', dayStart.toISOString())
-      .lte('due_date', dayEnd.toISOString())
-      .in('status', ['pendiente', 'en_progreso'])
-      .limit(1)
-      .maybeSingle();
-    if (existingTask) {
-      showToast('Esa tarea ya existe para este propietario ese día.', 'warning');
-      return;
-    }
-
+    _ownerTaskCreating = true;
+    const addBtn = $('#ownerTaskAddBtn');
+    if (addBtn) { addBtn.disabled = true; addBtn.style.opacity = '0.5'; }
     try {
+      const description = $('#ownerTaskDescription')?.value?.trim();
+      const dueDateLocal = $('#ownerTaskDueDate')?.value;
+      const type = 'contact';
+      const contactType = $('#ownerTaskContactType')?.value || null;
+      const priority = $('#ownerTaskPriority')?.value || 'media';
+      const remindBefore = parseInt($('#ownerTaskRemind')?.value, 10) || 1440;
+
+      if (!description) return showToast('Ingresá una descripción', 'warning');
+      if (!dueDateLocal) return showToast('Ingresá la fecha límite', 'warning');
+
+      // Dup-check: misma descripción para el mismo propietario el mismo día
+      const dayStart = new Date(dueDateLocal); dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dueDateLocal); dayEnd.setHours(23, 59, 59, 999);
+      const { data: existingTask } = await window.supabaseClient
+        .from('owner_tasks')
+        .select('id')
+        .eq('owner_id', editingOwnerId)
+        .ilike('description', description)
+        .gte('due_date', dayStart.toISOString())
+        .lte('due_date', dayEnd.toISOString())
+        .in('status', ['pendiente', 'en_progreso'])
+        .limit(1)
+        .maybeSingle();
+      if (existingTask) {
+        showToast('Esa tarea ya existe para este propietario ese día.', 'warning');
+        return;
+      }
+
       const { error } = await mutate('owner_tasks', () =>
         window.supabaseClient.from('owner_tasks').insert([{
           owner_id: editingOwnerId,
@@ -939,6 +948,9 @@ closeModal('ownerModal');
       loadOwnerTasks(editingOwnerId);
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
+    } finally {
+      _ownerTaskCreating = false;
+      if (addBtn) { addBtn.disabled = false; addBtn.style.opacity = ''; }
     }
   };
 

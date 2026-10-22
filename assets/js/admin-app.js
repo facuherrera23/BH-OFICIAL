@@ -5182,13 +5182,16 @@ window.supabaseClient.from('agents').select('id, full_name, phone, email').eq('s
     if (bannerEl) bannerEl.style.display = 'none';
   };
 
-  window.createOwnerTask = function () {
+  /* NOTA 2026-10-21: window.createOwnerTask (wrapper) fue ELIMINADO.
+     La delegación genérica de data-action (L1853) ya llama
+     window.adminApp.createOwnerTask() directamente. Este wrapper
+     duplicaba la llamada (dos delegaciones a document, stopPropagation
+     no frena listeners del MISMO nodo) y las tareas de propietarios
+     se insertaban DOBLES — la race pasaba el dup-check dos veces. */
 
-    window.adminApp.createOwnerTask();
-
-  };
-
-  const dataActionWhitelist = ['exportPropertiesCSV', 'exportLeadsCSV', 'exportTasacionesCSV', 'closeCdnWarning', 'createOwnerTask'];
+  /* Whitelist: SOLO items que viven en window (NO en window.adminApp).
+     Los que viven en window.adminApp ya los rutea la delegación genérica. */
+  const dataActionWhitelist = ['exportPropertiesCSV', 'exportLeadsCSV', 'exportTasacionesCSV', 'closeCdnWarning'];
   document.addEventListener('click', function (ev) {
     const target = ev.target && ev.target.closest ? ev.target.closest('[data-action]') : null;
     if (!target) return;
