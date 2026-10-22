@@ -596,12 +596,24 @@ try {
     } catch (err) {
       _mlStatusFetchedAt = 0;
       console.warn('[ML] Status check failed:', err.message);
-      ml_connected = false;
-      ml_configured = false;
-      ml_user = null;
-      ml_listings = [];
-      ml_webhooks = null;
-      updatePortalsBadge();
+      /* FIX 2026-10-22: NO resetear ml_connected ante errores transitorios
+         (timeout, rate limit, red). Antes cualquier fallo del check ponía
+         ml_connected = false y los botones de ML desaparecían de la tabla
+         de propiedades al re-renderizar (realtime/filtro). Solo un 401/403
+         definitivo (sin sesión o cuenta realmente desconectada) justifica
+         apagar el flag. El último estado conocido se mantiene hasta que
+         el check responda con datos reales. */
+      if (/401|403|No hay sesión|no autorizado/i.test(err.message)) {
+        ml_connected = false;
+        ml_configured = false;
+        ml_user = null;
+        ml_listings = [];
+        ml_webhooks = null;
+        updatePortalsBadge();
+      } else {
+        /* Error transitorio: solo invalidar el cache para reintentar en la
+           próxima llamada — el estado de conexión queda como estaba. */
+      }
     }
   }
 
