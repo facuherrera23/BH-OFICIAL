@@ -479,9 +479,33 @@
   let _propLng = null;
   let _propMapPendingCoords = null;
 
-  function ensurePropMap() {
+  /* PERF 2026-10-23: Leaflet ya no se carga en el <head> de admin.html —
+     se carga on-demand la primera vez que se abre el mapa. Ahorra 155KB
+     en el boot inicial. Cache de la promise para no cargarlo dos veces. */
+  let _leafletLoadPromise = null;
+  function loadLeafletOnDemand() {
+    if (window.L) return Promise.resolve();
+    if (_leafletLoadPromise) return _leafletLoadPromise;
+    _leafletLoadPromise = new Promise((resolve) => {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = '/assets/vendor/leaflet/leaflet.min.css';
+      document.head.appendChild(css);
+      const js = document.createElement('script');
+      js.src = '/assets/vendor/leaflet/leaflet.min.js';
+      js.onload = () => resolve();
+      js.onerror = () => { _leafletLoadPromise = null; resolve(); };
+      document.head.appendChild(js);
+    });
+    return _leafletLoadPromise;
+  }
+
+  async function ensurePropMap() {
     if (_propMap) return _propMap;
-    if (!window.L) { logWarn('Leaflet no está cargado (¿CDN bloqueado?) — mapa de ubicación deshabilitado'); return null; }
+    if (!window.L) {
+      await loadLeafletOnDemand();
+      if (!window.L) { logWarn('Leaflet no cargó — mapa de ubicación deshabilitado'); return null; }
+    }
     const mapEl = document.getElementById('propMap');
     if (!mapEl) return null;
     _propMap = window.L.map(mapEl, { scrollWheelZoom: false, zoomControl: true }).setView([PROP_MAP_HOME.lat, PROP_MAP_HOME.lng], PROP_MAP_HOME.zoom);
@@ -524,19 +548,25 @@
 
   function openPropMapRefresh() {
     // Leaflet mide 0px dentro de un modal cerrado: al abrir hay que invalidar el tamaño
-    setTimeout(() => {
-      if (!ensurePropMap()) return;
-      _propMap.invalidateSize();
+    // PERF: ensurePropMap ahora es async (carga Leaflet on-demand)
+    setTimeout(async () => {
+      const map = await ensurePropMap();
+      if (!map) return;
+      map.invalidateSize();
       if (_propMapPendingCoords) {
         setPropLocation(_propMapPendingCoords.lat, _propMapPendingCoords.lng);
-        _propMap.setZoom(16);
+        map.setZoom(16);
         _propMapPendingCoords = null;
       }
     }, 80);
   }
 
   async function propMapGeocode() {
-    if (!window.L) { showToast('Mapa no disponible (Leaflet no cargó)', 'error'); return; }
+    /* PERF: Leaflet se carga on-demand — no fallar si aún no cargó */
+    if (!window.L) {
+      await loadLeafletOnDemand();
+      if (!window.L) { showToast('Mapa no disponible (Leaflet no cargó)', 'error'); return; }
+    }
     const input = document.getElementById('propMapSearch');
     const query = input ? input.value.trim() : '';
     if (!query) { showToast('Escribí una dirección o zona para buscar', 'warning'); return; }
@@ -547,7 +577,7 @@
       if (!res.ok) throw new Error('Nominatim HTTP ' + res.status);
       const hits = await res.json();
       if (!hits || !hits.length) { showToast('No se encontró esa dirección', 'warning'); return; }
-      ensurePropMap();
+      await ensurePropMap();
       setPropLocation(parseFloat(hits[0].lat), parseFloat(hits[0].lon));
       if (_propMap) _propMap.setZoom(16);
     } catch (err) {
