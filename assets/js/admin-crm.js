@@ -506,7 +506,7 @@ function renderOwnerList(c) {
         :
         '<button class="btn-action" data-action="viewOwner" data-id="' + o.id + '" title="Ver detalle"><i class="fas fa-eye"></i></button>' +
         '<button class="btn-action crm-icon-action" data-action="addOwnerNote" data-id="' + o.id + '" title="Agregar nota"><i class="fas fa-sticky-note"></i></button>' +
-        '<button class="btn-action crm-icon-action" data-action="genOwnerToken" data-id="' + o.id + '" title="Generar token portal"><i class="fas fa-key"></i></button>' +
+        '<button class="btn-action crm-icon-action" data-action="genOwnerToken" data-id="' + o.id + '" title="Acceso directo al portal (o generar si no tiene token)"><i class="fas fa-key"></i></button>' +
         '<button class="btn-action" data-action="editOwner" data-id="' + o.id + '" title="Editar"><i class="fas fa-pen"></i></button>' +
         '<button class="btn-action danger" data-action="deleteOwner" data-id="' + o.id + '" title="Eliminar"><i class="fas fa-trash"></i></button>') +
       '</td>' +
@@ -546,9 +546,33 @@ function renderOwnerList(c) {
     });
   });
   c.querySelectorAll('[data-action="genOwnerToken"]').forEach(function (b) {
-    b.addEventListener('click', function (e) {
+    b.addEventListener('click', async function (e) {
       e.stopPropagation();
-      if (window.adminCrmToken && window.adminCrmToken.open) window.adminCrmToken.open(this.dataset.id);
+      /* FIX 2026-10-23 (pedido del dueño): la llavecita abre DIRECTO el portal
+         si ya hay un token vigente — solo muestra el modal de generación si
+         no hay token. Antes siempre abría el modal aunque el token ya existiera,
+         obligando a buscar el link dentro del modal (3+ clicks). */
+      var ownerId = this.dataset.id;
+      try {
+        var r = await db().from('owner_portal_tokens')
+          .select('token, expires_at')
+          .eq('owner_id', ownerId)
+          .is('revoked_at', null)
+          .gt('expires_at', new Date().toISOString())
+          .order('expires_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (r.data && r.data.token) {
+          /* Token vigente → abrir el portal directo en pestaña nueva */
+          window.open('/portal-propietario.html?token=' + encodeURIComponent(r.data.token), '_blank');
+          return;
+        }
+      } catch (err) {
+        /* Si el check falla, caer al modal (comportamiento original) */
+        console.warn('[crm] portal token check:', err && err.message);
+      }
+      /* Sin token (o check falló) → abrir el modal de generación */
+      if (window.adminCrmToken && window.adminCrmToken.open) window.adminCrmToken.open(ownerId);
     });
   });
   c.querySelectorAll('[data-action="editOwner"]').forEach(function (b) {
