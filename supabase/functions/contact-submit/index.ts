@@ -167,6 +167,10 @@ Deno.serve(async (req: Request) => {
     property_id: propertyId,
     source: 'landing_page',
     stage: 'nuevo',
+    /* FIX LEGAL 2026-10-23: registrar el timestamp del consentimiento del
+       checkbox de privacidad (Ley 25.326 art. 5 — prueba de consentimiento).
+       El landing ya envía el checkbox required; esto lo persiste. */
+    consent_at: new Date().toISOString(),
     utm_source: clip(String(payload.utm_source ?? ''), 120) || null,
     utm_campaign: clip(String(payload.utm_campaign ?? ''), 120) || null,
   };

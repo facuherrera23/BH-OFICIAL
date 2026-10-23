@@ -4,46 +4,49 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Política de Privacidad | Bienenhaus Propiedades</title>
-  <meta name="description" content="Política de privacidad y tratamiento de datos personales de Bienenhaus Propiedades, inmobiliaria en Córdoba (Ley 25.326).">
-  <link rel="canonical" href="https://bienenhaus.com.ar/politica-de-privacidad.html">
-  <link rel="icon" href="/favicon.ico" type="image/x-icon">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.cloudinary.com https://res.cloudinary.com;">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <!-- BORRADOR BASE: revisar con abogado/a antes de considerar definitiva -->
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     :root { --bg: #05070A; --card: rgba(255,255,255,0.03); --line: rgba(255,255,255,0.08); --accent: #1FC8C3; --text: #F8FAFC; --text-dim: #CBD5E1; --text-muted: #8E9BAE; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Plus Jakarta Sans', -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.75; padding-bottom: 80px; }
-    .wrap { max-width: 840px; margin: 0 auto; padding: 48px 24px; }
-    .brand { font-family: 'Playfair Display', serif; text-decoration: none; display: inline-block; margin-bottom: 36px; }
-    .brand b { color: var(--text); letter-spacing: 2px; font-size: 20px; }
-    .brand span { color: var(--accent); font-size: 11px; letter-spacing: 4px; text-transform: uppercase; display: block; }
-    h1 { font-family: 'Playfair Display', serif; font-size: clamp(30px, 5vw, 44px); font-weight: 400; margin-bottom: 10px; }
-    h1 em { font-style: italic; color: var(--accent); }
-    .updated { color: var(--text-muted); font-size: 13px; margin-bottom: 40px; }
-    h2 { font-size: 15px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin: 44px 0 14px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
-    p, li { color: var(--text-dim); font-size: 15px; margin-bottom: 12px; }
-    ul { padding-left: 20px; margin-bottom: 14px; }
-    .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px 26px; margin: 18px 0; }
-    .card p { margin-bottom: 6px; }
+    body { font-family: 'Plus Jakarta Sans', -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.75; }
+    .container { max-width: 780px; margin: 0 auto; padding: 60px 20px 80px; }
+    .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 40px; text-decoration: none; }
+    .logo-mark { width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), #0E9C97); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; color: #05070A; }
+    .logo-text { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: 0.5px; }
+    .logo-sub { font-size: 10px; color: var(--text-muted); letter-spacing: 2px; text-transform: uppercase; }
+    h1 { font-size: 32px; margin-bottom: 8px; color: var(--text); }
+    .meta { font-size: 13px; color: var(--text-muted); margin-bottom: 40px; }
+    h2 { font-size: 18px; margin: 36px 0 14px; color: var(--accent); font-weight: 700; }
+    p { margin-bottom: 14px; color: var(--text-dim); font-size: 15px; }
+    ul { margin: 0 0 14px 20px; color: var(--text-dim); font-size: 15px; }
+    li { margin-bottom: 8px; }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
-    .back { display: inline-flex; align-items: center; gap: 8px; margin-top: 48px; color: var(--text-dim); font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border: 1px solid var(--line); border-radius: 60px; padding: 14px 28px; }
-    .back:hover { border-color: var(--accent); color: var(--text); text-decoration: none; }
+    .back-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 50px; padding: 10px 20px; border: 1px solid var(--line); border-radius: 10px; color: var(--accent); font-size: 13px; text-decoration: none; transition: all 0.2s; }
+    .back-link:hover { background: var(--card); }
+    strong { color: var(--text); }
+    .legal-note { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; margin: 24px 0; font-size: 13.5px; color: var(--text-dim); }
   </style>
 </head>
 <body>
-  <main class="wrap">
-    <a href="/" class="brand"><b>BIENENHAUS</b><span>Propiedades</span></a>
-    <h1>Política de <em>Privacidad</em></h1>
-    <p class="updated">Última actualización: septiembre de 2026 · Córdoba, Argentina</p>
+  <div class="container">
+    <a href="/" class="logo">
+      <div class="logo-mark">BH</div>
+      <div>
+        <div class="logo-text">BIENENHAUS</div>
+        <div class="logo-sub">Propiedades</div>
+      </div>
+    </a>
+
+    <h1>Política de Privacidad</h1>
+    <div class="meta">Última actualización: octubre de 2026 · Córdoba, Argentina</div>
 
     <h2>1. Responsable del tratamiento</h2>
-    <div class="card">
-      <p><strong>Bienenhaus Propiedades</strong> — CPI 1834 — Córdoba, Argentina.</p>
-      <p>Contacto para consultas de datos personales: <a href="mailto:bienenhaus.propiedades@gmail.com">bienenhaus.propiedades@gmail.com</a></p>
-    </div>
+    <p><strong>Bienenhaus Propiedades</strong> — CPI 1834 — Córdoba, Argentina.<br>
+    Contacto para consultas de datos personales: <a href="mailto:bienenhaus.propiedades@gmail.com">bienenhaus.propiedades@gmail.com</a></p>
 
     <h2>2. Datos que recolectamos</h2>
     <p>Recolectamos únicamente los datos que vos nos proporcionás voluntariamente a través de:</p>
@@ -70,25 +73,41 @@
     <p>Conservamos tus datos mientras exista una relación comercial o de consulta, y posteriormente solo por el plazo legalmente requerido, salvo que solicités su eliminación antes.</p>
 
     <h2>6. Proveedores y transferencias</h2>
-    <p>Usamos servicios de terceros para operar el sitio: hosting de datos (Supabase), almacenamiento de imágenes (Cloudinary), CDN y analítica web sin cookies de identificación personal (Cloudflare Web Analytics). Algunos proveedores pueden procesar datos en el exterior; aplicamos medidas contractualmente razonables de protección.</p>
+    <p>Usamos servicios de terceros para operar el sitio:</p>
+    <ul>
+      <li><strong>Supabase</strong> (hosting de base de datos, Estados Unidos) — almacena los datos de contacto.</li>
+      <li><strong>Cloudinary</strong> (almacenamiento de imágenes, Estados Unidos).</li>
+      <li><strong>Cloudflare</strong> (CDN, protección y analítica web anónima).</li>
+      <li><strong>Google Analytics 4</strong> (analítica web, Google Ireland/Estados Unidos) — mide el tráfico del sitio. Utiliza cookies de medición. Solo se activa si aceptás las cookies.</li>
+      <li><strong>Microsoft Clarity</strong> (analítica de comportamiento, Microsoft) — genera mapas de calor y grabaciones de sesión anónimas. Utiliza cookies. Solo se activa si aceptás las cookies.</li>
+      <li><strong>Google Fonts</strong> (tipografías, Google) — carga las fuentes del sitio.</li>
+    </ul>
+    <div class="legal-note">
+      Algunos proveedores pueden procesar datos en el exterior. Aplicamos medidas contractualmente razonables de protección y los servicios de analítica están configurados con <strong>anonymize_ip</strong> (GA4) y enmascaramiento de texto (Clarity).
+    </div>
 
     <h2>7. Cookies y analítica</h2>
-    <p>El sitio utiliza Cloudflare Web Analytics, que mide el tráfico de forma agregada y anónima, sin almacenar cookies de identificación personal en tu dispositivo.</p>
+    <p>El sitio utiliza los siguientes mecanismos de medición:</p>
+    <ul>
+      <li><strong>Cloudflare Web Analytics:</strong> mide el tráfico de forma agregada y anónima, sin cookies de identificación personal.</li>
+      <li><strong>Google Analytics 4:</strong> cookie <code>_ga</code> para distinguir usuarios. <strong>Solo se carga si aceptás las cookies</strong> en el banner.</li>
+      <li><strong>Microsoft Clarity:</strong> cookies <code>_clck</code> y <code>_clsk</code> para análisis de comportamiento. <strong>Solo se carga si aceptás las cookies</strong> en el banner.</li>
+    </ul>
+    <p>Podés rechazar las cookies no esenciales en el banner que aparece al visitar el sitio, y cambiar tu decisión en cualquier momento borrando el almacenamiento local de tu navegador.</p>
 
     <h2>8. Tus derechos (Ley 25.326)</h2>
-    <p>Pedís ejercer tus derechos de <strong>acceso, rectificación, actualización y supresión</strong> de tus datos personales escribiendo a <a href="mailto:bienenhaus.propiedades@gmail.com">bienenhaus.propiedades@gmail.com</a>. Respondemos en un plazo razonable. La Ley 25.326 establece en su art. 14 que el titular podrá en cualquier momento solicitar el retiro o bloqueo de su nombre de los bancos de datos a los que se refiere el art. 5.</p>
-    <p>El uso que hagas de este sitio implica la aceptación de esta política tal como está publicada.</p>
+    <p>Podés ejercer tus derechos de <strong>acceso, rectificación, actualización y supresión</strong> de tus datos personales escribiendo a <a href="mailto:bienenhaus.propiedades@gmail.com">bienenhaus.propiedades@gmail.com</a>. Respondemos en un plazo razonable. La Ley 25.326 establece en su art. 14 que el titular puede solicitar la supresión de sus datos cuando sean innecesarios para el fin para el cual fueron recolectados. La Agencia de Acceso a la Información Pública (AAIP) es el órgano de control.</p>
 
-    <h2>9. Menores de edad</h2>
-    <p>El sitio no está dirigido a menores de 18 años y no recolectamos conscientemente datos de menores.</p>
+    <h2>9. Seguridad</h2>
+    <p>Implementamos medidas técnicas y organizativas apropiadas para proteger tus datos: encriptación en tránsito (HTTPS/TLS), control de acceso por roles en la base de datos, autenticación obligatoria para el panel administrativo, rate limiting en formularios públicos, y protección anti-automatización (honeypot).</p>
 
-    <h2>10. Seguridad</h2>
-    <p>Aplicamos medidas técnicas y organizativas razonables para proteger tus datos (conexiones cifradas, acceso restringido a la base de datos). Ningún sistema es infalible: si detectás una incidencia, escribinos.</p>
+    <h2>10. Menores</h2>
+    <p>Este sitio no está dirigido a menores de 18 años. No recolectamos deliberadamente datos de menores.</p>
 
     <h2>11. Cambios a esta política</h2>
-    <p>Podemos actualizar esta política; la versión vigente siempre estará disponible en esta página con su fecha de actualización.</p>
+    <p>Podemos actualizar esta política ocasionalmente. Publicaremos cualquier cambio en esta página con la fecha de actualización revisada.</p>
 
-    <a class="back" href="/">← Volver al inicio</a>
-  </main>
+    <a href="/" class="back-link"><i class="fas fa-arrow-left"></i> Volver al inicio</a>
+  </div>
 </body>
 </html>
