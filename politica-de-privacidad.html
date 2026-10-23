@@ -5,9 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Política de Privacidad | Bienenhaus Propiedades</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.cloudinary.com https://res.cloudinary.com;">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     :root { --bg: #05070A; --card: rgba(255,255,255,0.03); --line: rgba(255,255,255,0.08); --accent: #1FC8C3; --text: #F8FAFC; --text-dim: #CBD5E1; --text-muted: #8E9BAE; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -30,6 +27,7 @@
     strong { color: var(--text); }
     .legal-note { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; margin: 24px 0; font-size: 13.5px; color: var(--text-dim); }
   </style>
+  <link rel="stylesheet" href="/assets/vendor/fonts/plus-jakarta-sans.css">
 </head>
 <body>
   <div class="container">
@@ -107,7 +105,38 @@
     <h2>11. Cambios a esta política</h2>
     <p>Podemos actualizar esta política ocasionalmente. Publicaremos cualquier cambio en esta página con la fecha de actualización revisada.</p>
 
-    <a href="/" class="back-link"><i class="fas fa-arrow-left"></i> Volver al inicio</a>
+    <a href="/" class="back-link"><i class="fas fa-arrow-left"></i> 
+    <h2>12. Notificación de incidentes de seguridad</h2>
+    <p>En caso de una brecha de seguridad que afecte datos personales, Bienenhaus Propiedades se compromete a:</p>
+    <ul>
+      <li><strong>Evaluar el incidente</strong> dentro de las 24 horas de detectado, determinando su alcance y los datos afectados.</li>
+      <li><strong>Notificar a los titulares afectados</strong> por email en un plazo razonable, informando qué datos se vieron comprometidos y qué medidas tomar.</li>
+      <li><strong>Reportar a la AAIP</strong> (Agencia de Acceso a la Información Pública) cuando el incidente pueda afectar los derechos de los titulares.</li>
+      <li><strong>Corregir la vulnerabilidad</strong> que causó el incidente y documentar las medidas correctivas tomadas.</li>
+    </ul>
+    <p>Las consultas sobre incidentes de seguridad pueden dirigirse a <a href="mailto:bienenhaus.propiedades@gmail.com">bienenhaus.propiedades@gmail.com</a>.</p>
+
+    <h2>13. Medidas de seguridad aplicadas</h2>
+    <p>Protegemos tus datos personales con las siguientes medidas técnicas:</p>
+    <ul>
+      <li><strong>Encriptación en tránsito:</strong> todo el tráfico del sitio usa HTTPS/TLS 1.2+.</li>
+      <li><strong>Control de acceso granular (RLS):</strong> las 63 tablas de la base de datos tienen políticas de seguridad que restringen qué datos puede ver cada tipo de usuario (anónimo, autenticado, administrador).</li>
+      <li><strong>Autenticación obligatoria:</strong> el panel administrativo exige usuario y contraseña; no hay acceso sin sesión.</li>
+      <li><strong>Rate limiting:</strong> los formularios públicos tienen límites de frecuencia (5 envíos/hora por IP) y honeypot anti-bots.</li>
+      <li><strong>Tokens con expiración:</strong> el portal del propietario usa enlaces temporales que expiran automáticamente.</li>
+      <li><strong>Auditoría de accesos:</strong> se registran las acciones del personal en un log inmutable.</li>
+    </ul>
+
+    
+    <h2>14. Clasificación de datos almacenados</h2>
+    <p>Los datos personales que almacenamos se clasifican en dos niveles:</p>
+    <ul>
+      <li><strong>Datos de contacto básicos</strong> (nombre, email, teléfono): almacenados en la base de datos del servicio Supabase, protegidos por RLS y HTTPS. Accesibles solo por personal autorizado.</li>
+      <li><strong>Datos financieros de propietarios</strong> (DNI/CUIT, datos bancarios, dirección): almacenados con el mismo nivel de protección (RLS + HTTPS), con acceso restringido exclusivamente a administradores del sistema. Estos datos se utilizan únicamente para operaciones inmobiliarias y no se comparten con terceros.</li>
+    </ul>
+    <p>La base de datos está alojada en Supabase (proveedor con certificaciones ISO 27001, SOC 2 Type 2, y encriptación de disco a nivel de infraestructura).</p>
+
+    Volver al inicio</a>
   </div>
 </body>
 </html>

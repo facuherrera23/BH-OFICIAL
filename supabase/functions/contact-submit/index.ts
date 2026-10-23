@@ -133,6 +133,8 @@ Deno.serve(async (req: Request) => {
       source: 'newsletter',
       stage: 'nuevo',
       notes: 'Suscripción al newsletter desde la landing page',
+      /* FIX LEGAL 2026-10-23: registrar consentimiento también en newsletter */
+      consent_at: new Date().toISOString(),
     }]);
     if (nlErr) {
       console.error('[contact-submit] newsletter insert error:', nlErr);
