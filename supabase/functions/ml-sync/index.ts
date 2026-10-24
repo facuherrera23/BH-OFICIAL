@@ -757,8 +757,54 @@ async function runJob(
                     propertyId,
                 );
             }
-            if ('error' in result)
+            if ('error' in result) {
+                /* FIX 2026-10-24: si el update falla (item cerrado/pausado directo
+                   en el panel de ML, pre-activación, campos bloqueados), dejar al
+                   menos registrado el estado REAL del item vía GET — si no, el
+                   badge del módulo Propiedades seguiría diciendo 'En ML' para un
+                   item que ML ya cerró (flujo real: los huérfanos se cierran
+                   desde el panel de ML). Best-effort: el job igual falla y queda
+                   visible en Supervisión; esto solo asegura que la tabla de
+                   estado no mienta. */
+                try {
+                    const statusRes = await fetchWithTimeout(`https://api.mercadolibre.com/items/${itemId}`, {
+                        headers: { Authorization: `Bearer ${accessToken}` },
+                    });
+                    if (statusRes.ok) {
+                        const itemStatus = ((await statusRes.json()) as { status?: string }).status ?? null;
+                        if (itemStatus) {
+                            await supabase
+                                .from('ml_listings')
+                                .update({
+                                    ml_status: itemStatus,
+                                    last_sync: new Date().toISOString(),
+                                })
+                                .eq('property_id', propertyId);
+                            await supabase.from('property_ml_meta').upsert({
+                                property_id: propertyId,
+                                ml_item_id: itemId,
+                                status: itemStatus,
+                                last_sync_at: new Date().toISOString(),
+                                last_sync_status: 'failed',
+                            });
+                            logger.info({
+                                function: 'ml-sync',
+                                job_id: queueId,
+                                property_id: propertyId,
+                                operation: 'mlUpdateItem',
+                                status: 'failed',
+                                metadata: {
+                                    detail: 'status_refreshed_via_get',
+                                    ml_status: itemStatus,
+                                },
+                            });
+                        }
+                    }
+                } catch {
+                    /* best-effort: si el GET también falla, el job falla igual */
+                }
                 return { ok: false, error: result.error, rateLimited: result.rateLimited };
+            }
 
             if (property.description) {
                 const descResult = await runWithRetry(
