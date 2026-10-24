@@ -722,13 +722,41 @@ async function runJob(
 
             const idempotencyKey = `${queueId}:${propertyId}:update`;
 
-            const result = await runWithRetry(
+            let result = await runWithRetry(
                 accessToken,
                 () => mlUpdateItemValidated(accessToken, String(itemId), patch, idempotencyKey),
                 'mlUpdateItem',
                 queueId,
                 propertyId,
             );
+            /* FIX 2026-10-24 (caso DA-P0008): algunos items bloquean campos según
+               su categoría/tipo de publicación (400 field_not_updatable — p.ej.
+               available_quantity y condition). Antes el update entero fallaba y
+               la publicación quedaba congelada. Ahora se quitan los campos que ML
+               rechazó y se reintenta UNA vez con el resto del patch (precio,
+               moneda y fotos siguen aplicando normal). */
+            if ('error' in result && result.error.includes('field_not_updatable')) {
+                const lockedFields = [...result.error.matchAll(/"references":\["([a-z_]+)"\]/g)].map((m) => m[1]);
+                for (const f of lockedFields) delete patch[f];
+                logger.info({
+                    function: 'ml-sync',
+                    job_id: queueId,
+                    property_id: propertyId,
+                    operation: 'mlUpdateItem',
+                    status: 'retry',
+                    metadata: {
+                        detail: 'retry_without_locked_fields',
+                        locked_fields: lockedFields.join(','),
+                    },
+                });
+                result = await runWithRetry(
+                    accessToken,
+                    () => mlUpdateItemValidated(accessToken, String(itemId), patch, `${idempotencyKey}:nofields`),
+                    'mlUpdateItem',
+                    queueId,
+                    propertyId,
+                );
+            }
             if ('error' in result)
                 return { ok: false, error: result.error, rateLimited: result.rateLimited };
 
