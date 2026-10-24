@@ -585,6 +585,17 @@ Deno.serve(async (req) => {
                     .from('ml_listings')
                     .update({ ml_status: closedStatus, last_sync: new Date().toISOString() })
                     .eq('ml_item_id', mlItemId);
+                /* FIX 2026-10-24: meta.status quedaba congelado en 'active' de un
+                   sync viejo aunque el item ya estaba cerrado (caso DA-P0001) —
+                   las dos tablas deben contar la misma historia. */
+                await supabase
+                    .from('property_ml_meta')
+                    .update({
+                        status: closedStatus,
+                        last_sync_status: 'success',
+                        last_sync_at: new Date().toISOString(),
+                    })
+                    .eq('ml_item_id', mlItemId);
 
                 await auditLog({
                     userId: adminId,

@@ -895,12 +895,37 @@ async function handleItems(payload: MlWebhookPayload): Promise<void> {
         .eq('ml_item_id', itemId)
         .maybeSingle();
 
-    if (meta) {
-        const { error: enqueueErr } = await supabase.rpc('ml_enqueue', {
-            p_property_id: meta.property_id,
-            p_operation: 'update',
-            p_ml_item_id: meta.ml_item_id,
-        });
+    let propertyId = meta?.property_id ?? null;
+    /* FIX 2026-10-24: si la fila de meta no existe, resolver la propiedad por
+       ml_listings — mismo fallback que handleQuestions. Sin esto el evento
+       queda en callejón sin salida y esa publicación deja de sincronizar. */
+    if (!propertyId) {
+        const { data: listing } = await supabase
+            .from('ml_listings')
+            .select('property_id')
+            .eq('ml_item_id', itemId)
+            .maybeSingle();
+        propertyId = listing?.property_id ?? null;
+    }
+
+    if (propertyId) {
+        /* FIX 2026-10-24 (badge Portales "N err"): un 502 transitorio de
+           PostgREST (Bad Gateway) fallaba el evento al PRIMER intento y
+           mantenía el badge de Portales en error 24h aunque el item se
+           sincronizara bien con la siguiente notificación. Un reintento con
+           delay absorbe los blips de gateway; los errores reales siguen
+           quedando 'failed' y visibles — nunca fallar sin dejar rastro. */
+        let enqueueErr: { message: string } | null = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const { error } = await supabase.rpc('ml_enqueue', {
+                p_property_id: propertyId,
+                p_operation: 'update',
+                p_ml_item_id: itemId,
+            });
+            enqueueErr = (error as { message: string } | null) ?? null;
+            if (!enqueueErr) break;
+            if (attempt === 0) await new Promise((r) => setTimeout(r, 1500));
+        }
         /* Se lanza para que el evento quede 'failed' (visible): antes se pasaba
            un parámetro inexistente (p_internal) y el error de PostgREST se
            tragaba en silencio con el evento marcado 'processed'. */

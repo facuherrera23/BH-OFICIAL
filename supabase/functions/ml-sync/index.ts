@@ -987,6 +987,22 @@ Deno.serve(async (req) => {
                     await supabase
                         .from('property_ml_meta')
                         .upsert({ property_id: job.property_id, ...meta });
+                    /* FIX 2026-10-24 (badge "Pendiente ML" congelado): el módulo
+                       Propiedades lee ml_listings.ml_status, pero el sync solo
+                       refrescaba property_ml_meta — el estado de la publicación
+                       quedaba congelado para siempre en el valor del momento de
+                       creación ('not_yet_active', que es lo normal minutos antes
+                       de que ML active el item). Cada sync exitoso ahora también
+                       refleja en ml_listings el estado REAL que devolvió ML. */
+                    if (outcome.mlStatus) {
+                        await supabase
+                            .from('ml_listings')
+                            .update({
+                                ml_status: outcome.mlStatus,
+                                last_sync: new Date().toISOString(),
+                            })
+                            .eq('property_id', job.property_id);
+                    }
                     await supabase
                         .from('ml_sync_queue')
                         .update({
