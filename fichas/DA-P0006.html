@@ -371,6 +371,15 @@ CPI. 1834</p>
         copyIt.setAttribute('data-copy', withParams);
       }
     }
+    /* CONVERSIÓN 2026-10-26: medir clicks de WhatsApp desde la ficha —
+       es EL evento de conversión de estas páginas. bhTrack es no-op
+       sin consentimiento (analytics.js no carga gtag). */
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('a[href*="wa.me"]');
+      if (a && typeof window.bhTrack === 'function') {
+        window.bhTrack('wa_click', { origin: 'ficha', property_code: 'DA-P0006' });
+      }
+    });
   })();
   </script>
   <script src="../assets/js/analytics.js" defer></script>
