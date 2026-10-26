@@ -39,13 +39,15 @@ function _setSessionOk(){
 }
 
 function _showNoSessionBanner(){
+  /* CONVERSIÓN 2026-10-26: para el visitante público (página indexable)
+     el banner rojo "Abrí desde el panel de administración" era una alarma
+     incomprensible. La barra de estado es chrome de herramienta interna —
+     se oculta; el guardado público ya fluye por savePublicTasacion. */
   const statusBar = document.getElementById('statusBar');
   if (statusBar) {
-    statusBar.style.background = '#7f1d1d';
-    statusBar.style.display = 'block';
+    statusBar.style.background = '';
+    statusBar.style.display = 'none';
   }
-  const statusText = document.getElementById('statusText');
-  if (statusText) statusText.textContent = '⚠ Sin sesión — Abrí desde el panel de administración';
 }
 
 window.addEventListener('message', (e) => {
@@ -431,6 +433,123 @@ function setLocked(locked){
   }
 }
 
+let _publicSaved = false;
+
+/* VISITANTE PÚBLICO (2026-10-26): el tasacionero era calculadora sin captura —
+   el guardado exigía sesión (RLS authenticated) y el visitante topaba con
+   "Sesión no válida" tras llenar todo. Ahora el guardado público pide contacto
+   (nombre + WhatsApp) y lo manda a tasacion-submit, que crea el lead en el CRM
+   (source='tasacion', el lead más caliente: un propietario tasando su
+   propiedad) + persiste la tasación para el panel del admin. */
+function promptPublicContact() {
+  return new Promise((resolve) => {
+    const old = document.getElementById('publicContactOverlay');
+    if (old) old.remove();
+
+    const ov = document.createElement('div');
+    ov.id = 'publicContactOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.78);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px;';
+    const panel = document.createElement('div');
+    panel.style.cssText = 'background:var(--card,#121212);border:1px solid var(--line,#3f3f3f);border-radius:16px;max-width:420px;width:100%;padding:26px 24px;box-shadow:0 24px 60px rgba(0,0,0,.6);';
+    panel.innerHTML = [
+      '<h3 style="margin:0 0 6px;font-size:19px;color:var(--ink,#f5f5f4);font-family:Poppins,sans-serif;">Guardá tu tasación</h3>',
+      '<p style="margin:0 0 18px;font-size:13.5px;color:var(--muted,#b8b3aa);line-height:1.5;">Dejanos tu contacto y un asesor te envía el detalle del análisis y los próximos pasos.</p>',
+      '<label style="display:block;font-size:12px;color:var(--muted,#b8b3aa);margin:0 0 6px;">Nombre *</label>',
+      '<input id="pc_name" type="text" autocomplete="name" style="width:100%;box-sizing:border-box;background:#1c2321;border:1px solid var(--line,#3f3f3f);border-radius:10px;color:var(--ink,#f5f5f4);padding:11px 12px;font-size:14px;margin:0 0 14px;">',
+      '<label style="display:block;font-size:12px;color:var(--muted,#b8b3aa);margin:0 0 6px;">WhatsApp / Teléfono *</label>',
+      '<input id="pc_phone" type="tel" autocomplete="tel" placeholder="+54 9 351 ..." style="width:100%;box-sizing:border-box;background:#1c2321;border:1px solid var(--line,#3f3f3f);border-radius:10px;color:var(--ink,#f5f5f4);padding:11px 12px;font-size:14px;margin:0 0 14px;">',
+      '<label style="display:block;font-size:12px;color:var(--muted,#b8b3aa);margin:0 0 6px;">Email (opcional)</label>',
+      '<input id="pc_email" type="email" autocomplete="email" style="width:100%;box-sizing:border-box;background:#1c2321;border:1px solid var(--line,#3f3f3f);border-radius:10px;color:var(--ink,#f5f5f4);padding:11px 12px;font-size:14px;margin:0 0 14px;">',
+      '<div style="position:absolute;left:-9999px;top:-9999px;height:0;overflow:hidden;" aria-hidden="true"><label>Sitio web <input type="text" id="pc_website" tabindex="-1" autocomplete="off"></label></div>',
+      '<label style="display:flex;gap:10px;align-items:flex-start;font-size:12px;color:var(--muted,#b8b3aa);margin:0 0 18px;line-height:1.45;cursor:pointer;">',
+      '<input id="pc_consent" type="checkbox" style="margin-top:2px;accent-color:var(--teal,#14b8a6);">',
+      '<span>Acepto la <a href="/politica-de-privacidad.html" target="_blank" rel="noopener" style="color:var(--teal,#14b8a6);">política de privacidad</a> y el tratamiento de mis datos.</span></label>',
+      '<div style="display:flex;gap:10px;">',
+      '<button id="pc_cancel" type="button" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--line,#3f3f3f);background:transparent;color:var(--muted,#b8b3aa);font-size:14px;cursor:pointer;font-family:Poppins,sans-serif;">Cancelar</button>',
+      '<button id="pc_send" type="button" style="flex:1.6;padding:12px;border-radius:10px;border:none;background:var(--teal,#14b8a6);color:#04110f;font-weight:700;font-size:14px;cursor:pointer;font-family:Poppins,sans-serif;">Enviar mi tasación</button>',
+      '</div>'
+    ].join('');
+    ov.appendChild(panel);
+    document.body.appendChild(ov);
+
+    const close = (val) => { ov.remove(); resolve(val); };
+    ov.addEventListener('click', (e) => { if (e.target === ov) close(null); });
+    panel.querySelector('#pc_cancel').addEventListener('click', () => close(null));
+    panel.querySelector('#pc_send').addEventListener('click', () => {
+      const name = panel.querySelector('#pc_name').value.trim();
+      const phone = panel.querySelector('#pc_phone').value.trim();
+      const email = panel.querySelector('#pc_email').value.trim();
+      const consent = panel.querySelector('#pc_consent').checked;
+      const website = panel.querySelector('#pc_website').value;
+      if (!name || phone.replace(/\D/g, '').length < 8 || !consent) {
+        panel.querySelector('#pc_send').textContent = !consent ? 'Falta aceptar la política' : (!name ? 'Falta el nombre' : 'Teléfono inválido');
+        setTimeout(() => { panel.querySelector('#pc_send').textContent = 'Enviar mi tasación'; }, 2200);
+        return;
+      }
+      close({ name, phone, email, website });
+    });
+  });
+}
+
+async function savePublicTasacion(finalize) {
+  if (_publicSaved) {
+    showToast('Tu tasación ya está guardada — un asesor te va a contactar.');
+    return true;
+  }
+  const contact = await promptPublicContact();
+  if (!contact) return false;
+
+  const btn = document.getElementById('btnSave');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...'; }
+  try {
+    recalcAll();
+    const formData = collectFormData();
+    /* Payload acotado: las fotos base64 de los comparables pueden sumar megas —
+       van afuera (la fachada queda, la del lead es la conversación). */
+    const data = JSON.parse(JSON.stringify(formData));
+    if (Array.isArray(data.comparables)) data.comparables.forEach(c => { if (c) delete c.photo; });
+    const isAlquiler = formData.fields.f_destino === 'Alquiler';
+    const storedUtm = typeof window.bhGetUtm === 'function' ? window.bhGetUtm() : null;
+    const utm = new URLSearchParams(location.search);
+
+    const res = await fetch(SUPABASE_URL + '/functions/v1/tasacion-submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: contact.name,
+        phone: contact.phone,
+        email: contact.email || undefined,
+        consent: true,
+        website: contact.website || '',
+        utm_source: utm.get('utm_source') || (storedUtm ? storedUtm.utm_source : '') || undefined,
+        utm_campaign: utm.get('utm_campaign') || (storedUtm ? storedUtm.utm_campaign : '') || undefined,
+        tasacion: {
+          title: formData.fields.f_direccion || formData.fields.f_barrio || 'Tasación web',
+          data,
+          type: isAlquiler ? 'alquiler' : 'venta',
+          valuation_usd: isAlquiler ? null : _lastValorFinal,
+          valuation_ars: isAlquiler ? _lastValorFinal : null,
+        },
+      }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || ('HTTP ' + res.status));
+    const out = await res.json().catch(() => ({}));
+    if (out.tasacion_id) TASACION_ID = out.tasacion_id;
+    _publicSaved = true;
+    if (typeof window.bhTrack === 'function') window.bhTrack('tasacion_lead_submit', { finalize: !!finalize });
+    const lastSaved = document.getElementById('lastSaved');
+    if (lastSaved) lastSaved.textContent = 'Guardado ' + new Date().toLocaleTimeString('es-AR');
+    showToast(finalize ? '¡Tasación enviada! Te contactamos a la brevedad.' : '¡Guardado! Un asesor te contacta con el detalle.');
+    if (finalize) window.parent?.postMessage({ type: 'tasaciones-finalized', id: TASACION_ID }, window.location.origin);
+    return true;
+  } catch (e) {
+    showToast('Error al enviar: ' + (e.message || e));
+    return false;
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Guardar'; }
+  }
+}
+
 async function saveToSupabase(finalize){
   if(_saving) return false;
   /* CONVERSIÓN 2026-10-26: medir uso del tasacionero (intención de guardar).
@@ -443,8 +562,10 @@ async function saveToSupabase(finalize){
   /* _sessionOk = sesión real del propio cliente (localStorage mismo-origen), cubre
      también la pestaña suelta del PDF; _authToken = confirmación del admin vía iframe. */
   if(!_authToken && !_sessionOk){
-    showToast('Sesión no válida. Volvé al panel y abrí de nuevo.');
-    return false;
+    /* FIX CONVERSIÓN 2026-10-26: antes era un callejón sin salida
+       ("Sesión no válida") para el visitante público — hoy captura
+       contacto y guarda vía tasacion-submit (lead + tasación). */
+    return await savePublicTasacion(finalize);
   }
   _saving = true;
   const btn = document.getElementById('btnSave');

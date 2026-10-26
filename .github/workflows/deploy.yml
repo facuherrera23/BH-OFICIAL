@@ -183,11 +183,14 @@ jobs:
             "convert-image"
           )
           # Sin verify_jwt (webhooks externos, crons y endpoints pre-login).
-          # Mapa exacto del estado desplegado a 2026-09-18:
+          # contact-submit + tasacion-submit: endpoints públicos pre-login
+          # (form del landing y tasacionero) — NUNCA verify_jwt ON o el
+          # visitante anónimo recibe 401 y los leads se pierden en silencio.
           NO_VERIFY=(
             "backup-snapshot"
             "check-password-hash"
             "cloudinary-sign"
+            "contact-submit"
             "cron_exclusivity_renewals"
             "exclusive-expiry-alert"
             "ficha"
@@ -209,6 +212,7 @@ jobs:
             "supervision-ml-anomaly"
             "supervision-notifications"
             "supervision-notify"
+            "tasacion-submit"
             "trigger_commission_on_close"
             "visits-process-reminders"
             "zernio-proxy"
