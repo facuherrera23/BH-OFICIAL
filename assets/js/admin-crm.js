@@ -2069,6 +2069,7 @@ function bindSideSave(lead, panel) {
     var d = collectSideForm(panel);
     if (!d.full_name) { toast('El nombre es obligatorio.', 'error'); return; }
     var stageChanged = d.stage && normalizeStage(d.stage) !== normalizeStage(originalStage);
+    var lostDetailToSave = null;
 
     /* Razón de pérdida obligatoria: si el nuevo estado es cerrado_perdido
        y no lo estaba antes, pedir la razón antes de guardar. */
@@ -2083,6 +2084,10 @@ function bindSideSave(lead, panel) {
         return;
       }
       d.lost_reason = lostResult.reason;
+      /* FIX 2026-10-26 (bug silencioso): el detalle escrito para "Otro" por
+         esta vía se descartaba — nunca se persistía. Se guarda tras el update
+         exitoso para no dejar nota huérfana si el guardado falla. */
+      lostDetailToSave = lostResult;
       toast('Razón registrada: ' + lostResult.label, 'info');
     }
 
@@ -2096,6 +2101,12 @@ function bindSideSave(lead, panel) {
     try {
       var r = await db().from('leads').update(d).eq('id', lead.id);
       if (r.error) { throw new Error(r.error.message); }
+      /* Nota del motivo de pérdida (vía dropdown): recién tras guardar bien */
+      if (lostDetailToSave && lostDetailToSave.detail) {
+        try {
+          await db().from('lead_activities').insert([{ lead_id: lead.id, activity_type: 'note', title: 'Motivo del rechazo: ' + lostDetailToSave.label, description: lostDetailToSave.detail }]);
+        } catch (e) { console.warn('[crm] lost detail note:', e.message); }
+      }
       if (stageChanged) {
         await db().from('lead_activities').insert([{
           lead_id: lead.id,
@@ -2930,13 +2941,21 @@ var LOST_REASONS = [
   { id: 'ubicacion',    label: 'Ubicación',          icon: 'fas fa-map-pin',           desc: 'La zona no le sirve' },
   { id: 'encontro_otra',label: 'Encontró otra',      icon: 'fas fa-building-circle-check', desc: 'Compró/alquiló con otro' },
   { id: 'no_responde',  label: 'No responde',        icon: 'fas fa-phone-slash',       desc: 'Dejó de contestar' },
-  { id: 'financiamiento',label: 'Financiamiento',   icon: 'fas fa-credit-card',       desc: 'No consigue crédito/hipoteca' }
+  { id: 'financiamiento',label: 'Financiamiento',   icon: 'fas fa-credit-card',       desc: 'No consigue crédito/hipoteca' },
+  { id: 'timing',       label: 'Timing',              icon: 'fas fa-hourglass-half',    desc: 'No es el momento' },
+  { id: 'perdio_interes',label: 'Perdió interés',    icon: 'fas fa-heart-crack',       desc: 'Se arrepintió / desistió' },
+  { id: 'sin_propiedad',label: 'Sin propiedad adecuada', icon: 'fas fa-house-circle-xmark', desc: 'No hay inventario que le encaje' }
 ];
 var LOST_REASON_LABELS = {};
 LOST_REASONS.forEach(function(r) { LOST_REASON_LABELS[r.id] = r.label; });
 LOST_REASON_LABELS.otro = 'Otro';
 
-function showLostReasonModal() {
+/* FIX 2026-10-26 (pedido del dueño): el texto del panel ES el detalle — el
+   modal solo categoriza. prefill: descripción ya escrita en el panel, con la
+   que se pre-carga el campo de "Otro" (opcional, ya no exige escribir de
+   nuevo). El detalle solo se lee para "otro" (si no, el prefill duplicaría
+   el texto en la nota). */
+function showLostReasonModal(prefill) {
   return new Promise(function(resolve) {
     var overlay = document.createElement('div');
     overlay.className = 'crm-outcome-overlay';
@@ -2959,7 +2978,7 @@ function showLostReasonModal() {
         '<button type="button" class="lost-reason-option lost-reason-option--other" data-reason="otro" data-label="Otro">' +
           '<i class="fas fa-ellipsis"></i>' +
           '<span class="lost-reason-option-label">Otro</span>' +
-          '<span class="lost-reason-option-desc">Especificá el motivo</span>' +
+          '<span class="lost-reason-option-desc">Podés sumar detalle (opcional)</span>' +
         '</button>' +
       '</div>' +
       '<div class="lost-reason-detail-wrap" style="display:none;">' +
@@ -2976,6 +2995,8 @@ function showLostReasonModal() {
     var confirmBtn = box.querySelector('#lostReasonConfirm');
     var detailWrap = box.querySelector('.lost-reason-detail-wrap');
     var detailInput = box.querySelector('#lostReasonDetail');
+    /* Pre-cargar con lo que el agente ya escribió en el panel (si vino) */
+    if (detailInput && prefill) detailInput.value = prefill;
 
     function close(result) {
       document.removeEventListener('keydown', onKey);
@@ -3000,8 +3021,11 @@ function showLostReasonModal() {
 
     confirmBtn.addEventListener('click', function() {
       if (!selected) return;
-      var detail = detailInput && detailInput.value.trim() ? detailInput.value.trim() : null;
-      if (selected.reason === 'otro' && !detail) { toast('Escribí el motivo.', 'error'); detailInput.focus(); return; }
+      /* El detalle solo aplica a "otro" — para las categorías conocidas el
+         texto del panel ya es la nota (concatenar el prefill duplicaría). */
+      var detail = selected.reason === 'otro' && detailInput && detailInput.value.trim()
+        ? detailInput.value.trim()
+        : null;
       close({ reason: selected.reason, label: selected.label, detail: detail });
     });
   });
@@ -3196,11 +3220,13 @@ function bindLeadTaskForm(panel, lead) {
         refreshTimelineInPanel(leadId, panel);
       } else if (action === 'lost') {
         if (!desc) { toast('Escribí el motivo del rechazo.', 'error'); return; }
-        var lostResult = await showLostReasonModal();
+        /* FIX 2026-10-26: el texto del panel ES el detalle — se pre-carga el
+           modal y ya no hay que escribir el motivo dos veces. */
+        var lostResult = await showLostReasonModal(desc);
         if (!lostResult) return;
         var lUp = await db().from('leads').update({ stage: 'cerrado_perdido', lost_reason: lostResult.reason, last_contacted_at: new Date().toISOString() }).eq('id', leadId);
         if (lUp.error) throw new Error(lUp.error.message);
-        await db().from('lead_activities').insert([{ lead_id: leadId, activity_type: 'note', title: 'Motivo del rechazo: ' + lostResult.label, description: desc + (lostResult.detail ? ' — ' + lostResult.detail : '') }]);
+        await db().from('lead_activities').insert([{ lead_id: leadId, activity_type: 'note', title: 'Motivo del rechazo: ' + lostResult.label, description: desc + (lostResult.detail && lostResult.detail !== desc ? ' — ' + lostResult.detail : '') }]);
         toast('Marcado como perdido: ' + lostResult.label, 'success');
         closeDetailPanel();
         await loadLeads();
@@ -3209,6 +3235,12 @@ function bindLeadTaskForm(panel, lead) {
       /* Después de crear tarea/visita/nota: refrescar la lista de leads en background
          SIN cerrar/abrir el panel. La lista de tareas ya se refrescó arriba con
          refreshTasksInPanel(); el panel queda donde está con los datos actualizados. */
+      /* FIX 2026-10-26 (reporte del dueño): limpiar la descripción tras guardar —
+         se quedaba el mensaje anterior y el agente arrastraba texto viejo a la
+         próxima tarea (o topaba con el anti-duplicado). La fecha límite se
+         conserva: encadenar tareas del mismo horario es el caso común. */
+      var descIn = panel.querySelector('#leadTaskDesc');
+      if (descIn) descIn.value = '';
       loadLeads();
     } catch (e) {
       toast('Error: ' + e.message, 'error');
