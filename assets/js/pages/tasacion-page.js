@@ -433,6 +433,13 @@ function setLocked(locked){
 
 async function saveToSupabase(finalize){
   if(_saving) return false;
+  /* CONVERSIÓN 2026-10-26: medir uso del tasacionero (intención de guardar).
+     Nota estructural: el guardado público está bloqueado por diseño (RLS
+     solo authenticated) — el visitante anónimo llega hasta acá y recibe
+     'Sesión no válida'. Este evento deja visible cuánta gente lo intenta. */
+  if (typeof window.bhTrack === 'function') {
+    window.bhTrack('tasacion_save_attempt', { finalize: !!finalize });
+  }
   /* _sessionOk = sesión real del propio cliente (localStorage mismo-origen), cubre
      también la pestaña suelta del PDF; _authToken = confirmación del admin vía iframe. */
   if(!_authToken && !_sessionOk){
@@ -1006,3 +1013,16 @@ if (_isPrintMode) {
   }, 500);
   setTimeout(() => { clearInterval(_autoPrintCheck); window.print(); }, 15000);
 }
+
+/* CONVERSIÓN 2026-10-26: primer foco en cualquier campo del tasacionero =
+   inicio del funnel de tasación (página pública indexable desde hoy). */
+(function () {
+  var fired = false;
+  var onStart = function () {
+    if (fired) return;
+    fired = true;
+    if (typeof window.bhTrack === 'function') window.bhTrack('tasacion_start');
+    document.removeEventListener('focusin', onStart, true);
+  };
+  document.addEventListener('focusin', onStart, true);
+})();

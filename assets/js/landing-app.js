@@ -252,6 +252,22 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
     if (!p || !propertyModal) return;
     currentProperty = p;
 
+    /* CONVERSIÓN 2026-10-26: medir qué propiedades se ven + armar el CTA de
+       WhatsApp con el contexto de la propiedad (mismo patrón que las fichas:
+       mensaje pre-cargado con código y título). Antes el modal solo ofrecía
+       bajar al form — el visitante con prisa no tenía vía rápida de contacto. */
+    if (typeof window.bhTrack === 'function') {
+      window.bhTrack('property_view', { property_code: p.property_code || '', property_title: (p.title || '').substring(0, 80) });
+    }
+    const waCta = document.getElementById('propertyWhatsAppCta');
+    if (waCta) {
+      const waNumber = (typeof BH_PHONES === 'object' && BH_PHONES.length) ? BH_PHONES[pickPhoneVariant()].wa : '5493516379651';
+      const waLabel = p.title || p.property_code || 'una propiedad';
+      const waText = 'Hola, me interesa la propiedad ' + (p.property_code ? p.property_code + ' ' : '') + '(' + waLabel + ') que vi en bienenhaus.com.ar';
+      waCta.href = 'https://wa.me/' + waNumber + '?text=' + encodeURIComponent(waText);
+      waCta.dataset.propertyCode = p.property_code || '';
+    }
+
     currentGalleryImages = Array.isArray(p.image_urls) ? p.image_urls.filter(Boolean) : [];
     if (!currentGalleryImages.length) currentGalleryImages = [FALLBACK_IMG];
     currentImageIndex = 0;
@@ -321,6 +337,25 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
     if (btn) openPropertyModal(btn.dataset.propertyId);
   });
 
+  /* CONVERSIÓN 2026-10-26: tracking delegado de clicks de WhatsApp y links
+     a fichas. bhTrack es no-op sin consentimiento, así que esto no hace
+     nada para usuarios que no aceptaron cookies. */
+  document.addEventListener('click', (e) => {
+    if (typeof window.bhTrack !== 'function') return;
+    const wa = e.target.closest('a[href*="wa.me"]');
+    if (wa) {
+      const origin = wa.id === 'propertyWhatsAppCta'
+        ? 'modal_propiedad'
+        : (wa.classList.contains('whatsapp-float') ? 'boton_flotante' : 'sitio');
+      const params = { origin };
+      if (wa.dataset.propertyCode) params.property_code = wa.dataset.propertyCode;
+      window.bhTrack('wa_click', params);
+    }
+    if (e.target.closest('a.card-image-link, .card-title a')) {
+      window.bhTrack('ficha_link_click');
+    }
+  });
+
   /* ------------------------------------------------
      8. FILTER PILLS
      ------------------------------------------------ */
@@ -368,6 +403,14 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
   const btnSubmit = contactForm?.querySelector('.btn-submit');
 
   if (contactForm) {
+    /* CONVERSIÓN 2026-10-26: form_start — primer foco en el form (mide
+       intención antes del envío; con esto se ve DÓNDE se cae la conversión) */
+    const fireFormStart = () => {
+      if (typeof window.bhTrack === 'function') window.bhTrack('form_start', { form: 'contacto' });
+      contactForm?.removeEventListener('focusin', fireFormStart);
+    };
+    contactForm.addEventListener('focusin', fireFormStart);
+
     contactForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (btnSubmit) {
@@ -411,7 +454,13 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
           payload.notes = `[Interesado en: ${propLabel}${interestedProperty.property_code ? ' (Cod. ' + interestedProperty.property_code + ')' : ''}]\n` + payload.notes;
         }
 
+        /* ATRIBUCIÓN 2026-10-26: UTMs de la URL actual o, si no hay, la última
+           capturada (persistida por analytics.js: el usuario puede llegar con
+           utm, navegar, y recién enviar el form más tarde). */
         const utm = new URLSearchParams(location.search);
+        const storedUtm = typeof window.bhGetUtm === 'function' ? window.bhGetUtm() : null;
+        const utmSource = utm.get('utm_source') || (storedUtm ? storedUtm.utm_source : '') || undefined;
+        const utmCampaign = utm.get('utm_campaign') || (storedUtm ? storedUtm.utm_campaign : '') || undefined;
         const res = await fetch(window.BH_CONFIG.SUPABASE_URL + '/functions/v1/contact-submit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -427,8 +476,8 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
             property_id: payload.property_id || undefined,
             tipo_cliente: payload.tipo_cliente || undefined,
             operation_type: payload.operation_type || undefined,
-            utm_source: utm.get('utm_source') || undefined,
-            utm_campaign: utm.get('utm_campaign') || undefined,
+            utm_source: utmSource,
+            utm_campaign: utmCampaign,
             website: data.website || '',
           }),
         });
@@ -441,6 +490,10 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
         interestedProperty = null;
         const chipDone = document.getElementById('interestPropertyChip');
         if (chipDone) chipDone.style.display = 'none';
+
+        if (typeof window.bhTrack === 'function') {
+          window.bhTrack('form_submit', { form: 'contacto' });
+        }
 
         contactForm.style.display = 'none';
         if (submitSuccess) submitSuccess.classList.add('show');
@@ -539,7 +592,13 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
 
   function applyRotatingPhone() {
     const phone = BH_PHONES[pickPhoneVariant()];
-    document.querySelectorAll('a[href*="wa.me"]').forEach(a => { a.href = 'https://wa.me/' + phone.wa; });
+    /* FIX 2026-10-26: preservar el ?text= de los links contextuales — el
+       reemplazo a secas borraba el mensaje pre-cargado de los CTAs de
+       WhatsApp (modal de propiedad), dejando chats sin contexto. */
+    document.querySelectorAll('a[href*="wa.me"]').forEach(a => {
+      const qi = a.href.indexOf('?');
+      a.href = 'https://wa.me/' + phone.wa + (qi === -1 ? '' : a.href.slice(qi));
+    });
     document.querySelectorAll('.contact-phone').forEach(el => { el.textContent = phone.display; });
     document.querySelectorAll('.footer-phone').forEach(el => { el.textContent = phone.display; });
     const phoneInput = document.getElementById('telefono');
@@ -1005,6 +1064,12 @@ function renderSocialLinks(social) {
       const mainImg = (p.image_urls && p.image_urls.length > 0) ? p.image_urls[0] : FALLBACK_IMG;
       const locationText = [p.zone, p.address].filter(Boolean).join(', ');
 
+      /* SEO 2026-10-26: cada card linkea a la ficha HTML de la propiedad.
+         Antes el catálogo solo abría un modal — Google no tenía forma de
+         descubrir las 30 fichas desde el sitio (no estaban indexadas) y el
+         visitante perdía la ficha con CTA de WhatsApp pre-cargado. */
+      const fichaHref = p.property_code ? '/fichas/' + encodeURIComponent(p.property_code) + '.html' : null;
+
       const card = document.createElement('div');
       card.className = 'property-card';
       card.dataset.type = (p.property_type || '').toLowerCase();
@@ -1016,7 +1081,17 @@ function renderSocialLinks(social) {
       img.src = safeImageUrl(cloudinaryThumb(mainImg, 800));
       img.alt = p.title || 'Propiedad';
       img.loading = 'lazy';
-      imageWrapper.appendChild(img);
+
+      if (fichaHref) {
+        const imgLink = document.createElement('a');
+        imgLink.href = fichaHref;
+        imgLink.className = 'card-image-link';
+        imgLink.setAttribute('aria-label', 'Ver ficha de ' + (p.title || p.property_code));
+        imgLink.appendChild(img);
+        imageWrapper.appendChild(imgLink);
+      } else {
+        imageWrapper.appendChild(img);
+      }
 
       if (p.featured) {
         const badge = document.createElement('span');
@@ -1052,7 +1127,15 @@ function renderSocialLinks(social) {
 
       const title = document.createElement('h3');
       title.className = 'card-title';
-      title.textContent = p.title || 'Propiedad';
+      if (fichaHref) {
+        const titleLink = document.createElement('a');
+        titleLink.href = fichaHref;
+        titleLink.style.cssText = 'color:inherit;text-decoration:none;';
+        titleLink.textContent = p.title || 'Propiedad';
+        title.appendChild(titleLink);
+      } else {
+        title.textContent = p.title || 'Propiedad';
+      }
 
       const location = document.createElement('div');
       location.className = 'card-location';
@@ -1711,7 +1794,11 @@ function renderSocialLinks(social) {
         if (c.schedule) setContactValue('.fa-clock', c.schedule);
         if (c.whatsapp) {
           const waLinks = document.querySelectorAll('a[href*="wa.me"]');
-          waLinks.forEach(a => a.href = 'https://wa.me/' + c.whatsapp.replace(/[^0-9]/g, ''));
+          /* FIX 2026-10-26: mismo fix que applyRotatingPhone — no pisar el ?text= */
+          waLinks.forEach(a => {
+            const qi = a.href.indexOf('?');
+            a.href = 'https://wa.me/' + c.whatsapp.replace(/[^0-9]/g, '') + (qi === -1 ? '' : a.href.slice(qi));
+          });
         }
         if (c.instagram) updateSocialLink('.fa-instagram', c.instagram);
         if (c.facebook) updateSocialLink('.fa-facebook-f', c.facebook);
@@ -1976,14 +2063,24 @@ function renderSocialLinks(social) {
       if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Suscribiendo...'; }
 
       try {
+        const storedUtm = typeof window.bhGetUtm === 'function' ? window.bhGetUtm() : null;
+        const nlUtm = new URLSearchParams(location.search);
         const res = await fetch(window.BH_CONFIG.SUPABASE_URL + '/functions/v1/contact-submit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ kind: 'newsletter', email }),
+          body: JSON.stringify({
+            kind: 'newsletter',
+            email,
+            utm_source: nlUtm.get('utm_source') || (storedUtm ? storedUtm.utm_source : '') || undefined,
+            utm_campaign: nlUtm.get('utm_campaign') || (storedUtm ? storedUtm.utm_campaign : '') || undefined,
+          }),
         });
         if (!res.ok) {
           const out = await res.json().catch(() => ({}));
           throw new Error(out.error || ('HTTP ' + res.status));
+        }
+        if (typeof window.bhTrack === 'function') {
+          window.bhTrack('form_submit', { form: 'newsletter' });
         }
         newsletterForm.innerHTML = '<p style="color:var(--accent); font-size:14px; font-weight:500; padding:12px 0;"><i class="fas fa-check-circle"></i> ¡Gracias por suscribirte!</p>';
       } catch (err) {

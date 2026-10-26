@@ -532,6 +532,15 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
         copyIt.setAttribute('data-copy', withParams);
       }
     }
+    /* CONVERSIÓN 2026-10-26: medir clicks de WhatsApp desde la ficha —
+       es EL evento de conversión de estas páginas. bhTrack es no-op
+       sin consentimiento (analytics.js no carga gtag). */
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('a[href*="wa.me"]');
+      if (a && typeof window.bhTrack === 'function') {
+        window.bhTrack('wa_click', { origin: 'ficha', property_code: '${code}' });
+      }
+    });
   })();
   </script>
   <script src="../assets/js/analytics.js" defer></script>
@@ -543,6 +552,7 @@ function buildSitemap(props) {
   const today = new Date().toISOString().slice(0, 10);
   const urls = [
     { loc: `${SITE_URL}/`, changefreq: 'daily', priority: '1.0' },
+    { loc: `${SITE_URL}/tasacion.html`, changefreq: 'monthly', priority: '0.9' },
     { loc: `${SITE_URL}/politica-de-privacidad.html`, changefreq: 'yearly', priority: '0.3' },
     { loc: `${SITE_URL}/terminos-y-condiciones.html`, changefreq: 'yearly', priority: '0.3' },
     ...props.map((p) => ({ loc: `${SITE_URL}/fichas/${p.property_code}.html`, changefreq: 'weekly', priority: '0.8' })),

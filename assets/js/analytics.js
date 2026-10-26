@@ -56,4 +56,46 @@
 
   /* cookie-banner.js dispara este evento custom al aceptar */
   window.addEventListener('bh-cookie-consent', activate);
+
+  /* ============================================================
+     ATRIBUCIÓN Y EVENTOS DE CONVERSIÓN (2026-10-26)
+     bhTrack(name, params): evento a GA4 + Clarity (solo si hay
+     consentimiento — sin gtag cargado es un no-op seguro).
+     bhGetUtm(): última atribución UTM capturada (persistida 30 días
+     para que el lead quede atribuido aunque el usuario navegue antes
+     de enviar el form). Jamás lanza errores: tracking nunca rompe la página.
+     ============================================================ */
+  var UTM_KEY = 'bh_utm_last';
+  var UTM_TTL_MS = 30 * 24 * 3600 * 1000;
+
+  try {
+    var qp = new URLSearchParams(location.search);
+    var src = qp.get('utm_source');
+    if (src) {
+      localStorage.setItem(UTM_KEY, JSON.stringify({
+        utm_source: src.substring(0, 120),
+        utm_medium: (qp.get('utm_medium') || '').substring(0, 120),
+        utm_campaign: (qp.get('utm_campaign') || '').substring(0, 120),
+        landing: location.pathname.substring(0, 120),
+        ts: Date.now(),
+      }));
+    }
+  } catch (_) { /* modo privado */ }
+
+  window.bhGetUtm = function () {
+    try {
+      var raw = localStorage.getItem(UTM_KEY);
+      if (!raw) return null;
+      var u = JSON.parse(raw);
+      if (!u || !u.utm_source || (Date.now() - (u.ts || 0)) > UTM_TTL_MS) return null;
+      return u;
+    } catch (_) { return null; }
+  };
+
+  window.bhTrack = function (name, params) {
+    try {
+      if (typeof window.gtag === 'function') window.gtag('event', name, params || {});
+      if (typeof window.clarity === 'function') window.clarity('event', name);
+    } catch (_) { /* no-op */ }
+  };
 })();

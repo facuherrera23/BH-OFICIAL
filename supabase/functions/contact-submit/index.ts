@@ -135,6 +135,9 @@ Deno.serve(async (req: Request) => {
       notes: 'Suscripción al newsletter desde la landing page',
       /* FIX LEGAL 2026-10-23: registrar consentimiento también en newsletter */
       consent_at: new Date().toISOString(),
+      /* ATRIBUCIÓN 2026-10-26: guardar la campaña que trajo al suscriptor */
+      utm_source: clip(String(payload.utm_source ?? ''), 120) || null,
+      utm_campaign: clip(String(payload.utm_campaign ?? ''), 120) || null,
     }]);
     if (nlErr) {
       console.error('[contact-submit] newsletter insert error:', nlErr);
