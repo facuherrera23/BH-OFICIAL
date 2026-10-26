@@ -63,7 +63,7 @@ test.describe('Fichas indexables + sitemap', () => {
     console.assertClean();
   });
 
-  test('index.html: catálogo paginado de a 9, sin link de ficha en cards', async ({ page }) => {
+  test('index.html: catálogo paginado de a 9, con links a fichas en cards (SEO interno)', async ({ page }) => {
     await page.goto('/index.html');
     const console = trackConsoleErrors(page);
     await expect(page.locator('#propertyGrid [data-property-id]').first()).toBeVisible({ timeout: 20000 });
@@ -71,7 +71,13 @@ test.describe('Fichas indexables + sitemap', () => {
     const cards = await page.locator('#propertyGrid .property-card').count();
     expect(cards).toBeLessThanOrEqual(9);
 
-    expect(await page.locator('#propertyGrid').getByText('Ficha completa').count()).toBe(0);
+    /* SEO 2026-10-26: cada card linkea a la ficha HTML (imagen + título) —
+       antes solo existían modales y Google no descubría las fichas. Si el dueño
+       decide volver al modelo sin links, revertir junto con renderProperties. */
+    const fichaLinks = await page.locator('#propertyGrid a.card-image-link').count();
+    expect(fichaLinks).toBeGreaterThan(0);
+    const firstHref = await page.locator('#propertyGrid a.card-image-link').first().getAttribute('href');
+    expect(firstHref).toMatch(/^\/fichas\/[A-Za-z0-9-]+\.html$/);
 
     const total = Number((await page.locator('#resultsCount').textContent() || '').match(/\d+/)?.[0] || 0);
     const pagination = page.locator('#catalogPagination');
