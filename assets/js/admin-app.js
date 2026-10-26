@@ -2361,7 +2361,7 @@ function esc(s) {
       const counts = {};
       rows.forEach(r => { counts[r.lost_reason] = (counts[r.lost_reason] || 0) + 1; });
       const total = rows.length;
-      const LBL = { presupuesto: 'Presupuesto', ubicacion: 'Ubicación', encontro_otra: 'Encontró otra', no_responde: 'No responde', financiamiento: 'Financiamiento', timing: 'Timing', perdio_interes: 'Perdió interés', sin_propiedad: 'Sin propiedad adecuada', otro: 'Otro' };
+      const LBL = { presupuesto: 'Presupuesto', ubicacion: 'Ubicación', encontro_otra: 'Encontró otra', no_responde: 'No responde', financiamiento: 'Financiamiento', timing: 'Timing', perdio_interes: 'Perdió interés', sin_propiedad: 'Sin propiedad adecuada', duplicado: 'Duplicado', otro: 'Otro' };
       const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
       const maxCount = entries[0][1];
 

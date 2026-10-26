@@ -2944,7 +2944,8 @@ var LOST_REASONS = [
   { id: 'financiamiento',label: 'Financiamiento',   icon: 'fas fa-credit-card',       desc: 'No consigue crédito/hipoteca' },
   { id: 'timing',       label: 'Timing',              icon: 'fas fa-hourglass-half',    desc: 'No es el momento' },
   { id: 'perdio_interes',label: 'Perdió interés',    icon: 'fas fa-heart-crack',       desc: 'Se arrepintió / desistió' },
-  { id: 'sin_propiedad',label: 'Sin propiedad adecuada', icon: 'fas fa-house-circle-xmark', desc: 'No hay inventario que le encaje' }
+  { id: 'sin_propiedad',label: 'Sin propiedad adecuada', icon: 'fas fa-house-circle-xmark', desc: 'No hay inventario que le encaje' },
+  { id: 'duplicado',    label: 'Duplicado',           icon: 'fas fa-clone',             desc: 'Lead repetido en el CRM' }
 ];
 var LOST_REASON_LABELS = {};
 LOST_REASONS.forEach(function(r) { LOST_REASON_LABELS[r.id] = r.label; });
