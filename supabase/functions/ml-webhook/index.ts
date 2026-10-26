@@ -506,7 +506,12 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
             .select('lead_id, status')
             .eq('question_id', externalId)
             .maybeSingle();
-        if (existingQ && (existingQ.lead_id || existingQ.status === 'answered')) return;
+        /* REVISADA 2026-10-26: antes también se salteaba si la pregunta estaba
+           'answered' sin lead (política de filas vacías) — esas consultas quedaban
+           respondidas en ML pero sin fila en el CRM. Ahora solo se saltea si el
+           lead YA existe; si fue respondida sin lead (backfill o gate viejo), se
+           crea la fila y el auto-reply no repite (chequea status). */
+        if (existingQ?.lead_id) return;
 
         /* Claim atómico: la misma pregunta llega por el tópico clásico y por
            vis_leads en paralelo; la UNIQUE de ml_questions deja UN ganador. Si
@@ -537,10 +542,10 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
                 });
                 return;
             }
-            const hasIdentity = !!(buyerName || buyerEmail || buyerPhone || buyerId);
-            if (!hasIdentity) return;
-            /* El ganador era anónimo (no creó lead) pero tenemos identidad →
-               sigue el flujo normal y el upsert final vincula el ledger. */
+            /* REVISADA 2026-10-26: antes, sin identidad se volvía sin lead (política
+               de filas vacías). Ahora TODA consulta crea su fila — si el ganador era
+               anónimo y no creó lead, creamos la fila (anónima si hace falta) y el
+               upsert final la vincula al ledger. */
             questionClaimedByOther = true;
         }
         /* FIX 2026-10-20: cuando perdemos el claim pero el ganador era anónimo y
@@ -621,15 +626,15 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
 
     const contactLabel = VIS_CONTACT_LABELS[contactType] ?? contactType;
 
-    /* Regla del estudio (2026-10-13): sin identidad de contacto NO entra al CRM.
-       La pregunta anónima queda en el ledger y en el panel de Portales, el CRM
-       solo guarda leads accionables (nombre + email o teléfono/WhatsApp). */
+    /* Regla del estudio REVISADA 2026-10-26 por pedido del dueño: TODA consulta
+       de ML entra al CRM — el agente necesita la fila para llevar el control del
+       proceso. Sin identidad de contacto (ML anonimiza en inmuebles) la fila se
+       crea igual: nombre descriptivo + propiedad vinculada + texto de la consulta
+       en notes, marcada como anónima para no confundirla con contacto directo.
+       Cuando la persona después escribe datos de contacto, mergeMlEventIntoLead
+       consolida la identidad en la misma fila (startsWith('Interesado ML')). */
     const hasIdentity = !!(buyerName || buyerEmail || buyerPhone || buyerId);
-    if (!hasIdentity) {
-        if (!isQuestion) {
-            throw new Error(`vis_lead ${contactType} sin identidad de contacto — el evento queda en el log, no genera lead`);
-        }
-    } else {
+    if (hasIdentity) {
         /* Consolidación global (no por propiedad): la misma persona puede preguntar
            por A y pedir contacto por B — quedan en UN lead con ambas. */
         const existingLead = await findConsolidableMlLead(supabase, buyerEmail, buyerPhone, buyerId);
@@ -651,14 +656,18 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
         }
     }
 
-    /* Solo con identidad se crea la fila en el CRM; sin ella, o sale por merge
-       o no hay nada accionable — la pregunta igual se responde más abajo. */
+    /* TODA consulta crea su fila en el CRM (revisión 2026-10-26): con identidad
+       va el nombre real; sin ella queda marcada como anónima — el agente ve la
+       propiedad vinculada y el texto de la consulta para trabajarla. */
     let newLead: { id: string } | null = null;
-    if (hasIdentity) {
+    {
+        const anonNote = hasIdentity
+            ? ''
+            : '\n⚠ Consulta anónima: ML ocultó los datos de contacto del interesado. La consulta ya fue respondida automáticamente en la publicación.';
         const created = await supabase
             .from('leads')
             .insert({
-                full_name: buyerName ?? 'Interesado ML',
+                full_name: buyerName ?? 'Interesado ML (anónimo)',
                 email: buyerEmail,
                 phone: buyerPhone,
                 source: 'ml',
@@ -668,7 +677,7 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
                 ml_lead_id: leadId,
                 notes: `[Contacto Mercado Libre · ${contactLabel}] ${
                     questionText || `Interesado vía ${contactLabel}`
-                }${propContext}`,
+                }${anonNote}${propContext}`,
             })
             .select('id')
             .single();

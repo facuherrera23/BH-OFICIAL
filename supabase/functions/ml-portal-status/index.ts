@@ -366,7 +366,14 @@ Deno.serve(async (req) => {
                                     user_id: Number((conn as ActiveConnection).user_id),
                                     application_id: Number(settings.clientId),
                                     attempts: 0,
-                                    sent: l.created_at,
+                                    /* FIX 2026-10-26: sent=now en vez del created_at original —
+                                       el dedup del webhook matchea por (resource, topic, sent_at)
+                                       y con la fecha original la re-inyección de una consulta ya
+                                       procesada se descartaba en silencio ("deduplicated"). Con
+                                       sent fresco el evento entra a procesamiento; los dedups
+                                       reales (leads.ml_lead_id UNIQUE + claim del ledger)
+                                       evitan duplicar leads o respuestas. */
+                                    sent: new Date().toISOString(),
                                     received: new Date().toISOString(),
                                     actions: [l.contact_type],
                                 }),

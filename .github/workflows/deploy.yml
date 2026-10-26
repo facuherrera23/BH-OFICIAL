@@ -201,6 +201,7 @@ jobs:
             "ml-publish"
             "ml-questions-sweep"
             "ml-sync"
+            "ml-vis-sweep"
             "ml-webhook"
             "monthly_commission_liquidation"
             "owner-tasks-reminder"
