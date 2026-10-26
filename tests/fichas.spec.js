@@ -42,7 +42,9 @@ test.describe('Fichas indexables + sitemap', () => {
     await expect(page.locator('#propertyGrid [data-property-id]').first()).toBeVisible({ timeout: 20000 });
 
     const state = await page.evaluate(() => {
-      const digits = (s) => String(s || '').replace(/[^0-9]/g, '');
+      /* 2026-10-26: los links contextuales llevan ?text= pre-cargado (con %21/%20
+         en la codificación) — extraer dígitos SOLO de la parte del número. */
+      const digits = (s) => String(s || '').split('?')[0].replace(/[^0-9]/g, '');
       const wa = document.querySelector('a[href*="wa.me"]')?.getAttribute('href') || '';
       const waFloat = document.querySelector('.whatsapp-float')?.getAttribute('href') || '';
       const contactPhone = document.querySelector('.contact-phone')?.textContent || '';
