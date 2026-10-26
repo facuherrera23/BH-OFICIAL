@@ -174,8 +174,12 @@ jobs:
       - name: Deploy Edge Functions (todas las del repo, verify_jwt por funcion)
         run: |
           # Experimentales/deprecadas fuera del deploy (nunca desplegadas):
+          # contact-submit salió de acá 2026-10-26: la exclusión era del 18/9
+          # (era experimental), quedó vencida cuando pasó a ser EL punto de
+          # entrada de leads públicos — el CI skipeaba sus fixes y producción
+          # corría una versión vieja SIN consent_at (brecha legal del fix
+          # 2026-10-23 que nunca llegó a deployarse). Deplooya como el resto.
           EXCLUDED_FUNCTIONS=(
-            "contact-submit"
             "convert-image"
           )
           # Sin verify_jwt (webhooks externos, crons y endpoints pre-login).
