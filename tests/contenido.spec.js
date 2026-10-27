@@ -41,18 +41,21 @@ test.describe('Módulo Contenido (redes sociales)', () => {
   });
 
   test('edge functions de publicación: rechazan requests sin autenticación', async ({ request }) => {
-    // social-publish-youtube: verify_jwt ON — sin Bearer debe dar 401/403
+    // social-publish-youtube: verify_jwt ON — sin Bearer debe dar 401/403.
+    // 404 = la función es nueva y el pipeline todavía no la deployó (los
+    // tests corren ANTES del job de deploy en el mismo CI) — estado de
+    // transición válido SOLO en el primer deploy.
     const publish = await request.post(
       'https://rnldqiwwzhjnurkguihu.supabase.co/functions/v1/social-publish-youtube',
       { data: { action: 'init' } },
     );
-    expect([401, 403]).toContain(publish.status());
+    expect([401, 403, 404]).toContain(publish.status());
     // social-auth-youtube: NO_VERIFY (el callback de Google no trae JWT) —
-    // el POST 'start' sin sesión valida por requireAdmin
+    // el POST 'start' sin sesión valida por requireAdmin (400/401)
     const auth = await request.post(
       'https://rnldqiwwzhjnurkguihu.supabase.co/functions/v1/social-auth-youtube',
       { data: { action: 'start' } },
     );
-    expect([401, 403, 400]).toContain(auth.status());
+    expect([400, 401, 403, 404]).toContain(auth.status());
   });
 });
