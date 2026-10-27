@@ -413,7 +413,51 @@
     const bar = $('#ytUploadBar');
     const label = $('#ytUploadPct');
     if (bar) bar.style.width = pct + '%';
-    if (label) label.textContent = txt;
+    if (label) {
+      const speedTxt = pct > 0 && pct < 100 ? ' — ' + txt : '';
+      label.innerHTML = '<span>' + txt + '</span><span>' + pct + '%</span>';
+    }
+  }
+
+  /* MEJORA 2026-10-27: feedback del archivo seleccionado + contadores de chars */
+  function setupCreateFormUX() {
+    const titleInput = $('#ytTitle');
+    const titleCounter = $('#ytTitleCounter');
+    const descInput = $('#ytDesc');
+    const descCounter = $('#ytDescCounter');
+    const fileInput = $('#ytFile');
+    const fileInfo = $('#ytFileInfo');
+
+    if (titleInput && titleCounter) {
+      const updateTitle = () => {
+        titleCounter.textContent = titleInput.value.length + '/100' + (titleInput.value.length > 90 ? ' ⚠' : '');
+        titleCounter.style.color = titleInput.value.length > 90 ? 'var(--warning)' : 'var(--text-dim)';
+      };
+      titleInput.addEventListener('input', updateTitle);
+      updateTitle();
+    }
+    if (descInput && descCounter) {
+      const updateDesc = () => {
+        descCounter.textContent = descInput.value.length + '/5000';
+      };
+      descInput.addEventListener('input', updateDesc);
+      updateDesc();
+    }
+    if (fileInput && fileInfo) {
+      fileInput.addEventListener('change', () => {
+        const f = fileInput.files && fileInput.files[0];
+        if (!f) { fileInfo.style.display = 'none'; return; }
+        const size = f.size >= 1024 * 1024 * 1024
+          ? (f.size / (1024 * 1024 * 1024)).toFixed(1) + ' GB'
+          : (f.size / (1024 * 1024)).toFixed(0) + ' MB';
+        const isVideo = !f.type || f.type.indexOf('video/') === 0;
+        fileInfo.textContent = isVideo
+          ? '✓ ' + f.name + ' (' + size + ')'
+          : '⚠ "' + f.name + '" no parece ser un video (' + f.type + ')';
+        fileInfo.style.color = isVideo ? 'var(--accent)' : 'var(--warning)';
+        fileInfo.style.display = '';
+      });
+    }
   }
 
   /* PUT directo a Google con progreso (XHR: fetch no expone progreso de subida). */
@@ -444,6 +488,7 @@
     const description = (($('#ytDesc') || {}).value || '').trim();
     const tags = (($('#ytTags') || {}).value || '').trim();
     const privacy = (($('#ytPrivacy') || {}).value || 'public');
+    const publishAt = (($('#ytPublishAt') || {}).value || '').trim();
     const fileInput = $('#ytFile');
 
     if (!accountId) { showToast('Conectá primero un canal de YouTube (pestaña Cuentas).', 'warning'); return; }
@@ -456,10 +501,23 @@
       showToast('El archivo no es un video (' + file.type + ').', 'error'); return;
     }
     if (file.size > MAX_FILE_BYTES) { showToast('El video supera el máximo de 2 GB.', 'error'); return; }
+    /* Programación: si se setea, validar que es futura y usar privacy=private
+       + publishAt (YouTube lo pasa a público automáticamente en ese momento). */
+    if (publishAt) {
+      const d = new Date(publishAt);
+      if (isNaN(d.getTime()) || d.getTime() < Date.now() + 5 * 60_000) {
+        showToast('La fecha de programación debe ser al menos 5 minutos en el futuro.', 'warning'); return;
+      }
+    }
 
     _publishing = true;
     const btn = $('#ytPublishBtn');
     const btnHtml = btn ? btn.innerHTML : '';
+    /* Bloquear todo el form durante la subida */
+    ['ytTitle', 'ytDesc', 'ytTags', 'ytFile', 'ytPrivacy', 'ytPublishAt', 'ytAccountSelect'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = true;
+    });
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Publicando…'; }
     setUploadProgress(0, 'Preparando…');
     const progressWrap = $('#ytProgress');
@@ -479,6 +537,7 @@
           privacy,
           file_size: file.size,
           file_type: file.type || 'video/mp4',
+          publish_at: publishAt || undefined,
         }),
       });
       const init = await initRes.json().catch(() => ({}));
@@ -502,12 +561,14 @@
       if (!doneRes.ok) throw new Error(done.error || ('HTTP ' + doneRes.status));
 
       setUploadProgress(100, '¡Publicado!');
-      showToast('Video publicado en YouTube.', 'success');
-      if (done.url) window.open(done.url, '_blank', 'noopener');
+      showToast(publishAt ? 'Video programado para ' + new Date(publishAt).toLocaleString('es-AR') + '.' : 'Video publicado en YouTube.', 'success');
+      if (done.url && !publishAt) window.open(done.url, '_blank', 'noopener');
       $('#ytTitle').value = '';
       $('#ytDesc').value = '';
       $('#ytTags').value = '';
+      if ($('#ytPublishAt')) $('#ytPublishAt').value = '';
       if (fileInput) fileInput.value = '';
+      if ($('#ytFileInfo')) $('#ytFileInfo').style.display = 'none';
       loadHistory();
       loadAccounts(); // refresca last_publish_at
     } catch (err) {
@@ -517,6 +578,10 @@
       if (progressWrap) progressWrap.style.display = 'none';
     } finally {
       _publishing = false;
+      ['ytTitle', 'ytDesc', 'ytTags', 'ytFile', 'ytPrivacy', 'ytPublishAt', 'ytAccountSelect'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = false;
+      });
       if (btn) { btn.disabled = false; btn.innerHTML = btnHtml; }
     }
   }
@@ -602,38 +667,41 @@
       '</div>' +
       '<div id="contenidoAccounts" style="display:flex;flex-wrap:wrap;gap:12px;"></div>' +
       '<div id="contenidoStudio" style="display:none;"></div>' +
-      '<div id="contenidoCreate" style="display:none;max-width:720px;">' +
-        '<div class="glass-panel" style="padding:20px;">' +
-          '<h3 style="margin:0 0 4px;font-size:15px;"><i class="fab fa-youtube" style="color:#FF0000;"></i> Publicar video en YouTube</h3>' +
-          '<p style="margin:0 0 16px;font-size:12px;color:var(--text-dim);">El video sube directo de tu navegador a Google — sin pasar por el servidor.</p>' +
-          '<div style="margin-bottom:12px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Canal</span>' +
+      '<div id="contenidoCreate" style="display:none;">' +
+        '<div class="glass-panel" style="padding:24px;max-width:900px;">' +
+          '<h3 style="margin:0 0 4px;font-size:16px;"><i class="fab fa-youtube" style="color:#FF0000;"></i> Publicar video en YouTube</h3>' +
+          '<p style="margin:0 0 20px;font-size:12px;color:var(--text-dim);">El video sube directo de tu navegador a Google — sin pasar por el servidor.</p>' +
+          '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Canal</span>' +
           '<select id="ytAccountSelect" class="crm-field-input crm-field-input--select" style="width:100%;"></select></div>' +
-          '<div style="margin-bottom:12px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Título *</span>' +
+          '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Título * <span id="ytTitleCounter" style="color:var(--text-dim);font-size:11px;float:right;"></span></span>' +
           '<input id="ytTitle" type="text" class="crm-field-input" maxlength="100" placeholder="Ej: Departamento 2 ambientes Nueva Córdoba — TOUR COMPLETO" style="width:100%;"></div>' +
-          '<div style="margin-bottom:12px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Descripción (con hashtags para SEO)</span>' +
+          '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Descripción (con hashtags para SEO) <span id="ytDescCounter" style="color:var(--text-dim);font-size:11px;float:right;"></span></span>' +
           '<textarea id="ytDesc" rows="5" class="crm-field-input" maxlength="5000" placeholder="Descripción del video + #hashtags…" style="width:100%;"></textarea></div>' +
-          '<div style="margin-bottom:12px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Tags SEO (separados por coma)</span>' +
+          '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Tags SEO (separados por coma)</span>' +
           '<input id="ytTags" type="text" class="crm-field-input" placeholder="inmobiliaria córdoba, departamentos, nueva córdoba" style="width:100%;"></div>' +
-          '<div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;">' +
-            '<div style="flex:1;min-width:220px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Video (máx. 2 GB)</span>' +
-            '<input id="ytFile" type="file" accept="video/*" class="crm-field-input" style="width:100%;padding:8px;"></div>' +
-            '<div><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Visibilidad</span>' +
+          '<div style="display:flex;gap:14px;margin-bottom:16px;flex-wrap:wrap;">' +
+            '<div style="flex:2;min-width:250px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Video (máx. 2 GB)</span>' +
+            '<input id="ytFile" type="file" accept="video/*" class="crm-field-input" style="width:100%;padding:8px;">' +
+            '<div id="ytFileInfo" style="font-size:11px;color:var(--accent);margin-top:4px;display:none;"></div></div>' +
+            '<div style="flex:1;min-width:140px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Visibilidad</span>' +
             '<select id="ytPrivacy" class="crm-field-input crm-field-input--select">' +
               '<option value="public">Público</option>' +
               '<option value="unlisted">Oculto (link)</option>' +
               '<option value="private">Privado</option>' +
             '</select></div>' +
+            '<div style="flex:1;min-width:180px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Programar (opcional)</span>' +
+            '<input id="ytPublishAt" type="datetime-local" class="crm-field-input" style="width:100%;"></div>' +
           '</div>' +
-          '<div id="ytProgress" style="display:none;margin-bottom:14px;">' +
-            '<div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;">' +
-              '<div id="ytUploadBar" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width .2s;"></div>' +
+          '<div id="ytProgress" style="display:none;margin-bottom:16px;">' +
+            '<div style="height:8px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden;">' +
+              '<div id="ytUploadBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),#2DE2DA);border-radius:4px;transition:width .3s;"></div>' +
             '</div>' +
-            '<div id="ytUploadPct" style="font-size:11px;color:var(--text-dim);margin-top:5px;"></div>' +
+            '<div id="ytUploadPct" style="font-size:12px;color:var(--text-dim);margin-top:6px;display:flex;justify-content:space-between;"></div>' +
           '</div>' +
-          '<button type="button" id="ytPublishBtn" class="btn-luxury-action" style="padding:12px 24px;font-size:13px;"><i class="fas fa-paper-plane"></i> Publicar en YouTube</button>' +
+          '<button type="button" id="ytPublishBtn" class="btn-luxury-action" style="padding:12px 28px;font-size:14px;"><i class="fas fa-paper-plane"></i> Publicar en YouTube</button>' +
         '</div>' +
       '</div>' +
-      '<div id="contenidoHistory" style="display:none;max-width:860px;"></div>';
+      '<div id="contenidoHistory" style="display:none;"></div>';
   }
 
   function bindOnce() {
@@ -673,6 +741,7 @@
     if (!window.supabaseClient) return;
     renderShell();
     bindOnce();
+    setupCreateFormUX(); // contadores de chars + feedback de archivo
     switchSubTab(_subTab);
     await Promise.all([loadAccounts(), loadHistory()]);
   }

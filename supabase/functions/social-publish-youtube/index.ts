@@ -63,6 +63,7 @@ Deno.serve(async (req) => {
         property_id?: string;
         video_id?: string;
         upload_error?: string;
+        publish_at?: string;
     };
     try {
         body = await req.json();
@@ -102,6 +103,17 @@ Deno.serve(async (req) => {
                 ? body.property_id
                 : null;
 
+            /* Programación nativa de YouTube: publishAt solo con privacy=private
+               — YouTube lo pasa a público automáticamente en ese momento. */
+            let publishAtIso: string | undefined;
+            if (body.publish_at) {
+                const d = new Date(String(body.publish_at));
+                if (isNaN(d.getTime()) || d.getTime() < Date.now() + 5 * 60_000) {
+                    return respond(400, { error: 'La fecha de programación debe ser futura (mínimo 5 minutos).' });
+                }
+                publishAtIso = d.toISOString();
+            }
+
             const { data: acc } = await supabase
                 .from('social_accounts')
                 .select('id, platform, status')
@@ -128,7 +140,13 @@ Deno.serve(async (req) => {
                 .single();
             if (postErr || !post) return respond(500, { error: postErr?.message ?? 'No se pudo crear el registro' });
 
-            // Sesión reanudable de Google
+            // Sesión reanudable de Google (con programación si se pidió)
+            const statusPayload: Record<string, unknown> = {
+                privacyStatus: publishAtIso ? 'private' : privacy,
+                selfDeclaredMadeForKids: false,
+            };
+            if (publishAtIso) statusPayload.publishAt = publishAtIso;
+
             const sessionRes = await fetch(
                 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status',
                 {
@@ -141,7 +159,7 @@ Deno.serve(async (req) => {
                     },
                     body: JSON.stringify({
                         snippet: { title, description, tags, categoryId: '22' },
-                        status: { privacyStatus: privacy, selfDeclaredMadeForKids: false },
+                        status: statusPayload,
                     }),
                 },
             );
