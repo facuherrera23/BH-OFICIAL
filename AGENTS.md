@@ -110,6 +110,12 @@ Cada HTML tiene su meta CSP propia. Al agregar cualquier recurso externo (API, t
 - **Analytics sin consentimiento**: GA/Clarity cargan solo tras aceptar el banner → gran parte del tráfico no se mide en GA (así lo exige la AAIP). No hay beacon anónimo en NINGUNA página (el comment de analytics.js que menciona Cloudflare Insights está vencido); para tráfico total falta el token de Cloudflare Web Analytics que solo el dueño puede obtener del dashboard.
 - **Fuentes de leads (medido 180d)**: ML 31-33/mes (único canal vivo), landing 0/mes desde el 28/9 (buzz de lanzamiento agotado, sin adquisición sostenida — no es un bug del form). Calidad: 66% se pierde en etapas tempranas ("no_responde"), 4 visitas reales en la historia, 0 cierres digitales. El SEO interno + eventos son la base para cambiar esto.
 
+## Módulo CONTENIDO (redes) — decisiones de diseño
+
+- **Cloudinary PROHIBIDO en Contenido (decisión del dueño 2026-10-27)**: el contenido subido por el módulo vive ÚNICAMENTE en la red social de destino. YouTube: PUT directo del navegador a Google (los bytes jamás tocan Supabase/Cloudinary). Fases FB/TikTok: implementar con subida por chunks/multipart DIRECTA a los endpoints de cada plataforma — NO usar file_url/video_url con URL pública (eso exigiría storage intermedio). Cloudinary sigue siendo exclusivo de las fotos de propiedades (fichas/landing).
+- Credenciales OAuth: `app_settings` key `social_{plataforma}` → `{client_id, client_secret}` (getSocialCredentials en `_shared/social.ts`), con fallback a env `SOCIAL_{PLATAFORMA}_CLIENT_ID/SECRET`.
+- Guía de creación de la app Google (proyecto + YouTube Data API v3 + consentimiento Externo **publicado a producción** — si queda en "Pruebas" el refresh token muere a los 7 días): redirect URI exacta = `${SUPABASE_URL}/functions/v1/social-auth-youtube`.
+
 ## Consultas ML → CRM (política y red de seguridad, 2026-10-26)
 
 - **REGLA DEL DUEÑO (revisa la del 13/10): TODA consulta de ML crea su lead en el CRM**. Con identidad va completa; sin identidad queda como "Interesado ML (anónimo)" con la propiedad vinculada + el texto de la consulta en notes (marcada ⚠ anónima). El único salteo válido es si el lead YA existe (`existingQ.lead_id` en el ledger). La vieja regla "answered sin lead → no crear" perdió leads reales con identidad (caso Walter Caiola: 2 consultas con nombre/teléfono/email que jamás generaron lead).
