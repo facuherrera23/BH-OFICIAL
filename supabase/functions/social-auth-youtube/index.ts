@@ -32,6 +32,10 @@ const supabase = createClient(
 const YT_SCOPES = [
     'https://www.googleapis.com/auth/youtube.upload',
     'https://www.googleapis.com/auth/youtube.readonly',
+    /* STUDIO 2026-10-27: edición/borrado de videos (videos.update/videos.delete)
+       exige youtube.force-ssl — sin él el panel es solo lectura. Al cambiar
+       scopes el dueño reconecta una vez y el upsert renueva los tokens. */
+    'https://www.googleapis.com/auth/youtube.force-ssl',
 ].join(' ');
 
 /* ------- state firmado (patrón ml-oauth) ------- */

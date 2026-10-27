@@ -32,11 +32,238 @@
   let _subTab = 'accounts';
   let _bound = false;
   let _publishing = false;
+  /* Studio: canal activo en la vista de administración */
+  let _studioAccount = null;   // {id, display_name, avatar_url}
+  let _studioChannel = null;   // datos del canal (subs, views, etc.)
+  let _studioVideos = [];
+  let _studioCanManage = false;
 
   async function authHeaders() {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (!session) throw new Error('No hay sesión activa');
     return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token };
+  }
+
+  /* ---------- STUDIO: vista del canal (mini YouTube Studio) ---------- */
+
+  async function studioApiCall(body) {
+    const res = await fetch(FN_BASE + '/social-youtube-studio', {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
+    return json;
+  }
+
+  function fmtNum(n) {
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+    return String(n);
+  }
+
+  function isoDurationToText(iso) {
+    const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (!m) return '';
+    const h = Number(m[1] || 0), min = Number(m[2] || 0), s = Number(m[3] || 0);
+    return h ? h + ':' + String(min).padStart(2, '0') + ':' + String(s).padStart(2, '0') : min + ':' + String(s).padStart(2, '0');
+  }
+
+  async function openStudio(account) {
+    _studioAccount = { id: account.id, display_name: account.display_name, avatar_url: account.avatar_url };
+    _subTab = 'studio';
+    switchSubTab('studio');
+    const wrap = $('#contenidoStudio');
+    if (wrap) wrap.innerHTML = '<p style="color:var(--text-dim);font-size:13px;padding:16px 0;"><i class="fas fa-spinner fa-spin"></i> Cargando datos del canal…</p>';
+    try {
+      const [chInfo, vidsInfo] = await Promise.all([
+        studioApiCall({ action: 'channel', account_id: account.id }),
+        studioApiCall({ action: 'videos', account_id: account.id }),
+      ]);
+      _studioChannel = chInfo.channel;
+      _studioCanManage = !!chInfo.can_manage;
+      _studioVideos = vidsInfo.videos || [];
+      renderStudio();
+    } catch (err) {
+      logError('Contenido: studio', err);
+      if (wrap) wrap.innerHTML = '<p style="color:var(--danger);font-size:13px;padding:16px 0;">Error: ' + esc(err.message) + '</p>';
+    }
+  }
+
+  function renderStudio() {
+    const wrap = $('#contenidoStudio');
+    if (!wrap || !_studioChannel) return;
+    const ch = _studioChannel;
+    const handleUrl = ch.handle ? 'https://www.youtube.com/@' + ch.handle.replace(/^@/, '') : 'https://www.youtube.com/channel/' + ch.id;
+
+    const kpi = (icono, valor, label) =>
+      '<div class="glass-panel" style="flex:1;min-width:130px;padding:14px;text-align:center;">' +
+        '<div style="font-size:22px;color:var(--accent);"><i class="' + icono + '"></i></div>' +
+        '<div style="font-size:19px;font-weight:700;margin:4px 0 2px;">' + esc(fmtNum(valor)) + '</div>' +
+        '<div style="font-size:11px;color:var(--text-dim);">' + esc(label) + '</div>' +
+      '</div>';
+
+    wrap.innerHTML =
+      /* Header del canal con KPIs — identidad visual del sistema */
+      '<div class="glass-panel" style="display:flex;align-items:center;gap:16px;padding:18px;margin-bottom:16px;flex-wrap:wrap;">' +
+        (ch.avatar ? '<img src="' + esc(ch.avatar) + '" alt="" style="width:64px;height:64px;border-radius:50%;object-fit:cover;">' : '<i class="fab fa-youtube" style="font-size:40px;color:#FF0000;"></i>') +
+        '<div style="flex:1;min-width:200px;">' +
+          '<div style="font-size:18px;font-weight:700;">' + esc(ch.title) + '</div>' +
+          '<div style="font-size:12px;color:var(--text-dim);">Canal de YouTube · gestionado desde Bienenhaus</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+          '<button type="button" id="studioPublishBtn" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;"><i class="fas fa-plus"></i> Publicar</button>' +
+          '<a href="' + esc(handleUrl) + '" target="_blank" rel="noopener" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-arrow-up-right-from-square"></i> Ver canal</a>' +
+          '<a href="' + esc(handleUrl + '/community') + '" target="_blank" rel="noopener" title="Los posts de la comunidad no tienen API oficial — se crean desde YouTube" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-users"></i> Comunidad</a>' +
+          '<button type="button" id="studioBackBtn" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;"><i class="fas fa-arrow-left"></i> Volver</button>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;">' +
+        kpi('fas fa-users', ch.subscribers, 'Suscriptores') +
+        kpi('fas fa-eye', ch.total_views, 'Vistas totales') +
+        kpi('fas fa-video', ch.video_count, 'Videos') +
+      '</div>' +
+      (!_studioCanManage
+        ? '<div class="glass-panel" style="padding:12px 16px;margin-bottom:16px;border-left:3px solid var(--warning);">' +
+            '<span style="font-size:12.5px;color:var(--text-secondary);"><i class="fas fa-triangle-exclamation" style="color:var(--warning);"></i> Modo solo lectura: reconectá la cuenta de YouTube desde la pestaña Cuentas para habilitar edición, borrado y miniaturas.</span>' +
+          '</div>'
+        : '') +
+      '<h3 style="margin:0 0 12px;font-size:15px;"><i class="fas fa-list"></i> Contenido del canal (' + _studioVideos.length + ')</h3>' +
+      '<div id="studioVideos">' + renderStudioVideos() + '</div>';
+
+    /* Acciones del header */
+    const pubBtn = $('#studioPublishBtn');
+    if (pubBtn) pubBtn.addEventListener('click', function () { switchSubTab('create'); });
+    const backBtn = $('#studioBackBtn');
+    if (backBtn) backBtn.addEventListener('click', function () { switchSubTab('accounts'); });
+  }
+
+  function renderStudioVideos() {
+    if (!_studioVideos.length) {
+      return '<p style="color:var(--text-dim);font-size:13px;padding:12px 0;">El canal no tiene videos todavía.</p>';
+    }
+    const PRIVACY = { public: ['Público', 'var(--success)'], private: ['Privado', 'var(--danger)'], unlisted: ['Oculto', 'var(--warning)'] };
+    return _studioVideos.map(function (v) {
+      const priv = PRIVACY[v.privacy] || [v.privacy, 'var(--text-dim)'];
+      const fecha = window.__BH.formatDateTimeWithTZ ? window.__BH.formatDateTimeWithTZ(v.published_at) : (v.published_at || '');
+      return '<div class="glass-panel" style="display:flex;gap:14px;padding:12px;margin-bottom:10px;align-items:center;flex-wrap:wrap;">' +
+        (v.thumbnail ? '<img src="' + esc(v.thumbnail) + '" alt="" style="width:120px;border-radius:8px;flex-shrink:0;" loading="lazy">' : '<div style="width:120px;height:67px;background:rgba(255,255,255,0.04);border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><i class="fab fa-youtube" style="color:#FF0000;font-size:20px;"></i></div>') +
+        '<div style="flex:1;min-width:200px;">' +
+          '<div style="font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:480px;">' + esc(v.title) + '</div>' +
+          '<div style="font-size:11.5px;color:var(--text-dim);margin-top:4px;display:flex;gap:12px;flex-wrap:wrap;">' +
+            '<span title="Vistas"><i class="fas fa-eye"></i> ' + fmtNum(v.views) + '</span>' +
+            '<span title="Likes"><i class="fas fa-thumbs-up"></i> ' + fmtNum(v.likes) + '</span>' +
+            '<span title="Comentarios"><i class="fas fa-comment"></i> ' + fmtNum(v.comments) + '</span>' +
+            (v.duration ? '<span><i class="fas fa-clock"></i> ' + esc(isoDurationToText(v.duration)) + '</span>' : '') +
+            '<span>' + esc(fecha) + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<span style="font-size:10.5px;color:' + priv[1] + ';border:1px solid currentColor;border-radius:10px;padding:2px 10px;flex-shrink:0;">' + esc(priv[0]) + '</span>' +
+        '<div style="display:flex;gap:6px;flex-shrink:0;">' +
+          '<button type="button" class="btn-luxury-action" data-studio-edit="' + esc(v.id) + '" title="Editar título, descripción, tags y programación" style="padding:7px 11px;font-size:11px;"><i class="fas fa-pen"></i></button>' +
+          '<a href="https://www.youtube.com/watch?v=' + esc(v.id) + '" target="_blank" rel="noopener" title="Ver en YouTube" class="btn-luxury-action" style="padding:7px 11px;font-size:11px;text-decoration:none;"><i class="fas fa-arrow-up-right-from-square"></i></a>' +
+          '<button type="button" class="btn-luxury-action" data-studio-delete="' + esc(v.id) + '" data-studio-title="' + esc(v.title) + '" title="Borrar video (permanente)" style="padding:7px 11px;font-size:11px;color:var(--danger);"><i class="fas fa-trash-can"></i></button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function findStudioVideo(videoId) {
+    return _studioVideos.find(function (v) { return v.id === videoId; }) || null;
+  }
+
+  /* ---------- STUDIO: editar video ---------- */
+
+  function openStudioEditModal(v) {
+    closeModalIfExists('studioEditOverlay');
+    const ov = document.createElement('div');
+    ov.id = 'studioEditOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px;';
+    const box = document.createElement('div');
+    box.className = 'glass-panel';
+    box.style.cssText = 'max-width:560px;width:100%;padding:24px;max-height:85vh;overflow-y:auto;';
+    box.innerHTML =
+      '<h3 style="margin:0 0 6px;font-size:16px;"><i class="fas fa-pen"></i> Editar video</h3>' +
+      '<p style="margin:0 0 16px;font-size:12px;color:var(--text-dim);">' + esc(String(v.title).substring(0, 80)) + '</p>' +
+      '<div style="margin-bottom:12px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Título</span>' +
+      '<input id="steTitle" type="text" class="crm-field-input" maxlength="100" value="' + esc(v.title) + '" style="width:100%;"></div>' +
+      '<div style="margin-bottom:12px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Descripción</span>' +
+      '<textarea id="steDesc" rows="4" class="crm-field-input" maxlength="5000" style="width:100%;">' + esc(v.description || '') + '</textarea></div>' +
+      '<div style="margin-bottom:12px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Tags SEO (coma)</span>' +
+      '<input id="steTags" type="text" class="crm-field-input" value="' + esc((v.tags || []).join(', ')) + '" style="width:100%;"></div>' +
+      '<div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;">' +
+        '<div style="flex:1;min-width:150px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Visibilidad</span>' +
+        '<select id="stePrivacy" class="crm-field-input crm-field-input--select" style="width:100%;">' +
+          '<option value="public"' + (v.privacy === 'public' ? ' selected' : '') + '>Público</option>' +
+          '<option value="unlisted"' + (v.privacy === 'unlisted' ? ' selected' : '') + '>Oculto (link)</option>' +
+          '<option value="private"' + (v.privacy === 'private' ? ' selected' : '') + '>Privado</option>' +
+        '</select></div>' +
+        '<div style="flex:1;min-width:180px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Programar publicación (opcional)</span>' +
+        '<input id="stePublishAt" type="datetime-local" class="crm-field-input" style="width:100%;"></div>' +
+      '</div>' +
+      '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Miniatura (imagen JPG/PNG ≤ 2MB)</span>' +
+      '<input id="steThumb" type="file" accept="image/jpeg,image/png" class="crm-field-input" style="width:100%;padding:8px;"></div>' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end;">' +
+        '<button type="button" id="steCancel" class="btn-luxury-action" style="padding:10px 18px;font-size:12px;">Cancelar</button>' +
+        '<button type="button" id="steSave" class="btn-luxury-action" style="padding:10px 18px;font-size:12px;"><i class="fas fa-floppy-disk"></i> Guardar</button>' +
+      '</div>';
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+    ov.addEventListener('mousedown', function (e) { if (e.target === ov) closeModalIfExists('studioEditOverlay'); });
+    box.querySelector('#steCancel').addEventListener('click', function () { closeModalIfExists('studioEditOverlay'); });
+
+    box.querySelector('#steSave').addEventListener('click', async function () {
+      const btn = this;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando…';
+      try {
+        const publishAt = (box.querySelector('#stePublishAt').value || '');
+        await studioApiCall({
+          action: 'video_update',
+          account_id: _studioAccount.id,
+          video_id: v.id,
+          title: box.querySelector('#steTitle').value,
+          description: box.querySelector('#steDesc').value,
+          tags: box.querySelector('#steTags').value,
+          privacy: box.querySelector('#stePrivacy').value,
+          publish_at: publishAt || undefined,
+        });
+        /* Miniatura opcional — el update ya guardó lo demás: un fallo acá no revierte nada */
+        const thumbFile = box.querySelector('#steThumb').files && box.querySelector('#steThumb').files[0];
+        if (thumbFile) {
+          const b64 = await new Promise(function (resolve) {
+            const fr = new FileReader();
+            fr.onload = function () { resolve(String(fr.result)); };
+            fr.readAsDataURL(thumbFile);
+          });
+          await studioApiCall({ action: 'thumbnail', account_id: _studioAccount.id, video_id: v.id, thumbnail_base64: b64 });
+        }
+        showToast('Video actualizado.', 'success');
+        closeModalIfExists('studioEditOverlay');
+        openStudio(_studioAccount); // recargar
+      } catch (err) {
+        showToast(err.message, 'error');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar';
+      }
+    });
+  }
+
+  async function studioDeleteVideo(videoId, title) {
+    if (!window.confirm('¿Borrar de YouTube "' + title.substring(0, 60) + '"?\n\nEsta acción es PERMANENTE y no se puede deshacer.')) return;
+    try {
+      await studioApiCall({ action: 'video_delete', account_id: _studioAccount.id, video_id: videoId });
+      showToast('Video borrado del canal.', 'success');
+      openStudio(_studioAccount); // recargar
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  function closeModalIfExists(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
   }
 
   /* ---------- Cuentas ---------- */
@@ -71,12 +298,16 @@
       const iconHtml = acc.avatar_url
         ? '<img src="' + esc(acc.avatar_url) + '" alt="" style="width:42px;height:42px;border-radius:50%;object-fit:cover;">'
         : '<i class="' + esc(meta.icon) + '" style="font-size:26px;color:' + meta.color + ';width:42px;text-align:center;"></i>';
+      /* STUDIO: click en la tarjeta del canal abre la administración completa
+         del contenido — pedir del dueño 2026-10-27. */
+      card.style.cursor = 'pointer';
+      card.dataset.contenidoStudio = acc.id;
       card.innerHTML =
         '<div style="flex:1;min-width:0;">' +
         '<div style="font-weight:600;font-size:14px;">' + esc(acc.display_name) + '</div>' +
         '<div style="font-size:11.5px;color:var(--text-dim);">' + esc(meta.name) + ' · conectada' +
         (acc.last_publish_at ? ' · última: ' + (window.__BH.formatDateTimeWithTZ ? window.__BH.formatDateTimeWithTZ(acc.last_publish_at) : '') : '') +
-        '</div>' +
+        ' <i class="fas fa-arrow-right" style="font-size:9px;margin-left:2px;"></i></div>' +
         '</div>' +
         '<button type="button" data-contenido-disconnect="' + esc(acc.id) + '" class="btn-luxury-action" style="padding:8px 14px;font-size:11px;">Desconectar</button>';
       card.insertAdjacentHTML('afterbegin', iconHtml);
@@ -342,7 +573,7 @@
   function switchSubTab(sub) {
     _subTab = sub;
     $$('#contenidoSubTabs button').forEach(b => b.classList.toggle('is-active', b.dataset.sub === sub));
-    const views = { accounts: '#contenidoAccounts', create: '#contenidoCreate', history: '#contenidoHistory' };
+    const views = { accounts: '#contenidoAccounts', create: '#contenidoCreate', history: '#contenidoHistory', studio: '#contenidoStudio' };
     Object.values(views).forEach(sel => { const el = $(sel); if (el) el.style.display = 'none'; });
     const el = $(views[sub]);
     if (el) el.style.display = '';
@@ -360,6 +591,7 @@
         '<button type="button" data-sub="history" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;"><i class="fas fa-clock-rotate-left"></i> Historial</button>' +
       '</div>' +
       '<div id="contenidoAccounts" style="display:flex;flex-wrap:wrap;gap:12px;"></div>' +
+      '<div id="contenidoStudio" style="display:none;max-width:1000px;"></div>' +
       '<div id="contenidoCreate" style="display:none;max-width:720px;">' +
         '<div class="glass-panel" style="padding:20px;">' +
           '<h3 style="margin:0 0 4px;font-size:15px;"><i class="fab fa-youtube" style="color:#FF0000;"></i> Publicar video en YouTube</h3>' +
@@ -403,11 +635,27 @@
       if (connect) { connectPlatform(connect.dataset.contenidoConnect); return; }
       const disconnect = e.target.closest('[data-contenido-disconnect]');
       if (disconnect) { disconnectAccount(disconnect.dataset.contenidoDisconnect); return; }
+      /* STUDIO: click en la tarjeta del canal → administración del contenido */
+      const studioCard = e.target.closest('[data-contenido-studio]');
+      if (studioCard) {
+        const acc = _accounts.find(a => a.id === studioCard.dataset.contenidoStudio);
+        if (acc) openStudio(acc);
+        return;
+      }
       const sub = e.target.closest('#contenidoSubTabs button[data-sub]');
       if (sub) { switchSubTab(sub.dataset.sub); return; }
       if (e.target.closest('#ytPublishBtn')) publishToYoutube();
       const del = e.target.closest('[data-contenido-delete]');
       if (del) { deletePost(del.dataset.contenidoDelete); return; }
+      /* STUDIO: acciones sobre videos del canal */
+      const editBtn = e.target.closest('[data-studio-edit]');
+      if (editBtn) {
+        const v = findStudioVideo(editBtn.dataset.studioEdit);
+        if (v) openStudioEditModal(v);
+        return;
+      }
+      const delVid = e.target.closest('[data-studio-delete]');
+      if (delVid) { studioDeleteVideo(delVid.dataset.studioDelete, delVid.dataset.studioTitle || ''); return; }
     });
   }
 

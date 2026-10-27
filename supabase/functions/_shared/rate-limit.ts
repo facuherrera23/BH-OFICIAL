@@ -46,6 +46,7 @@ export const RATE_LIMIT_CONFIG = {
     'tasacion-submit': { requests: 5, windowMs: 3_600_000 }, // 5/h por IP - tasacionero público
     'social-auth-youtube': { requests: 10, windowMs: 60_000 }, // 10/min - OAuth panel
     'social-publish-youtube': { requests: 10, windowMs: 60_000 }, // 10/min - publicaciones panel
+    'social-youtube-studio': { requests: 30, windowMs: 60_000 }, // 30/min - studio (carga + ediciones)
 } as const;
 
 export type RateLimitFnName = keyof typeof RATE_LIMIT_CONFIG;
