@@ -5882,3 +5882,4 @@ input[type="range"]::-moz-range-thumb {
 
 
 }
+/* rebuild 2026-10-27: el objeto comprimido de Pages servia un stream corrupto (NULs tras ~204KB en br/gzip) — cambio de contenido para forzar recompresion limpia del asset. */
