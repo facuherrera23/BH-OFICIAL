@@ -43,6 +43,8 @@ export const RATE_LIMIT_CONFIG = {
     'ml-sync-import': { requests: 2, windowMs: 60_000 }, // 2/min - importacion full ML -> BH (cron/admin)
     'contact-submit': { requests: 5, windowMs: 3_600_000 }, // 5/h por IP - formulario público
     'tasacion-submit': { requests: 5, windowMs: 3_600_000 }, // 5/h por IP - tasacionero público
+    'social-auth-youtube': { requests: 10, windowMs: 60_000 }, // 10/min - OAuth panel
+    'social-publish-youtube': { requests: 10, windowMs: 60_000 }, // 10/min - publicaciones panel
 } as const;
 
 export type RateLimitFnName = keyof typeof RATE_LIMIT_CONFIG;

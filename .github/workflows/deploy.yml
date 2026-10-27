@@ -208,6 +208,7 @@ jobs:
             "process-retention-policies"
             "rela-callbacks"
             "rela-sync"
+            "social-auth-youtube"
             "supervision-api"
             "supervision-digest"
             "supervision-ml-anomaly"
