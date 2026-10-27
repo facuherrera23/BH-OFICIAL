@@ -147,6 +147,9 @@ Cada HTML tiene su meta CSP propia. Al agregar cualquier recurso externo (API, t
 
 ## Imágenes y performance
 
+- **⚠️ Incidente del mapa invisible (2026-10-27): CSS estructuralmente roto pasa TODOS los tests de texto.** El commit de fixes mobile (`a922da7`) dejó un `@media` sin cerrar y 2 llaves sueltas al final — 18KB de reglas (`.pf-map`, sección portales, medias de agenda/crm) quedaron DENTRO del mediaquery y Chrome descartaba el bloque entero: solo 1.362 de las reglas llegaban al DOM, el mapa computaba 0px en desktop desde hacía una semana. Los tests "la clase existe en el archivo" NO sirven para esto — la clase existía, la regla jamás aplicaba. **Cure**: `tests/css-structure.spec.js` — balance de llaves (ignorando strings/comentarios), depth nunca negativo, `.pf-map` a nivel top, y parseo REAL en el CSSOM (reglas > 1400 + `.pf-map` computa 240px con un probe). Regla: cualquier edición grande de admin.css corre ese spec.
+- **Falsa pista de esta investigación (que costó 3 deploys):** el diagnóstico inicial culpó a la caché de Cloudflare (stream truncado, NUL bytes) — eran artefactos de template-literals mangled en los probes del browser (`\.pf-map\s*\{` llegó al browser como `.pf-maps*{`) y de un bump que pisó una versión ya usada (v=360 ya estaba en el edge — el auto-bump del CI había llegado antes que el manual). El escáner de balance de llaves con estados (strings/comentarios) fue el que dio la evidencia definitiva: 1689 abiertas vs 1690 cerradas. **Al diagnosticar CSS raro: PRIMERO el balance estructural, después la infraestructura.**
+
 - Cloudinary cloud `jpyigjrh`; hero del landing = URL Cloudinary con fallback local `assets/images/hero-bg.webp`. Preferir `f_auto,q_auto` de Cloudinary antes que Unsplash.
 - Realtime hace full-refresh por cambio (`setupCoreRealtime`) — evitar N+1 en renders de listados grandes.
 
