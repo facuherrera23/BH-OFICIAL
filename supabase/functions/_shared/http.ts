@@ -16,6 +16,10 @@ export const ALLOWED_ORIGINS: ReadonlySet<string> = new Set([
     'http://127.0.0.1:5175',
     'http://localhost:8788',
     'http://127.0.0.1:8788',
+    /* Dev server del proyecto (AGENTS.md: python -m http.server 8791) —
+       faltaba en la allowlist: todos los tests locales con CORS fallaban. */
+    'http://localhost:8791',
+    'http://127.0.0.1:8791',
 ]);
 
 const METHODS_HEADERS: Readonly<Record<string, string>> = {

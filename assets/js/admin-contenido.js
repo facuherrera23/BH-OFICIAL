@@ -57,33 +57,47 @@
   function renderAccounts() {
     const wrap = $('#contenidoAccounts');
     if (!wrap) return;
-    const cards = Object.entries(PLATFORM_META).map(([pid, meta]) => {
-      const acc = _accounts.find(a => a.platform === pid && a.status === 'active');
+    /* AUDIT 2026-10-27: una tarjeta por CUENTA ACTIVA (soporta varios canales
+       de la misma plataforma) + una tarjeta de "conectar" por plataforma sin
+       cuentas activas. Antes: una tarjeta fija por plataforma que ocultaba
+       cuentas adicionales conectadas. */
+    const cards = [];
+    // 1. Todas las cuentas activas, en tarjetas propias
+    _accounts.filter(a => a.status === 'active').forEach((acc) => {
+      const meta = PLATFORM_META[acc.platform] || { name: acc.platform, icon: 'fas fa-share', color: 'var(--text-dim)' };
       const card = document.createElement('div');
       card.className = 'glass-panel';
       card.style.cssText = 'display:flex;align-items:center;gap:14px;padding:16px;flex:1;min-width:260px;';
-      const iconHtml = acc && acc.avatar_url
+      const iconHtml = acc.avatar_url
         ? '<img src="' + esc(acc.avatar_url) + '" alt="" style="width:42px;height:42px;border-radius:50%;object-fit:cover;">'
         : '<i class="' + esc(meta.icon) + '" style="font-size:26px;color:' + meta.color + ';width:42px;text-align:center;"></i>';
-      if (acc) {
-        card.innerHTML =
-          '<div style="flex:1;min-width:0;">' +
-          '<div style="font-weight:600;font-size:14px;">' + esc(acc.display_name) + '</div>' +
-          '<div style="font-size:11.5px;color:var(--text-dim);">' + esc(meta.name) + ' · conectada</div>' +
-          '</div>' +
-          '<button type="button" data-contenido-disconnect="' + esc(acc.id) + '" class="btn-luxury-action" style="padding:8px 14px;font-size:11px;">Desconectar</button>';
-      } else {
-        card.innerHTML =
-          '<div style="flex:1;min-width:0;">' +
-          '<div style="font-weight:600;font-size:14px;">' + esc(meta.name) + '</div>' +
-          '<div style="font-size:11.5px;color:var(--text-dim);">' + (meta.available ? 'Sin conectar' : 'Próximamente') + '</div>' +
-          '</div>' +
-          (meta.available
-            ? '<button type="button" data-contenido-connect="' + esc(pid) + '" class="btn-luxury-action" style="padding:8px 14px;font-size:11px;"><i class="fas fa-plug"></i> Conectar</button>'
-            : '<span style="font-size:11px;color:var(--text-dim);"><i class="fas fa-clock"></i></span>');
-      }
+      card.innerHTML =
+        '<div style="flex:1;min-width:0;">' +
+        '<div style="font-weight:600;font-size:14px;">' + esc(acc.display_name) + '</div>' +
+        '<div style="font-size:11.5px;color:var(--text-dim);">' + esc(meta.name) + ' · conectada' +
+        (acc.last_publish_at ? ' · última: ' + (window.__BH.formatDateTimeWithTZ ? window.__BH.formatDateTimeWithTZ(acc.last_publish_at) : '') : '') +
+        '</div>' +
+        '</div>' +
+        '<button type="button" data-contenido-disconnect="' + esc(acc.id) + '" class="btn-luxury-action" style="padding:8px 14px;font-size:11px;">Desconectar</button>';
       card.insertAdjacentHTML('afterbegin', iconHtml);
-      return card;
+      cards.push(card);
+    });
+    // 2. Plataformas sin ninguna cuenta activa: conectar o "próximamente"
+    Object.entries(PLATFORM_META).forEach(([pid, meta]) => {
+      if (_accounts.some(a => a.platform === pid && a.status === 'active')) return;
+      const card = document.createElement('div');
+      card.className = 'glass-panel';
+      card.style.cssText = 'display:flex;align-items:center;gap:14px;padding:16px;flex:1;min-width:260px;';
+      card.innerHTML =
+        '<i class="' + esc(meta.icon) + '" style="font-size:26px;color:' + meta.color + ';width:42px;text-align:center;"></i>' +
+        '<div style="flex:1;min-width:0;">' +
+        '<div style="font-weight:600;font-size:14px;">' + esc(meta.name) + '</div>' +
+        '<div style="font-size:11.5px;color:var(--text-dim);">' + (meta.available ? 'Sin conectar' : 'Próximamente') + '</div>' +
+        '</div>' +
+        (meta.available
+          ? '<button type="button" data-contenido-connect="' + esc(pid) + '" class="btn-luxury-action" style="padding:8px 14px;font-size:11px;"><i class="fas fa-plug"></i> Conectar</button>'
+          : '<span style="font-size:11px;color:var(--text-dim);"><i class="fas fa-clock"></i></span>');
+      cards.push(card);
     });
     wrap.replaceChildren(...cards);
   }
@@ -195,6 +209,11 @@
     if (!title) { showToast('Poné un título al video.', 'warning'); return; }
     const file = fileInput && fileInput.files && fileInput.files[0];
     if (!file) { showToast('Elegí el archivo de video.', 'warning'); return; }
+    /* AUDIT 2026-10-27: el accept="video/*" filtra el picker pero no es
+       garantía (algunos selectores permiten "todos los archivos"). */
+    if (file.type && file.type.indexOf('video/') !== 0) {
+      showToast('El archivo no es un video (' + file.type + ').', 'error'); return;
+    }
     if (file.size > MAX_FILE_BYTES) { showToast('El video supera el máximo de 2 GB.', 'error'); return; }
 
     _publishing = true;
@@ -268,6 +287,17 @@
     if (!wrap) return;
     const client = await getAuthedClient();
     if (!client) return;
+
+    /* AUDIT 2026-10-27: posts zombis — si el navegador se cerró a mitad de la
+       subida, el post queda 'publishing' para siempre. >2h en ese estado =
+       subida abandonada: marcar failed (idempotente, una sola query). */
+    try {
+      await client.from('social_posts')
+        .update({ status: 'failed', error: 'Subida interrumpida (el navegador se cerró antes de terminar).' })
+        .eq('status', 'publishing')
+        .lt('created_at', new Date(Date.now() - 2 * 3600_000).toISOString());
+    } catch (e) { logError('Contenido: zombie sweep', e); }
+
     const { data, error } = await client
       .from('social_posts')
       .select('id, platform, status, post_type, content, published_at, created_at, external_url, error, social_accounts(display_name)')
@@ -283,6 +313,7 @@
       const st = STATUS_META[p.status] || { label: p.status, color: 'var(--text-dim)' };
       const fecha = window.__BH.formatDateTimeWithTZ ? window.__BH.formatDateTimeWithTZ(p.published_at || p.created_at) : (p.published_at || p.created_at || '');
       const accName = p.social_accounts && p.social_accounts.display_name ? p.social_accounts.display_name : '';
+      const removable = p.status === 'failed' || p.status === 'draft';
       return '<div class="glass-panel" style="display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;">' +
         '<i class="' + esc((PLATFORM_META[p.platform] || {}).icon || 'fas fa-share') + '" style="font-size:18px;"></i>' +
         '<div style="flex:1;min-width:0;">' +
@@ -291,8 +322,19 @@
         '</div>' +
         (p.external_url ? '<a href="' + esc(p.external_url) + '" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none;flex-shrink:0;">Ver <i class="fas fa-arrow-up-right-from-square"></i></a>' : '') +
         '<span style="font-size:10.5px;color:' + st.color + ';flex-shrink:0;">' + esc(st.label) + '</span>' +
+        (removable ? '<button type="button" data-contenido-delete="' + esc(p.id) + '" title="Borrar registro fallido" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:4px;flex-shrink:0;"><i class="fas fa-trash-can" style="font-size:12px;"></i></button>' : '') +
         '</div>';
     }).join('');
+  }
+
+  async function deletePost(postId) {
+    if (!window.confirm('¿Borrar este registro del historial? (si el video llegó a publicarse en YouTube, no se borra de YouTube)')) return;
+    const client = await getAuthedClient();
+    if (!client) return;
+    const { error } = await client.from('social_posts').delete().eq('id', postId);
+    if (error) { showToast('No se pudo borrar: ' + error.message, 'error'); return; }
+    showToast('Registro borrado.', 'success');
+    loadHistory();
   }
 
   /* ---------- Shell + sub-tabs ---------- */
@@ -364,6 +406,8 @@
       const sub = e.target.closest('#contenidoSubTabs button[data-sub]');
       if (sub) { switchSubTab(sub.dataset.sub); return; }
       if (e.target.closest('#ytPublishBtn')) publishToYoutube();
+      const del = e.target.closest('[data-contenido-delete]');
+      if (del) { deletePost(del.dataset.contenidoDelete); return; }
     });
   }
 

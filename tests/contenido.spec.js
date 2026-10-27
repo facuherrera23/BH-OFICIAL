@@ -40,6 +40,17 @@ test.describe('Módulo Contenido (redes sociales)', () => {
     expect(js).not.toMatch(/onclick\s*=/);
   });
 
+  test('admin.html: CSP permite la subida directa a Google y los avatares de canales', async ({ request }) => {
+    const html = await (await request.get('/admin.html')).text();
+    const csp = html.match(/Content-Security-Policy[^>]*content="([^"]+)"/)?.[1] || '';
+    /* AUDIT 2026-10-27: sin connect-src a googleapis.com el PUT del video
+       era bloqueado por el navegador — el módulo no funcionaba. Sin img-src
+       a ggpht/googleusercontent los avatares de canales no cargan. */
+    expect(csp).toContain('https://www.googleapis.com');
+    expect(csp).toMatch(/img-src[^;]*\*\.ggpht\.com/);
+    expect(csp).toMatch(/img-src[^;]*\*\.googleusercontent\.com/);
+  });
+
   test('edge functions de publicación: rechazan requests sin autenticación', async ({ request }) => {
     // social-publish-youtube: verify_jwt ON — sin Bearer debe dar 401/403.
     // 404 = la función es nueva y el pipeline todavía no la deployó (los

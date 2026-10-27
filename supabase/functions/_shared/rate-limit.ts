@@ -5,6 +5,7 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { corsHeaders } from './http.ts';
 
 const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -145,6 +146,10 @@ export async function rateLimitMiddleware(
             {
                 status: 429,
                 headers: {
+                    /* AUDIT 2026-10-27: el 429 no llevaba CORS — el browser lo
+                       ocultaba como "Failed to fetch" en vez del mensaje claro.
+                       Mismo patrón que jsonResponse (origin reflejado). */
+                    ...corsHeaders(req),
                     'Content-Type': 'application/json',
                     'Retry-After': String(result.retryAfter ?? 60),
                     'X-RateLimit-Limit': String(RATE_LIMIT_CONFIG[fnName].requests),

@@ -78,7 +78,14 @@ export async function getSocialAccessToken(
         throw new Error('Cuenta sin token guardado — reconectala');
     }
 
-    let accessToken = await decrypt(acc.access_token_encrypted, acc.access_token_iv);
+    let accessToken: string;
+    try {
+        accessToken = await decrypt(acc.access_token_encrypted, acc.access_token_iv);
+    } catch (_) {
+        /* AUDIT 2026-10-27: el error crudo de GCM ("Tag length overflows
+           ciphertext") no le dice nada al usuario — la acción es reconectar. */
+        throw new Error('La conexión de la cuenta está dañada — desconectala y volvé a conectarla.');
+    }
     const expiresAt = acc.token_expires_at ? new Date(acc.token_expires_at).getTime() : 0;
     const needsRefresh = expiresAt - Date.now() < 5 * 60_000;
 
