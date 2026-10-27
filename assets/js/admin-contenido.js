@@ -98,39 +98,41 @@
     const handleUrl = ch.handle ? 'https://www.youtube.com/@' + ch.handle.replace(/^@/, '') : 'https://www.youtube.com/channel/' + ch.id;
 
     const kpi = (icono, valor, label) =>
-      '<div class="glass-panel" style="flex:1;min-width:130px;padding:14px;text-align:center;">' +
-        '<div style="font-size:22px;color:var(--accent);"><i class="' + icono + '"></i></div>' +
-        '<div style="font-size:19px;font-weight:700;margin:4px 0 2px;">' + esc(fmtNum(valor)) + '</div>' +
-        '<div style="font-size:11px;color:var(--text-dim);">' + esc(label) + '</div>' +
+      '<div class="glass-panel" style="flex:1;min-width:160px;padding:18px;text-align:center;">' +
+        '<div style="font-size:26px;color:var(--accent);margin-bottom:4px;"><i class="' + icono + '"></i></div>' +
+        '<div style="font-size:22px;font-weight:700;">' + esc(fmtNum(valor)) + '</div>' +
+        '<div style="font-size:12px;color:var(--text-dim);margin-top:2px;">' + esc(label) + '</div>' +
       '</div>';
 
     wrap.innerHTML =
-      /* Header del canal con KPIs — identidad visual del sistema */
-      '<div class="glass-panel" style="display:flex;align-items:center;gap:16px;padding:18px;margin-bottom:16px;flex-wrap:wrap;">' +
-        (ch.avatar ? '<img src="' + esc(ch.avatar) + '" alt="" style="width:64px;height:64px;border-radius:50%;object-fit:cover;">' : '<i class="fab fa-youtube" style="font-size:40px;color:#FF0000;"></i>') +
-        '<div style="flex:1;min-width:200px;">' +
-          '<div style="font-size:18px;font-weight:700;">' + esc(ch.title) + '</div>' +
-          '<div style="font-size:12px;color:var(--text-dim);">Canal de YouTube · gestionado desde Bienenhaus</div>' +
+      /* Header del canal — ancho completo */
+      '<div class="glass-panel" style="display:flex;align-items:center;gap:20px;padding:22px;margin-bottom:16px;flex-wrap:wrap;">' +
+        (ch.avatar ? '<img src="' + esc(ch.avatar) + '" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover;flex-shrink:0;">' : '<i class="fab fa-youtube" style="font-size:48px;color:#FF0000;flex-shrink:0;"></i>') +
+        '<div style="flex:1;min-width:220px;">' +
+          '<div style="font-size:20px;font-weight:700;">' + esc(ch.title) + '</div>' +
+          '<div style="font-size:13px;color:var(--text-dim);margin-top:2px;">Canal de YouTube · gestionado desde Bienenhaus</div>' +
         '</div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-          '<button type="button" id="studioPublishBtn" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;"><i class="fas fa-plus"></i> Publicar</button>' +
-          '<a href="' + esc(handleUrl) + '" target="_blank" rel="noopener" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-arrow-up-right-from-square"></i> Ver canal</a>' +
-          '<a href="' + esc(handleUrl + '/community') + '" target="_blank" rel="noopener" title="Los posts de la comunidad no tienen API oficial — se crean desde YouTube" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-users"></i> Comunidad</a>' +
-          '<button type="button" id="studioBackBtn" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;"><i class="fas fa-arrow-left"></i> Volver</button>' +
+        '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+          '<button type="button" id="studioPublishBtn" class="btn-luxury-action" style="padding:10px 18px;font-size:13px;"><i class="fas fa-plus"></i> Publicar</button>' +
+          '<a href="' + esc(handleUrl) + '" target="_blank" rel="noopener" class="btn-luxury-action" style="padding:10px 18px;font-size:13px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-arrow-up-right-from-square"></i> Ver canal</a>' +
+          '<a href="' + esc(handleUrl + '/community') + '" target="_blank" rel="noopener" title="Los posts de la comunidad no tienen API oficial — se crean desde YouTube" class="btn-luxury-action" style="padding:10px 18px;font-size:13px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-users"></i> Comunidad</a>' +
+          '<button type="button" id="studioBackBtn" class="btn-luxury-action" style="padding:10px 18px;font-size:13px;"><i class="fas fa-arrow-left"></i> Volver</button>' +
         '</div>' +
       '</div>' +
-      '<div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap;">' +
+      /* KPIs — ancho completo, 3 en fila */
+      '<div style="display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap;">' +
         kpi('fas fa-users', ch.subscribers, 'Suscriptores') +
         kpi('fas fa-eye', ch.total_views, 'Vistas totales') +
         kpi('fas fa-video', ch.video_count, 'Videos') +
       '</div>' +
       (!_studioCanManage
-        ? '<div class="glass-panel" style="padding:12px 16px;margin-bottom:16px;border-left:3px solid var(--warning);">' +
-            '<span style="font-size:12.5px;color:var(--text-secondary);"><i class="fas fa-triangle-exclamation" style="color:var(--warning);"></i> Modo solo lectura: reconectá la cuenta de YouTube desde la pestaña Cuentas para habilitar edición, borrado y miniaturas.</span>' +
+        ? '<div class="glass-panel" style="padding:14px 18px;margin-bottom:16px;border-left:3px solid var(--warning);display:flex;align-items:center;gap:10px;">' +
+            '<i class="fas fa-triangle-exclamation" style="color:var(--warning);font-size:16px;"></i>' +
+            '<span style="font-size:13px;color:var(--text-secondary);">Modo solo lectura: reconectá la cuenta de YouTube desde la pestaña Cuentas para habilitar edición, borrado, programación y miniaturas.</span>' +
           '</div>'
         : '') +
-      '<h3 style="margin:0 0 12px;font-size:15px;"><i class="fas fa-list"></i> Contenido del canal (' + _studioVideos.length + ')</h3>' +
-      '<div id="studioVideos">' + renderStudioVideos() + '</div>';
+      '<h3 style="margin:0 0 14px;font-size:16px;"><i class="fas fa-list"></i> Contenido del canal (' + _studioVideos.length + ')</h3>' +
+      '<div id="studioVideos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:14px;">' + renderStudioVideos() + '</div>';
 
     /* Acciones del header */
     const pubBtn = $('#studioPublishBtn');
@@ -147,21 +149,29 @@
     return _studioVideos.map(function (v) {
       const priv = PRIVACY[v.privacy] || [v.privacy, 'var(--text-dim)'];
       const fecha = window.__BH.formatDateTimeWithTZ ? window.__BH.formatDateTimeWithTZ(v.published_at) : (v.published_at || '');
-      return '<div class="glass-panel" style="display:flex;gap:14px;padding:12px;margin-bottom:10px;align-items:center;flex-wrap:wrap;">' +
-        (v.thumbnail ? '<img src="' + esc(v.thumbnail) + '" alt="" style="width:120px;border-radius:8px;flex-shrink:0;" loading="lazy">' : '<div style="width:120px;height:67px;background:rgba(255,255,255,0.04);border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;"><i class="fab fa-youtube" style="color:#FF0000;font-size:20px;"></i></div>') +
-        '<div style="flex:1;min-width:200px;">' +
-          '<div style="font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:480px;">' + esc(v.title) + '</div>' +
-          '<div style="font-size:11.5px;color:var(--text-dim);margin-top:4px;display:flex;gap:12px;flex-wrap:wrap;">' +
+      /* Tarjeta en grid: miniatura grande arriba, info + acciones abajo */
+      return '<div class="glass-panel" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">' +
+        /* Miniatura a ancho completo de la tarjeta */
+        (v.thumbnail
+          ? '<div style="position:relative;aspect-ratio:16/9;background:rgba(255,255,255,0.03);">' +
+              '<img src="' + esc(v.thumbnail) + '" alt="" style="width:100%;height:100%;object-fit:cover;" loading="lazy">' +
+              (v.duration ? '<span style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.8);color:#fff;font-size:11px;padding:2px 8px;border-radius:4px;">' + esc(isoDurationToText(v.duration)) + '</span>' : '') +
+            '</div>'
+          : '<div style="aspect-ratio:16/9;background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;"><i class="fab fa-youtube" style="color:#FF0000;font-size:32px;"></i></div>') +
+        /* Info */
+        '<div style="padding:12px 14px;flex:1;display:flex;flex-direction:column;gap:8px;">' +
+          '<div style="font-size:13.5px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.6em;">' + esc(v.title) + '</div>' +
+          '<div style="font-size:11.5px;color:var(--text-dim);display:flex;gap:14px;flex-wrap:wrap;">' +
             '<span title="Vistas"><i class="fas fa-eye"></i> ' + fmtNum(v.views) + '</span>' +
             '<span title="Likes"><i class="fas fa-thumbs-up"></i> ' + fmtNum(v.likes) + '</span>' +
             '<span title="Comentarios"><i class="fas fa-comment"></i> ' + fmtNum(v.comments) + '</span>' +
-            (v.duration ? '<span><i class="fas fa-clock"></i> ' + esc(isoDurationToText(v.duration)) + '</span>' : '') +
-            '<span>' + esc(fecha) + '</span>' +
           '</div>' +
+          '<div style="font-size:11px;color:var(--text-dim);">' + esc(fecha) + '</div>' +
         '</div>' +
-        '<span style="font-size:10.5px;color:' + priv[1] + ';border:1px solid currentColor;border-radius:10px;padding:2px 10px;flex-shrink:0;">' + esc(priv[0]) + '</span>' +
-        '<div style="display:flex;gap:6px;flex-shrink:0;">' +
-          '<button type="button" class="btn-luxury-action" data-studio-edit="' + esc(v.id) + '" title="Editar título, descripción, tags y programación" style="padding:7px 11px;font-size:11px;"><i class="fas fa-pen"></i></button>' +
+        /* Barra de acciones */
+        '<div style="padding:8px 14px 12px;display:flex;align-items:center;gap:8px;border-top:1px solid rgba(255,255,255,0.04);">' +
+          '<span style="font-size:10.5px;color:' + priv[1] + ';border:1px solid currentColor;border-radius:10px;padding:2px 10px;flex-shrink:0;margin-right:auto;">' + esc(priv[0]) + '</span>' +
+          '<button type="button" class="btn-luxury-action" data-studio-edit="' + esc(v.id) + '" title="Editar título, descripción, tags, visibilidad y programación" style="padding:7px 11px;font-size:11px;"><i class="fas fa-pen"></i></button>' +
           '<a href="https://www.youtube.com/watch?v=' + esc(v.id) + '" target="_blank" rel="noopener" title="Ver en YouTube" class="btn-luxury-action" style="padding:7px 11px;font-size:11px;text-decoration:none;"><i class="fas fa-arrow-up-right-from-square"></i></a>' +
           '<button type="button" class="btn-luxury-action" data-studio-delete="' + esc(v.id) + '" data-studio-title="' + esc(v.title) + '" title="Borrar video (permanente)" style="padding:7px 11px;font-size:11px;color:var(--danger);"><i class="fas fa-trash-can"></i></button>' +
         '</div>' +
@@ -591,7 +601,7 @@
         '<button type="button" data-sub="history" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;"><i class="fas fa-clock-rotate-left"></i> Historial</button>' +
       '</div>' +
       '<div id="contenidoAccounts" style="display:flex;flex-wrap:wrap;gap:12px;"></div>' +
-      '<div id="contenidoStudio" style="display:none;max-width:1000px;"></div>' +
+      '<div id="contenidoStudio" style="display:none;"></div>' +
       '<div id="contenidoCreate" style="display:none;max-width:720px;">' +
         '<div class="glass-panel" style="padding:20px;">' +
           '<h3 style="margin:0 0 4px;font-size:15px;"><i class="fab fa-youtube" style="color:#FF0000;"></i> Publicar video en YouTube</h3>' +
