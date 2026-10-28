@@ -74,6 +74,8 @@ async function youtubeFetch(url: string, accessToken: string, init?: RequestInit
         const body = (await res.text()).slice(0, 300);
         throw new Error(`YouTube ${res.status}: ${body}`);
     }
+    /* DELETE devuelve 204 sin body — no parsear JSON de un body vacío */
+    if (res.status === 204 || res.headers.get('content-length') === '0') return {};
     return res.json();
 }
 
