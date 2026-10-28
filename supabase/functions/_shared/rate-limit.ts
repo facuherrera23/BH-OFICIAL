@@ -47,6 +47,8 @@ export const RATE_LIMIT_CONFIG = {
     'social-auth-youtube': { requests: 10, windowMs: 60_000 }, // 10/min - OAuth panel
     'social-publish-youtube': { requests: 10, windowMs: 60_000 }, // 10/min - publicaciones panel
     'social-youtube-studio': { requests: 30, windowMs: 60_000 }, // 30/min - studio (carga + ediciones)
+    'social-auth-instagram': { requests: 10, windowMs: 60_000 }, // 10/min - OAuth panel
+    'social-instagram': { requests: 20, windowMs: 60_000 }, // 20/min - publicaciones IG
 } as const;
 
 export type RateLimitFnName = keyof typeof RATE_LIMIT_CONFIG;

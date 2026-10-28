@@ -16,8 +16,8 @@
   /* Plataformas: available=false → tarjeta "próximamente" (fases 2+). */
   const PLATFORM_META = {
     youtube:   { name: 'YouTube',   icon: 'fab fa-youtube',      color: '#FF0000', available: true },
+    instagram: { name: 'Instagram', icon: 'fab fa-instagram',   color: '#E1306C', available: true },
     facebook:  { name: 'Facebook',  icon: 'fab fa-facebook-f',   color: '#1877F2', available: false },
-    instagram: { name: 'Instagram', icon: 'fab fa-instagram',   color: '#E1306C', available: false },
     tiktok:    { name: 'TikTok',    icon: 'fab fa-tiktok',       color: '#F5F5F5', available: false },
   };
   const STATUS_META = {
@@ -346,10 +346,14 @@
   /* ---------- Conexión (popup + postMessage, patrón ML) ---------- */
 
   async function connectPlatform(pid) {
-    if (pid !== 'youtube') { showToast('Esa red llega en las próximas fases.', 'info'); return; }
+    if (!PLATFORM_META[pid] || !PLATFORM_META[pid].available) {
+      showToast('Esa red llega en las próximas fases.', 'info');
+      return;
+    }
+    const fnName = pid === 'youtube' ? 'social-auth-youtube' : 'social-auth-' + pid;
     try {
-      showToast('Abriendo autorización de YouTube...', 'info');
-      const res = await fetch(FN_BASE + '/social-auth-youtube', {
+      showToast('Abriendo autorización de ' + PLATFORM_META[pid].name + '...', 'info');
+      const res = await fetch(FN_BASE + '/' + fnName, {
         method: 'POST',
         headers: await authHeaders(),
         body: JSON.stringify({ action: 'start' }),
@@ -359,7 +363,7 @@
       if (!json.url) throw new Error('La función no devolvió la URL de autorización');
 
       const w = 620, h = 640;
-      const popup = window.open(json.url, 'social_yt_oauth',
+      const popup = window.open(json.url, 'social_oauth_' + pid,
         'width=' + w + ',height=' + h + ',left=' + ((screen.width - w) / 2) + ',top=' + ((screen.height - h) / 2) + ',scrollbars=yes');
       if (!popup) throw new Error('El navegador bloqueó la ventana emergente — permití popups y reintentá.');
     } catch (err) {
