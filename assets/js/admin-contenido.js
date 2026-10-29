@@ -11,7 +11,7 @@
   const { $, $$, esc, logError, showToast, getAuthedClient } = window.__BH || {};
 
   const FN_BASE = (window.BH_CONFIG && window.BH_CONFIG.SUPABASE_URL) + '/functions/v1';
-  const MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB — el PUT único de v1
+  const MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB — límite práctico (sube por chunks resumables)
 
   /* Plataformas: available=false → tarjeta "próximamente" (fases 2+). */
   const PLATFORM_META = {
@@ -464,31 +464,96 @@
     }
   }
 
-  /* PUT directo a Google con progreso (XHR: fetch no expone progreso de subida). */
-  function xhrUploadToGoogle(sessionUrl, file) {
+  /* ---------- Subida resumable directa a Google ----------
+     Protocolo resumable de YouTube: en vez de un solo PUT con TODO el
+     archivo (donde un micro-corte de red perdía la subida completa — bug
+     de los Shorts "Error de red durante la subida"), se sube por chunks
+     de 8 MB y, tras cada fallo, se le pregunta a Google cuántos bytes
+     recibió (PUT vacío con header Content-Range "bytes * sobre TOTAL",
+     que responde con un header Range) y se reanuda desde ahí.
+     Los bytes ya subidos jamás se re-envían. */
+
+  const YT_CHUNK_SIZE = 8 * 1024 * 1024;   // 8 MB (32 × 256 KB, mínimo del protocolo)
+  const YT_CHUNK_TIMEOUT = 5 * 60 * 1000;  // por chunk — 8 MB tardan segundos
+  const YT_MAX_STALLS = 8;                 // reintentos sin progreso antes de rendirse
+
+  function ytPutChunk(sessionUrl, blob, contentRange) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', sessionUrl);
-      xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
-      xhr.timeout = 60 * 60 * 1000;
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          const pct = Math.round((e.loaded / e.total) * 95);
-          setUploadProgress(pct, Math.round((e.loaded / e.total) * 100) + '% subido...');
-        }
-      });
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try { resolve(JSON.parse(xhr.responseText || '{}')); } catch (_) { resolve({}); }
-        } else {
-          reject(new Error('Google ' + xhr.status + ': ' + (xhr.responseText || '').substring(0, 200)));
-        }
-      });
-      xhr.addEventListener('error', () => reject(new Error('Error de red durante la subida. Verifica tu conexión o intenta de nuevo.')));
-      xhr.addEventListener('timeout', () => reject(new Error('La subida superó el tiempo límite.')));
-      xhr.addEventListener('abort', () => reject(new Error('Subida interrumpida.')));
-      xhr.send(file);
+      xhr.setRequestHeader('Content-Range', contentRange);
+      xhr.setRequestHeader('Content-Type', blob.type || 'application/octet-stream');
+      xhr.timeout = YT_CHUNK_TIMEOUT;
+      xhr.addEventListener('load', () => resolve(xhr));
+      xhr.addEventListener('error', () => reject(new Error('network')));
+      xhr.addEventListener('timeout', () => reject(new Error('network')));
+      xhr.addEventListener('abort', () => reject(new Error('abort')));
+      xhr.send(blob);
     });
+  }
+
+  /* ¿Cuántos bytes tiene guardados Google? PUT vacío (sin body) con el
+     header Content-Range "bytes * sobre TOTAL". 200/201 = completo,
+     308 = parcial con header Range: bytes=0-N. Error de consulta →
+     received -1 (el caller reintenta). */
+  async function ytQueryUploadStatus(sessionUrl, total) {
+    try {
+      const xhr = await ytPutChunk(sessionUrl, new Blob([]), 'bytes */' + total);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        let resource = {};
+        try { resource = JSON.parse(xhr.responseText || '{}'); } catch (_) {}
+        return { received: total, complete: true, resource };
+      }
+      const m = (xhr.getResponseHeader('Range') || '').match(/bytes=0-(\d+)/);
+      return { received: m ? parseInt(m[1], 10) + 1 : 0, complete: false, resource: {} };
+    } catch (_) {
+      return { received: -1, complete: false, resource: {} };
+    }
+  }
+
+  function ytSleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  async function xhrUploadToGoogle(sessionUrl, file, onProgress) {
+    const total = file.size;
+    let offset = 0;
+    let stalls = 0;
+    const advance = (to) => { offset = to; stalls = 0; };
+    while (offset < total) {
+      const end = Math.min(offset + YT_CHUNK_SIZE, total) - 1;
+      try {
+        const xhr = await ytPutChunk(sessionUrl, file.slice(offset, end + 1), 'bytes ' + offset + '-' + end + '/' + total);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          /* Último chunk aceptado: Google responde con el recurso del video. */
+          advance(total);
+          if (onProgress) onProgress(total, total);
+          try { return JSON.parse(xhr.responseText || '{}'); } catch (_) { return {}; }
+        }
+        if (xhr.status === 308) {
+          /* Chunk aceptado (o parcial): el header Range dice cuánto quedó. */
+          const m = (xhr.getResponseHeader('Range') || '').match(/bytes=0-(\d+)/);
+          const serverHas = m ? parseInt(m[1], 10) + 1 : 0;
+          if (serverHas > offset) advance(serverHas); else stalls++;
+        } else {
+          /* 4xx/5xx: consultar cuánto recibió y reanudar. */
+          const st = await ytQueryUploadStatus(sessionUrl, total);
+          if (st.complete) { advance(total); if (onProgress) onProgress(total, total); return st.resource; }
+          if (st.received > offset) advance(st.received); else stalls++;
+        }
+      } catch (e) {
+        if (e.message === 'abort') {
+          throw new Error('La subida se interrumpió porque la página se cerró o recargó. Volvé a intentarlo.');
+        }
+        const st = await ytQueryUploadStatus(sessionUrl, total);
+        if (st.complete) { advance(total); if (onProgress) onProgress(total, total); return st.resource; }
+        if (st.received > offset) advance(st.received); else stalls++;
+      }
+      if (onProgress) onProgress(offset, total);
+      if (stalls >= YT_MAX_STALLS) {
+        throw new Error('La conexión falló varias veces seguidas. Verificá tu red y volvé a intentarlo.');
+      }
+      if (stalls > 0) await ytSleep(Math.min(1000 * Math.pow(2, stalls - 1), 30000));
+    }
+    return {};
   }
 
   async function publishToYoutube() {
@@ -521,6 +586,8 @@
     }
 
     _publishing = true;
+    let postId = null;      // registro en social_posts (fail + heartbeat)
+    let hbTimer = null;     // heartbeat de updated_at durante la subida
     const btn = $('#ytPublishBtn');
     const btnHtml = btn ? btn.innerHTML : '';
     /* Bloquear todo el form durante la subida */
@@ -553,10 +620,23 @@
       const init = await initRes.json().catch(() => ({}));
       if (!initRes.ok) throw new Error(init.error || ('HTTP ' + initRes.status));
       if (!init.session_url || !init.post_id) throw new Error('La función no devolvió la sesión de subida');
+      postId = init.post_id;
+
+      /* Heartbeat: mientras la subida está viva refresca updated_at del post
+         para que el zombie sweep del historial (30 min sin latido) no lo
+         marque fallado aunque un video grande tarde horas. */
+      hbTimer = setInterval(() => {
+        getAuthedClient().then((c) => {
+          if (c && postId) return c.from('social_posts').update({ updated_at: new Date().toISOString() }).eq('id', postId);
+        }).catch(() => {});
+      }, 60000);
 
       /* 2. subida directa del navegador a Google (los bytes nunca pasan por Supabase) */
       setUploadProgress(2, 'Subiendo a YouTube…');
-      const uploaded = await xhrUploadToGoogle(init.session_url, file);
+      const uploaded = await xhrUploadToGoogle(init.session_url, file, (loaded, t) => {
+        const pct = Math.min(95, Math.round((loaded / t) * 95));
+        setUploadProgress(pct, Math.round((loaded / t) * 100) + '% subido...');
+      });
       const videoId = uploaded.id || '';
       if (!videoId) throw new Error('YouTube no devolvió el id del video');
 
@@ -583,10 +663,22 @@
       loadAccounts(); // refresca last_publish_at
     } catch (err) {
       logError('Contenido: publish', err);
+      /* Marcar el post como fallado en el acto — sin esto quedaba 'publishing'
+         y el historial mostraba un estado mentiroso hasta el zombie sweep. */
+      if (postId) {
+        try {
+          await fetch(FN_BASE + '/social-publish-youtube', {
+            method: 'POST',
+            headers: await authHeaders(),
+            body: JSON.stringify({ action: 'fail', post_id: postId, upload_error: err.message }),
+          });
+        } catch (_) { /* best-effort — el sweep lo cubre */ }
+      }
       showToast(err.message, 'error');
       setUploadProgress(0, '');
       if (progressWrap) progressWrap.style.display = 'none';
     } finally {
+      if (hbTimer) { clearInterval(hbTimer); hbTimer = null; }
       _publishing = false;
       ['ytTitle', 'ytDesc', 'ytTags', 'ytFile', 'ytPrivacy', 'ytPublishAt', 'ytAccountSelect'].forEach(id => {
         const el = document.getElementById(id);
@@ -604,14 +696,15 @@
     const client = await getAuthedClient();
     if (!client) return;
 
-    /* AUDIT 2026-10-27: posts zombis — si el navegador se cerró a mitad de la
-       subida, el post queda 'publishing' para siempre. >2h en ese estado =
-       subida abandonada: marcar failed (idempotente, una sola query). */
+    /* Posts zombis: una subida viva emite un heartbeat cada 60s (updated_at).
+       30 min SIN latido = navegador cerrado/colgado a mitad de la subida →
+       failed. No se usa created_at: un video grande legítimo puede tardar
+       horas y un sweep por edad lo marcaba fallado en vivo (falso positivo). */
     try {
       await client.from('social_posts')
         .update({ status: 'failed', error: 'Subida interrumpida (el navegador se cerró antes de terminar).' })
         .eq('status', 'publishing')
-        .lt('created_at', new Date(Date.now() - 2 * 3600_000).toISOString());
+        .lt('updated_at', new Date(Date.now() - 30 * 60_000).toISOString());
     } catch (e) { logError('Contenido: zombie sweep', e); }
 
     const { data, error } = await client
