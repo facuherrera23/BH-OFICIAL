@@ -470,17 +470,23 @@
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', sessionUrl);
       xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+      xhr.timeout = 60 * 60 * 1000;
       xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 95), Math.round((e.loaded / e.total) * 95) + '% subido…');
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 95);
+          setUploadProgress(pct, Math.round((e.loaded / e.total) * 100) + '% subido...');
+        }
       });
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           try { resolve(JSON.parse(xhr.responseText || '{}')); } catch (_) { resolve({}); }
         } else {
-          reject(new Error('Google ' + xhr.status + ': ' + (xhr.responseText || '').substring(0, 180)));
+          reject(new Error('Google ' + xhr.status + ': ' + (xhr.responseText || '').substring(0, 200)));
         }
       });
-      xhr.addEventListener('error', () => reject(new Error('Error de red durante la subida.')));
+      xhr.addEventListener('error', () => reject(new Error('Error de red durante la subida. Verifica tu conexión o intenta de nuevo.')));
+      xhr.addEventListener('timeout', () => reject(new Error('La subida superó el tiempo límite.')));
+      xhr.addEventListener('abort', () => reject(new Error('Subida interrumpida.')));
       xhr.send(file);
     });
   }
