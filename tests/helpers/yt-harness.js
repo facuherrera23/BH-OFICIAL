@@ -153,7 +153,8 @@ async function boot(page, opts = {}) {
   let release = null;
   const gate = new Promise((r) => { release = r; });
   /* Contadores de llamadas a la Edge Function (para assertar refrescos). */
-  const calls = { channel: 0, videos: 0, analytics: 0, init: 0, complete: 0, fail: 0, dry_run: 0, video_categories: 0, audit_log: 0 };
+  const calls = { channel: 0, videos: 0, analytics: 0, init: 0, complete: 0, fail: 0, dry_run: 0, video_categories: 0, audit_log: 0,
+    comments_list: 0, comments_inbox: 0, comment_reply: 0, comment_heart: 0, comment_moderate: 0, comment_lead: 0 };
   /* Peticiones capturadas (para assertar el body que viaja al server). */
   const requests = [];
 
@@ -223,6 +224,46 @@ async function boot(page, opts = {}) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, url: 'https://youtube.com/watch?v=x' }) });
   });
 
+  /* Endpoint de comentarios (listar/responder/moderar/lead). */
+  await page.route('**/functions/v1/social-youtube-comments', async (route) => {
+    const body = route.request().postDataJSON() || {};
+    requests.push({ fn: 'comments', body: body });
+    if (calls[body.action] !== undefined) calls[body.action]++;
+    if (opts.hangAction && body.action === opts.hangAction) {
+      await gate;
+      return route.abort('aborted');
+    }
+    const threads = opts.comments || [
+      {
+        id: 'cm-1',
+        videoId: 'vid-1',
+        text: 'Hola, ¿la casa tiene pileta? Mi teléfono es 3514445555',
+        author: 'Marta Gomez',
+        likes: 3,
+        replyCount: 1,
+        publishedAt: new Date(Date.now() - 3600000).toISOString(),
+        replies: [
+          { id: 'cm-1-r1', text: 'Sí, tiene pileta', author: 'Bienenhaus', likes: 1, publishedAt: new Date(Date.now() - 1800000).toISOString() },
+        ],
+      },
+    ];
+    if (body.action === 'comments_list' || body.action === 'comments_inbox') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ threads: threads, total: threads.length, videoId: body.video_id }),
+      });
+    }
+    if (body.action === 'comment_lead') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, lead_id: 'lead-1', duplicate: !!opts.commentLeadDuplicate }),
+      });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+  });
+
   /* Destino de la subida resumable. Por defecto queda colgado (para poder
      probar la cancelación). Con uploadStatus: 200 responde un video válido. */
   await page.route('**/fake-upload-session', async (route) => {
@@ -243,6 +284,7 @@ async function boot(page, opts = {}) {
   await page.addScriptTag({ url: '/assets/js/yt-core.js' });
   await page.addScriptTag({ url: '/assets/js/yt-seo-tools.js' });
   await page.addScriptTag({ url: '/assets/js/yt-publish.js' });
+  await page.addScriptTag({ url: '/assets/js/yt-comments.js' });
   await page.addScriptTag({ url: '/assets/js/yt-seo-score.js' });
   await page.addScriptTag({ url: '/assets/js/admin-contenido.js' });
 

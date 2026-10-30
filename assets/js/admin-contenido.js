@@ -509,6 +509,9 @@
       renderStudioVideosGrid(); // los sparklines por-card necesitan la historia (#23)
     });
     loadAnalyticsPanel();
+    /* Contador de comentarios nuevos (no abre el panel: solo el badge).
+       Si la conexión no puede listarlos, el Studio sigue igual. */
+    loadCommentsInbox(false);
   }
 
   function renderStudio() {
@@ -536,6 +539,9 @@
         '</div>' +
         '<div class="yt-inline">' +
           '<button type="button" id="studioPublishBtn" class="btn-luxury-action yt-btn--md"><i class="fas fa-plus"></i> Publicar</button>' +
+          /* MEJORA #31/#46: bandeja de comentarios del canal (con contador
+             de "nuevos" desde la última visita). */
+          '<button type="button" id="studioCommentsBtn" class="btn-luxury-action yt-btn--md" title="Comentarios recientes del canal"><i class="fas fa-comment-dots"></i> Comentarios<span id="ytCommentsBadge" class="yt-comments-badge" style="display:none;"></span></button>' +
           /* MEJORA: forzar el refresh del inventario (el cache de 5 min
              escondía los videos recién publicados en YouTube Studio). */
           '<button type="button" id="studioRefreshBtn" class="btn-luxury-action" title="Volver a pedir el inventario a YouTube (ignora el caché)" style="padding:10px 18px;font-size:13px;"><i class="fas fa-rotate"></i> Actualizar</button>' +
@@ -553,6 +559,8 @@
       /* MEJORAS 2026-10-30: métricas #21, tendencia #22 y calendario #46 */
       '<div id="ytAnalyticsPanel" class="yt-block"></div>' +
       '<div id="ytTrend" class="yt-block"></div>' +
+      /* Bandeja de comentarios (se abre desde el botón del header). */
+      '<div id="ytCommentsInbox" class="yt-block" style="display:none;"></div>' +
       studioMonthGridHtml() +
       (!_studioCanManage
         ? '<div class="yt-notice yt-notice--warning">' +
@@ -633,6 +641,17 @@
     if (ageSel) ageSel.addEventListener('change', function () { _studioAge = this.value; renderStudioVideosGrid(); });
     const csvBtn = $('#studioCsv');
     if (csvBtn) csvBtn.addEventListener('click', downloadStudioCsv);
+
+    /* Bandeja de comentarios: abre/cierra el panel y pide los comentarios
+       del canal (la primera vez los marca como vistos). */
+    const cmBtn = $('#studioCommentsBtn');
+    if (cmBtn) cmBtn.addEventListener('click', function () {
+      const panel = $('#ytCommentsInbox');
+      if (!panel) return;
+      const abierto = panel.style.display !== 'none';
+      panel.style.display = abierto ? 'none' : '';
+      if (!abierto) loadCommentsInbox(true);
+    });
   }
 
   /* Score SEO de un video del canal (badge de la card). El motor es puro y
@@ -898,6 +917,311 @@
     return _studioVideos.find(function (v) { return v.id === videoId; }) || null;
   }
 
+  /* ---------- Comentarios (módulo compartido yt-comments.js) ----------
+     Leer/responder/moderar comentarios y crear leads desde ellos.
+     La lógica vive en el server (social-youtube-comments); acá solo
+     se pinta y se conectan los botones. */
+
+  function commentsModule() {
+    return (window.BH_YT && window.BH_YT.comments) || null;
+  }
+
+  /* Comentarios cargados, indexados por id (para responder/crear lead
+     sin volver a pegarle al server). */
+  let _commentsById = {};
+
+  /* --- Bloque de comentarios dentro del modal de detalle del video --- */
+  function loadCommentsBlock(box, video) {
+    const wrap = box.querySelector('#steComments');
+    if (!wrap) return;
+    const cm = commentsModule();
+    if (!cm) {
+      wrap.innerHTML = '<div class="yt-hint">El módulo de comentarios no está cargado (recargá la página).</div>';
+      return;
+    }
+    wrap.innerHTML =
+      '<div class="yt-block-head"><i class="fas fa-comment"></i> Comentarios</div>' +
+      '<button type="button" id="steCommentsLoad" class="btn-luxury-action yt-btn--sm"><i class="fas fa-download"></i> Cargar comentarios</button>';
+    const btn = wrap.querySelector('#steCommentsLoad');
+    if (!btn) return;
+    btn.addEventListener('click', async function () {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cargando…';
+      try {
+        const res = await cm.list(_studioAccount.id, video.id);
+        renderCommentsList(wrap, res.threads || []);
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-download"></i> Cargar comentarios';
+        wrap.innerHTML = '<div class="yt-notice yt-notice--danger"><i class="fas fa-triangle-exclamation"></i><span>' +
+          esc(err.message) + '</span></div>';
+      }
+    });
+  }
+
+  function renderCommentsList(wrap, threads) {
+    const cm = commentsModule();
+    _commentsById = {};
+    if (!threads.length) {
+      wrap.innerHTML = '<div class="yt-block-head"><i class="fas fa-comment"></i> Comentarios</div>' +
+        '<div class="yt-hint">Este video todavía no tiene comentarios.</div>';
+      return;
+    }
+    threads.forEach(function (t) { _commentsById[t.id] = t; });
+    const html =
+      '<div class="yt-block-head"><i class="fas fa-comment"></i> Comentarios (' + threads.length + ')</div>' +
+      '<div class="yt-comments">' + threads.map(function (t) {
+        return '<div class="yt-comment" data-comment-id="' + esc(t.id) + '">' +
+          '<div class="yt-comment-head">' +
+            '<span class="yt-comment-avatar">' + esc(cm.initials(t.author)) + '</span>' +
+            '<span class="yt-comment-author">' + esc(t.author) + '</span>' +
+            '<span class="yt-comment-time">' + esc(cm.timeAgo(t.publishedAt)) + '</span>' +
+          '</div>' +
+          '<div class="yt-comment-text">' + esc(t.text) + '</div>' +
+          '<div class="yt-comment-actions">' +
+            '<span class="yt-comment-likes"><i class="fas fa-thumbs-up"></i> ' + esc(String(t.likes)) + '</span>' +
+            '<button type="button" class="btn-luxury-action yt-btn--xs" data-cm-reply="' + esc(t.id) + '"><i class="fas fa-reply"></i> Responder</button>' +
+            '<button type="button" class="btn-luxury-action yt-btn--xs" data-cm-lead="' + esc(t.id) + '" title="Crear un lead del CRM con este comentario"><i class="fas fa-user-plus"></i> Crear lead</button>' +
+            (_studioCanManage
+              ? '<button type="button" class="btn-luxury-action yt-btn--xs" data-cm-heart="' + esc(t.id) + '" title="Dar like a este comentario"><i class="fas fa-heart"></i></button>' +
+                '<button type="button" class="btn-luxury-action yt-btn--xs" data-cm-hold="' + esc(t.id) + '" title="Retener el comentario (no aparece hasta aprobarlo)"><i class="fas fa-eye-slash"></i></button>'
+              : '') +
+          '</div>' +
+          ((t.replies || []).length
+            ? '<div class="yt-comment-replies">' + t.replies.map(function (r) {
+                return '<div class="yt-comment-reply">' +
+                  '<span class="yt-comment-avatar yt-comment-avatar--sm">' + esc(cm.initials(r.author)) + '</span>' +
+                  '<div><div class="yt-comment-author">' + esc(r.author) +
+                    ' <span class="yt-comment-time">' + esc(cm.timeAgo(r.publishedAt)) + '</span></div>' +
+                    '<div class="yt-comment-text">' + esc(r.text) + '</div></div>' +
+                '</div>';
+              }).join('') + '</div>'
+            : '') +
+          '<div class="yt-comment-replybox" data-replybox="' + esc(t.id) + '" style="display:none;">' +
+            '<textarea class="crm-field-input" rows="2" style="width:100%;" placeholder="Escribí la respuesta…"></textarea>' +
+            '<div class="yt-inline" style="margin-top:6px;">' +
+              '<button type="button" class="btn-luxury-action yt-btn--xs" data-cm-send="' + esc(t.id) + '"><i class="fas fa-paper-plane"></i> Enviar</button>' +
+              '<button type="button" class="btn-luxury-action yt-btn--xs" data-cm-cancel="' + esc(t.id) + '">Cancelar</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('') + '</div>';
+    wrap.innerHTML = html;
+  }
+
+  /* --- Bandeja de comentarios del canal (con contador de nuevos) --- */
+  async function loadCommentsInbox(showPanel) {
+    const cm = commentsModule();
+    const panel = $('#ytCommentsInbox');
+    const badge = $('#ytCommentsBadge');
+    if (!cm || !_studioAccount || !_studioChannel || !_studioChannel.id) return;
+    try {
+      const res = await cm.inbox(_studioAccount.id, _studioChannel.id);
+      const threads = res.threads || [];
+      _commentsById = {};
+      threads.forEach(function (t) { _commentsById[t.id] = t; });
+      const unread = cm.unreadCount(threads);
+      if (badge) {
+        badge.textContent = unread ? String(unread) : '';
+        badge.style.display = unread ? 'inline-flex' : 'none';
+      }
+      if (showPanel && panel) renderCommentsInbox(panel, threads);
+      /* Al abrir la bandeja se marcan como vistos. */
+      if (showPanel) cm.markSeen(Date.now());
+    } catch (err) {
+      /* La bandeja es un extra: si la conexión no tiene permiso para
+         listar comentarios del canal, el resto del Studio sigue vivo. */
+      if (showPanel && panel) {
+        panel.innerHTML = '<div class="yt-notice yt-notice--warning"><i class="fas fa-triangle-exclamation"></i><span>' +
+          esc(err.message) + '</span></div>';
+      }
+    }
+  }
+
+  function renderCommentsInbox(panel, threads) {
+    const cm = commentsModule();
+    if (!threads.length) {
+      panel.innerHTML = '<div class="yt-block-head"><i class="fas fa-inbox"></i> Bandeja de comentarios</div>' +
+        '<div class="yt-hint">Todavía no hay comentarios en el canal.</div>';
+      return;
+    }
+    panel.innerHTML =
+      '<div class="yt-block-head"><i class="fas fa-inbox"></i> Bandeja de comentarios (' + threads.length + ')</div>' +
+      '<div class="yt-comments">' + threads.map(function (t) {
+        return '<div class="yt-comment" data-comment-id="' + esc(t.id) + '">' +
+          '<div class="yt-comment-head">' +
+            '<span class="yt-comment-avatar">' + esc(cm.initials(t.author)) + '</span>' +
+            '<span class="yt-comment-author">' + esc(t.author) + '</span>' +
+            '<span class="yt-comment-time">' + esc(cm.timeAgo(t.publishedAt)) + '</span>' +
+          '</div>' +
+          '<div class="yt-comment-text">' + esc(t.text) + '</div>' +
+          '<div class="yt-comment-actions">' +
+            '<a class="btn-luxury-action yt-btn--xs yt-btn--link" href="https://www.youtube.com/watch?v=' + esc(t.videoId) + '" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i> Ver video</a>' +
+            '<button type="button" class="btn-luxury-action yt-btn--xs" data-cm-lead="' + esc(t.id) + '" title="Crear un lead del CRM con este comentario"><i class="fas fa-user-plus"></i> Crear lead</button>' +
+          '</div>' +
+        '</div>';
+      }).join('') + '</div>';
+  }
+
+  /* ---------- Acciones sobre comentarios (delegadas) ---------- */
+
+  /* El comentario cargado (para sacar el videoId y el texto). */
+  function cmCommentById(id) {
+    return _commentsById[id] || null;
+  }
+
+  /* Recarga la lista de comentarios de un video (tras responder/moderar). */
+  async function reloadComments(wrap, videoId) {
+    const cm = commentsModule();
+    if (!cm || !wrap || !videoId || !_studioAccount) return;
+    try {
+      const res = await cm.list(_studioAccount.id, videoId);
+      renderCommentsList(wrap, res.threads || []);
+    } catch (_) { /* se deja la lista anterior: no se pierde lo que se veía */ }
+  }
+
+  /* Botón de moderación: alterna Retener ↔ Aprobar. El estado real NO
+     viene en commentThreads.list, así que se recuerda localmente lo que
+     se hizo en esta sesión (el server es la fuente de verdad). */
+  function cmToggleHeld(btn) {
+    const c = cmCommentById(btn.getAttribute('data-cm-hold'));
+    const held = c ? !!c._held : false;
+    const next = held ? 'approved' : 'held';
+    if (c) c._held = !held;
+    btn.innerHTML = held
+      ? '<i class="fas fa-eye-slash"></i> Retener'
+      : '<i class="fas fa-check"></i> Aprobar';
+    btn.title = held
+      ? 'Retener el comentario (no aparece hasta aprobarlo)'
+      : 'Aprobar el comentario (volver a publicarlo)';
+    return next;
+  }
+
+  /* Handler único de los botones [data-cm-*] (modal + bandeja). */
+  async function onCommentAction(e) {
+    const cm = commentsModule();
+    if (!cm || !_studioAccount) {
+      showToast('El módulo de comentarios no está disponible — recargá la página.', 'warning');
+      return;
+    }
+
+    /* Abrir el box de respuesta */
+    const replyBtn = e.target.closest('[data-cm-reply]');
+    if (replyBtn) {
+      const box = document.querySelector('[data-replybox="' + replyBtn.getAttribute('data-cm-reply') + '"]');
+      if (box) {
+        box.style.display = '';
+        const ta = box.querySelector('textarea');
+        if (ta) ta.focus();
+      }
+      return;
+    }
+
+    /* Cerrar el box de respuesta */
+    const cancelBtn = e.target.closest('[data-cm-cancel]');
+    if (cancelBtn) {
+      const box = document.querySelector('[data-replybox="' + cancelBtn.getAttribute('data-cm-cancel') + '"]');
+      if (box) {
+        box.style.display = 'none';
+        const ta = box.querySelector('textarea');
+        if (ta) ta.value = '';
+      }
+      return;
+    }
+
+    /* Enviar la respuesta */
+    const sendBtn = e.target.closest('[data-cm-send]');
+    if (sendBtn) {
+      const id = sendBtn.getAttribute('data-cm-send');
+      const box = document.querySelector('[data-replybox="' + id + '"]');
+      const ta = box && box.querySelector('textarea');
+      const text = (ta && ta.value || '').trim();
+      if (!text) { showToast('Escribí la respuesta antes de enviar.', 'warning'); return; }
+      const c = cmCommentById(id);
+      const videoId = (c && c.videoId) || '';
+      if (!videoId) { showToast('No se pudo identificar el video del comentario.', 'error'); return; }
+      sendBtn.disabled = true;
+      const original = sendBtn.innerHTML;
+      sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando…';
+      try {
+        await cm.reply(_studioAccount.id, videoId, id, text);
+        showToast('Respuesta publicada.', 'success');
+        const wrap = sendBtn.closest('#steComments');
+        if (wrap) reloadComments(wrap, videoId);
+      } catch (err) {
+        showToast(err.message || 'No se pudo publicar la respuesta.', 'error');
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = original;
+      }
+      return;
+    }
+
+    /* Like al comentario del canal */
+    const heartBtn = e.target.closest('[data-cm-heart]');
+    if (heartBtn) {
+      const id = heartBtn.getAttribute('data-cm-heart');
+      const c = cmCommentById(id);
+      const liked = c ? !!c._liked : false;
+      heartBtn.disabled = true;
+      try {
+        await cm.heart(_studioAccount.id, id, !liked);
+        if (c) c._liked = !liked;
+        showToast(liked ? 'Like quitado.' : 'Like dado.', 'success');
+      } catch (err) {
+        showToast(err.message || 'No se pudo dar like.', 'error');
+      } finally {
+        heartBtn.disabled = false;
+      }
+      return;
+    }
+
+    /* Retener / aprobar */
+    const holdBtn = e.target.closest('[data-cm-hold]');
+    if (holdBtn) {
+      const id = holdBtn.getAttribute('data-cm-hold');
+      const next = cmToggleHeld(holdBtn);
+      holdBtn.disabled = true;
+      try {
+        await cm.moderate(_studioAccount.id, id, next);
+        showToast(next === 'held' ? 'Comentario retenido.' : 'Comentario aprobado.', 'success');
+      } catch (err) {
+        /* Se revierte el estado local si el server no lo aceptó. */
+        cmToggleHeld(holdBtn);
+        showToast(err.message || 'No se pudo moderar el comentario.', 'error');
+      } finally {
+        holdBtn.disabled = false;
+      }
+      return;
+    }
+
+    /* Crear lead del CRM desde el comentario (#46) */
+    const leadBtn = e.target.closest('[data-cm-lead]');
+    if (leadBtn) {
+      const id = leadBtn.getAttribute('data-cm-lead');
+      const c = cmCommentById(id);
+      if (!c) { showToast('No se encontró el comentario — recargá la lista.', 'error'); return; }
+      leadBtn.disabled = true;
+      const original = leadBtn.innerHTML;
+      leadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+      try {
+        const res = await cm.createLead(_studioAccount.id, c.videoId, c);
+        if (res && res.duplicate) {
+          showToast('Ese comentario ya tenía un lead — no se duplicó.', 'info');
+        } else {
+          showToast('Lead creado en el CRM.', 'success');
+        }
+        leadBtn.innerHTML = '<i class="fas fa-check"></i> Lead';
+      } catch (err) {
+        showToast(err.message || 'No se pudo crear el lead.', 'error');
+        leadBtn.innerHTML = original;
+      } finally {
+        leadBtn.disabled = false;
+      }
+      return;
+    }
+  }
+
   /* ---------- STUDIO: editar video ---------- */
 
   function openStudioEditModal(v) {
@@ -1158,6 +1482,7 @@
         '</div>' +
       '</div>' +
       '<div id="steDetailAna" style="margin:10px 0 6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;"></div>' +
+      '<div id="steComments" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:6px;"></div>' +
       '<div id="stePlaylists" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:6px;"></div>';
 
     const m = createYtModal('studioDetailOverlay', { wide: true, html: html });
@@ -1166,6 +1491,8 @@
     /* #26 lazy: métricas del video + playlists a pedido */
     loadVideoAnalytics(box, v);
     loadPlaylistsBlock(box, v);
+    /* Comentarios del video (a pedido: no se descargan solos). */
+    loadCommentsBlock(box, v);
 
     /* delegación de acciones dentro del modal */
     box.addEventListener('click', async function (e) {
@@ -3316,6 +3643,11 @@
       if (qLoad) { applyQueueItem(qLoad.getAttribute('data-yt-queue-load')); return; }
       const qDel = e.target.closest('[data-yt-queue-del]');
       if (qDel) { removeQueueItem(qDel.getAttribute('data-yt-queue-del')); return; }
+      /* Comentarios: responder / like / moderar / lead (modal + bandeja) */
+      if (e.target.closest('[data-cm-reply],[data-cm-cancel],[data-cm-send],[data-cm-heart],[data-cm-hold],[data-cm-lead]')) {
+        onCommentAction(e);
+        return;
+      }
       const del = e.target.closest('[data-contenido-delete]');
       if (del) { deletePost(del.dataset.contenidoDelete); return; }
       /* STUDIO: acciones sobre videos del canal */

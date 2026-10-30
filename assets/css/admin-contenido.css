@@ -827,3 +827,120 @@
     font-size: 11px;
 }
 
+/* ================================================================
+   14. COMENTARIOS DEL CANAL
+   Lista de comentarios, respuestas anidadas, acciones (responder,
+   like, moderar, crear lead) y el badge de "nuevos" del header.
+   ================================================================ */
+
+/* --- 14.1 Badge de comentarios nuevos --- */
+.yt-comments-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 5px;
+    margin-left: 6px;
+    border-radius: 999px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* --- 14.2 Lista --- */
+.yt-comments {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+}
+.yt-comment {
+    padding: 11px 13px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.02);
+}
+.yt-comment-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.yt-comment-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: rgba(45, 212, 191, 0.16);
+    color: var(--accent);
+    font-size: 10.5px;
+    font-weight: 700;
+}
+.yt-comment-avatar--sm { width: 21px; height: 21px; font-size: 9px; }
+.yt-comment-author {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.yt-comment-time {
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-weight: 400;
+}
+.yt-comment-text {
+    margin-top: 6px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.yt-comment-actions {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-top: 9px;
+}
+.yt-comment-likes {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+/* --- 14.3 Respuestas anidadas --- */
+.yt-comment-replies {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+    padding-left: 12px;
+    border-left: 2px solid rgba(255, 255, 255, 0.07);
+}
+.yt-comment-reply {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+.yt-comment-reply .yt-comment-text { margin-top: 3px; font-size: 12px; }
+
+/* --- 14.4 Box de respuesta --- */
+.yt-comment-replybox {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.yt-comment-replybox textarea {
+    font-size: 12px;
+    line-height: 1.45;
+    resize: vertical;
+}
+
