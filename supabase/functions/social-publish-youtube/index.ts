@@ -96,7 +96,11 @@ Deno.serve(async (req) => {
             } else if (Array.isArray(body.tags)) {
                 tags = body.tags.map((t) => clip(String(t), 60)).filter(Boolean);
             }
-            if (tags.join(',').length > 480) tags = tags.slice(0, 3);
+            /* MEJORA 2026-10-30: el recorte viejo (slice(0,3)) destruyó tags en
+               silencio ante cualquier excedente — ahora se recorta DESDE EL FINAL
+               hasta respetar los ~480 chars que acepta YouTube. Cada tag sale por
+               clip(), así que nunca queda solo 1 tag por el límite. */
+            while (tags.length > 1 && tags.join(',').length > 480) tags.pop();
 
             const propertyId = typeof body.property_id === 'string' &&
                 /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.property_id)

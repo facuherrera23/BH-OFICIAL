@@ -32,6 +32,7 @@
   let _subTab = 'accounts';
   let _bound = false;
   let _publishing = false;
+  let _seoBound = false;   // listeners del panel Score SEO ya colgados (shell no se re-renderiza)
   /* Studio: canal activo en la vista de administración */
   let _studioAccount = null;   // {id, display_name, avatar_url}
   let _studioChannel = null;   // datos del canal (subs, views, etc.)
@@ -192,7 +193,7 @@
     ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px;';
     const box = document.createElement('div');
     box.className = 'glass-panel';
-    box.style.cssText = 'max-width:560px;width:100%;padding:24px;max-height:85vh;overflow-y:auto;';
+    box.style.cssText = 'max-width:640px;width:100%;padding:24px;max-height:85vh;overflow-y:auto;';
     box.innerHTML =
       '<h3 style="margin:0 0 6px;font-size:16px;"><i class="fas fa-pen"></i> Editar video</h3>' +
       '<p style="margin:0 0 16px;font-size:12px;color:var(--text-dim);">' + esc(String(v.title).substring(0, 80)) + '</p>' +
@@ -214,6 +215,8 @@
       '</div>' +
       '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Miniatura (imagen JPG/PNG ≤ 2MB)</span>' +
       '<input id="steThumb" type="file" accept="image/jpeg,image/png" class="crm-field-input" style="width:100%;padding:8px;"></div>' +
+      /* MEJORA 2026-10-30: Score SEO en vivo dentro del modal (motor yt-seo-score.js) */
+      '<div id="steSeoBody" style="border-top:1px solid rgba(255,255,255,0.06);margin-top:2px;padding-top:10px;"></div>' +
       '<div style="display:flex;gap:10px;justify-content:flex-end;">' +
         '<button type="button" id="steCancel" class="btn-luxury-action" style="padding:10px 18px;font-size:12px;">Cancelar</button>' +
         '<button type="button" id="steSave" class="btn-luxury-action" style="padding:10px 18px;font-size:12px;"><i class="fas fa-floppy-disk"></i> Guardar</button>' +
@@ -222,6 +225,29 @@
     document.body.appendChild(ov);
     ov.addEventListener('mousedown', function (e) { if (e.target === ov) closeModalIfExists('studioEditOverlay'); });
     box.querySelector('#steCancel').addEventListener('click', function () { closeModalIfExists('studioEditOverlay'); });
+
+    /* Score SEO en vivo dentro del modal: título/desc/tags del video → score + sugerencias.
+       La SERP preview muestra el nombre del canal real del Studio. */
+    const steSeoBody = box.querySelector('#steSeoBody');
+    const recomputeStudioSeo = function () {
+      if (!steSeoBody || !window.BH_YT_SEO || typeof window.BH_YT_SEO.render !== 'function') return;
+      window.BH_YT_SEO.render(steSeoBody, {
+        title: box.querySelector('#steTitle').value,
+        description: box.querySelector('#steDesc').value,
+        tags: box.querySelector('#steTags').value,
+        keyword: '',
+        channelName: (_studioChannel && _studioChannel.title) || 'Bienenhaus Propiedades',
+        onTagsChange: function (newTags) {
+          const t = box.querySelector('#steTags');
+          if (t) { t.value = newTags; recomputeStudioSeo(); }
+        },
+      });
+    };
+    ['steTitle', 'steDesc', 'steTags'].forEach(function (id) {
+      const el = box.querySelector('#' + id);
+      if (el) el.addEventListener('input', recomputeStudioSeo);
+    });
+    recomputeStudioSeo();
 
     box.querySelector('#steSave').addEventListener('click', async function () {
       const btn = this;
@@ -413,6 +439,32 @@
     return (n / 1024).toFixed(0) + ' KB';
   }
 
+  /* ---------- Score SEO (estilo vidIQ) — motor en assets/js/yt-seo-score.js ----------
+     MEJORA 2026-10-30: panel del tab Crear (formulario a la izquierda, score a la
+     derecha) + bloque dentro del modal de edición del Studio. El motor es puro:
+     solo lo alimentamos con lo que hay en los inputs en vivo. */
+  function activeYoutubeChannelName() {
+    const acc = _accounts.find(a => a.platform === 'youtube' && a.status === 'active');
+    return (acc && acc.display_name) || 'Bienenhaus Propiedades';
+  }
+
+  function recomputeSeoPanel() {
+    const body = $('#ytSeoBody');
+    if (!body || !window.BH_YT_SEO || typeof window.BH_YT_SEO.render !== 'function') return;
+    const kwEl = $('#ytKeyword');
+    window.BH_YT_SEO.render(body, {
+      title: ($('#ytTitle') || {}).value || '',
+      description: ($('#ytDesc') || {}).value || '',
+      tags: ($('#ytTags') || {}).value || '',
+      keyword: kwEl ? (kwEl.value || '') : '',
+      channelName: activeYoutubeChannelName(),
+      onTagsChange: function (newTags) {
+        const t = $('#ytTags');
+        if (t) { t.value = newTags; recomputeSeoPanel(); }
+      },
+    });
+  }
+
   function setUploadProgress(pct, txt) {
     const bar = $('#ytUploadBar');
     const label = $('#ytUploadPct');
@@ -425,6 +477,10 @@
 
   /* MEJORA 2026-10-27: feedback del archivo seleccionado + contadores de chars */
   function setupCreateFormUX() {
+    /* El shell nunca se re-renderiza (guard en renderShell): los listeners de
+       contadores + Score SEO se cuelgan UNA vez (si no, cada loadContenido duplicaría). */
+    if (_seoBound) return;
+    _seoBound = true;
     const titleInput = $('#ytTitle');
     const titleCounter = $('#ytTitleCounter');
     const descInput = $('#ytDesc');
@@ -462,6 +518,12 @@
         fileInfo.style.display = '';
       });
     }
+    /* Score SEO en vivo: recalcula al escribir en título/descripción/tags/keyword */
+    ['ytTitle', 'ytDesc', 'ytTags', 'ytKeyword'].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', recomputeSeoPanel);
+    });
+    recomputeSeoPanel();
   }
 
   /* ---------- Subida resumable directa a Google ----------
@@ -659,6 +721,7 @@
       if ($('#ytPublishAt')) $('#ytPublishAt').value = '';
       if (fileInput) fileInput.value = '';
       if ($('#ytFileInfo')) $('#ytFileInfo').style.display = 'none';
+      recomputeSeoPanel(); // el form quedó vacío — el score vuelve a arrancar
       loadHistory();
       loadAccounts(); // refresca last_publish_at
     } catch (err) {
@@ -756,6 +819,7 @@
     const el = $(views[sub]);
     if (el) el.style.display = '';
     if (sub === 'history') loadHistory();
+    if (sub === 'create') recomputeSeoPanel(); // refresca el score al volver al tab (form puede tener datos a medio escribir)
   }
 
   function renderShell() {
@@ -771,9 +835,12 @@
       '<div id="contenidoAccounts" style="display:flex;flex-wrap:wrap;gap:12px;"></div>' +
       '<div id="contenidoStudio" style="display:none;"></div>' +
       '<div id="contenidoCreate" style="display:none;">' +
-        '<div class="glass-panel" style="padding:24px;max-width:900px;">' +
+        /* MEJORA 2026-10-30: layout en 2 columnas — form a la izquierda + Score SEO (vidIQ) pegado a la derecha */
+        '<div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;">' +
+        '<div style="flex:3;min-width:340px;">' +
+        '<div class="glass-panel" style="padding:24px;">' +
           '<h3 style="margin:0 0 4px;font-size:16px;"><i class="fab fa-youtube" style="color:#FF0000;"></i> Publicar video en YouTube</h3>' +
-          '<p style="margin:0 0 20px;font-size:12px;color:var(--text-dim);">El video sube directo de tu navegador a Google — sin pasar por el servidor.</p>' +
+          '<p style="margin:0 0 20px;font-size:12px;color:var(--text-dim);">El video sube directo de tu navegador a Google — sin pasar por el servidor. El panel de la derecha puntúa tu SEO mientras escribís.</p>' +
           '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Canal</span>' +
           '<select id="ytAccountSelect" class="crm-field-input crm-field-input--select" style="width:100%;"></select></div>' +
           '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Título * <span id="ytTitleCounter" style="color:var(--text-dim);font-size:11px;float:right;"></span></span>' +
@@ -802,6 +869,18 @@
             '<div id="ytUploadPct" style="font-size:12px;color:var(--text-dim);margin-top:6px;display:flex;justify-content:space-between;"></div>' +
           '</div>' +
           '<button type="button" id="ytPublishBtn" class="btn-luxury-action" style="padding:12px 28px;font-size:14px;"><i class="fas fa-paper-plane"></i> Publicar en YouTube</button>' +
+        '</div>' +
+        '</div>' +
+        /* Columna derecha: Score SEO — el motor vive en assets/js/yt-seo-score.js (BH_YT_SEO) */
+        '<div style="flex:2;min-width:300px;max-width:430px;position:sticky;top:74px;">' +
+          '<div class="glass-panel" style="padding:20px 18px 16px;">' +
+            '<h3 style="margin:0 0 4px;font-size:15px;"><i class="fas fa-bullseye" style="color:var(--accent);"></i> Score SEO del video</h3>' +
+            '<p style="margin:0 0 12px;font-size:11.5px;color:var(--text-dim);">Optimización medida en vivo (estilo vidIQ Vision).</p>' +
+            '<div style="margin-bottom:6px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Palabra clave objetivo <span style="font-size:10.5px;">(vacío = la deduzco del título)</span></span>' +
+            '<input id="ytKeyword" type="text" class="crm-field-input" placeholder="Ej: inmobiliaria córdoba" style="width:100%;"></div>' +
+            '<div id="ytSeoBody"></div>' +
+          '</div>' +
+        '</div>' +
         '</div>' +
       '</div>' +
       '<div id="contenidoHistory" style="display:none;"></div>';

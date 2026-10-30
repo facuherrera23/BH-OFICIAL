@@ -230,7 +230,9 @@ Deno.serve(async (req) => {
             let tags: string[] = [];
             if (typeof body.tags === 'string') tags = body.tags.split(',').map((t) => clip(t, 60)).filter(Boolean);
             else if (Array.isArray(body.tags)) tags = body.tags.map((t) => clip(String(t), 60)).filter(Boolean);
-            if (tags.join(',').length > 480) tags = tags.slice(0, 3);
+            /* MEJORA 2026-10-30: recorte progresivo (antes slice(0,3) destruía
+               casi todos los tags ante un excedente). */
+            while (tags.length > 1 && tags.join(',').length > 480) tags.pop();
             if (!title) return respond(400, { error: 'El título es obligatorio' });
 
             const privacy = ['public', 'unlisted', 'private'].includes(String(body.privacy))
