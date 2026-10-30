@@ -23,8 +23,14 @@ function json(body: unknown, status = 200): Response {
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204 });
 
+  // Fail-closed (patrón rela-callbacks): sin CRON_SECRET la función queda
+  // abierta — mejor 503 que un endpoint de reconciliación sin auth.
   const secret = Deno.env.get('CRON_SECRET') ?? '';
-  if (secret && req.headers.get('x-cron-secret') !== secret) {
+  if (!secret) {
+    console.error('[rela-sync] CRON_SECRET no configurado');
+    return json({ error: 'rela-sync no configurado (falta CRON_SECRET)' }, 503);
+  }
+  if (req.headers.get('x-cron-secret') !== secret) {
     return json({ error: 'no autorizado' }, 401);
   }
 

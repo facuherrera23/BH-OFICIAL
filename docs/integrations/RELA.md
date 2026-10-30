@@ -198,6 +198,7 @@ supabase secrets set RELA_CLIENT_ID=... RELA_CLIENT_SECRET=... RELA_CALLBACK_SEC
   mapear a mano desde el panel si hace falta.
 - **Barrido de validación del stock** (dry_run sobre las 45 propiedades activas):
   **27 pasan toda la validación** (aviso armado, hash listo, `would_be: create`),
+  **18 BLOCKED** con motivo exacto en `rela_listings` (vendidas, sin precio, fotos o
   descripcion faltante o zona sin mapear). El barrido llena `rela_listings` con
   el estado real por propiedad — se ve en Portales → RELA.
 - **Dedup de leads en `rela-callbacks` implementado (v41)**: patrón ML portado —
@@ -213,3 +214,48 @@ supabase secrets set RELA_CLIENT_ID=... RELA_CLIENT_SECRET=... RELA_CALLBACK_SEC
   sin baños cuando `bathrooms=0` (ej. DA-P0018). Es dato del CRM, no bug del mapper.
 - Verificación rápida del binding cuando soporte responda: acción `stock` del
   panel (Portales → RELA) — 200 = listo para publicar; 409 = seguir esperando.
+
+## Auditoría E2E 2026-10-29 (publish / update / unpublish, defectos corregidos)
+
+Ruta completa verificada contra la DB: `rela-proxy` → `rela_listings` (enum
+`rela_listing_status`: PENDING, SYNCING, PUBLISHED, UPDATE_PENDING, UPDATING,
+UNPUBLISHED, ERROR, BLOCKED — todos los estados escritos por el código existen),
+`rela_config`, `rela_tokens`, `rela_catalog_cache`, `rela_webhook_events`,
+columnas de `properties` usadas por el mapper (todas reales), grants de
+`rela_portal_status` / `insert_audit_log` (service_role ✓, authenticated ✓ en la
+primera), RLS y policies. Panel: badges + botones publish/update/unpublish en la
+tabla de propiedades (`#propertiesTableBody`, delegación en admin-tasaciones.js),
+modal de config que escribe `rela_config` con policy super_admin,
+`Sincronizar Todo` → reconcile manual.
+
+- **CORREGIDO (bug de seguridad)**: `rela-sync` estaba en NO_VERIFY (verify_jwt
+  OFF) y su gate era `if (secret && mismatch)` — con `CRON_SECRET` vacío quedaba
+  un endpoint de reconciliación SIN auth (verificado: 200 anónimo). Ahora es
+  fail-closed como `rela-callbacks`: sin secret → 503; secret erróneo → 401
+  (v34 deployado, verificado 503/401 anónimo). Programar su cron: setear
+  `CRON_SECRET` como secret de Supabase (o alinear al patrón
+  `x-sync-secret` de `zernio_config`).
+- **CORREGIDO (feature muerta)**: `rela_webhook_events` no tenía policy → la
+  lectura directa del panel (`loadSyncHistory`) caía siempre al `.catch`
+  silencioso: los eventos RELA nunca se veían en la vista Sincronizaciones.
+  Migración `20261029000001_rela_panel_read`: policy SELECT para staff
+  (super_admin/broker), espejando `ml_webhook_events_staff_read`.
+- **Mapper verificado sin drift**: el inline de `rela-proxy` y
+  `_shared/rela.mapper.ts` computan el MISMO payload/hash para la config actual
+  (los 7 tipos usan SOLO `idTipo`; el único drift potencial `idSubtipo` vs
+  `idSubTipo` no aplica con estos datos). `rela-sync` usará el mismo hash que
+  `rela-proxy` — sin UPDATE_PENDING fantasma.
+- **Verificado**: dedupe exacto por `idEvento` (UNIQUE) + rate limit fail-closed
+  en `rela-callbacks`; token vigente hasta 2036; gate de auth del proxy
+  (401 gateway, verify_jwt ON); audit trail vía `insert_audit_log` en
+  publish/update/unpublish/catálogos/asociar.
+- **Ops conocido**: no hay automatismo que despublique de RELA cuando una
+  propiedad pasa a vendida/pausada o se elimina (igual que en ML — decisión de
+  producto). El operador usa el botón "Despublicar de RELA" de la tabla de
+  propiedades; ninguna propiedad está publicada todavía.
+- Pendiente del día 1 con binding (no verificable hoy — la sandbox estaba caída
+  con 521 durante la auditoría, además del binding): forma real de la respuesta
+  del PUT (`estado`/`idAviso`/`errors[]` ya parseada según la doc), el GET de
+  aviso del reconcile (doc ambigua 2.5-2: marcado REQUIRES_CONFIRMATION),
+  permisos del PUT `/configuracion/callbacks` y disponibilidad de créditos del
+  plan SIMPLE.
