@@ -154,7 +154,8 @@ async function boot(page, opts = {}) {
   const gate = new Promise((r) => { release = r; });
   /* Contadores de llamadas a la Edge Function (para assertar refrescos). */
   const calls = { channel: 0, videos: 0, analytics: 0, init: 0, complete: 0, fail: 0, dry_run: 0, video_categories: 0, audit_log: 0,
-    comments_list: 0, comments_inbox: 0, comment_reply: 0, comment_heart: 0, comment_moderate: 0, comment_lead: 0 };
+    comments_list: 0, comments_inbox: 0, comment_reply: 0, comment_heart: 0, comment_moderate: 0, comment_lead: 0,
+    analytics_report: 0 };
   /* Peticiones capturadas (para assertar el body que viaja al server). */
   const requests = [];
 
@@ -188,6 +189,26 @@ async function boot(page, opts = {}) {
       payload = { playlists: [] };
     } else if (action === 'analytics') {
       payload = { totals: { views: 10, watch_minutes: 20, avg_view_seconds: 65, subscribers_gained: 1 }, range: { start: '2026-10-01', end: '2026-10-28' } };
+    } else if (action === 'analytics_report') {
+      /* La conexión vieja no tiene el scope de analítica: el server real
+         responde 403 needs_reconnect. */
+      if (opts.analyticsNeedsReconnect) {
+        return route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: 'needs_reconnect' }) });
+      }
+      const report = body.report || 'summary';
+      const rep = opts.reports && opts.reports[report];
+      if (rep) {
+        payload = rep;
+      } else {
+        payload = {
+          report: report,
+          label: 'Reporte',
+          range: { start: '2026-10-01', end: '2026-10-28', days: Number(body.days) || 28 },
+          headers: [],
+          rows: [],
+          titles: {},
+        };
+      }
     } else if (action === 'video_categories') {
       payload = { categories: opts.categories || CATEGORIES, cached: !!opts.categoriesCached };
     } else if (action === 'settings_get') {
@@ -285,6 +306,7 @@ async function boot(page, opts = {}) {
   await page.addScriptTag({ url: '/assets/js/yt-seo-tools.js' });
   await page.addScriptTag({ url: '/assets/js/yt-publish.js' });
   await page.addScriptTag({ url: '/assets/js/yt-comments.js' });
+  await page.addScriptTag({ url: '/assets/js/yt-analytics.js' });
   await page.addScriptTag({ url: '/assets/js/yt-seo-score.js' });
   await page.addScriptTag({ url: '/assets/js/admin-contenido.js' });
 

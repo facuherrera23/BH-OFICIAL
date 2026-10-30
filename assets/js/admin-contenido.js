@@ -86,6 +86,9 @@
     snapshot: 8, analytics: 5, platforms_config: 1,
     /* videoCategories.list cuesta 1 unidad (no 5). */
     video_categories: 1,
+    /* Un reporte de YouTube Analytics = 1 unidad (más 1 si trae títulos
+       de videos: videos.list). */
+    analytics_report: 2,
   };
 
   let _accounts = [];
@@ -509,6 +512,9 @@
       renderStudioVideosGrid(); // los sparklines por-card necesitan la historia (#23)
     });
     loadAnalyticsPanel();
+    /* Reportes de analítica (#19/#47): tabs con resumen, evolución, top de
+       videos, retención, tráfico y audiencia. */
+    loadReportsPanel(false);
     /* Contador de comentarios nuevos (no abre el panel: solo el badge).
        Si la conexión no puede listarlos, el Studio sigue igual. */
     loadCommentsInbox(false);
@@ -558,6 +564,7 @@
       '</div>' +
       /* MEJORAS 2026-10-30: métricas #21, tendencia #22 y calendario #46 */
       '<div id="ytAnalyticsPanel" class="yt-block"></div>' +
+      '<div id="ytReportsPanel" class="yt-block"></div>' +
       '<div id="ytTrend" class="yt-block"></div>' +
       /* Bandeja de comentarios (se abre desde el botón del header). */
       '<div id="ytCommentsInbox" class="yt-block" style="display:none;"></div>' +
@@ -910,6 +917,251 @@
       } else {
         el.innerHTML = '';
       }
+    }
+  }
+
+  /* #19/#47: reportes de YouTube Analytics (resumen, evolución, top de
+     videos, retención, tráfico y audiencia). La lógica vive en
+     assets/js/yt-analytics.js y las consultas, en el server. */
+  let _ytReport = 'summary';
+  let _ytReportDays = 28;
+
+  function analyticsModule() {
+    return (window.BH_YT && window.BH_YT.analytics) || null;
+  }
+
+  /* Shell del panel (tabs + período). Se dibuja antes de pedir los datos
+     para que el dueño pueda cambiar de reporte mientras carga. */
+  function renderReportsShell() {
+    const am = analyticsModule();
+    const reports = (am && am.REPORTS) || [];
+    return '<div class="glass-panel yt-subpanel">' +
+      '<div class="yt-subpanel-head">' +
+        '<span><i class="fas fa-chart-column"></i> Reportes del canal</span>' +
+        '<span class="yt-inline">' +
+          '<select id="ytReportDays" class="crm-field-input crm-field-input--select" style="width:auto;padding:5px 8px;font-size:11px;">' +
+            '<option value="7"' + (_ytReportDays === 7 ? ' selected' : '') + '>7 días</option>' +
+            '<option value="28"' + (_ytReportDays === 28 ? ' selected' : '') + '>28 días</option>' +
+            '<option value="90"' + (_ytReportDays === 90 ? ' selected' : '') + '>90 días</option>' +
+            '<option value="365"' + (_ytReportDays === 365 ? ' selected' : '') + '>1 año</option>' +
+          '</select>' +
+          '<button type="button" id="ytReportsRefresh" class="btn-luxury-action yt-btn--xs" title="Volver a pedir los datos a YouTube"><i class="fas fa-rotate"></i></button>' +
+        '</span>' +
+      '</div>' +
+      '<div class="yt-report-tabs">' + reports.map(function (r) {
+        return '<button type="button" class="yt-report-tab' + (r.id === _ytReport ? ' is-active' : '') +
+          '" data-yt-report="' + esc(r.id) + '"><i class="fas ' + esc(r.icon) + '"></i> ' + esc(r.label) + '</button>';
+      }).join('') + '</div>' +
+      '<div id="ytReportsBody"><p class="yt-muted"><i class="fas fa-spinner fa-spin"></i> Cargando…</p></div>' +
+    '</div>';
+  }
+
+  async function loadReportsPanel(force) {
+    const el = $('#ytReportsPanel');
+    if (!el || !_studioAccount) return;
+    const am = analyticsModule();
+    if (!am) {
+      el.innerHTML = '<div class="yt-hint">El módulo de analítica no está cargado (recargá la página).</div>';
+      return;
+    }
+    el.innerHTML = renderReportsShell();
+    bindReportsPanel(el);
+    const body = el.querySelector('#ytReportsBody');
+    if (!body) return;
+    try {
+      const data = await am.report(_studioAccount.id, _ytReport, { days: _ytReportDays, force: !!force });
+      renderReportsBody(body, data);
+    } catch (err) {
+      if (am.isNeedsReconnect(err)) {
+        body.innerHTML =
+          '<div class="yt-notice yt-notice--warning">' +
+            '<i class="fas fa-plug-circle-exclamation"></i>' +
+            '<span>La analítica pide un permiso nuevo (yt-analytics.readonly). Desconectá la cuenta y conectala de nuevo en Cuentas — es una sola vez; el resto del canal sigue funcionando.</span>' +
+          '</div>';
+      } else {
+        body.innerHTML =
+          '<div class="yt-notice yt-notice--danger">' +
+            '<i class="fas fa-triangle-exclamation"></i>' +
+            '<span>No se pudo leer la analítica: ' + esc(err.message || 'error desconocido') + '</span>' +
+          '</div>';
+      }
+    }
+  }
+
+  function bindReportsPanel(el) {
+    el.querySelectorAll('[data-yt-report]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        _ytReport = btn.getAttribute('data-yt-report') || 'summary';
+        el.querySelectorAll('[data-yt-report]').forEach(function (b) {
+          b.classList.toggle('is-active', b === btn);
+        });
+        const body = el.querySelector('#ytReportsBody');
+        if (body) body.innerHTML = '<p class="yt-muted"><i class="fas fa-spinner fa-spin"></i> Cargando…</p>';
+        loadReportsPanel(false);
+      });
+    });
+    const daysSel = el.querySelector('#ytReportDays');
+    if (daysSel) {
+      daysSel.addEventListener('change', function () {
+        _ytReportDays = Number(this.value) || 28;
+        loadReportsPanel(false);
+      });
+    }
+    const refresh = el.querySelector('#ytReportsRefresh');
+    if (refresh) {
+      refresh.addEventListener('click', function () {
+        const am = analyticsModule();
+        if (am) am.clearCache(_studioAccount.id);
+        loadReportsPanel(true);
+      });
+    }
+  }
+
+  /* ---------- render de cada reporte ---------- */
+
+  function renderReportsBody(body, data) {
+    const am = analyticsModule();
+    if (!am) return;
+    const rows = data.rows || [];
+    const headers = data.headers || [];
+    const report = data.report || _ytReport;
+    const range = data.range || {};
+
+    if (!rows.length) {
+      body.innerHTML = '<div class="yt-hint">No hay datos en el período (' +
+        esc(range.start || '') + ' → ' + esc(range.end || '') + ').</div>';
+      return;
+    }
+
+    /* Columnas numéricas (las dimensiones van primero). */
+    const dimKeys = headers.filter(function (h) { return h.type === 'DIMENSION'; }).map(function (h) { return h.key; });
+    const metricKeys = headers.filter(function (h) { return h.type !== 'DIMENSION'; }).map(function (h) { return h.key; });
+
+    if (report === 'summary') return renderReportSummary(body, data, metricKeys);
+    if (report === 'daily') return renderReportDaily(body, data, metricKeys);
+    if (report === 'retention') return renderReportRetention(body, data);
+    if (report === 'traffic') return renderReportTraffic(body, data, metricKeys);
+    if (report === 'top_videos') return renderReportTopVideos(body, data, metricKeys);
+    if (report === 'demographics') return renderReportTable(body, data, dimKeys, metricKeys, am);
+    return renderReportTable(body, data, dimKeys, metricKeys, am);
+  }
+
+  function reportRange(data) {
+    const range = data.range || {};
+    return esc(range.start || '') + ' → ' + esc(range.end || '') +
+      (range.days ? ' (' + esc(String(range.days)) + ' días)' : '');
+  }
+
+  function renderReportSummary(body, data, metricKeys) {
+    const am = analyticsModule();
+    const row = (data.rows && data.rows[0]) || {};
+    const stats = metricKeys.map(function (k) {
+      return '<div class="yt-stat">' +
+        '<div class="yt-stat-value">' + esc(am.formatValue(k, row[k])) + '</div>' +
+        '<div class="yt-stat-label">' + esc(am.labelFor(k)) + '</div>' +
+      '</div>';
+    }).join('');
+    body.innerHTML =
+      '<div class="yt-reports-head"><i class="fas fa-chart-simple"></i> ' + esc(data.label || 'Resumen') + ' · ' + reportRange(data) + '</div>' +
+      '<div class="yt-stats">' + stats + '</div>';
+  }
+
+  function renderReportDaily(body, data, metricKeys) {
+    const am = analyticsModule();
+    const rows = data.rows || [];
+    const key = metricKeys.indexOf('views') >= 0 ? 'views' : metricKeys[0];
+    const max = Math.max.apply(null, rows.map(function (r) { return Number(r[key]) || 0; }).concat([1]));
+    const bars = rows.map(function (r) {
+      const v = Number(r[key]) || 0;
+      const h = Math.max(2, Math.round((v / max) * 100));
+      return '<div class="yt-bar-col" title="' + esc(am.formatValue(key, v)) + '">' +
+        '<div class="yt-bar" style="height:' + h + '%"></div>' +
+        '<span class="yt-bar-label">' + esc(am.formatValue('day', r.day)) + '</span>' +
+      '</div>';
+    }).join('');
+    body.innerHTML =
+      '<div class="yt-reports-head"><i class="fas fa-chart-line"></i> ' + esc(data.label || 'Evolución') + ' · ' + reportRange(data) + '</div>' +
+      '<div class="yt-bars">' + bars + '</div>' +
+      renderReportTable(body, data, ['day'], metricKeys, am, true);
+  }
+
+  function renderReportRetention(body, data) {
+    const am = analyticsModule();
+    const rows = data.rows || [];
+    const max = Math.max.apply(null, rows.map(function (r) { return Number(r.elapsedVideoTimeRatio) || 0; }).concat([1]));
+    const bars = rows.map(function (r) {
+      const v = Number(r.elapsedVideoTimeRatio) || 0;
+      const h = Math.max(2, Math.round((v / max) * 100));
+      return '<div class="yt-bar-col" title="' + esc(String(Math.round(v * 100))) + '% del video">' +
+        '<div class="yt-bar yt-bar--accent" style="height:' + h + '%"></div>' +
+      '</div>';
+    }).join('');
+    body.innerHTML =
+      '<div class="yt-reports-head"><i class="fas fa-gauge-high"></i> ' + esc(data.label || 'Retención') + ' · ' + reportRange(data) + '</div>' +
+      '<div class="yt-bars yt-bars--dense">' + bars + '</div>' +
+      '<div class="yt-hint">Cada barra es un tramo del video: mientras más alto, más gente lo vio completo.</div>';
+  }
+
+  function renderReportTraffic(body, data, metricKeys) {
+    const am = analyticsModule();
+    const rows = data.rows || [];
+    const key = metricKeys.indexOf('views') >= 0 ? 'views' : metricKeys[0];
+    const max = Math.max.apply(null, rows.map(function (r) { return Number(r[key]) || 0; }).concat([1]));
+    const items = rows.map(function (r) {
+      const v = Number(r[key]) || 0;
+      const pct = Math.round((v / max) * 100);
+      return '<div class="yt-hbar-row">' +
+        '<span class="yt-hbar-label">' + esc(am.formatValue('trafficSource', r.trafficSource)) + '</span>' +
+        '<span class="yt-hbar-track"><span class="yt-hbar-fill" style="width:' + pct + '%"></span></span>' +
+        '<span class="yt-hbar-value">' + esc(am.formatValue(key, v)) + '</span>' +
+      '</div>';
+    }).join('');
+    body.innerHTML =
+      '<div class="yt-reports-head"><i class="fas fa-signpost"></i> ' + esc(data.label || 'Tráfico') + ' · ' + reportRange(data) + '</div>' +
+      '<div class="yt-hbars">' + items + '</div>';
+  }
+
+  function renderReportTopVideos(body, data, metricKeys) {
+    const am = analyticsModule();
+    const rows = data.rows || [];
+    const titles = data.titles || {};
+    const head = '<tr><th>Video</th>' + metricKeys.map(function (k) {
+      return '<th>' + esc(am.labelFor(k)) + '</th>';
+    }).join('') + '</tr>';
+    const trs = rows.map(function (r) {
+      const vid = String(r.video || '');
+      const title = titles[vid] || vid;
+      return '<tr>' +
+        '<td><a href="https://www.youtube.com/watch?v=' + esc(vid) + '" target="_blank" rel="noopener" class="yt-report-link">' + esc(title) + '</a></td>' +
+        metricKeys.map(function (k) { return '<td>' + esc(am.formatValue(k, r[k])) + '</td>'; }).join('') +
+      '</tr>';
+    }).join('');
+    body.innerHTML =
+      '<div class="yt-reports-head"><i class="fas fa-ranking-star"></i> ' + esc(data.label || 'Top videos') + ' · ' + reportRange(data) + '</div>' +
+      '<div class="yt-table-wrap"><table class="yt-report-table"><thead>' + head + '</thead><tbody>' + trs + '</tbody></table></div>';
+  }
+
+  function renderReportTable(body, data, dimKeys, metricKeys, am, append) {
+    const rows = data.rows || [];
+    const head = '<tr>' + dimKeys.map(function (k) {
+      return '<th>' + esc(am.labelFor(k)) + '</th>';
+    }).join('') + metricKeys.map(function (k) {
+      return '<th>' + esc(am.labelFor(k)) + '</th>';
+    }).join('') + '</tr>';
+    const trs = rows.map(function (r) {
+      return '<tr>' +
+        dimKeys.map(function (k) { return '<td>' + esc(am.formatValue(k, r[k])) + '</td>'; }).join('') +
+        metricKeys.map(function (k) { return '<td>' + esc(am.formatValue(k, r[k])) + '</td>'; }).join('') +
+      '</tr>';
+    }).join('');
+    const html = '<div class="yt-table-wrap"><table class="yt-report-table"><thead>' + head + '</thead><tbody>' + trs + '</tbody></table></div>';
+    if (append) {
+      /* En "Evolución" la tabla va DEBAJO del gráfico: se agrega al final. */
+      body.innerHTML = body.innerHTML + html;
+    } else {
+      body.innerHTML =
+        '<div class="yt-reports-head"><i class="fas fa-table"></i> ' + esc(data.label || 'Detalle') + ' · ' + reportRange(data) + '</div>' +
+        html;
     }
   }
 

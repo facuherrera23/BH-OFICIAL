@@ -64,6 +64,59 @@ const CATEGORIES_TTL_MS = 7 * 24 * 60 * 60 * 1000;
    viene de la API (videoCategories.list) para no inventar ids. */
 const CATEGORIES_FALLBACK = [{ id: '22', name: 'People & Blogs' }];
 
+/* ============================================================
+   Reportes de analítica (YouTube Analytics API)
+   ------------------------------------------------------------
+   Cada reporte es una consulta a /v2/reports. Se definen acá
+   (no en el cliente) para que el contrato sea uno solo y el
+   cliente no pueda inventar dimensiones/métricas inválidas.
+   Cada llamada cuesta 1 unidad de cuota de Google.
+   ============================================================ */
+const ANALYTICS_REPORTS: Record<string, {
+    dimensions: string;
+    metrics: string;
+    sort?: string;
+    limit?: number;
+    label: string;
+}> = {
+    summary: {
+        dimensions: '',
+        metrics: 'views,estimatedMinutesWatched,averageViewDuration,subscribersGained,subscribersLost,impressions,impressionsClickThroughRate',
+        label: 'Resumen del período',
+    },
+    daily: {
+        dimensions: 'day',
+        metrics: 'views,estimatedMinutesWatched,subscribersGained,subscribersLost',
+        limit: 90,
+        label: 'Evolución día a día',
+    },
+    top_videos: {
+        dimensions: 'video',
+        metrics: 'views,estimatedMinutesWatched,impressions,impressionsClickThroughRate,averageViewDuration',
+        sort: '-views',
+        limit: 20,
+        label: 'Top de videos',
+    },
+    retention: {
+        dimensions: 'elapsedVideoTimeRatio',
+        metrics: 'averageViewDuration,views',
+        limit: 100,
+        label: 'Curva de retención',
+    },
+    traffic: {
+        dimensions: 'trafficSource',
+        metrics: 'views,estimatedMinutesWatched',
+        label: 'Origen del tráfico',
+    },
+    demographics: {
+        dimensions: 'ageGroup,gender',
+        metrics: 'viewerPercentage',
+        label: 'Audiencia por edad y género',
+    },
+};
+const ANALYTICS_MIN_DAYS = 7;
+const ANALYTICS_MAX_DAYS = 365;
+
 interface StudioAccount {
     id: string;
     platform: string;
@@ -145,6 +198,8 @@ Deno.serve(async (req) => {
         item_id?: string;
         position?: number;
         max?: number;
+        report?: string;
+        days?: number;
         key?: string;
         value?: unknown;
         audit_action?: string;
@@ -799,6 +854,99 @@ Deno.serve(async (req) => {
                           subscribers_gained: Number(r[3] ?? 0),
                       }
                     : null,
+            });
+        }
+
+        /* ------- Reportes de analítica (#19/#47) -------
+           Un solo action con varios reportes (resumen, diario, top de
+           videos, retención, tráfico y demografía). Las dimensiones y
+           métricas viven en el server: el cliente no puede inventarlas
+           ni pedir una consulta arbitraria a la API de Google. */
+        if (body.action === 'analytics_report') {
+            const accountId = String(body.account_id ?? '');
+            const reportKey = clip(String(body.report ?? 'summary'), 30);
+            const videoId = clip(String(body.video_id ?? ''), 50);
+            const def = ANALYTICS_REPORTS[reportKey];
+            if (!accountId) return respond(400, { error: 'Falta la cuenta' });
+            if (!def) return respond(400, { error: 'Reporte desconocido' });
+
+            const acc = await loadAccount(supabase, accountId);
+            if (!hasAnalyticsScope(acc)) {
+                return respond(403, { error: 'needs_reconnect' });
+            }
+            const accessToken = await getSocialAccessToken(supabase, accountId);
+
+            const daysRaw = Number(body.days ?? 28);
+            const days = Math.min(
+                ANALYTICS_MAX_DAYS,
+                Math.max(ANALYTICS_MIN_DAYS, Number.isFinite(daysRaw) ? Math.round(daysRaw) : 28),
+            );
+            const end = new Date().toISOString().slice(0, 10);
+            const start = new Date(Date.now() - (days - 1) * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+            const params = new URLSearchParams({
+                ids: 'channel==MINE',
+                startDate: start,
+                endDate: end,
+                metrics: def.metrics,
+            });
+            if (def.dimensions) params.set('dimensions', def.dimensions);
+            if (def.sort) params.set('sort', def.sort);
+            if (def.limit) params.set('maxResults', String(def.limit));
+            if (videoId) params.set('filters', `video==${videoId}`);
+
+            let rep: {
+                columnHeaders?: Array<{ name?: string; dataType?: string }>;
+                rows?: Array<Array<string | number>>;
+            };
+            try {
+                rep = (await youtubeFetch(`${ANALYTICS_API}/reports?${params}`, accessToken)) as typeof rep;
+            } catch (err) {
+                /* Token viejo o sin consentimiento de la API: hay que
+                   reconectar (mismo contrato que el action 'analytics'). */
+                const msg = (err as Error).message || '';
+                if (/401|403/.test(msg)) return respond(502, { error: 'needs_reconnect', detail: msg.slice(0, 200) });
+                return respond(502, { error: 'No se pudo leer la analítica de YouTube.', detail: msg.slice(0, 200) });
+            }
+
+            const headers = (rep.columnHeaders ?? []).map((h) => ({
+                key: String(h.name ?? ''),
+                type: String(h.dataType ?? ''),
+            }));
+            const rows = (rep.rows ?? []).map((row) => {
+                const obj: Record<string, string | number> = {};
+                headers.forEach((h, i) => { obj[h.key] = row[i] ?? 0; });
+                return obj;
+            });
+
+            /* Top de videos: los ids vienen solos (VIDEO_ID). Se traen los
+               títulos con UNA llamada a videos.list (1 unidad) para que la
+               tabla sea legible sin depender del inventario del cliente. */
+            let titles: Record<string, string> = {};
+            if (reportKey === 'top_videos') {
+                const ids = rows.map((r) => String(r.video ?? '')).filter(Boolean).slice(0, 20);
+                if (ids.length) {
+                    try {
+                        const vd = (await youtubeFetch(
+                            `${YOUTUBE_API}/videos?part=snippet&id=${ids.join(',')}`,
+                            accessToken,
+                        )) as { items?: Array<{ id?: string; snippet?: { title?: string } }> };
+                        for (const it of vd.items ?? []) {
+                            if (it.id) titles[it.id] = it.snippet?.title ?? '';
+                        }
+                    } catch (_) {
+                        /* Sin títulos la tabla sigue viva (muestra el id). */
+                    }
+                }
+            }
+
+            return respond(200, {
+                report: reportKey,
+                label: def.label,
+                range: { start, end, days },
+                headers,
+                rows,
+                titles,
             });
         }
 
