@@ -173,3 +173,43 @@ supabase secrets set RELA_CLIENT_ID=... RELA_CLIENT_SECRET=... RELA_CALLBACK_SEC
 | Listing `BLOCKED` | validación local: ver `last_error` (lista los faltantes) |
 | Callbacks 503 | falta `RELA_CALLBACK_SECRET` |
 | Aviso va a OFFLINE tras XML | si se habilita XML y el aviso no está en el archivo, RELA lo baja (doc XML); no mezclar XML parcial con API |
+
+## Estado 2026-10-29 (diagnóstico post "API Premium" de Zonaprop)
+
+- **Bloqueo único que impide publicar**: binding roto del lado de QuintoAndar —
+  `GET /v1/inmobiliarias/30662083/disponibilidad` → `409 "La inmobiliaria [30662083]
+  no pertenece a la integracion 20354"`, y `GET /v1/inmobiliarias` → `{"total":0}`
+  (ninguna inmobiliaria vinculada a la integración). El 31/08 el binding existía
+  (la API rechazaba por créditos, no por binding). Requiere acción de soporte:
+  re-vincular inmobiliaria + confirmar si con el Premium viene entorno/base URL de
+  producción. Los tokens/credenciales guardados SÍ sirven (catálogos 200).
+- **Role param** (`?role=`) no influye en el binding: mismo 409 con `zp`, `zp2`,
+  `rap`, `ri`, sin role. Catalogos OK con `role=zp`.
+- `GET /v1/configuracion/callbacks` → `500 Access is denied`: falta permiso de
+  administración de la integración (pedirlo a soporte junto con el binding).
+- **Mapeo de ubicaciones ampliado 5 → 17 zonas** (rela_config.ubicacion_map),
+  siempre con `idUbicacion` verificado en el árbol real de la API (provincia
+  Córdoba `V1-B-7` → localidades `V1-C-*` → barrios `V1-D-*`). Corrección
+  importante: `san vicente` apuntaba a la LOCALIDAD homónima de otro departamento
+  (`V1-C-1002274`); ahora apunta al barrio de Córdoba ciudad (`V1-D-1177319`,
+  "San Vicente,Córdoba,Córdoba"). El Cedrón (12 propiedades) quedó mapeado dentro
+  de "Villa Ciudad Parque Los Reartes" (`V1-D-1202118`). Sin mapeo exacto (parajes
+  que Zonaprop no cataloga): Loma del Tigre, La Alfonsina, San Javier del Lago —
+  mapear a mano desde el panel si hace falta.
+- **Barrido de validación del stock** (dry_run sobre las 45 propiedades activas):
+  **27 pasan toda la validación** (aviso armado, hash listo, `would_be: create`),
+  descripcion faltante o zona sin mapear). El barrido llena `rela_listings` con
+  el estado real por propiedad — se ve en Portales → RELA.
+- **Dedup de leads en `rela-callbacks` implementado (v41)**: patrón ML portado —
+  `handleContact` busca lead consolidable por email/últimos-10-dígitos de teléfono
+  (`source='rela_zonaprop'`, excluye etapas terminales). Si existe: rellena campos
+  vacíos, vincula propiedad extra en `lead_properties`, traza el mensaje en notes
+  con anti-duplicado por subcadena, actualiza `rela_webhook_events.lead_id`; NO
+  crea lead duplicado. Sin identidad: fila anónima nueva (`Contacto RELA (anónimo)`),
+  igual que la regla ML del dueño. Los leads nuevos entran asignados al `agent_id`
+  de la propiedad (patrón ML 2026-10-19). Deployado vía MCP (compilación verificada,
+  401 correcto sin credenciales); el CI lo re-deploya igual en el próximo push.
+- `full_bathrooms` en `properties` está vacío en TODA la base: el aviso RELA sale
+  sin baños cuando `bathrooms=0` (ej. DA-P0018). Es dato del CRM, no bug del mapper.
+- Verificación rápida del binding cuando soporte responda: acción `stock` del
+  panel (Portales → RELA) — 200 = listo para publicar; 409 = seguir esperando.
