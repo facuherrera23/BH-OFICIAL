@@ -36,6 +36,11 @@ const YT_SCOPES = [
        exige youtube.force-ssl — sin él el panel es solo lectura. Al cambiar
        scopes el dueño reconecta una vez y el upsert renueva los tokens. */
     'https://www.googleapis.com/auth/youtube.force-ssl',
+    /* MEJORA 2026-10-30: métricas reales del canal (vistas 28d, minutos vistos,
+       prom. duración, CTR del video) vía YouTube Analytics API v2. Solo lectura;
+       las conexiones viejas seguirán funcionando sin él — la UI muestra
+       "reconectá la cuenta" hasta que el dueño refresque el consentimiento. */
+    'https://www.googleapis.com/auth/yt-analytics.readonly',
 ].join(' ');
 
 /* ------- state firmado (patrón ml-oauth) ------- */

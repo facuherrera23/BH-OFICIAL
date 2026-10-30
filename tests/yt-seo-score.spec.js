@@ -119,3 +119,28 @@ test('render: estado vacío — gauge en 0, sin checklist y mensaje de onboardin
   await expect(page.locator('#panelEmpty .yts-check')).toHaveCount(0);
   await expect(page.locator('#panelEmpty')).toContainText('Completá título, descripción y tags');
 });
+
+test('render: extraPresets (#14) — históricos del canal primero con dedup único', async ({ page, request }) => {
+  await loadEngine(page, request);
+  await page.evaluate(() => {
+    window.__LAST = null;
+    window.BH_YT_SEO.render(document.getElementById('panel'), {
+      title: 'Inmobiliaria Córdoba: recorrida por casas en venta',
+      description: 'Recorrida por las casas en venta de Nueva Córdoba.',
+      tags: 'inmobiliaria córdoba, casas',
+      keyword: 'casas',
+      extraPresets: ['bienenhaus', 'casas', '  casas  ', 'dup', 'inmobiliaria córdoba'],
+      onTagsChange: (t) => { window.__LAST = t; },
+    });
+  });
+  const names = await page.locator('#panel .yts-preset').evaluateAll((els) =>
+    els.map((el) => el.getAttribute('data-yts-preset')));
+  expect(names[0]).toBe('bienenhaus');   // los extra van primeros
+  expect(names[1]).toBe('dup');
+  expect(names.length).toBe(12);          // cap global 12
+  expect(names.filter((t) => t.trim().toLowerCase() === 'casas')).toHaveLength(0); // ya está en tags
+  expect(new Set(names.map((t) => t.toLowerCase())).size).toBe(names.length);       // sin repetidos
+  // click en el primer extra → onTagsChange del caller con el tag al final
+  await page.click('#panel .yts-preset >> nth=0');
+  expect(await page.evaluate(() => window.__LAST)).toBe('inmobiliaria córdoba, casas, bienenhaus');
+});

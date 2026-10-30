@@ -64,6 +64,7 @@ Deno.serve(async (req) => {
         video_id?: string;
         upload_error?: string;
         publish_at?: string;
+        seo_score?: number;
     };
     try {
         body = await req.json();
@@ -118,6 +119,13 @@ Deno.serve(async (req) => {
                 publishAtIso = d.toISOString();
             }
 
+            /* MEJORA #18: snapshot del score SEO de vidIQ en el momento de
+               publicar — el studio luego calcula la evolución (delta) contra él. */
+            const seoScore = Number(body.seo_score);
+            const seoScoreOk = Number.isFinite(seoScore) && seoScore >= 0 && seoScore <= 100
+                ? Math.round(seoScore)
+                : null;
+
             const { data: acc } = await supabase
                 .from('social_accounts')
                 .select('id, platform, status')
@@ -136,7 +144,7 @@ Deno.serve(async (req) => {
                     platform: 'youtube',
                     property_id: propertyId,
                     post_type: 'video',
-                    content: { title, description, tags, privacy },
+                    content: { title, description, tags, privacy, ...(seoScoreOk !== null ? { seo_score: seoScoreOk } : {}) },
                     status: 'publishing',
                     created_by: adminId,
                 })
@@ -234,10 +242,24 @@ Deno.serve(async (req) => {
         if (body.action === 'fail') {
             const postId = String(body.post_id ?? '');
             if (!postId) return respond(400, { error: 'Falta el post' });
+            const failError = clip(String(body.upload_error ?? 'Subida interrumpida'), 400);
             await supabase.from('social_posts').update({
                 status: 'failed',
-                error: clip(String(body.upload_error ?? 'Subida interrumpida'), 400),
+                error: failError,
             }).eq('id', postId);
+            /* MEJORA #43: traza en audit_log — sin ella, un fail del PUT con
+               social_posts caído (o borrado a mano) era invisible para el
+               Centro de Supervisión. Best-effort: no bloquea el 200. */
+            await supabase.from('audit_log').insert({
+                user_id: adminId,
+                action: 'yt_publish_fail',
+                module: 'contenido',
+                table_name: 'social_posts',
+                record_id: postId,
+                status: 'error',
+                error_code: 'YT_UPLOAD_FAIL',
+                metadata: { error: failError },
+            });
             return respond(200, { ok: true });
         }
 

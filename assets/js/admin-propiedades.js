@@ -22,6 +22,33 @@
     return `<span class="props-badge" style="background:${meta.bg}; color:${meta.color};">${esc(meta.label)}</span>`;
   }
 
+  /* Tour en video por propiedad (social_posts published + platform youtube).
+     El map vive a nivel del módulo: el listener delegado se registra UNA vez
+     y consulta el map del último load. */
+  let _propVideoMap = {};
+
+  async function loadPropVideoMap(client) {
+    const map = {};
+    try {
+      const { data, error } = await client
+        .from('social_posts')
+        .select('property_id, external_post_id')
+        .eq('platform', 'youtube')
+        .eq('status', 'published')
+        .not('property_id', 'is', null);
+      if (error) throw error;
+      (data || []).forEach(function (v) {
+        if (v && v.property_id && v.external_post_id && !map[v.property_id]) map[v.property_id] = v.external_post_id;
+      });
+    } catch (err) {
+      /* Sin videos visibles (permisos o tabla vacía) → sin botón de video.
+         El módulo de Propiedades NO se rompe por esto. */
+      logWarn('Propiedades: no se pudo cargar el mapa de videos', err);
+    }
+    _propVideoMap = map;
+    return map;
+  }
+
   async function loadProperties() {
     invalidateSearchCache();
     const tbody = $('#propertiesTableBody');
@@ -77,6 +104,9 @@
         client.from('owners').select('id, full_name').is('deleted_at', null).order('full_name'),
         client.from('rela_listings').select('property_id, codigo_aviso, status, remote_status, last_error'),
       ]);
+
+      /* Videos de YouTube publicados por propiedad (botón "ver tour"). */
+      await loadPropVideoMap(client);
 
       const data = propsRes.data;
       const error = propsRes.error;
@@ -204,6 +234,7 @@
               ${mlButtons}
               ${relaButtons}
               ${p.is_published ? `<button class="btn-action" style="color:#25D366;" title="Compartir ficha por WhatsApp" data-wa-share="${esc(p.id)}" data-wa-code="${esc(p.property_code || '')}"><i class="fab fa-whatsapp"></i></button>` : ''}
+              ${_propVideoMap[p.id] ? `<button class="btn-action" style="color:#FF0000;" title="Ver el tour en video (YouTube)" data-prop-video="${esc(p.id)}"><i class="fab fa-youtube"></i></button>` : ''}
               ${p.is_published ? `<button class="btn-action" style="color:#FFB800;" title="Campaña WhatsApp a leads que encajan" data-prop-act="campaign" data-prop-id="${esc(p.id)}" data-prop-code="${esc(p.property_code || '')}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-bullhorn"></i></button>` : ''}
               <button class="btn-action" style="color:#8b5cf6;" title="Ver encuestas de visitas" data-prop-act="surveys" data-prop-id="${esc(p.id)}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-clipboard-list"></i></button>
               <button class="btn-action" title="Duplicar propiedad" data-prop-act="duplicate" data-prop-id="${esc(p.id)}"><i class="fas fa-copy"></i></button>
@@ -1124,6 +1155,13 @@
         /* Fix: el botón data-wa-share no tenía handler en properties (solo en tasaciones) */
         const waBtn = e.target.closest('[data-wa-share]');
         if (waBtn) { window.adminApp.sharePropertyWhatsApp(waBtn.dataset.waShare, waBtn.dataset.waCode || ''); return; }
+        /* Tour en video: abre el video de YouTube de la propiedad */
+        const vidBtn = e.target.closest('[data-prop-video]');
+        if (vidBtn) {
+          const vid = _propVideoMap[vidBtn.dataset.propVideo];
+          if (vid) window.open('https://www.youtube.com/watch?v=' + encodeURIComponent(vid), '_blank', 'noopener');
+          return;
+        }
         const btn = e.target.closest('[data-prop-act]');
         if (!btn) return;
         const id = btn.dataset.propId;

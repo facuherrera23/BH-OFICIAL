@@ -29,6 +29,9 @@
    `calc` es puro y determinista (testeable). `render` dibuja
    el panel (gauge + miniatura SERP + checklist + chips + tags
    sugeridos) con listeners reales — cero onclick inline (CSP).
+   render acepta opts.extraPresets: array de tags históricos del
+   canal (MEJORA #14) que se muestran ANTES que los del nicho,
+   con dedup contra los tags actuales y también entre sí.
    ============================================================ */
 (function () {
   'use strict';
@@ -313,9 +316,22 @@
     });
     var tagsArr = parseTags(opts.tags);
     var joined = tagsArr.join(', ');
-    var presets = PRESET_TAGS.filter(function (p) {
-      return !tagsArr.some(function (t) { return norm(t) === norm(p); });
-    }).slice(0, 12);
+    /* MEJORA #14: presets extra (top histórico del canal) van primero.
+       Dedup único contra: tags actuales, extras y nicho — un solo seen. */
+    var seen = {};
+    var presets = [];
+    function pushPreset(tag) {
+      tag = String(tag || '').trim();
+      if (!tag) return;
+      var n = norm(tag);
+      if (!n || seen[n]) return;
+      seen[n] = 1;
+      presets.push(tag);
+    }
+    tagsArr.forEach(function (t) { var n = norm(t); if (n) seen[n] = 1; });
+    [].concat(Array.isArray(opts.extraPresets) ? opts.extraPresets : []).forEach(pushPreset);
+    PRESET_TAGS.forEach(pushPreset);
+    presets = presets.slice(0, 12);
     var channelName = String(opts.channelName || 'Bienenhaus Propiedades');
 
     var t = String(opts.title || '');

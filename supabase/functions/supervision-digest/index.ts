@@ -112,9 +112,17 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
      por el sample oldest-first) y filtraba por a.severity — columna que
      audit_log no tiene (usa status: success|error + error_code), por eso
      Exitosas/Fallidas daban siempre 0. */
-  const [statsRes, usersRes] = await Promise.all([
+  const [statsRes, usersRes, ytPublishedRes, ytFailedRes, ytPendingRes] = await Promise.all([
     supabase.rpc("supervision_digest_stats", { p_from: weekAgo, p_to: now } as any),
     supabase.from("profiles").select("id, full_name, email, role").eq("is_active", true),
+    /* Contenido / YouTube: el digest también mira el módulo de contenido.
+       head:true + count:exact → solo el número, sin traer filas. */
+    supabase.from("social_posts").select("id", { count: "exact", head: true })
+      .eq("platform", "youtube").eq("status", "published").gte("created_at", weekAgo),
+    supabase.from("social_posts").select("id", { count: "exact", head: true })
+      .eq("platform", "youtube").eq("status", "failed").gte("created_at", weekAgo),
+    supabase.from("social_posts").select("id", { count: "exact", head: true })
+      .eq("platform", "youtube").eq("status", "publishing"),
   ]);
 
   const stats = (statsRes.data || {}) as any;
@@ -193,6 +201,12 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
     },
     trends: {
       dailyActivity,
+    },
+    /* Bloque Contenido (YouTube): publicados/fallidos en la semana + colgados. */
+    contenido: {
+      youtubePublished: ytPublishedRes.count || 0,
+      youtubeFailed: ytFailedRes.count || 0,
+      youtubePending: ytPendingRes.count || 0,
     },
     userNames,
     meta: {
@@ -339,6 +353,43 @@ function buildEmailHTML(data: any, config: DigestConfig): string {
     `;
   };
 
+  const contenidoBlock = () => {
+    const c = d.contenido;
+    if (!c) return "";
+    const total = (c.youtubePublished || 0) + (c.youtubeFailed || 0);
+    /* Si nunca se publicó contenido, el bloque solo informa: no es una alerta. */
+    const alert = (c.youtubeFailed || 0) > 0;
+    return `
+      <h3 style="margin:24px 0 12px;font-size:16px;color:#111;">Contenido · YouTube</h3>
+      <table role="presentation" style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#f4f4f4;">
+            <th style="padding:10px;text-align:left;border-bottom:2px solid #ddd;">Métrica</th>
+            <th style="padding:10px;text-align:right;border-bottom:2px solid #ddd;">Cantidad</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;">Videos publicados (semana)</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;font-weight:600;color:#1FC8C3;">${formatNumber(c.youtubePublished || 0)}</td>
+          </tr>
+          <tr style="background:#fafafa;">
+            <td style="padding:10px;border-bottom:1px solid #eee;">Videos fallidos (semana)</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;font-weight:600;color:${(c.youtubeFailed || 0) > 0 ? severityColors.critical : "#111"};">${formatNumber(c.youtubeFailed || 0)}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;">Subidas en curso</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;font-weight:600;color:${(c.youtubePending || 0) > 0 ? severityColors.medium : "#111"};">${formatNumber(c.youtubePending || 0)}</td>
+          </tr>
+        </tbody>
+      </table>
+      ${alert
+        ? `<p style="margin-top:10px;color:#991b1b;font-size:12px;">Hay ${formatNumber(c.youtubeFailed || 0)} publicación(es) fallida(s) — revisar el módulo Contenido (pestaña Historial) para reintentar.</p>`
+        : ""}
+      ${total === 0 ? `<p style="margin-top:10px;color:#888;font-size:12px;">Sin publicaciones de video en la semana.</p>` : ""}
+    `;
+  };
+
   const ctaButton = `<div style="text-align:center;margin-top:32px;"><a href="${dashboardUrl}#tab-supervision" style="display:inline-block;background:#1FC8C3;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Ver Centro de Supervisión Completo</a></div>`;
 
   return `
@@ -404,6 +455,8 @@ function buildEmailHTML(data: any, config: DigestConfig): string {
 
       ${trendChart()}
 
+      ${contenidoBlock()}
+
       ${ctaButton}
     </div>
     <!-- Footer -->
@@ -458,6 +511,12 @@ ALERTAS SIN ASIGNAR (Críticas/Alta): ${formatNumber(d.kpis.unassignedAlerts)}
 TENDENCIA SEMANAL
 ${"-".repeat(20)}
 ${Object.entries(d.trends?.dailyActivity || {}).map(([day, v]) => `${day}: ${formatNumber(v.total)} acciones, ${formatNumber(v.errors)} errores, ${formatNumber(v.alerts)} alertas`).join("\n")}
+
+CONTENIDO · YOUTUBE
+${"-".repeat(20)}
+Videos publicados (semana): ${formatNumber(d.contenido?.youtubePublished || 0)}
+Videos fallidos (semana): ${formatNumber(d.contenido?.youtubeFailed || 0)}
+Subidas en curso: ${formatNumber(d.contenido?.youtubePending || 0)}
 
 Ver Centro de Supervisión: ${dashboardUrl}#tab-supervision
 

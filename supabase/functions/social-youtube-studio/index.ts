@@ -16,8 +16,24 @@
 //   thumbnail:    thumbnails.set — miniatura personalizada (imagen
 //                 base64 ≤2MB). Exige youtube.force-ssl.
 //
-// Cuota: ~5 unidades por carga del studio; updates/deletes ~50 c/u —
-// muy dentro de las 10.000 diarias.
+// MEJORAS 2026-10-30 (lote 49 mejoras — módulo Contenido):
+//   playlists:    inventario de playlists del canal + sus items —
+//                 readonly. Lazy-load desde el detalle de video.
+//   playlist_create / playlist_item_add / playlist_item_remove:
+//                 gestión de playlists (parte de force-ssl, igual
+//                 que el resto de la administración).
+//   snapshot:     captura diaria de views del canal → app_settings
+//                 (key social_yt_stats_history, máx 90 días) para
+//                 los sparklines del studio. Idempotente por día.
+//   analytics:    YouTube Analytics API v2 — totals 28 días del canal
+//                 (o filters=video==ID). Requiere scope
+//                 yt-analytics.readonly: sin él responde
+//                 needs_reconnect (el panel muestra el banner de
+//                 reconexión; las conexiones viejas siguen vivas).
+//
+// Cuota: ~5-10 unidades por carga del studio; updates/deletes ~50 c/u,
+// playlists ~20 c/u — muy dentro de las 10.000 diarias. El snapshot
+// consume ~7 unidades y el cliente lo dispara 1×/día.
 // ============================================================
 
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
@@ -34,7 +50,13 @@ const supabase = createClient(
 
 const YOUTUBE_API = 'https://www.googleapis.com/youtube/v3';
 const FORCE_SSL_SCOPE = 'https://www.googleapis.com/auth/youtube.force-ssl';
+const ANALYTICS_API = 'https://youtubeanalytics.googleapis.com/v2';
+const ANALYTICS_SCOPE = 'https://www.googleapis.com/auth/yt-analytics.readonly';
 const MAX_THUMB_BYTES = 2 * 1024 * 1024;
+/* Snapshot diario de views (sparklines): app_settings.value = [{ d, v: {videoId: views} }] */
+const HISTORY_KEY = 'social_yt_stats_history';
+const HISTORY_MAX_DAYS = 90;
+const PLAYLISTS_MAX = 20;
 
 interface StudioAccount {
     id: string;
@@ -63,6 +85,12 @@ async function loadAccount(client: SupabaseClient, accountId: string): Promise<S
  *  readonly+upload → solo lectura; con force-ssl → administración completa. */
 function hasManageScope(acc: { scope: string | null }): boolean {
     return !!acc.scope && acc.scope.includes(FORCE_SSL_SCOPE);
+}
+
+/* Analítica del canal: scope propio (agregado 2026-10-30). Las conexiones
+   hechas antes del cambio NO lo tienen — la UI muestra needs_reconnect. */
+function hasAnalyticsScope(acc: { scope: string | null }): boolean {
+    return !!acc.scope && acc.scope.includes(ANALYTICS_SCOPE);
 }
 
 async function youtubeFetch(url: string, accessToken: string, init?: RequestInit): Promise<unknown> {
@@ -104,6 +132,11 @@ Deno.serve(async (req) => {
         privacy?: string;
         publish_at?: string;
         thumbnail_base64?: string;
+        playlist_id?: string;
+        playlist_title?: string;
+        playlist_description?: string;
+        item_id?: string;
+        position?: number;
     };
     try {
         body = await req.json();
@@ -201,6 +234,7 @@ Deno.serve(async (req) => {
                     likes: Number(v.statistics?.likeCount ?? 0),
                     comments: Number(v.statistics?.commentCount ?? 0),
                     privacy: v.status?.privacyStatus ?? 'private',
+                    upload_status: v.status?.uploadStatus ?? 'processed',
                     duration: v.contentDetails?.duration ?? '',
                 })),
                 can_manage: hasManageScope(acc),
@@ -280,6 +314,16 @@ Deno.serve(async (req) => {
             }
             const accessToken = await getSocialAccessToken(supabase, accountId);
             await youtubeFetch(`${YOUTUBE_API}/videos?id=${encodeURIComponent(videoId)}`, accessToken, { method: 'DELETE' });
+            /* Las fichas HTML embeben videos con social_posts en 'published'
+               (generate-ficha.mjs): sin esto, borrar el video del canal dejaba
+               el embed apuntando a un video muerto en cada ficha. Best-effort:
+               el borrado en YouTube ya ocurrió — la traza queda visible en el
+               historial como fallida con el motivo. */
+            await supabase
+                .from('social_posts')
+                .update({ status: 'failed', error: 'Video borrado del canal (Studio)' })
+                .eq('platform', 'youtube')
+                .eq('external_post_id', videoId);
             return respond(200, { ok: true });
         }
 
@@ -311,6 +355,233 @@ Deno.serve(async (req) => {
                 throw new Error(`Miniatura ${res.status}: ${t}`);
             }
             return respond(200, { ok: true });
+        }
+
+        /* ------- Playlists: inventario + items (lazy) ------- */
+        if (body.action === 'playlists') {
+            const accountId = String(body.account_id ?? '');
+            if (!accountId) return respond(400, { error: 'Falta la cuenta' });
+            await loadAccount(supabase, accountId);
+            const accessToken = await getSocialAccessToken(supabase, accountId);
+
+            const pls = (await youtubeFetch(
+                `${YOUTUBE_API}/playlists?part=snippet,contentDetails&mine=true&maxResults=50`,
+                accessToken,
+            )) as {
+                items?: Array<{
+                    id?: string;
+                    snippet?: { title?: string; description?: string };
+                    contentDetails?: { itemCount?: string | number };
+                }>;
+            };
+
+            const playlists = [];
+            for (const p of (pls.items ?? []).slice(0, PLAYLISTS_MAX)) {
+                if (!p.id) continue;
+                /* items del playlist: position (snippet) + videoId + título */
+                const its = (await youtubeFetch(
+                    `${YOUTUBE_API}/playlistItems?part=snippet,contentDetails&playlistId=${encodeURIComponent(p.id)}&maxResults=50`,
+                    accessToken,
+                )) as {
+                    items?: Array<{
+                        id?: string;
+                        snippet?: { position?: number; title?: string; resourceId?: { videoId?: string } };
+                        contentDetails?: { videoId?: string };
+                    }>;
+                };
+                playlists.push({
+                    id: p.id,
+                    title: p.snippet?.title ?? '',
+                    description: p.snippet?.description ?? '',
+                    video_count: Number(p.contentDetails?.itemCount ?? 0),
+                    items: (its.items ?? []).map((i) => ({
+                        item_id: i.id ?? null,
+                        position: Number(i.snippet?.position ?? 0),
+                        video_id: i.snippet?.resourceId?.videoId ?? i.contentDetails?.videoId ?? null,
+                        title: i.snippet?.title ?? '',
+                    })),
+                });
+            }
+            return respond(200, { playlists });
+        }
+
+        /* ------- Crear playlist (institucional, por defecto privada) ------- */
+        if (body.action === 'playlist_create') {
+            const accountId = String(body.account_id ?? '');
+            if (!accountId) return respond(400, { error: 'Falta la cuenta' });
+            const acc = await loadAccount(supabase, accountId);
+            if (!hasManageScope(acc)) {
+                return respond(403, { error: 'Reconectá la cuenta de YouTube para administrar playlists.' });
+            }
+            const plTitle = clip(String(body.playlist_title ?? ''), 60);
+            if (!plTitle) return respond(400, { error: 'El título de la playlist es obligatorio' });
+            const plDescription = clip(String(body.playlist_description ?? ''), 5000);
+            const accessToken = await getSocialAccessToken(supabase, accountId);
+
+            const created = (await youtubeFetch(
+                `${YOUTUBE_API}/playlists?part=snippet,status`,
+                accessToken,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        snippet: { title: plTitle, description: plDescription },
+                        status: { privacyStatus: 'private' },
+                    }),
+                },
+            )) as { id?: string };
+            return respond(200, { ok: true, playlist_id: created.id ?? null });
+        }
+
+        /* ------- Agregar video a playlist (position opcional) ------- */
+        if (body.action === 'playlist_item_add') {
+            const accountId = String(body.account_id ?? '');
+            const playlistId = clip(String(body.playlist_id ?? ''), 60);
+            const videoId = clip(String(body.video_id ?? ''), 50);
+            if (!accountId || !playlistId || !videoId) return respond(400, { error: 'Faltan datos' });
+            const acc = await loadAccount(supabase, accountId);
+            if (!hasManageScope(acc)) {
+                return respond(403, { error: 'Reconectá la cuenta de YouTube para administrar playlists.' });
+            }
+            const positionRaw = Number(body.position);
+            const position = Number.isFinite(positionRaw) && positionRaw >= 0 ? Math.trunc(positionRaw) : null;
+            const accessToken = await getSocialAccessToken(supabase, accountId);
+
+            const created = (await youtubeFetch(
+                `${YOUTUBE_API}/playlistItems?part=snippet`,
+                accessToken,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        snippet: {
+                            playlistId,
+                            resourceId: { kind: 'youtube#video', videoId },
+                            ...(position !== null ? { position } : {}),
+                        },
+                    }),
+                },
+            )) as { id?: string };
+            return respond(200, { ok: true, item_id: created.id ?? null });
+        }
+
+        /* ------- Quitar item de playlist ------- */
+        if (body.action === 'playlist_item_remove') {
+            const accountId = String(body.account_id ?? '');
+            const itemId = clip(String(body.item_id ?? ''), 80);
+            if (!accountId || !itemId) return respond(400, { error: 'Faltan datos' });
+            const acc = await loadAccount(supabase, accountId);
+            if (!hasManageScope(acc)) {
+                return respond(403, { error: 'Reconectá la cuenta de YouTube para administrar playlists.' });
+            }
+            const accessToken = await getSocialAccessToken(supabase, accountId);
+            await youtubeFetch(`${YOUTUBE_API}/playlistItems?id=${encodeURIComponent(itemId)}`, accessToken, {
+                method: 'DELETE',
+            });
+            return respond(200, { ok: true });
+        }
+
+        /* ------- Snapshot diario de views (sparklines) -------
+           Idempotente: un snapshot del MISMO día reemplaza su entrada
+           (nunca duplica la historia). El cliente lo dispara 1×/día. */
+        if (body.action === 'snapshot') {
+            const accountId = String(body.account_id ?? '');
+            if (!accountId) return respond(400, { error: 'Falta la cuenta' });
+            await loadAccount(supabase, accountId);
+            const accessToken = await getSocialAccessToken(supabase, accountId);
+
+            const ch = (await youtubeFetch(
+                `${YOUTUBE_API}/channels?part=contentDetails&mine=true`,
+                accessToken,
+            )) as { items?: Array<{ contentDetails?: { relatedPlaylists?: { uploads?: string } } }> };
+            const uploads = ch.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+            if (!uploads) return respond(502, { error: 'No se encontró la playlist de uploads del canal' });
+
+            const pl = (await youtubeFetch(
+                `${YOUTUBE_API}/playlistItems?part=contentDetails&playlistId=${encodeURIComponent(uploads)}&maxResults=50`,
+                accessToken,
+            )) as { items?: Array<{ contentDetails?: { videoId?: string } }> };
+            const ids = (pl.items ?? []).map((i) => i.contentDetails?.videoId).filter(Boolean) as string[];
+            if (!ids.length) return respond(200, { ok: true, days: 0 });
+
+            const vids = (await youtubeFetch(
+                `${YOUTUBE_API}/videos?part=statistics&id=${ids.join(',')}`,
+                accessToken,
+            )) as { items?: Array<{ id?: string; statistics?: { viewCount?: string } }> };
+            const views: Record<string, number> = {};
+            for (const v of vids.items ?? []) {
+                if (v.id) views[v.id] = Number(v.statistics?.viewCount ?? 0);
+            }
+
+            const { data: row } = await supabase
+                .from('app_settings')
+                .select('value')
+                .eq('key', HISTORY_KEY)
+                .maybeSingle() as { data: { value: unknown } | null };
+            let history: Array<{ d: string; v: Record<string, number> }> =
+                Array.isArray(row?.value) ? (row.value as Array<{ d: string; v: Record<string, number> }>) : [];
+            const today = new Date().toISOString().slice(0, 10);
+            const idx = history.findIndex((e) => e?.d === today);
+            if (idx >= 0) history[idx] = { d: today, v: views };
+            else history.push({ d: today, v: views });
+            history = history.slice(-HISTORY_MAX_DAYS);
+
+            const { error: upErr } = await supabase
+                .from('app_settings')
+                .upsert(
+                    { key: HISTORY_KEY, value: history, updated_at: new Date().toISOString() },
+                    { onConflict: 'key' },
+                );
+            if (upErr) return respond(500, { error: upErr.message });
+            return respond(200, { ok: true, days: history.length });
+        }
+
+        /* ------- Analytics del canal (o un video) — 28 días ------- */
+        if (body.action === 'analytics') {
+            const accountId = String(body.account_id ?? '');
+            const videoId = clip(String(body.video_id ?? ''), 50);
+            if (!accountId) return respond(400, { error: 'Falta la cuenta' });
+            const acc = await loadAccount(supabase, accountId);
+            if (!hasAnalyticsScope(acc)) {
+                return respond(403, { error: 'needs_reconnect' });
+            }
+            const accessToken = await getSocialAccessToken(supabase, accountId);
+
+            const end = new Date().toISOString().slice(0, 10);
+            const start = new Date(Date.now() - 27 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+            const params = new URLSearchParams({
+                ids: 'channel==MINE',
+                startDate: start,
+                endDate: end,
+                metrics: 'views,estimatedMinutesWatched,averageViewDuration,subscribersGained',
+            });
+            if (videoId) params.set('filters', `video==${videoId}`);
+
+            let rep: { rows?: Array<Array<string | number>> };
+            try {
+                rep = (await youtubeFetch(`${ANALYTICS_API}/reports?${params}`, accessToken)) as {
+                    rows?: Array<Array<string | number>>;
+                };
+            } catch (err) {
+                /* Token viejo: la conexión tiene el scope guardado pero el
+                   consentimiento de Google no incluye la API — hay que
+                   reconectar. Mismo contrato que el gate de arriba. */
+                return respond(502, { error: 'needs_reconnect', detail: (err as Error).message.slice(0, 200) });
+            }
+
+            const r = rep.rows?.[0] ?? null;
+            return respond(200, {
+                range: { start, end },
+                video_id: videoId || null,
+                totals: r
+                    ? {
+                          views: Number(r[0] ?? 0),
+                          watch_minutes: Number(r[1] ?? 0),
+                          avg_view_seconds: Number(r[2] ?? 0),
+                          subscribers_gained: Number(r[3] ?? 0),
+                      }
+                    : null,
+            });
         }
 
         return respond(400, { error: 'Acción inválida' });
