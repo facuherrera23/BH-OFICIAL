@@ -618,6 +618,8 @@ function buildSitemap(props) {
   const urls = [
     { loc: `${SITE_URL}/`, changefreq: 'daily', priority: '1.0' },
     { loc: `${SITE_URL}/tasacion.html`, changefreq: 'monthly', priority: '0.9' },
+    /* Página pública del canal de YouTube (#50). */
+    { loc: `${SITE_URL}/canal.html`, changefreq: 'weekly', priority: '0.7' },
     { loc: `${SITE_URL}/politica-de-privacidad.html`, changefreq: 'yearly', priority: '0.3' },
     { loc: `${SITE_URL}/terminos-y-condiciones.html`, changefreq: 'yearly', priority: '0.3' },
     ...props.map((p) => ({ loc: `${SITE_URL}/fichas/${p.property_code}.html`, changefreq: 'weekly', priority: '0.8' })),
@@ -662,6 +664,59 @@ async function loadPropertyVideos() {
     console.error('videos de YouTube no cargados (las fichas salen sin tour):', e.message);
   }
   return map;
+}
+
+/* ============================================================
+   Índice público del canal (canal.html)
+   ------------------------------------------------------------
+   La página /canal.html es pública: muestra los videos del canal
+   con su ficha (si la hay). La fuente de verdad es social_posts
+   (platform='youtube' + status='published'): los videos que el
+   panel pública o que el Studio marcó como publicados.
+
+   Si el video se borra de YouTube, el Studio lo pasa a 'failed' →
+   desaparece de la página (no queda un embed muerto).
+
+   La miniatura se deriva del id de YouTube (no se guarda: la URL
+   canónica https://i.ytimg.com/vi/<id>/hqdefault.jpg siempre existe
+   si el video es público).
+   ============================================================ */
+async function loadChannelVideos(propsById) {
+  const out = [];
+  try {
+    const url = new URL(`${SUPABASE_URL}/rest/v1/social_posts`);
+    /* Sin embed: el join con properties se hace en JS (no depende de que
+       exista la FK en el schema real — si faltara, el embed haría fallar
+       TODA la consulta y la página quedaría vacía). */
+    url.searchParams.set('select', 'external_post_id,external_url,content,published_at,property_id');
+    url.searchParams.set('platform', 'eq.youtube');
+    url.searchParams.set('status', 'eq.published');
+    url.searchParams.set('external_post_id', 'not.is.null');
+    url.searchParams.set('order', 'published_at.desc');
+    url.searchParams.set('limit', '200');
+    const res = await fetch(url, { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } });
+    if (!res.ok) throw new Error(`Supabase ${res.status}: ${(await res.text()).slice(0, 120)}`);
+    const rows = await res.json();
+    for (const r of rows || []) {
+      const id = String(r.external_post_id || '');
+      if (!id) continue;
+      const content = r.content || {};
+      const prop = (propsById && propsById[String(r.property_id || '')]) || null;
+      out.push({
+        id,
+        title: String(content.title || '').trim(),
+        description: String(content.description || '').trim().slice(0, 300),
+        published_at: r.published_at || '',
+        url: r.external_url || `https://www.youtube.com/watch?v=${id}`,
+        property_code: prop && prop.property_code ? prop.property_code : '',
+        property_title: prop && prop.title ? prop.title : '',
+        zone: prop && prop.zone ? prop.zone : '',
+      });
+    }
+  } catch (e) {
+    console.error('videos del canal no cargados (canal.html sale vacío):', e.message);
+  }
+  return out;
 }
 
 async function main() {
@@ -720,6 +775,12 @@ async function main() {
     mkdirSync('assets/data', { recursive: true });
     writeFileSync('assets/data/property-videos.json', JSON.stringify(videoIndex, null, 2) + '\n', 'utf8');
     console.log(`property-videos.json actualizado (${videoIndex.length} propiedades con tour)`);
+    /* Índice público del canal (canal.html). */
+    const propsById = {};
+    for (const p of published) propsById[String(p.id)] = p;
+    const channelVideos = await loadChannelVideos(propsById);
+    writeFileSync('assets/data/canal-videos.json', JSON.stringify(channelVideos, null, 2) + '\n', 'utf8');
+    console.log(`canal-videos.json actualizado (${channelVideos.length} videos del canal)`);
   }
   console.log(`Fichas generadas: ${count}${removed ? ` · huérfanas eliminadas: ${removed}` : ''}`);
 }

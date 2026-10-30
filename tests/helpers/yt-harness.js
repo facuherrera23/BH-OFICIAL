@@ -81,8 +81,9 @@ const HARNESS = `<!doctype html>
 
       /* Cliente Supabase fake (chainable) */
       window.__ROWS = {
-        social_accounts: [{ id: 'acc-1', platform: 'youtube', display_name: 'Bienenhaus Propiedades', avatar_url: '', status: 'active', last_publish_at: null }],
+        social_accounts: [{ id: 'acc-1', platform: 'youtube', display_name: 'Bienenhaus Propiedades', avatar_url: '', status: 'active', last_publish_at: null, scope: 'https://www.googleapis.com/auth/youtube.force-ssl' }],
         social_posts: [],
+        audit_log: [],
         properties: [{ id: 'prop-1', property_code: 'ML-0001', title: 'Casa en Nueva Córdoba', property_type: 'casa', status: 'venta', zone: 'Nueva Córdoba', address: 'Av. Siempreviva 123', surface_total: 120, rooms: 3, bedrooms: 2, bathrooms: 1, is_published: true }],
         app_settings: { value: [] },
       };
@@ -155,7 +156,9 @@ async function boot(page, opts = {}) {
   /* Contadores de llamadas a la Edge Function (para assertar refrescos). */
   const calls = { channel: 0, videos: 0, analytics: 0, init: 0, complete: 0, fail: 0, dry_run: 0, video_categories: 0, audit_log: 0,
     comments_list: 0, comments_inbox: 0, comment_reply: 0, comment_heart: 0, comment_moderate: 0, comment_lead: 0,
-    analytics_report: 0 };
+    analytics_report: 0, settings_get: 0, settings_set: 0 };
+  /* Copia de app_settings en el server fake (settings_set escribe acá). */
+  const settingsStore = Object.assign({}, opts.settings || {});
   /* Peticiones capturadas (para assertar el body que viaja al server). */
   const requests = [];
 
@@ -212,8 +215,15 @@ async function boot(page, opts = {}) {
     } else if (action === 'video_categories') {
       payload = { categories: opts.categories || CATEGORIES, cached: !!opts.categoriesCached };
     } else if (action === 'settings_get') {
-      payload = { key: body.key, value: opts.settingsValue !== undefined ? opts.settingsValue : null };
-    } else if (action === 'settings_set' || action === 'audit_log') {
+      const key = body.key;
+      const value = (key in settingsStore)
+        ? settingsStore[key]
+        : (opts.settingsValue !== undefined ? opts.settingsValue : null);
+      payload = { key: key, value: value };
+    } else if (action === 'settings_set') {
+      settingsStore[body.key] = body.value;
+      payload = { ok: true };
+    } else if (action === 'audit_log') {
       payload = { ok: true };
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
@@ -307,6 +317,8 @@ async function boot(page, opts = {}) {
   await page.addScriptTag({ url: '/assets/js/yt-publish.js' });
   await page.addScriptTag({ url: '/assets/js/yt-comments.js' });
   await page.addScriptTag({ url: '/assets/js/yt-analytics.js' });
+  await page.addScriptTag({ url: '/assets/js/yt-ops.js' });
+  await page.addScriptTag({ url: '/assets/js/yt-integrations.js' });
   await page.addScriptTag({ url: '/assets/js/yt-seo-score.js' });
   await page.addScriptTag({ url: '/assets/js/admin-contenido.js' });
 
@@ -319,9 +331,24 @@ async function boot(page, opts = {}) {
   if (opts.properties) {
     await page.evaluate((rows) => { window.__ROWS.properties = rows; }, opts.properties);
   }
+  /* Posts fallidos (los lee el semáforo de salud desde social_posts). */
+  if (opts.failedPosts) {
+    await page.evaluate((rows) => { window.__ROWS.social_posts = rows; }, opts.failedPosts);
+  }
+  /* Trazas del módulo (historial de acciones). */
+  if (opts.auditRows) {
+    await page.evaluate((rows) => { window.__ROWS.audit_log = rows; }, opts.auditRows);
+  }
+  /* Scope/conectividad de la cuenta (semáforo de salud). */
+  if (opts.accountPatch) {
+    await page.evaluate((patch) => {
+      const acc = window.__ROWS.social_accounts[0];
+      if (acc) Object.assign(acc, patch);
+    }, opts.accountPatch);
+  }
   await page.evaluate(() => window.__BH.loadContenido());
   await page.waitForTimeout(200);
-  return { release: () => release(), calls, requests };
+  return { release: () => release(), calls, requests, settings: settingsStore };
 }
 
 module.exports = { HARNESS, VIDEO, CATEGORIES, boot };

@@ -51,6 +51,9 @@
   const MAX_STALLS = 8;                 // intentos sin progreso antes de rendirse
   const RESUME_KEY = 'upload_resume';
   const QUEUE_KEY = 'publish_queue';
+  /* Copia de la cola en el servidor (app_settings) — la escribe la Edge
+     Function con service_role (el cliente no puede escribir app_settings). */
+  const QUEUE_REMOTE_KEY = 'social_yt_publish_queue';
 
   /* ============================================================
      PRE-FLIGHT — antes de gastar cuota
@@ -315,6 +318,35 @@
         }, base, { publishAt: d.publishAt, label: d.label || base.title }));
       });
       queue.save(items.slice(0, 20));
+    },
+
+    /* #37 — la cola también vive en la nube (app_settings), para no
+       perderla al cambiar de dispositivo. Se guarda por UNION (unión
+       por id): la local manda si el mismo id está en los dos lados. */
+    async mergeRemote() {
+      if (!core || !core.remote) return 0;
+      const remotos = await core.remote.get(QUEUE_REMOTE_KEY, []);
+      const list = Array.isArray(remotos) ? remotos : [];
+      if (!list.length) return 0;
+      const local = queue.list();
+      const ids = {};
+      local.forEach(function (i) { ids[i.id] = true; });
+      let nuevos = 0;
+      list.forEach(function (i) {
+        if (!i || !i.id || ids[i.id]) return;
+        ids[i.id] = true;
+        local.unshift(i);
+        nuevos++;
+      });
+      if (nuevos) queue.save(local.slice(0, 20));
+      return nuevos;
+    },
+
+    /* Sube la cola local al servidor (reemplaza la copia de la nube). */
+    async pushRemote() {
+      if (!core || !core.remote) return false;
+      const ok = await core.remote.set(QUEUE_REMOTE_KEY, queue.list());
+      return !!ok;
     },
   };
 

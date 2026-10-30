@@ -798,7 +798,16 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
     background: rgba(255, 255, 255, 0.02);
 }
-.yt-queue-head { font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 9px; }
+.yt-queue-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 9px;
+}
 .yt-queue-item {
     display: flex;
     align-items: center;
@@ -1092,4 +1101,20 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
 }
 .yt-report-link:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ================================================================
+   16. OPERACIONES DEL CANAL
+   Semáforo de salud (#29) y panel de salud del canal.
+   ================================================================ */
+.yt-health-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 7px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.yt-health-row:first-child { border-top: none; }
+.yt-health-row i { flex-shrink: 0; margin-top: 2px; font-size: 12px; }
+.yt-health-label { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.yt-health-detail { font-size: 11px; color: var(--text-dim); line-height: 1.45; margin-top: 2px; }
 

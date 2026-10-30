@@ -33,6 +33,8 @@ jobs:
           git config user.name "github-actions[bot]"
           # assets/data/property-videos.json: índice de tours en video por
           # property_code — lo consume el catálogo público (badge "Tour").
-          git add fichas/ sitemap.xml assets/data/property-videos.json
+          # assets/data/canal-videos.json: índice público del canal
+          # (canal.html) — si se agrega otro archivo generado, sumarlo acá.
+          git add fichas/ sitemap.xml assets/data/property-videos.json assets/data/canal-videos.json
           git diff --cached --quiet && echo "sin cambios" || git commit -m "chore(fichas): regenerar paginas de propiedades + sitemap [skip ci-pages]"
           git push

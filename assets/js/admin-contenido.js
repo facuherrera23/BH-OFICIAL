@@ -75,8 +75,13 @@
     'Consejos de inversión inmobiliaria', 'Todo lo que hay que saber', 'Visitala sin salir de casa',
   ];
 
-  /* #11/#17: hashtags institucionales fijos (contrato con el motor: 3, dentro de 3–5). */
-  const CTA_HASHTAGS = '#bienenhaus #inmobiliariacordoba #propiedades';
+  /* #11/#17: hashtags institucionales fijos (contrato con el motor: 3, dentro de 3–5).
+     La fuente única vive en assets/js/yt-integrations.js (CTA_HASHTAGS);
+     el fallback cubre un HTML viejo en caché sin el módulo cargado. */
+  function ctaHashtags() {
+    const intg = integrationsModule();
+    return (intg && intg.CTA_HASHTAGS) || '#bienenhaus #inmobiliariacordoba #propiedades';
+  }
 
   /* #44: unidades estimadas por acción (Google cobra así: todo request suma,
      incluso los que fallan). Estimación conservadora para el HUD local. */
@@ -512,6 +517,10 @@
       renderStudioVideosGrid(); // los sparklines por-card necesitan la historia (#23)
     });
     loadAnalyticsPanel();
+    /* Semáforo de salud del canal (#29). */
+    loadHealthPanel();
+    /* #32: mapa de videos → fichas (para el botón "Ver ficha"). */
+    loadVideoPostMap().then(function () { renderStudioVideosGrid(); });
     /* Reportes de analítica (#19/#47): tabs con resumen, evolución, top de
        videos, retención, tráfico y audiencia. */
     loadReportsPanel(false);
@@ -562,6 +571,8 @@
         kpi('fas fa-eye', ch.total_views, 'Vistas totales') +
         kpi('fas fa-video', ch.video_count, 'Videos') +
       '</div>' +
+      /* #29: semáforo de salud del canal */
+      '<div id="ytHealthPanel" class="yt-block"></div>' +
       /* MEJORAS 2026-10-30: métricas #21, tendencia #22 y calendario #46 */
       '<div id="ytAnalyticsPanel" class="yt-block"></div>' +
       '<div id="ytReportsPanel" class="yt-block"></div>' +
@@ -774,6 +785,11 @@
         ? '<button type="button" class="btn-luxury-action" data-studio-edit="' + esc(v.id) + '" title="Editar título, descripción, tags, visibilidad y programación" style="padding:7px 11px;font-size:11px;"><i class="fas fa-pen"></i></button>' +
           '<button type="button" class="btn-luxury-action" data-studio-delete="' + esc(v.id) + '" data-studio-title="' + esc(v.title) + '" title="Borrar video (permanente)" style="padding:7px 11px;font-size:11px;color:var(--danger);"><i class="fas fa-trash-can"></i></button>'
         : '';
+      /* #32/#34: ficha del video y compartir por WhatsApp (integraciones). */
+      const intg = integrationsModule();
+      const agente = currentAgent();
+      const fichaUrl = intg ? intg.linkFicha(v.id, _ytPostsByVideo) : '';
+      const waLink = intg ? intg.whatsappLink(v.id, agente.name, agente.phone) : ('https://www.youtube.com/watch?v=' + esc(v.id));
       /* Tarjeta en grid: miniatura grande arriba, info + acciones abajo */
       return '<article class="yt-video-card">' +
         /* Miniatura a ancho completo de la tarjeta */
@@ -802,6 +818,14 @@
           '<button type="button" class="btn-luxury-action" data-studio-detail="' + esc(v.id) + '" title="Detalles, playlists y métricas del video" style="padding:7px 11px;font-size:11px;"><i class="fas fa-circle-info"></i></button>' +
           /* MEJORA: copiar el link desde la card (sin abrir el detalle) */
           '<button type="button" class="btn-luxury-action" data-studio-copy="' + esc(v.id) + '" title="Copiar el link del video" style="padding:7px 11px;font-size:11px;"><i class="fas fa-link"></i></button>' +
+          /* #36: republicar — clona la metadata al formulario */
+          '<button type="button" class="btn-luxury-action" data-studio-republish="' + esc(v.id) + '" title="Republicar: cargar la metadata en el formulario" style="padding:7px 11px;font-size:11px;"><i class="fas fa-copy"></i></button>' +
+          /* #32: la ficha del video (si el video tiene propiedad) */
+          (fichaUrl
+            ? '<a href="' + esc(fichaUrl) + '" target="_blank" rel="noopener" title="Ver la ficha de la propiedad" class="btn-luxury-action yt-btn--sm yt-btn--link"><i class="fas fa-house"></i></a>'
+            : '') +
+          /* #34: compartir por WhatsApp con el contacto del agente */
+          '<a href="' + esc(waLink) + '" target="_blank" rel="noopener" title="Compartir por WhatsApp" class="btn-luxury-action yt-btn--sm yt-btn--link"><i class="fab fa-whatsapp"></i></a>' +
           manageActions +
           '<a href="https://www.youtube.com/watch?v=' + esc(v.id) + '" target="_blank" rel="noopener" title="Ver en YouTube" class="btn-luxury-action yt-btn--sm yt-btn--link"><i class="fas fa-arrow-up-right-from-square"></i></a>' +
         '</div>' +
@@ -1167,6 +1191,192 @@
 
   function findStudioVideo(videoId) {
     return _studioVideos.find(function (v) { return v.id === videoId; }) || null;
+  }
+
+  /* ---------- Operaciones del canal (módulo yt-ops.js) ---------- */
+
+  function opsModule() {
+    return (window.BH_YT && window.BH_YT.ops) || null;
+  }
+
+  /* ---------- Integraciones con el resto del panel (yt-integrations.js) ---------- */
+
+  function integrationsModule() {
+    return (window.BH_YT && window.BH_YT.integrations) || null;
+  }
+
+  /* Agente logueado (para compartir por WhatsApp con su contacto). */
+  function currentAgent() {
+    const p = window._bhCurrentProfile || null;
+    return {
+      name: (p && (p.full_name || p.name)) || 'Bienenhaus',
+      phone: (p && (p.phone || p.whatsapp)) || '',
+    };
+  }
+
+  /* #32: mapa videoId → publicación del CRM (para ofrecer la ficha). */
+  let _ytPostsByVideo = {};
+
+  async function loadVideoPostMap() {
+    const intg = integrationsModule();
+    if (!intg) return;
+    try {
+      const client = await getAuthedClient();
+      if (!client) return;
+      /* El property_code viene con el embed de properties (una sola vuelta).
+         Si el embed no existe en el schema, se reintenta sin él y los
+         códigos se resuelven contra el listado local de propiedades. */
+      let rows = null;
+      let error = null;
+      try {
+        const res = await client
+          .from('social_posts')
+          .select('external_post_id, property_id, properties(property_code)')
+          .eq('platform', 'youtube')
+          .not('external_post_id', 'is', null)
+          .limit(300);
+        rows = res.data; error = res.error;
+      } catch (e) { error = e; }
+      if (error) {
+        const res = await client
+          .from('social_posts')
+          .select('external_post_id, property_id')
+          .eq('platform', 'youtube')
+          .not('external_post_id', 'is', null)
+          .limit(300);
+        if (res.error) return;
+        rows = res.data;
+      }
+      const mapped = (rows || []).map(function (r) {
+        const emb = r.properties ? (Array.isArray(r.properties) ? r.properties[0] : r.properties) : null;
+        let code = (emb && emb.property_code) || '';
+        if (!code) {
+          const prop = (_createProps || []).find(function (p) { return p.id === r.property_id; });
+          code = prop ? prop.property_code : '';
+        }
+        return Object.assign({}, r, { property_code: code });
+      });
+      _ytPostsByVideo = intg.indexPosts(mapped);
+    } catch (_) { /* best-effort: sin el mapa no hay botón de ficha */ }
+  }
+
+  /* #36: republicar un video del canal → metadata al formulario. */
+  function republishVideo(videoId) {
+    const intg = integrationsModule();
+    const v = findStudioVideo(videoId);
+    if (!intg || !v) { showToast('No se encontró el video.', 'error'); return; }
+    const meta = intg.clonePayload(v);
+    switchSubTab('create');
+    setFieldValue('ytTitle', meta.title);
+    setFieldValue('ytDesc', meta.description);
+    setFieldValue('ytTags', meta.tags);
+    setFieldValue('ytKeyword', meta.keyword);
+    if ($('#ytPrivacy')) $('#ytPrivacy').value = meta.privacy || 'public';
+    if ($('#ytCategory') && meta.categoryId) $('#ytCategory').value = meta.categoryId;
+    recomputeSeoPanel();
+    showToast('Metadata copiada — elegí el archivo y publicá la nueva versión.', 'info');
+  }
+
+  /* #29: semáforo de salud del canal. */
+  async function loadHealthPanel() {
+    const el = $('#ytHealthPanel');
+    if (!el) return;
+    const ops = opsModule();
+    if (!ops) {
+      el.innerHTML = '<div class="yt-hint">El módulo de operaciones no está cargado (recargá la página).</div>';
+      return;
+    }
+    const account = (_accounts || []).find(function (a) {
+      return _studioAccount && a.id === _studioAccount.id;
+    }) || {};
+    /* Las publicaciones fallidas se leen de la DB (no del historial en
+       memoria): el semáforo puede abrirse sin la pestaña Historial. */
+    let failed = [];
+    try { failed = await ops.loadFailedPosts(20); } catch (_) { failed = []; }
+    const result = ops.health({
+      account: account,
+      channel: _studioChannel || {},
+      videos: _studioVideos || [],
+      history: failed,
+      canManage: _studioCanManage,
+    });
+    const icon = result.level === 'ok' ? 'fa-circle-check'
+      : (result.level === 'warning' ? 'fa-triangle-exclamation' : 'fa-circle-xmark');
+    const color = result.level === 'ok' ? 'var(--success)'
+      : (result.level === 'warning' ? 'var(--warning)' : 'var(--danger)');
+    const label = result.level === 'ok' ? 'Todo bien'
+      : (result.level === 'warning' ? 'Hay cosas para revisar' : 'Algo está roto');
+    const rows = result.checks.map(function (c) {
+      const ci = c.level === 'ok' ? 'fa-circle-check'
+        : (c.level === 'warning' ? 'fa-triangle-exclamation' : 'fa-circle-xmark');
+      const cc = c.level === 'ok' ? 'var(--success)'
+        : (c.level === 'warning' ? 'var(--warning)' : 'var(--danger)');
+      return '<div class="yt-health-row">' +
+        '<i class="fas ' + ci + '" style="color:' + cc + ';"></i>' +
+        '<div><div class="yt-health-label">' + esc(c.label) + '</div>' +
+        '<div class="yt-health-detail">' + esc(c.detail) + '</div></div>' +
+      '</div>';
+    }).join('');
+    el.innerHTML =
+      '<div class="glass-panel yt-subpanel">' +
+        '<div class="yt-subpanel-head">' +
+          '<span><i class="fas ' + icon + '" style="color:' + color + ';"></i> Salud del canal · ' + esc(label) + '</span>' +
+          '<button type="button" id="ytHealthToggle" class="btn-luxury-action yt-btn--xs">Ver detalle</button>' +
+        '</div>' +
+        '<div id="ytHealthBody" style="display:none;">' + rows + '</div>' +
+      '</div>';
+    const toggle = el.querySelector('#ytHealthToggle');
+    const body = el.querySelector('#ytHealthBody');
+    if (toggle && body) {
+      toggle.addEventListener('click', function () {
+        const visible = body.style.display !== 'none';
+        body.style.display = visible ? 'none' : '';
+        toggle.textContent = visible ? 'Ver detalle' : 'Ocultar';
+      });
+    }
+    /* Si hay algo roto o a medias, queda una traza (una vez por día). */
+    if (result.level !== 'ok') ops.alertOnce(result, _studioAccount ? _studioAccount.id : '');
+  }
+
+  /* #40: historial de acciones del módulo (audit_log). */
+  async function openAuditTrailModal() {
+    const ops = opsModule();
+    if (!ops) { showToast('El módulo de operaciones no está disponible.', 'warning'); return; }
+    const html =
+      '<div class="yt-modal-head">' +
+        '<h3><i class="fas fa-clock-rotate-left"></i> Acciones del módulo</h3>' +
+        '<p class="yt-modal-sub">Últimas acciones registradas de Contenido/YouTube.</p>' +
+      '</div>' +
+      '<div id="ytAuditBody"><p class="yt-muted"><i class="fas fa-spinner fa-spin"></i> Cargando…</p></div>' +
+      '<div class="yt-modal-foot">' +
+        '<button type="button" id="ytAuditClose" class="btn-luxury-action yt-btn--md">Cerrar</button>' +
+      '</div>';
+    const m = createYtModal('ytAuditOverlay', { html: html, wide: true });
+    const body = m.box.querySelector('#ytAuditBody');
+    const close = m.box.querySelector('#ytAuditClose');
+    if (close) close.addEventListener('click', function () { closeModalIfExists('ytAuditOverlay'); });
+    try {
+      const rows = await ops.loadAuditTrail(30);
+      if (!rows.length) {
+        body.innerHTML = '<div class="yt-hint">Todavía no hay acciones registradas.</div>';
+        return;
+      }
+      body.innerHTML = '<div class="yt-table-wrap"><table class="yt-report-table">' +
+        '<thead><tr><th>Acción</th><th>Estado</th><th>Detalle</th><th>Cuándo</th></tr></thead><tbody>' +
+        rows.map(function (r) {
+          const meta = r.metadata || {};
+          const det = meta.problems ? meta.problems.join(' · ') : (r.error_code || '');
+          const cuando = window.__BH.formatDateTimeWithTZ ? window.__BH.formatDateTimeWithTZ(r.created_at) : (r.created_at || '');
+          const st = r.status === 'error' ? 'var(--danger)' : 'var(--success)';
+          return '<tr><td>' + esc(r.action || '') + '</td>' +
+            '<td style="color:' + st + ';">' + esc(r.status || '') + '</td>' +
+            '<td>' + esc(String(det).substring(0, 90)) + '</td>' +
+            '<td>' + esc(cuando) + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+    } catch (err) {
+      body.innerHTML = '<div class="yt-notice yt-notice--danger"><i class="fas fa-triangle-exclamation"></i><span>' +
+        esc(err.message || 'No se pudo cargar el historial.') + '</span></div>';
+    }
   }
 
   /* ---------- Comentarios (módulo compartido yt-comments.js) ----------
@@ -1946,7 +2156,9 @@
     if (!client) return;
     const { data, error } = await client
       .from('social_accounts')
-      .select('id, platform, display_name, avatar_url, status, last_publish_at')
+      /* scope: lo usa el semáforo de salud (#29) para saber qué permisos
+         tiene la conexión (force-ssl / yt-analytics.readonly). */
+      .select('id, platform, display_name, avatar_url, status, last_publish_at, scope')
       .order('created_at', { ascending: true });
     if (error) { logError('Contenido: loadAccounts', error); return; }
     _accounts = data || [];
@@ -2382,6 +2594,13 @@
 
     /* Cola de publicación (render inicial + aviso de una subida pendiente) */
     renderQueuePanel();
+    /* #37: la cola vive también en la nube — se baja sola (best-effort:
+       si el server no está, la cola local sigue intacta). */
+    if (YTPUB && YTPUB.queue && typeof YTPUB.queue.mergeRemote === 'function') {
+      YTPUB.queue.mergeRemote().then(function (nuevos) {
+        if (nuevos) renderQueuePanel();
+      })['catch'](function () { /* silencioso a propósito */ });
+    }
     if (YTPUB && YTPUB.resume) {
       const pending = YTPUB.resume.load();
       if (pending && pending.postId) {
@@ -2479,59 +2698,25 @@
     if (cnt) cnt.textContent = list.length + ' de ' + _createProps.length + (q ? ' (filtrado)' : '');
   }
 
-  /* #1: coaching del form — SOLO llena campos vacíos (nunca pisa lo escrito) */
+  /* #1: coaching del form — SOLO llena campos vacíos (nunca pisa lo escrito).
+     La metadata la arma assets/js/yt-integrations.js (payloadFromProperty):
+     es la única fuente (no se duplica la lógica de la propiedad). */
   function fillFromProperty() {
     const sel = $('#ytProperty');
     if (!sel || !sel.value) { showToast('Elegí primero una propiedad.', 'warning'); return; }
     const p = _createProps.find(function (x) { return x.id === sel.value; });
     if (!p) return;
-    const dets = [
-      p.rooms ? p.rooms + ' ambientes' : (p.bedrooms ? p.bedrooms + ' dormitorios' : ''),
-      p.bathrooms ? p.bathrooms + ' baño(s)' : '',
-      p.surface_total ? p.surface_total + ' m²' : '',
-      p.zone || '',
-    ].filter(Boolean);
-    if (!$('#ytTitle').value) {
-      setFieldValue('ytTitle', ((p.property_type || 'Propiedad') + (dets.length ? ' en ' + dets.join(', ') : '') + ' — Tour completo 4K').substring(0, 100));
+    const intg = integrationsModule();
+    if (!intg) {
+      showToast('El módulo de integraciones no está cargado — recargá la página.', 'warning');
+      return;
     }
-    if ($('#ytKeyword') && !$('#ytKeyword').value) {
-      const kw = ((p.property_type || '') + (p.zone ? ' en ' + p.zone : '')).toLowerCase().trim();
-      if (kw) setFieldValue('ytKeyword', kw);
-    }
-    if ($('#ytDesc') && !$('#ytDesc').value.trim()) {
-      setFieldValue('ytDesc', buildPropDesc(p));
-    }
-    if ($('#ytTags') && !$('#ytTags').value.trim()) {
-      const suggested = [
-        p.property_type || '', p.zone || '', dets[0] || '',
-        'bienenhaus', 'inmobiliaria córdoba',
-      ].map(function (t) { return String(t).trim().toLowerCase(); }).filter(Boolean);
-      const uniq = [];
-      suggested.forEach(function (t) { if (uniq.every(function (u) { return bhNorm(u) !== bhNorm(t); })) uniq.push(t); });
-      setFieldValue('ytTags', uniq.join(', '));
-    }
+    const meta = intg.payloadFromProperty(p);
+    if (!$('#ytTitle').value) setFieldValue('ytTitle', meta.title);
+    if ($('#ytKeyword') && !$('#ytKeyword').value) setFieldValue('ytKeyword', meta.keyword);
+    if ($('#ytDesc') && !$('#ytDesc').value.trim()) setFieldValue('ytDesc', meta.description);
+    if ($('#ytTags') && !$('#ytTags').value.trim()) setFieldValue('ytTags', meta.tags);
     showToast('Datos base cargados (solo campos vacíos).', 'info');
-  }
-
-  /* descripción base desde la ficha real (bullets que siempre son ciertos) */
-  function buildPropDesc(p) {
-    const dets = [
-      p.rooms ? p.rooms + ' ambientes' : (p.bedrooms ? p.bedrooms + ' dormitorios' : ''),
-      p.bathrooms ? p.bathrooms + ' baño(s)' : '',
-      p.surface_total ? p.surface_total + ' m²' : '',
-      p.zone ? 'en ' + p.zone : '',
-    ].filter(Boolean).join(', ');
-    const ficha = fichaUrlFor(p.property_code);
-    /* REPARACIÓN: el link a la ficha solo se incluye si la propiedad tiene
-       código (si no, el texto publicaba una URL rota). */
-    const fichaBlock = ficha
-      ? 'Ficha completa con fotos, medidas y precio actualizado:\n' + ficha + '\n\n'
-      : 'Ficha completa con fotos, medidas y precio actualizado en bienenhaus.com.ar.\n\n';
-    return 'Recorremos paso a paso esta ' + (p.property_type || 'propiedad') + (dets ? ': ' + dets + '.' : '.') + '\n' +
-      'En el video mostramos todos los ambientes y detalles de construcción.\n\n' +
-      fichaBlock +
-      'Consultas y visitas sin compromiso — respondemos por WhatsApp o desde bienenhaus.com.ar.\n\n' +
-      CTA_HASHTAGS;
   }
 
   /* #11: bloque de CTA + hashtags institucionales (#17) */
@@ -2541,7 +2726,7 @@
       : 'https://bienenhaus.com.ar/#propiedades';
     const head = p ? 'Conocé la ficha completa de esta propiedad con fotos y precio actualizado:'
       : 'Conocé la lista completa de propiedades con fotos y precio:';
-    return '\n\n' + head + '\n' + link + '\nConsultas y visitas sin compromiso — respondemos rápido por WhatsApp.\n' + CTA_HASHTAGS;
+    return '\n\n' + head + '\n' + link + '\nConsultas y visitas sin compromiso — respondemos rápido por WhatsApp.\n' + ctaHashtags();
   }
   function insertCtaBlock() {
     const descEl = $('#ytDesc');
@@ -2918,7 +3103,12 @@
     if (!items.length) { panel.innerHTML = ''; return; }
     panel.innerHTML =
       '<div class="yt-queue">' +
-        '<div class="yt-queue-head"><i class="fas fa-list-check"></i> Cola de publicación (' + items.length + ')</div>' +
+        '<div class="yt-queue-head">' +
+          '<span><i class="fas fa-list-check"></i> Cola de publicación (' + items.length + ')</span>' +
+          /* #37: la cola también vive en la nube (app_settings): el botón
+             la baja (unión por id) y sube la copia local. */
+          '<button type="button" id="ytQueueSync" class="btn-luxury-action yt-btn--xs" title="Traer la cola de la nube y guardar la copia local"><i class="fas fa-cloud-arrow-down"></i> Sincronizar</button>' +
+        '</div>' +
         items.map(function (it) {
           const when = it.publishAt ? new Date(it.publishAt).toLocaleString('es-AR') : 'sin fecha';
           return '<div class="yt-queue-item">' +
@@ -2929,6 +3119,32 @@
           '</div>';
         }).join('') +
       '</div>';
+    const sync = panel.querySelector('#ytQueueSync');
+    if (sync) sync.addEventListener('click', syncQueue);
+  }
+
+  /* #37: sincroniza la cola con la nube (unión por id: la local manda). */
+  async function syncQueue() {
+    if (!YTPUB || !YTPUB.queue) return;
+    const btn = $('#ytQueueSync');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    }
+    let nuevos = 0;
+    let ok = false;
+    try {
+      nuevos = await YTPUB.queue.mergeRemote();
+      ok = await YTPUB.queue.pushRemote();
+    } catch (_) { /* best-effort: la cola local nunca se pierde */ }
+    renderQueuePanel();
+    if (nuevos) {
+      showToast(nuevos + (nuevos === 1 ? ' video de la cola' : ' videos de la cola') + ' sincronizado' + (nuevos === 1 ? '' : 's') + ' desde la nube.', 'success');
+    } else if (ok) {
+      showToast('Cola sincronizada.', 'success');
+    } else {
+      showToast('No se pudo sincronizar la cola con la nube.', 'warning');
+    }
   }
 
   /* --- Serie: N copias con fechas escalonadas (quedan en la cola) --- */
@@ -3566,6 +3782,7 @@
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">' +
         '<span style="font-size:12px;color:var(--text-dim);">' + data.length + ' publicaciones recientes</span>' +
         '<div style="flex:1;"></div>' +
+        '<button type="button" id="ytAuditTrailBtn" class="btn-luxury-action" title="Ver las últimas acciones registradas del módulo" style="padding:8px 12px;font-size:11px;"><i class="fas fa-clock-rotate-left"></i> Acciones</button>' +
         '<button type="button" id="ytBackupJson" class="btn-luxury-action" title="Descarga JSON completo del historial (500 posts)" style="padding:8px 12px;font-size:11px;"><i class="fas fa-file-export"></i> Backup JSON</button>' +
       '</div>' +
       data.map(p => {
@@ -3909,6 +4126,9 @@
         if (v) openStudioEditModal(v);
         return;
       }
+      /* #36: republicar (clonar la metadata al formulario) */
+      const repubBtn = e.target.closest('[data-studio-republish]');
+      if (repubBtn) { republishVideo(repubBtn.dataset.studioRepublish); return; }
       /* MEJORA: copiar link desde la card */
       const copyVidBtn = e.target.closest('[data-studio-copy]');
       if (copyVidBtn) {
@@ -3969,6 +4189,8 @@
       }
       /* #48: backup JSON del historial */
       if (e.target.closest('#ytBackupJson')) { backupSocialPostsJson(); return; }
+      /* #40: historial de acciones del módulo (audit_log) */
+      if (e.target.closest('#ytAuditTrailBtn')) { openAuditTrailModal(); return; }
     });
   }
 
