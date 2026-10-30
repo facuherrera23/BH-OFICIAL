@@ -212,3 +212,56 @@ test.describe('Cliente autenticado del admin — sin instancias duplicadas de Go
     expect(c).toBe(h.mainClient);
   });
 });
+
+/* ──────────────────────────────────────────────────────────────
+   Navegador real: con el bundle de producción (supabase-js 2.118)
+   el warning aparece sólo si se crea un 2º GoTrueClient con el
+   mismo storageKey. Esta prueba falla con el código viejo.
+   ────────────────────────────────────────────────────────────── */
+test.describe('Cliente autenticado — navegador real (bundle de producción)', () => {
+  test('6 llamadas concurrentes → 1 GoTrueClient, 0 warnings y cabecera viva', async ({ page }) => {
+    const warnings = [];
+    page.on('console', (m) => {
+      if (m.type() === 'warning' || m.type() === 'warn') warnings.push(m.text());
+    });
+
+    await page.goto('/admin.html', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => !!(window.__BH && window.__BH.getAuthedClient && window.supabaseClient));
+
+    const res = await page.evaluate(async () => {
+      const b64url = (o) => btoa(
+        unescape(encodeURIComponent(JSON.stringify(o)))
+      ).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      const payload = {
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        role: 'authenticated',
+        email: 'test@bienenhaus.com.ar',
+        sub: 'u-1',
+      };
+      const token = `${b64url({ alg: 'HS256', typ: 'JWT' })}.${b64url(payload)}.sig`;
+
+      /* Sesión falsa sobre el cliente REAL de supabase-js. */
+      window.supabaseClient.auth.getSession = async () => ({
+        data: { session: { access_token: token, user: { id: 'u-1', email: payload.email } } },
+        error: null,
+      });
+      window.currentUser = { id: 'u-1', email: payload.email };
+
+      const clients = await Promise.all([0, 1, 2, 3, 4, 5].map(() => window.__BH.getAuthedClient()));
+      const c = clients[0];
+      return {
+        mismaInstancia: clients.every((x) => x === c),
+        auth: c && c.headers ? c.headers.Authorization : null,
+        restAuth: c && c.rest && c.rest.headers ? c.rest.headers.get('authorization') : null,
+      };
+    });
+
+    expect(res.mismaInstancia).toBe(true);
+    expect(res.auth).toMatch(/^Bearer ey/);
+    /* PostgREST tiene su propia copia de las cabeceras → también debe estar viva. */
+    expect(res.restAuth).toBe(res.auth);
+
+    const gotrue = warnings.filter((w) => /Multiple GoTrueClient instances/.test(w));
+    expect(gotrue).toEqual([]);
+  });
+});
