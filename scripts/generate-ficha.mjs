@@ -4,6 +4,7 @@
 // reconcilia fichas huérfanas de propiedades despublicadas.
 // Se corre en CI (workflow ficha-generate.yml) con SUPABASE_URL y SERVICE_KEY/ANON_KEY.
 import { writeFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { splitChannelVideos } from './channel-privacy.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -688,7 +689,7 @@ async function loadChannelVideos(propsById) {
     /* Sin embed: el join con properties se hace en JS (no depende de que
        exista la FK en el schema real — si faltara, el embed haría fallar
        TODA la consulta y la página quedaría vacía). */
-    url.searchParams.set('select', 'external_post_id,external_url,content,published_at,property_id');
+    url.searchParams.set('select', 'external_post_id,external_url,content,metrics,published_at,property_id');
     url.searchParams.set('platform', 'eq.youtube');
     url.searchParams.set('status', 'eq.published');
     url.searchParams.set('external_post_id', 'not.is.null');
@@ -697,11 +698,16 @@ async function loadChannelVideos(propsById) {
     const res = await fetch(url, { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } });
     if (!res.ok) throw new Error(`Supabase ${res.status}: ${(await res.text()).slice(0, 120)}`);
     const rows = await res.json();
+    /* PRIVACIDAD (scripts/channel-privacy.mjs, testeada): una fila con
+       status='published' puede ser un video PRIVADO u "oculto" (unlisted).
+       La página pública es indexable y comparte el link → sólo entran los
+       videos PÚBLICOS. Sin dato de visibilidad → no se publica. */
+    const { visibles, excluidas } = splitChannelVideos(rows);
     /* Un mismo video puede tener más de una fila en social_posts (por
        ejemplo, si se reintentó la publicación): en la página pública
        tiene que aparecer UNA sola vez (la más reciente, por el orden). */
     const vistos = new Set();
-    for (const r of rows || []) {
+    for (const r of visibles) {
       const id = String(r.external_post_id || '');
       if (!id) continue;
       if (vistos.has(id)) continue;
@@ -718,6 +724,10 @@ async function loadChannelVideos(propsById) {
         property_title: prop && prop.title ? prop.title : '',
         zone: prop && prop.zone ? prop.zone : '',
       });
+    }
+    if (excluidas.length) {
+      console.log(`videos del canal excluidos de la página pública (no son públicos): ${excluidas.length}`);
+      for (const e of excluidas.slice(0, 10)) console.log(`  · ${e.id} → ${e.privacy}`);
     }
   } catch (e) {
     console.error('videos del canal no cargados (canal.html sale vacío):', e.message);

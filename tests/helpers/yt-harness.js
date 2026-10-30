@@ -156,7 +156,7 @@ async function boot(page, opts = {}) {
   /* Contadores de llamadas a la Edge Function (para assertar refrescos). */
   const calls = { channel: 0, videos: 0, analytics: 0, init: 0, complete: 0, fail: 0, dry_run: 0, video_categories: 0, audit_log: 0,
     comments_list: 0, comments_inbox: 0, comment_reply: 0, comment_heart: 0, comment_moderate: 0, comment_lead: 0,
-    analytics_report: 0, settings_get: 0, settings_set: 0 };
+    analytics_report: 0, settings_get: 0, settings_set: 0, videos_sync_public: 0 };
   /* Copia de app_settings en el server fake (settings_set escribe acá). */
   const settingsStore = Object.assign({}, opts.settings || {});
   /* Peticiones capturadas (para assertar el body que viaja al server). */
@@ -212,6 +212,11 @@ async function boot(page, opts = {}) {
           titles: {},
         };
       }
+    } else if (action === 'videos_sync_public') {
+      payload = Object.assign(
+        { importados: 0, actualizados: 0, reconciliados: 0, total: 0, completo: true },
+        opts.syncResult || {},
+      );
     } else if (action === 'video_categories') {
       /* Demora opcional: sirve para probar que una categoría pedida
          ANTES de la respuesta queda pendiente y se aplica después. */

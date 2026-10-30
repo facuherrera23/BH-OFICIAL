@@ -731,6 +731,17 @@ flags), `app_settings` (`social_yt_stats_history`, `social_yt_categories`,
 `social_posts`; si se borra un video del canal, el Studio marca el post como `failed` y desaparece
 de la página (no quedan embeds muertos).
 
+**Privacidad de la página pública:** un post con `status='published'` puede ser un video `unlisted`
+(oculto) o programado (en privado hasta su fecha). La página pública es indexable y comparte links →
+el generador publica **sólo videos públicos** (`scripts/channel-privacy.mjs`, regla fail-closed: sin
+dato de visibilidad no se publica). La visibilidad real la reporta YouTube y la guarda el server en
+`social_posts.metrics.youtube_privacy`.
+
+**Sincronización canal → CRM:** el botón "Sincronizar canal" del Studio llama a la action
+`videos_sync_public`: importa al CRM el inventario real del canal (idempotente, refresca la
+visibilidad y reconcilia los videos que ya no están). Es lo que hace que `/canal.html` muestre los
+videos ya publicados, incluidos los que se subieron fuera del panel.
+
 **Permisos:** `youtube.force-ssl` habilita edición/borrado/programación/moderación;
 `yt-analytics.readonly` habilita los reportes. Las conexiones hechas antes de agregar el scope de
 analítica responden `needs_reconnect` (banner claro) y el resto del módulo sigue funcionando.

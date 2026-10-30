@@ -15,6 +15,14 @@
 //                 previa en el cliente. Exige youtube.force-ssl.
 //   thumbnail:    thumbnails.set — miniatura personalizada (imagen
 //                 base64 ≤2MB). Exige youtube.force-ssl.
+//   videos_sync_public: importa/actualiza el inventario REAL del canal
+//                 en social_posts (idempotente) y reconcilia los videos
+//                 que ya no están en el canal. Es lo que hace que la
+//                 página pública /canal.html muestre los videos ya
+//                 publicados (incluidos los subidos fuera del panel) y
+//                 que el CRM sepa la visibilidad real de cada video
+//                 (metrics.youtube_privacy: public|unlisted|private).
+//                 Sólo lectura de YouTube.
 //
 // MEJORAS 2026-10-30 (lote 49 mejoras — módulo Contenido):
 //   playlists:    inventario de playlists del canal + sus items —
@@ -164,6 +172,33 @@ async function youtubeFetch(url: string, accessToken: string, init?: RequestInit
     /* DELETE devuelve 204 sin body — no parsear JSON de un body vacío */
     if (res.status === 204 || res.headers.get('content-length') === '0') return {};
     return res.json();
+}
+
+/** Guarda la visibilidad REAL del video (public|unlisted|private) en el CRM.
+ *  La página pública (/canal.html) sólo lista videos públicos: si el dueño
+ *  cambia la visibilidad desde el Studio, el CRM tiene que enterarse YA
+ *  (si no, la página pública seguiría mostrando un video privado).
+ *  Conserva el resto de metrics. Best-effort: si no hay fila, no hace nada. */
+async function setPostPrivacy(
+    client: SupabaseClient,
+    videoId: string,
+    privacy: string,
+): Promise<void> {
+    try {
+        const { data } = await client
+            .from('social_posts')
+            .select('id, metrics')
+            .eq('platform', 'youtube')
+            .eq('external_post_id', videoId)
+            .limit(1)
+            .maybeSingle() as { data: { id: string; metrics: Record<string, unknown> | null } | null };
+        if (!data) return;
+        const metrics = Object.assign({}, data.metrics ?? {}, { youtube_privacy: privacy });
+        await client.from('social_posts').update({ metrics }).eq('id', data.id);
+    } catch (_) {
+        /* best-effort: la visibilidad real se re-sincroniza con
+           videos_sync_public (o al publicar de nuevo). */
+    }
 }
 
 Deno.serve(async (req) => {
@@ -382,6 +417,9 @@ Deno.serve(async (req) => {
                 .eq('platform', 'youtube')
                 .eq('external_post_id', videoId);
             if (error) return respond(500, { error: error.message });
+            /* La visibilidad REAL (public) queda registrada en el CRM: la
+               página pública sólo muestra videos públicos. */
+            await setPostPrivacy(supabase, videoId, 'public');
             return respond(200, { ok: true });
         }
 
@@ -514,6 +552,178 @@ Deno.serve(async (req) => {
             });
         }
 
+        /* ------- Sincronizar el canal real con el CRM -------
+           Importa/actualiza el inventario del canal en social_posts para:
+             · que la página pública (/canal.html) muestre los videos ya
+               publicados, INCLUIDOS los subidos fuera del panel,
+             · que el CRM sepa la visibilidad REAL de cada video: una fila
+               con status='published' puede ser un video privado o "oculto"
+               (unlisted) → nunca puede salir a una página pública.
+           Es idempotente: las filas existentes se ACTUALIZAN (no se
+           duplican — external_post_id no tiene unique → se buscan antes).
+           Sólo lectura de YouTube (funciona con el scope readonly). */
+        if (body.action === 'videos_sync_public') {
+            const accountId = String(body.account_id ?? '');
+            if (!accountId) return respond(400, { error: 'Falta la cuenta' });
+            /* loadAccount valida que la cuenta exista y esté activa.
+               No se exige force-ssl: la acción sólo LEE de YouTube. */
+            await loadAccount(supabase, accountId);
+            const accessToken = await getSocialAccessToken(supabase, accountId);
+
+            // 1. Playlist de uploads = inventario completo del canal
+            const ch = (await youtubeFetch(
+                `${YOUTUBE_API}/channels?part=contentDetails&mine=true`,
+                accessToken,
+            )) as { items?: Array<{ contentDetails?: { relatedPlaylists?: { uploads?: string } } }> };
+            const uploadsPlaylist = ch.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+            if (!uploadsPlaylist) throw new Error('No se encontró la playlist de uploads del canal');
+
+            const MAX_SYNC = 200;
+            const ids: string[] = [];
+            let pageToken: string | undefined;
+            do {
+                const url = new URL(`${YOUTUBE_API}/playlistItems`);
+                url.searchParams.set('part', 'contentDetails');
+                url.searchParams.set('playlistId', uploadsPlaylist);
+                url.searchParams.set('maxResults', '50');
+                if (pageToken) url.searchParams.set('pageToken', pageToken);
+                const pl = (await youtubeFetch(url.toString(), accessToken)) as {
+                    items?: Array<{ contentDetails?: { videoId?: string } }>;
+                    nextPageToken?: string;
+                };
+                for (const it of pl.items ?? []) {
+                    const vid = it.contentDetails?.videoId;
+                    if (vid) ids.push(vid);
+                }
+                pageToken = pl.nextPageToken || undefined;
+            } while (pageToken && ids.length < MAX_SYNC);
+            /* Si quedó pagination sin terminar, el inventario está incompleto:
+               no se reconcilia (podríamos marcar como borrado un video que
+               existe pero no entró en esta vuelta). */
+            const completo = !pageToken;
+
+            // 2. Detalle (snippet + status) de esos videos — en lotes de 50
+            type SyncVideo = {
+                id?: string;
+                snippet?: { title?: string; description?: string; publishedAt?: string; categoryId?: string; tags?: string[] };
+                status?: { privacyStatus?: string; uploadStatus?: string };
+            };
+            const vids: SyncVideo[] = [];
+            for (let i = 0; i < ids.length; i += 50) {
+                const lote = ids.slice(i, i + 50);
+                const res = (await youtubeFetch(
+                    `${YOUTUBE_API}/videos?part=snippet,status&id=${lote.join(',')}`,
+                    accessToken,
+                )) as { items?: SyncVideo[] };
+                vids.push(...(res.items ?? []));
+            }
+
+            // 3. Filas que ya existen para ESTA cuenta
+            const { data: existentes } = await supabase
+                .from('social_posts')
+                .select('id, external_post_id, status, content, metrics')
+                .eq('platform', 'youtube')
+                .eq('account_id', accountId)
+                .not('external_post_id', 'is', null)
+                .limit(500) as {
+                data: Array<{
+                    id: string;
+                    external_post_id: string;
+                    status: string;
+                    content: Record<string, unknown> | null;
+                    metrics: Record<string, unknown> | null;
+                }> | null;
+            };
+            const porId = new Map((existentes ?? []).map((r) => [String(r.external_post_id), r]));
+
+            let importados = 0;
+            let actualizados = 0;
+            for (const v of vids) {
+                const vid = String(v.id ?? '');
+                if (!vid) continue;
+                const privacy = String(v.status?.privacyStatus ?? 'private');
+                const uploadStatus = String(v.status?.uploadStatus ?? 'processed');
+                const prev = porId.get(vid);
+                const metrics = Object.assign({}, prev?.metrics ?? {}, {
+                    youtube_privacy: privacy,
+                    youtube_upload_status: uploadStatus,
+                });
+                const url = `https://www.youtube.com/watch?v=${vid}`;
+                if (prev) {
+                    /* NO se pisa el contenido que vive en el CRM (score SEO,
+                       keyword, flags de publicación): sólo se refrescan los
+                       datos que vienen de YouTube. */
+                    const prevContent = (prev.content ?? {}) as Record<string, unknown>;
+                    const content = Object.assign({}, prevContent, {
+                        title: String(v.snippet?.title ?? ''),
+                        description: String(v.snippet?.description ?? ''),
+                        tags: v.snippet?.tags ?? [],
+                        privacy,
+                        category_id: v.snippet?.categoryId ?? (prevContent.category_id ?? '22'),
+                    });
+                    const patch: Record<string, unknown> = {
+                        content,
+                        metrics,
+                        external_url: url,
+                        published_at: v.snippet?.publishedAt ?? null,
+                    };
+                    /* El estado del CRM sólo avanza si el video ya está
+                       procesado. Un borrador ('draft') o un fallido NO se
+                       promote: esa decisión es del dueño. */
+                    if (uploadStatus === 'processed' && prev.status === 'publishing') patch.status = 'published';
+                    const { error } = await supabase.from('social_posts').update(patch).eq('id', prev.id);
+                    if (error) return respond(500, { error: error.message });
+                    actualizados++;
+                    continue;
+                }
+                const { error } = await supabase.from('social_posts').insert({
+                    account_id: accountId,
+                    platform: 'youtube',
+                    post_type: 'video',
+                    status: uploadStatus === 'processed' ? 'published' : 'publishing',
+                    published_at: v.snippet?.publishedAt ?? null,
+                    external_post_id: vid,
+                    external_url: url,
+                    content: {
+                        title: String(v.snippet?.title ?? ''),
+                        description: String(v.snippet?.description ?? ''),
+                        tags: v.snippet?.tags ?? [],
+                        privacy,
+                        category_id: v.snippet?.categoryId ?? '22',
+                        imported: true,
+                    },
+                    metrics,
+                    created_by: adminId,
+                });
+                if (error) return respond(500, { error: error.message });
+                importados++;
+            }
+
+            // 4. Reconciliación: filas 'published' cuyo video ya no está en el canal
+            let reconciliados = 0;
+            if (completo) {
+                const vistos = new Set(vids.map((v) => String(v.id ?? '')));
+                for (const r of existentes ?? []) {
+                    if (r.status !== 'published') continue;
+                    if (vistos.has(String(r.external_post_id))) continue;
+                    const { error } = await supabase
+                        .from('social_posts')
+                        .update({ status: 'failed', error: 'El video ya no está en el canal de YouTube' })
+                        .eq('id', r.id);
+                    if (!error) reconciliados++;
+                }
+            }
+
+            return respond(200, {
+                ok: true,
+                importados,
+                actualizados,
+                reconciliados,
+                total: vids.length,
+                completo,
+            });
+        }
+
         /* ------- Editar video (metadata + visibilidad + programación) ------- */
         if (body.action === 'video_update') {
             const accountId = String(body.account_id ?? '');
@@ -573,6 +783,10 @@ Deno.serve(async (req) => {
                     }),
                 },
             );
+            /* La visibilidad REAL queda reflejada en el CRM (la página
+               pública sólo lista videos públicos). Con programación, el
+               video está en privado hasta la fecha de publicación. */
+            await setPostPrivacy(supabase, videoId, publishAt ? 'private' : privacy);
             return respond(200, { ok: true });
         }
 

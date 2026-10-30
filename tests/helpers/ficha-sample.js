@@ -41,11 +41,14 @@ const MOCK_VIDEO = { id: 'dQw4w9WgXcQ', title: 'Tour de la casa', publishedAt: '
 
 function buildSample() {
   let src = fs.readFileSync(path.join(ROOT, 'scripts', 'generate-ficha.mjs'), 'utf8');
-  /* ESM → CommonJS (el repo es "type": "commonjs") */
-  src = src.replace(
-    /import \{ writeFileSync, mkdirSync, readdirSync, rmSync \} from 'node:fs';/,
-    'const { writeFileSync, mkdirSync, readdirSync, rmSync } = require("node:fs");',
-  );
+  /* ESM → CommonJS (el repo es "type": "commonjs"): cualquier import con
+     named imports se convierte en require. Las rutas relativas se resuelven
+     contra la raíz del repo (el sandbox no tiene __dirname) y los módulos
+     .mjs se cargan con require() (Node ≥22.12 lo soporta). */
+  src = src.replace(/import \{([^}]+)\} from '([^']+)';/g, (_m, names, mod) => {
+    const target = mod.startsWith('.') ? path.join(ROOT, 'scripts', mod) : mod;
+    return 'const {' + names + '} = require(' + JSON.stringify(target) + ');';
+  });
   /* main() real exige SUPABASE_URL + red: se la quita (TODO el bloque final,
      no solo la primera línea — el catch cierra en otra línea). */
   src = src.replace(/main\(\)\.catch\([\s\S]*$/, '');

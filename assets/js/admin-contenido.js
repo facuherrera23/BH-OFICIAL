@@ -94,6 +94,9 @@
     /* Un reporte de YouTube Analytics = 1 unidad (más 1 si trae títulos
        de videos: videos.list). */
     analytics_report: 2,
+    /* Sincronización del canal: playlistItems (1 por 50) + videos.list
+       (1 por 50) → ~2-4 unidades. */
+    videos_sync_public: 4,
   };
 
   let _accounts = [];
@@ -630,6 +633,11 @@
           '<option value="365">Último año</option>' +
         '</select>' +
         '<button type="button" id="studioCsv" class="btn-luxury-action" title="Descargar inventario filtrado en CSV" style="padding:8px 12px;font-size:11px;"><i class="fas fa-file-csv"></i> CSV</button>' +
+        /* Sincroniza el canal real con el CRM: importa los videos ya
+           publicados (incluidos los subidos fuera del panel) y actualiza
+           su visibilidad real → es lo que alimenta la página pública
+           /canal.html (sólo muestra los videos PÚBLICOS). */
+        '<button type="button" id="studioSyncChannel" class="btn-luxury-action" title="Importar al CRM los videos del canal y actualizar su visibilidad real (necesario para la página pública /canal.html)" style="padding:8px 12px;font-size:11px;"><i class="fas fa-arrows-rotate"></i> Sincronizar canal</button>' +
       '</div>' +
       '<div id="studioVideos" class="yt-video-grid">' + renderStudioVideos() + '</div>';
 
@@ -660,6 +668,8 @@
     if (ageSel) ageSel.addEventListener('change', function () { _studioAge = this.value; renderStudioVideosGrid(); });
     const csvBtn = $('#studioCsv');
     if (csvBtn) csvBtn.addEventListener('click', downloadStudioCsv);
+    const syncBtn = $('#studioSyncChannel');
+    if (syncBtn) syncBtn.addEventListener('click', syncChannelWithCrm);
 
     /* Bandeja de comentarios: abre/cierra el panel y pide los comentarios
        del canal (la primera vez los marca como vistos). */
@@ -671,6 +681,50 @@
       panel.style.display = abierto ? 'none' : '';
       if (!abierto) loadCommentsInbox(true);
     });
+  }
+
+  /* Sincroniza el canal real de YouTube con el CRM.
+     Qué resuelve:
+       · importa al historial los videos ya publicados (incluidos los que
+         se subieron fuera del panel) → la página pública /canal.html los
+         muestra (el CI la regenera cada 30 min),
+       · guarda la visibilidad REAL de cada video (metrics.youtube_privacy):
+         una fila 'published' puede ser un video privado u oculto y nunca
+         puede salir a una página pública,
+       · reconcilia: los videos que ya no están en el canal pasan a
+         'failed' (no quedan embeds muertos).
+     Idempotente: se puede pulsar todas las veces que haga falta. */
+  async function syncChannelWithCrm() {
+    const accountId = (_studioAccount && _studioAccount.id) || '';
+    if (!accountId) { showToast('No hay un canal seleccionado.', 'warning'); return; }
+    const btn = $('#studioSyncChannel');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sincronizando…';
+    }
+    try {
+      const res = await studioApiCall({ action: 'videos_sync_public', account_id: accountId });
+      const partes = [];
+      if (res.importados) partes.push(res.importados + (res.importados === 1 ? ' video nuevo' : ' videos nuevos'));
+      if (res.actualizados) partes.push(res.actualizados + ' actualizados');
+      if (res.reconciliados) partes.push(res.reconciliados + ' que ya no están en el canal');
+      showToast(
+        partes.length
+          ? 'Canal sincronizado: ' + partes.join(', ') + '. La página pública se actualiza en ~30 min.'
+          : 'El canal ya estaba sincronizado (' + (res.total || 0) + ' videos).',
+        'success',
+      );
+      /* El mapa video → ficha y la grilla cambian con la sincronización. */
+      await loadVideoPostMap();
+      renderStudioVideosGrid();
+    } catch (err) {
+      showToast('No se pudo sincronizar el canal: ' + (err && err.message ? err.message : 'error desconocido'), 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-arrows-rotate"></i> Sincronizar canal';
+      }
+    }
   }
 
   /* Score SEO de un video del canal (badge de la card). El motor es puro y
@@ -3822,6 +3876,11 @@
       const seoChip = typeof c.seo_score === 'number'
         ? '<span title="Score SEO guardado al publicar" style="font-size:10.5px;color:var(--accent);border:1px solid rgba(45,212,191,0.35);border-radius:8px;padding:2px 8px;flex-shrink:0;">SEO ' + c.seo_score + '</span>'
         : '';
+      /* Videos importados del canal (sincronización): no se publicaron desde
+         el panel, pero el CRM los conoce (así salen en /canal.html). */
+      const importedChip = c.imported
+        ? '<span title="Video sincronizado desde el canal (no se publicó desde el panel)" style="font-size:10.5px;color:var(--text-dim);border:1px solid rgba(148,163,184,0.35);border-radius:8px;padding:2px 8px;flex-shrink:0;">Sincronizado</span>'
+        : '';
       return '<div class="yt-history-row">' +
         '<i class="' + esc((PLATFORM_META[p.platform] || {}).icon || 'fas fa-share') + '" style="font-size:18px;"></i>' +
         '<div style="flex:1;min-width:0;">' +
@@ -3830,6 +3889,7 @@
         '</div>' +
         (p.external_url ? '<a href="' + esc(p.external_url) + '" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none;flex-shrink:0;">Ver <i class="fas fa-arrow-up-right-from-square"></i></a>' : '') +
         seoChip +
+        importedChip +
         (p.status !== 'publishing' ? '<button type="button" data-contenido-copy="' + esc(p.id) + '" title="Copiar esta metadata al formulario" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:4px;flex-shrink:0;"><i class="fas fa-copy" style="font-size:12px;"></i></button>' : '') +
         (p.status === 'failed' ? '<button type="button" data-contenido-retry="' + esc(p.id) + '" title="Reintentar: carga la metadata en el formulario" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:4px;flex-shrink:0;"><i class="fas fa-rotate-right" style="font-size:12px;"></i></button>' : '') +
         '<span style="font-size:10.5px;color:' + st.color + ';flex-shrink:0;">' + esc(st.label) + '</span>' +

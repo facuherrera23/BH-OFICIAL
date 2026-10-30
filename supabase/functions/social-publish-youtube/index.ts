@@ -296,16 +296,23 @@ Deno.serve(async (req) => {
                 const t = (await checkRes.text()).slice(0, 200);
                 return respond(502, { error: `No se pudo verificar el video en YouTube: ${t}` });
             }
-            const checkJson = (await checkRes.json()) as { items?: unknown[] };
+            const checkJson = (await checkRes.json()) as {
+                items?: Array<{ status?: { privacyStatus?: string; uploadStatus?: string } }>;
+            };
             if (!checkJson.items?.length) {
                 return respond(502, { error: 'YouTube no reconoce el video subido' });
             }
+            /* La visibilidad REAL que reporta YouTube (no la que pidió el
+               dueño): la página pública (/canal.html) sólo lista videos
+               públicos, así que el CRM tiene que guardar este dato. */
+            const privacyReal = String(checkJson.items[0]?.status?.privacyStatus ?? 'private');
 
             const { error: updErr } = await supabase.from('social_posts').update({
                 status: isDraft ? 'draft' : 'published',
                 published_at: isDraft ? null : new Date().toISOString(),
                 external_post_id: videoId,
                 external_url: `https://www.youtube.com/watch?v=${videoId}`,
+                metrics: { youtube_privacy: privacyReal },
                 error: null,
             }).eq('id', postId);
             if (updErr) return respond(500, { error: updErr.message });
