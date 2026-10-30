@@ -26,6 +26,16 @@ Sistema CRM inmobiliario **en producción real** (bienenhaus.com.ar) con datos d
 - Globals: `window.supabaseClient`, `window.BHUtils` (`esc`, `escAttr`, `safeUrl`, `safeImageUrl`), `window.BH_Cloudinary`, `window.adminApp`, `window.__BH`.
 - `esc()`/`escAttr()` SIEMPRE antes de `innerHTML`; cero `onclick` inline (la CSP no tiene unsafe-inline).
 
+## Cliente autenticado del admin — `getAuthedClient()` es SINGLETON (2026-10-30)
+
+- **Síntoma**: warning en consola durante la subida de contenido a YouTube → `GoTrueClient@bh-authed-client:1 Multiple GoTrueClient instances detected in the same browser context`. No es un error, pero Supabase avisa que puede dar comportamiento indefinido al concurrir bajo el mismo storage key.
+- **Causa raíz**: `getAuthedClient()` (admin-app.js) chequeaba la caché **ANTES** del `await` de `getSession()` → varias llamadas concurrentes (el Studio de Contenido dispara varias en paralelo: historial, cola, categorías, auditoría) pasaban el chequeo con el cliente en `null` y **creaban un GoTrueClient cada una** con el storageKey `bh-authed-client`.
+- **Regla dura**: el cliente autenticado se crea **UNA sola vez** (guard por promesa para las llamadas concurrentes). Cuando Supabase rota el token, **NO se recrea**: se actualiza la cabecera `Authorization` (`client.headers.Authorization` + `client.rest.headers`, porque PostgrestClient **copia** las cabeceras al construirse y vuelve a copiarlas en cada `.from()`/`.rpc()`). FunctionsClient/StorageClient leen `client.headers` en vivo.
+- **StorageKey propio**: `bh-authed-client` (NO el default) — si se usa el default, el cliente autenticado sería la instancia 1 del mismo key que `window.supabaseClient` → warning igual.
+- **No destruir el cliente en SIGNED_OUT**: se limpian token y cabeceras, pero el cliente se conserva (recrearlo en el próximo login dispara el warning de nuevo).
+- **JWT base64url**: los JWT usan `base64URL` (`-`/`_`), que `atob()` estándar rechaza → `exp` ilegible → el caché de expiración nunca funciona. `parseJwtExpiry()` normaliza a base64 antes de decodificar.
+- El bloque está delimitado con markers `BH-AUTH-CLIENT:START/END` porque `tests/admin-auth-client.spec.js` lo evalúa en un sandbox (reproduce el contador de instancias de @supabase/auth-js): 5 llamadas concurrentes deben crear **1** cliente y **0** warnings.
+
 ## ⚠️ Código vs schema real (auditoría 2026-10-20: 13 bugs de la MISMA raíz)
 
 La clase de bug más cara del proyecto: **código escrito contra columnas/tablas imaginarias**. Como casi todos los flows tragan errores con `.catch(() => ...)` o ignoran `result.error`, fallan en silencio total (features que "existen" pero jamás funcionaron). Hallazgos reales ya corregidos:

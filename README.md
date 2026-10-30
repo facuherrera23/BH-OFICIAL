@@ -309,7 +309,7 @@ BH-OFICIAL/
 │   ├── functions/                # 58 Edge Functions (Deno) + _shared/
 │   └── migrations/               # 114 migraciones SQL versionadas
 │
-├── tests/                        # Suite E2E Playwright (30 specs)
+├── tests/                        # Suite E2E Playwright (32 specs)
 ├── scripts/                      # bump-busters, generate-ficha, recovery, verificación
 ├── fichas/                       # Fichas HTML de propiedades (generadas por CI)
 ├── docs/                         # Documentación: backups, integraciones, guías, auditorías
@@ -745,6 +745,14 @@ videos ya publicados, incluidos los que se subieron fuera del panel.
 **Permisos:** `youtube.force-ssl` habilita edición/borrado/programación/moderación;
 `yt-analytics.readonly` habilita los reportes. Las conexiones hechas antes de agregar el scope de
 analítica responden `needs_reconnect` (banner claro) y el resto del módulo sigue funcionando.
+
+**Cliente autenticado del panel (warning de GoTrue):** además de `window.supabaseClient`, el admin
+usa un cliente Supabase "authed" (`storageKey` propio) para las queries autenticadas. Es un
+**singleton**: se crea **una sola vez** y, cuando Supabase rota el token, sólo se actualiza la
+cabecera `Authorization` (nunca se recrea). Crear varios `GoTrueClient` con el mismo storageKey
+dispara el warning *"Multiple GoTrueClient instances detected in the same browser context"* —
+Supabase advierte que puede dar comportamiento indefinido al concurrir. Cubierto por
+`tests/admin-auth-client.spec.js` (8 tests sobre el bloque real de `admin-app.js`).
 
 > Auditoría completa de las 50 mejoras del módulo: `docs/audit/AUDITORIA_YOUTUBE_50_MEJORAS_2026-10-30.md`.
 

@@ -393,43 +393,138 @@ function esc(s) {
         currentProfile = null;
         window._bhCurrentUser = null;
         window._bhCurrentProfile = null;
-        authedSupabaseClient = null;
+        /* NO se destruye el cliente autenticado: recrearlo con el mismo
+           storageKey dispara "Multiple GoTrueClient instances detected" en el
+           próximo login. Se limpian el token cacheado y las cabeceras. */
+        authedClientToken = '';
         authedClientTokenExpiry = 0;
+        try {
+          if (authedSupabaseClient && authedSupabaseClient.headers) delete authedSupabaseClient.headers.Authorization;
+        } catch (_) { /* noop */ }
+        try {
+          if (authedSupabaseClient && authedSupabaseClient.rest && authedSupabaseClient.rest.headers) {
+            authedSupabaseClient.rest.headers.delete('Authorization');
+          }
+        } catch (_) { /* noop */ }
         showLogin();
       }
     });
   }
 
-  /* Cliente autenticado: usa el access token de la sesión para queries autenticadas */
+  /* === BH-AUTH-CLIENT:START ===
+     Cliente autenticado: usa el access token de la sesión para queries autenticadas.
+
+     ⚠️ SINGLETON — no recrear el cliente.
+     Crear más de un GoTrueClient con el mismo storageKey dispara el warning
+     "Multiple GoTrueClient instances detected in the same browser context" y
+     Supabase avisa que puede producir comportamiento indefinido al concurrir.
+     Bug real (2026-10-30, reportado durante la subida de contenido a YouTube):
+     el chequeo de caché estaba ANTES del await de getSession(), así que varias
+     llamadas concurrentes a getAuthedClient() (el Studio dispara varias en
+     paralelo) pasaban el chequeo y creaban un cliente cada una.
+
+     Ahora: el cliente se crea UNA sola vez (con un guard de promesa para las
+     llamadas concurrentes) y, cuando Supabase rota el token, sólo se actualiza
+     la cabecera Authorization — nunca se crea otro GoTrueClient.
+
+     El bloque va delimitado con markers porque tests/admin-auth-client.spec.js
+     lo evalúa en un sandbox para verificar el comportamiento. */
+
   let authedSupabaseClient = null;
+  let authedClientToken = '';
   let authedClientTokenExpiry = 0;
+  let authedClientCreatePromise = null;
+
+  /* Decodifica el payload de un JWT. Los JWT usan base64URL ('-' y '_' en vez
+     de '+' y '/'), que atob() estándar rechaza → payload ilegible → exp = 0. */
+  function decodeJwtPayload(token) {
+    try {
+      const part = String(token || '').split('.')[1];
+      if (!part) return null;
+      let b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return JSON.parse(new TextDecoder().decode(bytes));
+    } catch {
+      return null;
+    }
+  }
 
   function parseJwtExpiry(token) {
+    const payload = decodeJwtPayload(token);
+    const exp = Number(payload && payload.exp);
+    return Number.isFinite(exp) && exp > 0 ? exp * 1000 : 0; // exp es en segundos → ms
+  }
+
+  /* Propaga el token actual a TODAS las cabeceras del cliente.
+     Ojo: PostgrestClient copia las cabeceras al construirse (new Headers) y
+     vuelve a copiarlas en cada .from()/.rpc(), así que hay que actualizarlas
+     en vivo en `client.rest.headers`; FunctionsClient y StorageClient leen
+     `client.headers` en vivo. */
+  function applyAuthedToken(client, token) {
+    const value = `Bearer ${token}`;
     try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload.exp * 1000; // exp is in seconds, convert to ms
-    } catch {
-      return 0;
-    }
+      if (client && client.headers) client.headers.Authorization = value;
+    } catch (_) { /* noop */ }
+    try {
+      if (client && client.rest && client.rest.headers && typeof client.rest.headers.set === 'function') {
+        client.rest.headers.set('Authorization', value);
+      }
+    } catch (_) { /* noop */ }
   }
 
   async function getAuthedClient() {
-    const now = Date.now();
-    // Si el cliente cacheado existe y su token no ha expirado (con 30s de margen)
-    if (authedSupabaseClient && authedClientTokenExpiry > now + 30000) {
+    if (!window.supabaseClient || !currentUser) return window.supabaseClient;
+
+    // 1) Fast path: cliente ya creado y token vigente (30s de margen).
+    if (authedSupabaseClient && authedClientToken && authedClientTokenExpiry > Date.now() + 30000) {
       return authedSupabaseClient;
     }
-    if (!window.supabaseClient || !currentUser) return window.supabaseClient;
-    const { data: { session } } = await window.supabaseClient.auth.getSession();
-    if (!session?.access_token) return window.supabaseClient;
-    const { createClient } = window.supabase;
-    authedSupabaseClient = createClient(window.BH_CONFIG.SUPABASE_URL, window.BH_CONFIG.SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: `Bearer ${session.access_token}` } },
-      auth: { persistSession: false, storageKey: 'bh-authed-client' },
-    });
-    authedClientTokenExpiry = parseJwtExpiry(session.access_token);
+
+    // 2) Traer el token actual desde el cliente principal (el que persiste la
+    //    sesión y rota solo). Si no hay sesión, se usa el cliente principal.
+    let token = authedClientToken;
+    try {
+      const { data: { session } } = await window.supabaseClient.auth.getSession();
+      if (session && session.access_token) token = session.access_token;
+    } catch (_) { /* best-effort */ }
+    if (!token) return window.supabaseClient;
+
+    // 3) Crear el cliente UNA sola vez. El guard por promesa evita que dos
+    //    llamadas concurrentes lo creen en paralelo.
+    if (!authedSupabaseClient) {
+      if (!authedClientCreatePromise) {
+        authedClientCreatePromise = (async () => {
+          const { createClient } = window.supabase;
+          authedSupabaseClient = createClient(window.BH_CONFIG.SUPABASE_URL, window.BH_CONFIG.SUPABASE_ANON_KEY, {
+            global: { headers: { Authorization: `Bearer ${token}` } },
+            auth: {
+              persistSession: false,
+              storageKey: 'bh-authed-client',
+              autoRefreshToken: false,
+              detectSessionInUrl: false,
+            },
+          });
+          authedClientToken = token;
+          authedClientTokenExpiry = parseJwtExpiry(token);
+          return authedSupabaseClient;
+        })().finally(() => { authedClientCreatePromise = null; });
+      }
+      await authedClientCreatePromise;
+      return authedSupabaseClient;
+    }
+
+    // 4) El cliente ya existe: sólo rotamos la cabecera si el token cambió.
+    if (token !== authedClientToken) {
+      authedClientToken = token;
+      authedClientTokenExpiry = parseJwtExpiry(token);
+      applyAuthedToken(authedSupabaseClient, token);
+    }
     return authedSupabaseClient;
   }
+  /* === BH-AUTH-CLIENT:END === */
 
     async function loadProfile() {
     if (!currentUser) return;
