@@ -116,7 +116,10 @@
   }
 
   /* Registra la alerta de salud en audit_log (una vez por día).
-     Best-effort: si falla, el semáforo sigue visible. */
+     Best-effort: si falla, el semáforo sigue visible. El flag de "ya
+     avisado" se escribe SOLO si la traza se guardó de verdad: si el
+     server falló, el próximo panel lo reintenta (mejor una alerta
+     repetida que una perdida). */
   async function alertOnce(result, accountId) {
     if (!core || !core.audit) return false;
     if (!result || result.level === 'ok') return false;
@@ -124,9 +127,9 @@
     let yaAvisado = false;
     try { yaAvisado = localStorage.getItem('bh_yt_' + ALERT_FLAG) === today; } catch (_) {}
     if (yaAvisado) return false;
-    try { localStorage.setItem('bh_yt_' + ALERT_FLAG, today); } catch (_) {}
+    let guardado = false;
     try {
-      await core.audit('yt_health_alert', {
+      guardado = await core.audit('yt_health_alert', {
         recordId: null,
         metadata: {
           account_id: accountId || null,
@@ -135,8 +138,10 @@
             .map(function (c) { return c.id + ': ' + c.label; }),
         },
       });
-      return true;
-    } catch (_) { return false; }
+    } catch (_) { guardado = false; }
+    if (!guardado) return false;
+    try { localStorage.setItem('bh_yt_' + ALERT_FLAG, today); } catch (_) {}
+    return true;
   }
 
   /* ============================================================

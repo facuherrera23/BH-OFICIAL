@@ -213,6 +213,11 @@ async function boot(page, opts = {}) {
         };
       }
     } else if (action === 'video_categories') {
+      /* Demora opcional: sirve para probar que una categoría pedida
+         ANTES de la respuesta queda pendiente y se aplica después. */
+      if (opts.categoriesDelayMs) {
+        await new Promise((r) => setTimeout(r, opts.categoriesDelayMs));
+      }
       payload = { categories: opts.categories || CATEGORIES, cached: !!opts.categoriesCached };
     } else if (action === 'settings_get') {
       const key = body.key;

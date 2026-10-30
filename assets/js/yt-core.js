@@ -350,8 +350,10 @@
         error_code: opts.errorCode || opts.error_code || null,
         metadata: opts.metadata || null,
       });
+      return true;
     } catch (_) {
       /* La auditoría NUNCA bloquea la acción del dueño. */
+      return false;
     }
   }
 

@@ -264,6 +264,7 @@ graph TD
 | `politica-de-privacidad.html` · `terminos-y-condiciones.html` | `/politica-de-privacidad.html` · `/terminos-y-condiciones.html` | Legales públicos |
 | `403.html` · `404.html` | `/403` · `/404` | Páginas de error de Cloudflare Pages |
 | `fichas/<code>.html` | `/fichas/<CÓDIGO>.html` | Fichas públicas por propiedad (generadas por CI, ver módulo Ficha HTML) |
+| `canal.html` | `/canal.html` | Canal público de YouTube: grilla de videos publicados con su ficha (generada por CI, índice `assets/data/canal-videos.json`) |
 
 ---
 
@@ -272,7 +273,8 @@ graph TD
 ```
 BH-OFICIAL/
 ├── index.html                    # Landing pública
-├── admin.html                    # Panel administrativo (SPA por tabs, ~181 KB: 14 tabs + 20 modales inline)
+├── admin.html                    # Panel administrativo (SPA por tabs, ~181 KB: 15 tabs + 20 modales inline)
+├── canal.html                    # Canal público de YouTube (grilla de videos, índice generado por CI)
 ├── tasacion.html                 # ACM de tasación (autónomo, embebible)
 ├── portal-propietario.html       # Portal del propietario (token)
 ├── confirmar-visita.html         # Confirmación de visita (token)
@@ -296,16 +298,18 @@ BH-OFICIAL/
 │   │   ├── zod.umd.js            # Zod 3 (solo admin)
 │   │   ├── landing-app.js        # Catálogo, filtros, CMS, contacto → leads
 │   │   ├── admin-app.js          # Núcleo del panel: state, helpers (window.__BH), realtime, modales (~3.5k líneas)
-│   │   └── admin-<modulo>.js     # 14 módulos de dominio cargados tras el core (ver tabla abajo)
-│   ├── js/pages/                 # JS de páginas públicas (tasacion, portal, encuesta, confirmar-visita)
+│   │   ├── admin-<modulo>.js     # 14 módulos de dominio cargados tras el core (ver tabla abajo)
+│   │   └── yt-<modulo>.js        # Módulos compartidos del módulo Contenido/YouTube (window.BH_YT.*)
+│   ├── js/pages/                 # JS de páginas públicas (tasacion, portal, encuesta, confirmar-visita, canal)
+│   ├── data/                     # Índices generados por CI (property-videos.json, canal-videos.json)
 │   ├── images/                   # favicon, hero-bg.webp, pwa-512x512.png
 │   └── img/                      # logo-bh.png
 │
 ├── supabase/
-│   ├── functions/                # 48 Edge Functions (Deno) + _shared/
-│   └── migrations/               # 105 migraciones SQL versionadas
+│   ├── functions/                # 58 Edge Functions (Deno) + _shared/
+│   └── migrations/               # 114 migraciones SQL versionadas
 │
-├── tests/                        # Suite E2E Playwright (11 specs)
+├── tests/                        # Suite E2E Playwright (30 specs)
 ├── scripts/                      # bump-busters, generate-ficha, recovery, verificación
 ├── fichas/                       # Fichas HTML de propiedades (generadas por CI)
 ├── docs/                         # Documentación: backups, integraciones, guías, auditorías
@@ -333,6 +337,7 @@ El panel se modularizó (antes era un `admin-app.js` de ~14k líneas; hoy el cor
 | `admin-tasaciones.js` | ~0.5k | Listado de tasaciones, compartir, tokens |
 | `admin-ficha.js` | ~0.4k | Generador manual de fichas |
 | `admin-crm-tasks.js` | ~0.3k | Tareas del CRM (lead/owner) |
+| `admin-contenido.js` | ~4.3k | Contenido & Redes: orquestador/UI de YouTube (Studio, publicación, historial) |
 | `admin-supervision-panel.js` | 43 líneas | Shim de entrada al tab Supervisión (gate `super_admin` → `window.adminSupervision`) |
 
 > Carpetas de tooling que **no** se versionan: `.codegraph/`, `.omo/`, `.playwright-mcp/`, `supabase/.temp/`, `node_modules/`, `*.log`, `.env.local`, `test-results/`, `playwright-report/`.
@@ -529,6 +534,13 @@ erDiagram
 | `app_settings` | Ajustes globales key/value JSONB: `preferences` (incl. `usd_rate`), `features`, `integrations` |
 | `profiles` | Perfiles vinculados a `auth.users` con campo `role` |
 
+#### 📱 Redes sociales (módulo Contenido)
+
+| Tabla | Descripción |
+|---|---|
+| `social_accounts` | Cuentas conectadas por plataforma (`platform`: youtube\|facebook\|instagram\|tiktok): `external_id`, `display_name`, tokens AES-256-GCM (`*_encrypted` + `*_iv`), `refresh_token`, `scope`, `status`, `last_publish_at`. UNIQUE (`platform`, `external_id`) → reconectar no duplica |
+| `social_posts` | Publicaciones por plataforma: `post_type`, `content` JSONB (metadata, score, categoría, flags), `media`, `status` (`draft`\|`scheduled`\|`publishing`\|`published`\|`failed`), `external_post_id` (id del video en YouTube), `external_url`, `property_id` (vínculo con la ficha) |
+
 #### 💬 Chat Zernio
 
 | Tabla | Descripción |
@@ -630,7 +642,7 @@ El permiso se resuelve con `profiles.role` (enum `user_role`):
 
 ---
 
-## 🖥️ Panel administrativo (14 módulos)
+## 🖥️ Panel administrativo (15 módulos)
 
 SPA con hash routing (`#tab-dashboard`) y sidebar en 4 categorías: **Principal**, **Gestión & CRM**, **Red & Difusión** y **Sistema**.
 
@@ -647,9 +659,10 @@ SPA con hash routing (`#tab-dashboard`) y sidebar en 4 categorías: **Principal*
 | 9 | Agentes & Brokers | `tab-agentes` |
 | 10 | Chat Redes | `tab-chat-redes` |
 | 11 | Ficha HTML | `tab-ficha-html` |
-| 12 | Usuarios & Permisos | `tab-usuarios` |
-| 13 | Configuración | `tab-configuracion` |
-| 14 | Centro de Supervisión | `tab-supervision` |
+| 12 | Contenido & Redes (YouTube) | `tab-contenido` |
+| 13 | Usuarios & Permisos | `tab-usuarios` |
+| 14 | Configuración | `tab-configuracion` |
+| 15 | Centro de Supervisión | `tab-supervision` |
 
 ### API global `window.adminApp`
 
@@ -683,6 +696,46 @@ Expone los handlers al HTML (39 métodos):
 **Compartir:** en la tab Propiedades, cada propiedad publicada tiene "Ver ficha pública" y "Compartir por WhatsApp" — el link se arma con `?de=<agente>&tel=<tel>` del usuario logueado, y la ficha muestra ese contacto con su WhatsApp como CTA.
 
 **Generador manual (tab Ficha HTML):** layout de dos columnas (formulario + preview 1:1, responsive 1200/1024/680px), autocompletado desde el CRM (debounce 250 ms), drag & drop de fotos y tres exportaciones: `navigator.share`, `window.print` (PDF) y HTML autocontenido descargable. Para fichas ad-hoc de propiedades no publicadas.
+
+### 🧩 Módulo Contenido & Redes (YouTube)
+
+Publicación y gestión de videos de YouTube **sin pasar por Cloudinary**: los bytes del video van del
+navegador directo a Google (subida resumable por chunks, con cancelación y reanudación) y la
+miniatura viaja en base64 al server (≤ 2 MB).
+
+**Arquitectura:** el orquestador `assets/js/admin-contenido.js` (UI) consume módulos compartidos
+cargados antes que él, todos bajo `window.BH_YT`:
+
+| Módulo | Archivo | Qué aporta |
+|---|---|---|
+| `core` | `assets/js/yt-core.js` | API con timeout/reintentos, estado, bus de eventos, storage, ajustes remotos (`app_settings`) y auditoría |
+| `publish` | `assets/js/yt-publish.js` | Pre-flight (chequeos antes de gastar 1600 unidades), subida resumable, cola, sesión de reanudación, dry-run y borrador |
+| `seo-tools` | `assets/js/yt-seo-tools.js` | Validación de límites reales de YouTube, canibalización, presets y frases |
+| `seo-score` | `assets/js/yt-seo-score.js` | Score SEO de 12 checks (estilo vidIQ) con delta contra el publicado |
+| `comments` | `assets/js/yt-comments.js` | Bandeja de comentarios del canal, respuestas, like, moderación y lead desde un comentario |
+| `analytics` | `assets/js/yt-analytics.js` | 6 reportes de YouTube Analytics (resumen, evolución, top, retención, tráfico, demografía) con caché de 5 min |
+| `ops` | `assets/js/yt-ops.js` | Semáforo de salud del canal, publicaciones fallidas y historial de acciones (`audit_log`) |
+| `integrations` | `assets/js/yt-integrations.js` | Ficha del video, compartir por WhatsApp, republicar y payload de publicación desde una propiedad |
+
+**Edge Functions:** `social-auth-youtube` (OAuth), `social-youtube-studio` (Studio: canal, inventario,
+edición, borrado, miniaturas, playlists, categorías, snapshots, analítica, ajustes y auditoría),
+`social-publish-youtube` (sesión de subida + `complete`/`fail`) y `social-youtube-comments`
+(listar/responder/moderar/crear lead). Todas con `verify_jwt` ON (solo panel).
+
+**Persistencia (sin migraciones):** `social_posts.content` (JSONB: metadata, score, categoría,
+flags), `app_settings` (`social_yt_stats_history`, `social_yt_categories`,
+`social_yt_publish_queue`) y `localStorage`/`sessionStorage` (plantillas, cuota, CTA, caché del Studio).
+
+**Canal público:** `/canal.html` muestra los videos publicados con su ficha. El índice
+`assets/data/canal-videos.json` lo genera el mismo CI de las fichas (cada 30 min) desde
+`social_posts`; si se borra un video del canal, el Studio marca el post como `failed` y desaparece
+de la página (no quedan embeds muertos).
+
+**Permisos:** `youtube.force-ssl` habilita edición/borrado/programación/moderación;
+`yt-analytics.readonly` habilita los reportes. Las conexiones hechas antes de agregar el scope de
+analítica responden `needs_reconnect` (banner claro) y el resto del módulo sigue funcionando.
+
+> Auditoría completa de las 50 mejoras del módulo: `docs/audit/AUDITORIA_YOUTUBE_50_MEJORAS_2026-10-30.md`.
 
 ### 🧩 Módulo Configuración
 

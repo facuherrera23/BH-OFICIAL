@@ -166,6 +166,22 @@ test.describe('Integraciones en el panel', () => {
     expect(toasts.some((t) => t.indexOf('Metadata copiada') >= 0)).toBe(true);
   });
 
+  test('la categoría pedida antes de la respuesta NO se pierde', async ({ page }) => {
+    /* Las categorías llegan tarde (red lenta): la categoría del video
+       se pide antes de que el <select> la tenga → queda pendiente y
+       se aplica cuando la API responde. */
+    await boot(page, {
+      videos: [Object.assign({}, VIDEO, { category_id: '10' })],
+      categoriesDelayMs: 1200,
+    });
+    await page.click('#contenidoSubTabs button[data-sub="studio"]');
+    await page.click('[data-studio-republish]');
+    await expect.poll(
+      () => page.locator('#ytCategory').inputValue(),
+      { timeout: 8000, intervals: [100, 200, 400] },
+    ).toBe('10');
+  });
+
   test('el botón "cargar datos de la propiedad" usa el módulo (fuente única)', async ({ page }) => {
     await boot(page, { properties: [PROP] });
     await page.click('#contenidoSubTabs button[data-sub="create"]');

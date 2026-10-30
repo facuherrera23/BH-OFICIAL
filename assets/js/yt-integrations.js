@@ -6,7 +6,9 @@
      · #32  Mapa video → publicación del CRM: el Studio puede
             ofrecer "Ver ficha" de la propiedad del video.
      · #34  Compartir el video por WhatsApp con el contacto del
-            agente (mismo patrón que las fichas: ?de=agente&tel=tel).
+            agente (el contexto va DENTRO del mensaje: un video de
+            YouTube no tiene página propia en el sitio que lo muestre,
+            como sí la tienen las fichas).
      · #36  Republicar: clonar la metadata de un video del canal
             al formulario de publicación (con tweaks).
      · #15  Atajo desde una propiedad: dejar lista la publicación

@@ -99,6 +99,7 @@
   let _accounts = [];
   let _platformConfig = {};   // { youtube: true, instagram: false, ... } — redes con app OAuth configurada
   let _pendingPropertyId = null; // propiedad a re-seleccionar cuando carga el picker
+  let _pendingCategoryId = null; // categoría a re-seleccionar cuando llegan las de la API
   let _subTab = 'accounts';
   let _bound = false;
   let _publishing = false;
@@ -1272,7 +1273,12 @@
     setFieldValue('ytTags', meta.tags);
     setFieldValue('ytKeyword', meta.keyword);
     if ($('#ytPrivacy')) $('#ytPrivacy').value = meta.privacy || 'public';
-    if ($('#ytCategory') && meta.categoryId) $('#ytCategory').value = meta.categoryId;
+    if ($('#ytCategory')) {
+      /* La categoría puede no estar en la lista todavía (la API todavía
+         no respondió): queda pendiente y se aplica cuando llega. */
+      _pendingCategoryId = meta.categoryId || null;
+      applyPendingCategory();
+    }
     recomputeSeoPanel();
     showToast('Metadata copiada — elegí el archivo y publicá la nueva versión.', 'info');
   }
@@ -2786,6 +2792,21 @@
   }
 
   /* --- Categorías de YouTube: lista REAL de la API (cacheada 7 días) --- */
+
+  /* La categoría puede pedirla una acción antes de que la API conteste
+     (republicar / cola): queda PENDIENTE y se aplica cuando el <select>
+     ya tiene la opción (si no, se perdería en silencio). */
+  function applyPendingCategory() {
+    const sel = $('#ytCategory');
+    if (!sel || !_pendingCategoryId) return;
+    const wanted = String(_pendingCategoryId);
+    const exists = Array.prototype.some.call(sel.options, function (o) { return o.value === wanted; });
+    if (exists) {
+      sel.value = wanted;
+      _pendingCategoryId = null;
+    }
+  }
+
   async function loadCategories() {
     const sel = $('#ytCategory');
     if (!sel) return;
@@ -2806,6 +2827,8 @@
       /* Si la categoría elegida sigue existiendo, se conserva. */
       const stillThere = cats.some(function (c) { return String(c.id) === String(current); });
       sel.value = stillThere ? current : String(cats[0].id);
+      /* Una categoría pedida antes de la respuesta se aplica ahora. */
+      applyPendingCategory();
       if (hint) {
         hint.textContent = res.cached
           ? 'Categorías de YouTube (cacheadas 7 días).'
@@ -3083,7 +3106,12 @@
     setFieldValue('ytKeyword', it.keyword || '');
     if ($('#ytPrivacy')) $('#ytPrivacy').value = it.privacy || 'public';
     if ($('#ytPublishAt')) $('#ytPublishAt').value = it.publishAt || '';
-    if ($('#ytCategory') && it.categoryId) $('#ytCategory').value = it.categoryId;
+    if ($('#ytCategory')) {
+      /* Igual que al republicar: si la categoría aún no está en la lista,
+         queda pendiente hasta que la API responda. */
+      _pendingCategoryId = it.categoryId || null;
+      applyPendingCategory();
+    }
     if ($('#ytProperty') && it.propertyId) $('#ytProperty').value = it.propertyId;
     recomputeSeoPanel();
     showToast('Metadata cargada — elegí el archivo y publicá.', 'info');

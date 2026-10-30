@@ -697,9 +697,15 @@ async function loadChannelVideos(propsById) {
     const res = await fetch(url, { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } });
     if (!res.ok) throw new Error(`Supabase ${res.status}: ${(await res.text()).slice(0, 120)}`);
     const rows = await res.json();
+    /* Un mismo video puede tener más de una fila en social_posts (por
+       ejemplo, si se reintentó la publicación): en la página pública
+       tiene que aparecer UNA sola vez (la más reciente, por el orden). */
+    const vistos = new Set();
     for (const r of rows || []) {
       const id = String(r.external_post_id || '');
       if (!id) continue;
+      if (vistos.has(id)) continue;
+      vistos.add(id);
       const content = r.content || {};
       const prop = (propsById && propsById[String(r.property_id || '')]) || null;
       out.push({
