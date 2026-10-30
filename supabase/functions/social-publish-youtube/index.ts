@@ -30,8 +30,39 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB (límite práctico v1: un
 const PRIVACY = ['public', 'unlisted', 'private'] as const;
 type Privacy = (typeof PRIVACY)[number];
 
+/* Límites reales de la API de YouTube (videos.insert). */
+const YT_TITLE_MAX = 100;
+const YT_DESC_MAX = 5000;
+const YT_TAGS_CHARS_MAX = 480;
+const YT_QUOTA_UPLOAD = 1600; // unidades de cuota que consume una subida
+const DEFAULT_CATEGORY = '22';
+
 function clip(s: string, max: number): string {
     return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ').trim().slice(0, max);
+}
+
+/** Categoría válida de YouTube (1..30). Cualquier otra cae al default. */
+function normalizeCategory(raw: unknown): string {
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1 || n > 30) return DEFAULT_CATEGORY;
+    return String(n);
+}
+
+/** Elige el comportamiento de los flags de publicación. */
+function normalizeFlags(body: {
+    embeddable?: unknown;
+    made_for_kids?: unknown;
+    license?: unknown;
+    notify_subscribers?: unknown;
+}): { embeddable: boolean; madeForKids: boolean; license: string; notifySubscribers: boolean } {
+    return {
+        /* embeddable=true permite incrustar el video en la ficha y en otros
+           sitios (youtube-nocookie). Con false, YouTube bloquea el embed. */
+        embeddable: body.embeddable === undefined ? true : body.embeddable !== false,
+        madeForKids: body.made_for_kids === true,
+        license: body.license === 'creativeCommon' ? 'creativeCommon' : 'youtube',
+        notifySubscribers: body.notify_subscribers === undefined ? true : body.notify_subscribers !== false,
+    };
 }
 
 Deno.serve(async (req) => {
@@ -66,6 +97,12 @@ Deno.serve(async (req) => {
         publish_at?: string;
         keyword?: string;
         seo_score?: number;
+        category_id?: string | number;
+        embeddable?: boolean;
+        made_for_kids?: boolean;
+        license?: string;
+        notify_subscribers?: boolean;
+        draft?: boolean;
     };
     try {
         body = await req.json();
@@ -143,6 +180,19 @@ Deno.serve(async (req) => {
                viven en social_posts.content (JSONB, sin migración). */
             const keyword = clip(String(body.keyword ?? ''), 100);
 
+            /* MEJORA 2026-10-30 (lote 50 mejoras): la categoría, los flags de
+               publicación y el modo borrador ya no están hardcodeados.
+               - category_id: la real de YouTube (22 = People & Blogs).
+               - embeddable: si es false, YouTube bloquea el embed → las
+                 fichas NO podrían mostrar el tour.
+               - license: 'youtube' | 'creativeCommon'.
+               - notify_subscribers: avisar al canal en la publicación.
+               - draft: publica en privado y deja el post como borrador
+                 (luego se promueve con social-youtube-studio). */
+            const categoryId = normalizeCategory(body.category_id);
+            const flags = normalizeFlags(body);
+            const isDraft = body.draft === true;
+
             // Post en 'publishing' ANTES de crear la sesión (queda traza aunque el PUT falle)
             const { data: post, error: postErr } = await supabase
                 .from('social_posts')
@@ -156,6 +206,12 @@ Deno.serve(async (req) => {
                         description,
                         tags,
                         privacy,
+                        category_id: categoryId,
+                        embeddable: flags.embeddable,
+                        made_for_kids: flags.madeForKids,
+                        license: flags.license,
+                        notify_subscribers: flags.notifySubscribers,
+                        ...(isDraft ? { draft: true } : {}),
                         ...(keyword ? { keyword } : {}),
                         ...(publishAtIso ? { publish_at: publishAtIso } : {}),
                         ...(seoScoreOk !== null ? { seo_score: seoScoreOk } : {}),
@@ -170,7 +226,10 @@ Deno.serve(async (req) => {
             // Sesión reanudable de Google (con programación si se pidió)
             const statusPayload: Record<string, unknown> = {
                 privacyStatus: publishAtIso ? 'private' : privacy,
-                selfDeclaredMadeForKids: false,
+                selfDeclaredMadeForKids: flags.madeForKids,
+                embeddable: flags.embeddable,
+                license: flags.license,
+                notifySubscribers: flags.notifySubscribers,
             };
             if (publishAtIso) statusPayload.publishAt = publishAtIso;
 
@@ -185,7 +244,7 @@ Deno.serve(async (req) => {
                         'X-Upload-Content-Type': fileType || 'video/mp4',
                     },
                     body: JSON.stringify({
-                        snippet: { title, description, tags, categoryId: '22' },
+                        snippet: { title, description, tags, categoryId },
                         status: statusPayload,
                     }),
                 },
@@ -218,10 +277,15 @@ Deno.serve(async (req) => {
 
             const { data: post } = await supabase
                 .from('social_posts')
-                .select('id, account_id, status')
+                .select('id, account_id, status, content')
                 .eq('id', postId)
                 .maybeSingle();
             if (!post) return respond(404, { error: 'Publicación no encontrada' });
+
+            /* Modo borrador: el video queda en privado y el post NO se marca
+               publicado (el dueño lo promueve después desde el Studio). */
+            const postContent = (post.content ?? {}) as Record<string, unknown>;
+            const isDraft = postContent.draft === true;
 
             const accessToken = await getSocialAccessToken(supabase, post.account_id);
             const checkRes = await fetch(
@@ -238,19 +302,25 @@ Deno.serve(async (req) => {
             }
 
             const { error: updErr } = await supabase.from('social_posts').update({
-                status: 'published',
-                published_at: new Date().toISOString(),
+                status: isDraft ? 'draft' : 'published',
+                published_at: isDraft ? null : new Date().toISOString(),
                 external_post_id: videoId,
                 external_url: `https://www.youtube.com/watch?v=${videoId}`,
                 error: null,
             }).eq('id', postId);
             if (updErr) return respond(500, { error: updErr.message });
 
-            await supabase.from('social_accounts')
-                .update({ last_publish_at: new Date().toISOString() })
-                .eq('id', post.account_id);
+            if (!isDraft) {
+                await supabase.from('social_accounts')
+                    .update({ last_publish_at: new Date().toISOString() })
+                    .eq('id', post.account_id);
+            }
 
-            return respond(200, { ok: true, url: `https://www.youtube.com/watch?v=${videoId}` });
+            return respond(200, {
+                ok: true,
+                draft: isDraft,
+                url: `https://www.youtube.com/watch?v=${videoId}`,
+            });
         }
 
         /* ------- fail: el PUT del navegador falló ------- */
@@ -276,6 +346,69 @@ Deno.serve(async (req) => {
                 metadata: { error: failError },
             });
             return respond(200, { ok: true });
+        }
+
+        /* ------- dry_run: valida el paquete SIN publicar -------
+           Espejo de las reglas del servidor de Google (title/description/
+           tags/privacy/categoría/peso) + estimación de cuota. Sirve para
+           el botón "Simular" del panel: el dueño ve los problemas antes
+           de gastar 1600 unidades. No llama a YouTube (cuota 0). */
+        if (body.action === 'dry_run') {
+            const title = clip(String(body.title ?? ''), YT_TITLE_MAX);
+            const description = clip(String(body.description ?? ''), YT_DESC_MAX);
+            let tags: string[] = [];
+            if (typeof body.tags === 'string') tags = body.tags.split(',').map((t) => clip(t, 60)).filter(Boolean);
+            else if (Array.isArray(body.tags)) tags = body.tags.map((t) => clip(String(t), 60)).filter(Boolean);
+            const fileSize = Number(body.file_size ?? 0);
+            const privacy = (PRIVACY as readonly string[]).includes(String(body.privacy ?? 'public'))
+                ? (String(body.privacy) as Privacy)
+                : 'public';
+            const categoryId = normalizeCategory(body.category_id);
+            const flags = normalizeFlags(body);
+            const publishAt = body.publish_at ? new Date(String(body.publish_at)) : null;
+
+            const issues: Array<{ level: string; message: string }> = [];
+            if (!title) issues.push({ level: 'error', message: 'Falta el título.' });
+            else if (String(body.title ?? '').length > YT_TITLE_MAX) {
+                issues.push({ level: 'error', message: `El título supera los ${YT_TITLE_MAX} caracteres.` });
+            }
+            if (String(body.description ?? '').length > YT_DESC_MAX) {
+                issues.push({ level: 'error', message: `La descripción supera los ${YT_DESC_MAX} caracteres.` });
+            }
+            const tagsChars = tags.join(',').length;
+            if (tagsChars > YT_TAGS_CHARS_MAX) {
+                issues.push({ level: 'warning', message: `Los tags ocupan ${tagsChars} caracteres (YouTube usa hasta ${YT_TAGS_CHARS_MAX}).` });
+            }
+            if (tags.length > 15) {
+                issues.push({ level: 'info', message: `Hay ${tags.length} tags: YouTube da peso SEO solo a los 3 primeros.` });
+            }
+            if (!fileSize || fileSize < 1024) {
+                issues.push({ level: 'error', message: 'Falta el archivo de video (o está vacío).' });
+            } else if (fileSize > MAX_FILE_BYTES) {
+                issues.push({ level: 'error', message: 'El video supera el máximo de 2 GB del módulo.' });
+            }
+            if (publishAt && (isNaN(publishAt.getTime()) || publishAt.getTime() < Date.now() + 5 * 60_000)) {
+                issues.push({ level: 'error', message: 'La fecha de programación debe ser futura (mínimo 5 minutos).' });
+            }
+            if (publishAt && privacy !== 'private') {
+                issues.push({ level: 'info', message: 'Al programar, YouTube publica el video en privado hasta la fecha y lo hace público solo entonces.' });
+            }
+            if (!flags.embeddable) {
+                issues.push({ level: 'warning', message: 'El video NO se podrá incrustar: las fichas del sitio dejarán de mostrar el tour.' });
+            }
+
+            return respond(200, {
+                ok: !issues.some((i) => i.level === 'error'),
+                issues,
+                estimate: {
+                    quota_units: YT_QUOTA_UPLOAD,
+                    title_length: title.length,
+                    description_length: description.length,
+                    tags_count: tags.length,
+                    tags_chars: tagsChars,
+                    category_id: categoryId,
+                },
+            });
         }
 
         return respond(400, { error: 'Acción inválida' });

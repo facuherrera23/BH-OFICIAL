@@ -672,3 +672,158 @@
     .yt-studio-avatar { width: 56px; height: 56px; }
     .yt-studio-title { font-size: 18px; }
 }
+
+/* ================================================================
+   13. HERRAMIENTAS DE PUBLICACIÓN (lote 50 mejoras)
+   Validación en vivo, variantes de título, bloques de descripción,
+   pre-flight, dry-run y cola de publicación.
+   ================================================================ */
+
+/* --- 13.1 Validación previa (columna derecha del form) --- */
+.yt-validation {
+    margin-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.yt-validation-title {
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+.yt-validation-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+.yt-validation-item i { flex-shrink: 0; margin-top: 2px; font-size: 12px; }
+.yt-validation-item--error { color: #fca5a5; }
+.yt-validation-item--error i { color: var(--danger); }
+.yt-validation-item--warning { color: #fcd34d; }
+.yt-validation-item--warning i { color: var(--warning); }
+.yt-validation-item--info { color: var(--text-dim); }
+.yt-validation-item--info i { color: var(--accent); }
+.yt-validation-item--ok { color: #86efac; }
+.yt-validation-item--ok i { color: var(--success); }
+.yt-validation-more { font-size: 10.5px; color: var(--text-dim); padding-left: 19px; }
+
+/* --- 13.2 Variantes de título --- */
+.yt-variants { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.yt-variant {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 11px 13px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: var(--transition);
+    font: inherit;
+}
+.yt-variant:hover {
+    border-color: var(--accent);
+    background: rgba(45, 212, 191, 0.08);
+}
+.yt-variant-title { font-size: 13px; font-weight: 600; line-height: 1.4; }
+.yt-variant-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 5px;
+    font-size: 11px;
+    color: var(--text-dim);
+}
+.yt-variant-score { font-weight: 700; flex-shrink: 0; }
+.yt-variant-why { line-height: 1.4; }
+
+/* --- 13.3 Bloques de descripción --- */
+.yt-blocks { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.yt-block {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 13px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: var(--transition);
+    font: inherit;
+}
+.yt-block:hover { border-color: var(--accent); background: rgba(45, 212, 191, 0.08); }
+.yt-block-head { font-size: 12.5px; font-weight: 600; color: var(--accent); }
+.yt-block-preview {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* --- 13.4 Pre-flight y dry-run --- */
+.yt-preflight { display: flex; flex-direction: column; gap: 9px; margin-top: 14px; }
+.yt-preflight-item { display: flex; align-items: flex-start; gap: 10px; }
+.yt-preflight-item i { flex-shrink: 0; margin-top: 2px; }
+.yt-preflight-label { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.yt-preflight-detail { font-size: 11.5px; color: var(--text-dim); line-height: 1.45; }
+.yt-preflight-summary { margin-right: auto; font-size: 12px; color: var(--text-secondary); align-self: center; }
+.yt-dryrun { display: flex; flex-direction: column; gap: 7px; margin-top: 14px; }
+.yt-dryrun-item { font-size: 12px; line-height: 1.45; }
+.yt-dryrun-est {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 11.5px;
+    color: var(--text-dim);
+}
+
+/* --- 13.5 Cola de publicación --- */
+.yt-queue {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+}
+.yt-queue-head { font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 9px; }
+.yt-queue-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    flex-wrap: wrap;
+}
+.yt-queue-title {
+    flex: 1 1 160px;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.yt-queue-meta { font-size: 11px; color: var(--text-dim); flex-shrink: 0; }
+
+/* --- 13.6 Badge de score SEO en la card del Studio --- */
+.yt-video-seo {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 700;
+    font-size: 11px;
+}
+

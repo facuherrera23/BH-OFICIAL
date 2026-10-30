@@ -57,6 +57,12 @@ const MAX_THUMB_BYTES = 2 * 1024 * 1024;
 const HISTORY_KEY = 'social_yt_stats_history';
 const HISTORY_MAX_DAYS = 90;
 const PLAYLISTS_MAX = 20;
+/* Caché de las categorías de YouTube (cambian por región; 7 días alcanza) */
+const CATEGORIES_KEY = 'social_yt_categories';
+const CATEGORIES_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/* Fallback honesto: la categoría que usa el módulo hoy. La lista completa
+   viene de la API (videoCategories.list) para no inventar ids. */
+const CATEGORIES_FALLBACK = [{ id: '22', name: 'People & Blogs' }];
 
 interface StudioAccount {
     id: string;
@@ -121,6 +127,7 @@ Deno.serve(async (req) => {
     if (!token) return respond(401, { error: 'No autorizado' });
     const { data: userData } = await supabase.auth.getUser(token);
     if (!userData?.user) return respond(401, { error: 'No autorizado' });
+    const adminId = userData.user.id;
 
     let body: {
         action?: string;
@@ -138,6 +145,15 @@ Deno.serve(async (req) => {
         item_id?: string;
         position?: number;
         max?: number;
+        key?: string;
+        value?: unknown;
+        audit_action?: string;
+        module?: string;
+        table_name?: string;
+        record_id?: string | null;
+        status?: string;
+        error_code?: string | null;
+        metadata?: unknown;
     };
     try {
         body = await req.json();
@@ -165,6 +181,153 @@ Deno.serve(async (req) => {
                 }
             }
             return respond(200, { platforms });
+        }
+
+        /* ------- Ajustes compartidos del módulo (app_settings) -------
+           El cliente NO puede escribir app_settings por RLS: el server
+           (service_role) lo hace. Solo se exponen claves social_yt_* para
+           no abrir otros ajustes del panel. */
+        if (body.action === 'settings_get') {
+            const key = String(body.key ?? '');
+            if (!key.startsWith('social_yt_')) return respond(400, { error: 'Clave no permitida' });
+            const { data, error } = await supabase
+                .from('app_settings')
+                .select('value')
+                .eq('key', key)
+                .maybeSingle() as { data: { value: unknown } | null; error: { message: string } | null };
+            if (error) return respond(500, { error: error.message });
+            return respond(200, { key, value: data?.value ?? null });
+        }
+
+        if (body.action === 'settings_set') {
+            const key = String(body.key ?? '');
+            if (!key.startsWith('social_yt_')) return respond(400, { error: 'Clave no permitida' });
+            const { error } = await supabase
+                .from('app_settings')
+                .upsert(
+                    { key, value: body.value ?? null, updated_at: new Date().toISOString() },
+                    { onConflict: 'key' },
+                );
+            if (error) return respond(500, { error: error.message });
+            return respond(200, { ok: true, key });
+        }
+
+        /* ------- Auditoría del módulo (audit_log) -------
+           El cliente no puede insertar en audit_log (RLS): lo hace el
+           server con service_role. action + module son NOT NULL y la
+           columna de usuario es user_id. */
+        if (body.action === 'audit_log') {
+            /* Contrato: body.action despacha ('audit_log') y body.audit_action
+               es el nombre real de la acción auditada. Se usan campos
+               separados porque 'action' ya está ocupado por el dispatch. */
+            const finalAction = clip(String(body.audit_action ?? ''), 80);
+            if (!finalAction) return respond(400, { error: 'Falta la acción de auditoría' });
+            const module = clip(String(body.module ?? 'contenido'), 60);
+            /* record_id es UUID en el schema real: si el cliente manda un id
+               que no es UUID (ej. el id de la cola local 'q_123'), se guarda
+               null en vez de romper la insert. */
+            const rawRecordId = String(body.record_id ?? '').trim();
+            const recordId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawRecordId)
+                ? rawRecordId
+                : null;
+            const { error } = await supabase.from('audit_log').insert({
+                user_id: adminId,
+                action: finalAction,
+                module,
+                table_name: clip(String(body.table_name ?? 'social_posts'), 60),
+                record_id: recordId,
+                status: body.status === 'error' ? 'error' : 'success',
+                error_code: body.error_code ? clip(String(body.error_code), 60) : null,
+                metadata: body.metadata ?? null,
+            });
+            if (error) return respond(500, { error: error.message });
+            return respond(200, { ok: true });
+        }
+
+        /* ------- Categorías de YouTube (videoCategories.list) -------
+           La lista real la da la API (cambia por región); se cachea 7 días
+           en app_settings. Fallback mínimo si Google falla. */
+        if (body.action === 'video_categories') {
+            const { data: cached } = await supabase
+                .from('app_settings')
+                .select('value')
+                .eq('key', CATEGORIES_KEY)
+                .maybeSingle() as { data: { value: unknown } | null };
+            const cachedVal = cached?.value as { at?: number; items?: Array<{ id: string; name: string }> } | null;
+            if (cachedVal && cachedVal.items?.length && Date.now() - Number(cachedVal.at ?? 0) < CATEGORIES_TTL_MS) {
+                return respond(200, { categories: cachedVal.items, cached: true });
+            }
+            try {
+                const accountId = String(body.account_id ?? '');
+                let accessToken = '';
+                if (accountId) {
+                    const acc = await loadAccount(supabase, accountId);
+                    accessToken = await getSocialAccessToken(supabase, accountId);
+                } else {
+                    const { data: anyAcc } = await supabase
+                        .from('social_accounts')
+                        .select('id')
+                        .eq('platform', 'youtube')
+                        .eq('status', 'active')
+                        .limit(1)
+                        .maybeSingle() as { data: { id: string } | null };
+                    if (anyAcc?.id) accessToken = await getSocialAccessToken(supabase, anyAcc.id);
+                }
+                if (!accessToken) throw new Error('Sin token de YouTube');
+                const res = await youtubeFetch(
+                    `${YOUTUBE_API}/videoCategories?part=snippet&regionCode=AR`,
+                    accessToken,
+                ) as { items?: Array<{ id?: string; snippet?: { title?: string } }> };
+                const items = (res.items ?? [])
+                    .filter((c) => !!c.id)
+                    .map((c) => ({ id: String(c.id), name: String(c.snippet?.title ?? '') }))
+                    .filter((c) => !!c.name);
+                if (!items.length) throw new Error('La API no devolvió categorías');
+                await supabase.from('app_settings').upsert(
+                    { key: CATEGORIES_KEY, value: { at: Date.now(), items }, updated_at: new Date().toISOString() },
+                    { onConflict: 'key' },
+                );
+                return respond(200, { categories: items, cached: false });
+            } catch (err) {
+                return respond(200, {
+                    categories: cachedVal?.items?.length ? cachedVal.items : CATEGORIES_FALLBACK,
+                    cached: true,
+                    warning: (err as Error).message.slice(0, 160),
+                });
+            }
+        }
+
+        /* ------- Promover un borrador a público ------- */
+        if (body.action === 'video_promote') {
+            const accountId = String(body.account_id ?? '');
+            const videoId = clip(String(body.video_id ?? ''), 50);
+            if (!accountId || !videoId) return respond(400, { error: 'Faltan datos' });
+            const acc = await loadAccount(supabase, accountId);
+            if (!hasManageScope(acc)) {
+                return respond(403, { error: 'Reconectá la cuenta de YouTube para habilitar la administración completa.' });
+            }
+            const accessToken = await getSocialAccessToken(supabase, accountId);
+            await youtubeFetch(`${YOUTUBE_API}/videos?part=status`, accessToken, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: videoId,
+                    status: { privacyStatus: 'public', selfDeclaredMadeForKids: false, embeddable: true },
+                }),
+            });
+            const { error } = await supabase
+                .from('social_posts')
+                .update({
+                    status: 'published',
+                    published_at: new Date().toISOString(),
+                    external_post_id: videoId,
+                    external_url: `https://www.youtube.com/watch?v=${videoId}`,
+                    error: null,
+                })
+                .eq('platform', 'youtube')
+                .eq('external_post_id', videoId);
+            if (error) return respond(500, { error: error.message });
+            return respond(200, { ok: true });
         }
 
         /* ------- Info del canal (funciona con solo readonly) ------- */

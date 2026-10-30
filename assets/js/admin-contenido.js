@@ -13,6 +13,18 @@
   const FN_BASE = (window.BH_CONFIG && window.BH_CONFIG.SUPABASE_URL) + '/functions/v1';
   const MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB — límite práctico (sube por chunks resumables)
 
+  /* ---------- Módulos compartidos del módulo (cargados antes que este archivo)
+     BH_YT.core     → API con timeout/reintentos, estado, bus, storage, auditoría
+     BH_YT.seo      → validaciones, variantes de título, bloques, presets
+     BH_YT.publish  → pre-flight, subida reanudable, cola, dry-run, borrador
+     Si alguno no estuviera cargado (HTML viejo en caché), el módulo sigue
+     funcionando con lo que sí está: cada feature nueva chequea antes de
+     usarse. NO se reimplementa nada acá: una sola implementación por
+     comportamiento (si no, los módulos se pisan entre sí). */
+  const CORE = (window.BH_YT && window.BH_YT.core) || null;
+  const YTSEO = (window.BH_YT && window.BH_YT.seo) || null;
+  const YTPUB = (window.BH_YT && window.BH_YT.publish) || null;
+
   /* Plataformas: available=false → tarjeta "próximamente" (fases 2+). */
   const PLATFORM_META = {
     youtube:   { name: 'YouTube',   icon: 'fab fa-youtube',      color: '#FF0000', available: true },
@@ -49,7 +61,7 @@
 
   /* Subida en curso (para cancelar) */
   let _uploadCancelled = false;
-  let _activeXhr = null;
+  let _uploadCtx = null;    // ctx de la subida en vuelo (permite abortar el XHR)
 
   /* #18: campos bloqueados durante la subida (UNA constante para las dos
      pasadas lock/unlock — antes eran arrays repetidos que divergían). */
@@ -72,6 +84,8 @@
     channel: 3, videos: 6, video_update: 50, video_delete: 55, thumbnail: 52,
     playlists: 25, playlist_create: 50, playlist_item_add: 50, playlist_item_remove: 50,
     snapshot: 8, analytics: 5, platforms_config: 1,
+    /* videoCategories.list cuesta 1 unidad (no 5). */
+    video_categories: 1,
   };
 
   let _accounts = [];
@@ -104,9 +118,21 @@
   const YT_FN_TIMEOUT = 30000;
 
   /* #44: cuota estimada — trackea la unidad de la acción recién hecha
-     (Google suma unidades aunque el request falle en su lado). */
+     (Google suma unidades aunque el request falle en su lado).
+     Si el núcleo compartido está cargado, la llamada pasa por él: timeout,
+     reintentos con backoff y errores en español (un solo lugar donde la
+     lógica de red vive). El fallback legacy es para un HTML viejo en caché. */
   async function studioApiCall(body) {
     const units = STUDIO_QUOTA[body.action] || 5;
+    if (CORE && CORE.api && typeof CORE.api.studio === 'function') {
+      const payload = Object.assign({}, body);
+      delete payload.action;
+      try {
+        return await CORE.api.studio(body.action, payload);
+      } finally {
+        trackQuota(units); // estimación: el request salió (la unidad se consume)
+      }
+    }
     const headers = await authHeaders();
     const ctrl = new AbortController();
     const timer = setTimeout(function () { ctrl.abort(); }, YT_FN_TIMEOUT);
@@ -544,7 +570,7 @@
       '<div class="yt-toolbar">' +
         '<h3 class="yt-toolbar-title"><i class="fas fa-list"></i> Contenido (<span id="studioCount">' + _studioVideos.length + '</span>)</h3>' +
         '<div class="yt-spacer"></div>' +
-        '<input id="studioSearch" type="text" placeholder="Buscar título o tag…" class="crm-field-input yt-search">' +
+        '<input id="studioSearch" type="text" placeholder="Buscar título, tag o descripción…" class="crm-field-input yt-search">' +
         '<select id="studioSort" class="crm-field-input crm-field-input--select">' +
           '<option value="recent">Más recientes</option>' +
           '<option value="old">Más antiguos</option>' +
@@ -609,13 +635,30 @@
     if (csvBtn) csvBtn.addEventListener('click', downloadStudioCsv);
   }
 
+  /* Score SEO de un video del canal (badge de la card). El motor es puro y
+     barato: con 100 videos son 100 cálculos chicos por re-render. */
+  function studioSeoScore(v) {
+    if (!window.BH_YT_SEO || typeof window.BH_YT_SEO.calc !== 'function') return null;
+    try {
+      const r = window.BH_YT_SEO.calc({
+        title: (v && v.title) || '',
+        description: (v && v.description) || '',
+        tags: (v && v.tags) || [],
+      });
+      return (r && !r.empty) ? r : null;
+    } catch (_) { return null; }
+  }
+
   /* #25: filtro/orden de la grilla; #27 "dead" = 0 vistas con más de 30 días */
   function filteredStudioVideos() {
     let list = _studioVideos.slice();
     const q = bhNorm(_studioQ).trim();
     if (q) {
       list = list.filter(function (v) {
+        /* Búsqueda full-text: título, tags Y descripción (el dueño
+           recuerda una frase de la descripción, no el título). */
         return bhNorm(v.title || '').indexOf(q) >= 0 ||
+          bhNorm(v.description || '').indexOf(q) >= 0 ||
           (v.tags || []).some(function (t) { return bhNorm(t).indexOf(q) >= 0; });
       });
     }
@@ -696,6 +739,7 @@
       /* #24: badge de subida en procesamiento (upload_status del server) */
       const processing = v.upload_status && v.upload_status !== 'processed';
       const sparkData = sparkPointsFor(v.id, 14); // #23
+      const seo = studioSeoScore(v);
       /* REPARACIÓN: sin youtube.force-ssl (can_manage=false) los botones de
          editar/borrar se mostraban igual → el server respondía 403 y el dueño
          veía un error. Ahora se ocultan y el aviso de "solo lectura" explica
@@ -721,6 +765,7 @@
             '<span title="Vistas"><i class="fas fa-eye"></i> ' + fmtNum(v.views) + '</span>' +
             '<span title="Likes"><i class="fas fa-thumbs-up"></i> ' + fmtNum(v.likes) + '</span>' +
             '<span title="Comentarios"><i class="fas fa-comment"></i> ' + fmtNum(v.comments) + '</span>' +
+            (seo ? '<span class="yt-video-seo" style="color:' + esc(seo.color) + ';" title="Score SEO del video (' + esc(seo.label) + ')"><i class="fas fa-bullseye"></i> ' + esc(String(seo.score)) + '</span>' : '') +
             (sparkData ? '<span title="Tendencia de las últimas 2 semanas">' + buildSparkSvg(sparkData, 62, 18) + '</span>' : '') +
           '</div>' +
           '<div class="yt-video-date">' + esc(fecha) + '</div>' +
@@ -1015,7 +1060,9 @@
           description: box.querySelector('#steDesc').value,
           tags: box.querySelector('#steTags').value,
           privacy: box.querySelector('#stePrivacy').value,
-          publish_at: publishAt || undefined,
+          /* Instante absoluto: el server corre en UTC y un "2026-10-31T18:00"
+             sin zona lo interpretaría como 18:00 UTC = 21:00 en Argentina. */
+          publish_at: publishAt ? new Date(publishAt).toISOString() : undefined,
         });
         /* Miniatura opcional — el update ya guardó lo demás: un fallo acá no revierte nada */
         const thumbFile = box.querySelector('#steThumb').files && box.querySelector('#steThumb').files[0];
@@ -1483,8 +1530,13 @@
       sel.addEventListener('change', function () {
         if (!this.value) return;
         try { localStorage.setItem(YT_LAST_ACCOUNT_KEY, this.value); } catch (_) {}
+        /* Las categorías de YouTube dependen del canal (son por región). */
+        loadCategories();
       });
     }
+    /* La lista de categorías se pide una vez por canal (queda cacheada 7 días
+       en app_settings: el server no la vuelve a bajar). */
+    loadCategories();
   }
 
   function fmtBytes(n) {
@@ -1508,6 +1560,10 @@
   }
 
   function recomputeSeoPanel() {
+    /* La validación previa se refresca siempre (aunque el motor SEO no esté
+       cargado): son dos checks distintos y el dueño no puede publicar sin
+       ver los errores de límites de YouTube. */
+    refreshValidationPanel();
     const body = $('#ytSeoBody');
     if (!body || !window.BH_YT_SEO || typeof window.BH_YT_SEO.render !== 'function') return;
     const kwEl = $('#ytKeyword');
@@ -1667,7 +1723,9 @@
         _uploadCancelled = true;
         this.disabled = true;
         this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cancelando…';
-        if (_activeXhr) { try { _activeXhr.abort(); } catch (_) {} }
+        /* Aborta el XHR en vuelo (si hay): el módulo ve el 'abort' y frena
+           sin dejar el video a medio publicar. */
+        if (_uploadCtx && _uploadCtx.xhr) { try { _uploadCtx.xhr.abort(); } catch (_) {} }
       });
     }
 
@@ -1725,6 +1783,40 @@
         try { localStorage.setItem(YT_CTA_AUTO_KEY, this.checked ? '1' : '0'); } catch (_) {}
       });
     }
+
+    /* Plantillas por tipo de contenido (lógica en assets/js/yt-seo-tools.js).
+       El select se puebla solo con el módulo cargado; si no, queda el
+       placeholder y el botón avisa (nunca rompe el form). */
+    const presetSel = $('#ytPresetSel');
+    if (presetSel && YTSEO && YTSEO.PRESETS && presetSel.dataset.bound !== '1') {
+      presetSel.dataset.bound = '1';
+      presetSel.innerHTML = '<option value="">＋ Plantilla por tipo…</option>' +
+        YTSEO.PRESETS.map(function (p) {
+          return '<option value="' + esc(p.id) + '">' + esc(p.label) + '</option>';
+        }).join('');
+      presetSel.addEventListener('change', function () {
+        const id = this.value || '';
+        this.value = '';
+        if (id) applyPresetById(id);
+      });
+    }
+
+    /* Cola de publicación (render inicial + aviso de una subida pendiente) */
+    renderQueuePanel();
+    if (YTPUB && YTPUB.resume) {
+      const pending = YTPUB.resume.load();
+      if (pending && pending.postId) {
+        const hint = $('#ytFileInfo');
+        if (hint) {
+          hint.style.display = '';
+          hint.style.color = 'var(--warning)';
+          hint.innerHTML = '<i class="fas fa-triangle-exclamation"></i> Hay una subida pendiente de "' +
+            esc(String(pending.title || pending.fileName || 'video').substring(0, 50)) +
+            '" — volvé a elegir el mismo archivo para retomarla.';
+        }
+      }
+    }
+
     renderQuotaHud();
   }
 
@@ -1883,6 +1975,438 @@
     descEl.value = descEl.value.replace(/\s*$/, '') + buildCtaBlock(p);
     descEl.dispatchEvent(new Event('input', { bubbles: true }));
     showToast('CTA + hashtags agregados al final.', 'success');
+  }
+
+  /* ============================================================
+     HERRAMIENTAS DE PUBLICACIÓN (lote de 50 mejoras)
+     ------------------------------------------------------------
+     Toda la lógica vive en los módulos compartidos:
+       · assets/js/yt-seo-tools.js → validate, titleVariants, BLOCKS, PRESETS, canibalización
+       · assets/js/yt-publish.js   → preflight, dryRun, queue
+     Acá solo se dibuja la UI y se conecta con el formulario. Si un
+     módulo no estuviera cargado, el botón avisa (no falla en silencio).
+     ============================================================ */
+
+  function toolsUnavailable(name) {
+    showToast('"' + name + '" no está disponible — recargá la página.', 'warning');
+  }
+
+  /* Propiedad seleccionada en el form (objeto del picker). */
+  function currentProperty() {
+    const id = ($('#ytProperty') || {}).value || '';
+    if (!id) return null;
+    return _createProps.find(function (x) { return x.id === id; }) || null;
+  }
+
+  /* Flag de publicación leído del form. El default importa: si el checkbox
+     no está (HTML viejo en caché) NO se manda embeddable=false — con false
+     YouTube bloquea el embed y las fichas dejan de mostrar el tour. */
+  function flagChecked(id, fallback) {
+    const el = $('#' + id);
+    if (!el) return fallback;
+    return !!el.checked;
+  }
+
+  /* Metadata del formulario: una sola fuente para la cola, el dry-run
+     y el pre-flight (así no se desincronizan entre sí). */
+  function collectFormMeta() {    return {
+      title: (($('#ytTitle') || {}).value || '').trim(),
+      description: (($('#ytDesc') || {}).value || '').trim(),
+      tags: (($('#ytTags') || {}).value || '').trim(),
+      keyword: (($('#ytKeyword') || {}).value || '').trim(),
+      privacy: (($('#ytPrivacy') || {}).value || 'public'),
+      propertyId: (($('#ytProperty') || {}).value || ''),
+      categoryId: (($('#ytCategory') || {}).value || '22'),
+      publishAt: (($('#ytPublishAt') || {}).value || ''),
+    };
+  }
+
+  /* --- Categorías de YouTube: lista REAL de la API (cacheada 7 días) --- */
+  async function loadCategories() {
+    const sel = $('#ytCategory');
+    if (!sel) return;
+    const hint = $('#ytCategoryHint');
+    const accountId = ($('#ytAccountSelect') || {}).value || '';
+    if (!accountId) {
+      if (hint) hint.textContent = 'Elegí un canal para cargar las categorías.';
+      return;
+    }
+    try {
+      const res = await studioApiCall({ action: 'video_categories', account_id: accountId });
+      const cats = (res && res.categories) || [];
+      if (!cats.length) return;
+      const current = sel.value || '22';
+      sel.innerHTML = cats.map(function (c) {
+        return '<option value="' + esc(c.id) + '">' + esc(c.name) + '</option>';
+      }).join('');
+      /* Si la categoría elegida sigue existiendo, se conserva. */
+      const stillThere = cats.some(function (c) { return String(c.id) === String(current); });
+      sel.value = stillThere ? current : String(cats[0].id);
+      if (hint) {
+        hint.textContent = res.cached
+          ? 'Categorías de YouTube (cacheadas 7 días).'
+          : 'Categorías reales de YouTube para Argentina.';
+      }
+    } catch (_) {
+      if (hint) hint.textContent = 'No se pudo consultar la lista de categorías — se usa People & Blogs.';
+    }
+  }
+
+  /* --- Validación en vivo: límites reales de YouTube + canibalización --- */
+  function refreshValidationPanel() {
+    const panel = $('#ytValidationPanel');
+    if (!panel) return;
+    if (!YTSEO || typeof YTSEO.validate !== 'function') { panel.innerHTML = ''; return; }
+    const meta = collectFormMeta();
+    let res;
+    try {
+      res = YTSEO.validate(meta);
+    } catch (_) { panel.innerHTML = ''; return; }
+    const items = [];
+    (res.errors || []).forEach(function (i) { items.push({ level: 'error', msg: i.message }); });
+    (res.warnings || []).forEach(function (i) { items.push({ level: 'warning', msg: i.message }); });
+    (res.infos || []).forEach(function (i) { items.push({ level: 'info', msg: i.message }); });
+    /* Canibalización: el video no debe competir con otro del canal. */
+    try {
+      const comp = YTSEO.canibalization({
+        title: meta.title,
+        keyword: meta.keyword,
+        channelVideos: _studioVideos || [],
+      });
+      (comp || []).forEach(function (w) {
+        items.push({ level: w.level === 'warning' ? 'warning' : 'info', msg: w.message });
+      });
+    } catch (_) { /* la canibalización es un extra: nunca rompe el panel */ }
+
+    if (!items.length) {
+      panel.innerHTML = '<div class="yt-validation-item yt-validation-item--ok">' +
+        '<i class="fas fa-circle-check"></i> Todo listo para publicar.</div>';
+      return;
+    }
+    const MAX = 8;
+    const shown = items.slice(0, MAX);
+    const rest = items.length - shown.length;
+    panel.innerHTML = '<div class="yt-validation-title">Validación previa</div>' +
+      shown.map(function (i) {
+        const icon = i.level === 'error' ? 'fa-circle-xmark' : (i.level === 'warning' ? 'fa-triangle-exclamation' : 'fa-circle-info');
+        return '<div class="yt-validation-item yt-validation-item--' + i.level + '">' +
+          '<i class="fas ' + icon + '"></i><span>' + esc(i.msg) + '</span></div>';
+      }).join('') +
+      (rest > 0 ? '<div class="yt-validation-more">y ' + rest + ' aviso(s) más…</div>' : '');
+  }
+
+  /* --- Títulos alternativos: 5 variantes con su score --- */
+  function openTitleVariantsModal() {
+    if (!YTSEO || typeof YTSEO.titleVariants !== 'function') return toolsUnavailable('Títulos alternativos');
+    const meta = collectFormMeta();
+    if (!meta.title) { showToast('Escribí un título base para generar las variantes.', 'warning'); return; }
+    const variants = YTSEO.titleVariants({
+      title: meta.title,
+      description: meta.description,
+      tags: meta.tags,
+      keyword: meta.keyword,
+      property: currentProperty() || {},
+    });
+    if (!variants.length) { showToast('No se pudieron generar variantes.', 'info'); return; }
+    const html =
+      '<div class="yt-modal-head">' +
+        '<h3><i class="fas fa-wand-magic-sparkles"></i> Títulos alternativos</h3>' +
+        '<p class="yt-modal-sub">Ordenados por score SEO. Hacé click para usar uno.</p>' +
+      '</div>' +
+      '<div class="yt-variants">' + variants.map(function (v, i) {
+        const color = v.score == null ? 'var(--text-dim)'
+          : (v.score >= 85 ? '#22c55e' : (v.score >= 70 ? '#a3e635' : (v.score >= 50 ? '#f59e0b' : '#ef4444')));
+        return '<button type="button" class="yt-variant" data-yt-variant="' + i + '">' +
+          '<div class="yt-variant-title">' + esc(v.title) + '</div>' +
+          '<div class="yt-variant-meta">' +
+            '<span class="yt-variant-score" style="color:' + color + ';">' + (v.score == null ? '—' : v.score + '/100') + '</span>' +
+            '<span class="yt-variant-why">' + esc(v.why) + '</span>' +
+          '</div>' +
+        '</button>';
+      }).join('') + '</div>' +
+      '<div class="yt-modal-foot">' +
+        '<button type="button" id="ytVariantsClose" class="btn-luxury-action yt-btn--md">Cerrar</button>' +
+      '</div>';
+    const m = createYtModal('ytVariantsOverlay', { html: html, wide: true });
+    const close = m.box.querySelector('#ytVariantsClose');
+    if (close) close.addEventListener('click', function () { closeModalIfExists('ytVariantsOverlay'); });
+    m.box.querySelectorAll('[data-yt-variant]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const v = variants[parseInt(btn.getAttribute('data-yt-variant'), 10)];
+        if (!v) return;
+        setFieldValue('ytTitle', v.title);
+        closeModalIfExists('ytVariantsOverlay');
+        showToast('Título aplicado.', 'success');
+      });
+    });
+  }
+
+  /* --- Bloques de descripción reutilizables --- */
+  function openBlocksModal() {
+    if (!YTSEO || !YTSEO.BLOCKS) return toolsUnavailable('Bloques de descripción');
+    const prop = currentProperty();
+    const meta = {
+      phone: '',
+      email: '',
+      url: 'https://bienenhaus.com.ar',
+      keyword: collectFormMeta().keyword,
+      propertyUrl: prop ? fichaUrlFor(prop.property_code) : '',
+      zones: [],
+    };
+    const html =
+      '<div class="yt-modal-head">' +
+        '<h3><i class="fas fa-puzzle-piece"></i> Bloques de descripción</h3>' +
+        '<p class="yt-modal-sub">Click para insertar el bloque al final de la descripción.</p>' +
+      '</div>' +
+      '<div class="yt-blocks">' + YTSEO.BLOCKS.map(function (b, i) {
+        const preview = String(b.build(meta) || '').trim();
+        return '<button type="button" class="yt-block" data-yt-block="' + i + '">' +
+          '<div class="yt-block-head"><i class="' + esc(b.icon) + '"></i> ' + esc(b.label) + '</div>' +
+          '<div class="yt-block-preview">' + esc(preview.substring(0, 180)) + '</div>' +
+        '</button>';
+      }).join('') + '</div>' +
+      '<div class="yt-modal-foot">' +
+        '<button type="button" id="ytBlocksClose" class="btn-luxury-action yt-btn--md">Cerrar</button>' +
+      '</div>';
+    const m = createYtModal('ytBlocksOverlay', { html: html, wide: true });
+    const close = m.box.querySelector('#ytBlocksClose');
+    if (close) close.addEventListener('click', function () { closeModalIfExists('ytBlocksOverlay'); });
+    m.box.querySelectorAll('[data-yt-block]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const b = YTSEO.BLOCKS[parseInt(btn.getAttribute('data-yt-block'), 10)];
+        if (!b) return;
+        const text = String(b.build(meta) || '').trim();
+        if (!text) { showToast('Ese bloque no aplica (falta la ficha de la propiedad).', 'info'); return; }
+        const descEl = $('#ytDesc');
+        if (!descEl) return;
+        descEl.value = descEl.value.replace(/\s*$/, '') + '\n' + text;
+        descEl.dispatchEvent(new Event('input', { bubbles: true }));
+        closeModalIfExists('ytBlocksOverlay');
+        showToast('Bloque insertado: ' + b.label, 'success');
+      });
+    });
+  }
+
+  /* --- Plantillas por tipo de contenido --- */
+  function applyPresetById(id) {
+    if (!YTSEO || typeof YTSEO.presetById !== 'function') return toolsUnavailable('Plantillas por tipo');
+    const preset = YTSEO.presetById(id);
+    if (!preset) return;
+    const meta = collectFormMeta();
+    const prop = currentProperty() || {};
+    const out = preset.apply({ property: prop, keyword: meta.keyword, title: meta.title }) || {};
+    if (out.title) setFieldValue('ytTitle', String(out.title).substring(0, 100));
+    if (out.description) setFieldValue('ytDesc', String(out.description).substring(0, 5000));
+    if (out.tags) {
+      const tags = Array.isArray(out.tags) ? out.tags.join(', ') : String(out.tags);
+      setFieldValue('ytTags', tags.substring(0, 480));
+    }
+    if (out.privacy && $('#ytPrivacy')) $('#ytPrivacy').value = out.privacy;
+    recomputeSeoPanel();
+    showToast('Plantilla "' + preset.label + '" aplicada.', 'success');
+  }
+
+  /* --- Pre-flight: archivo + metadata antes de gastar cuota --- */
+  function openPreflightModal() {
+    if (!YTPUB || typeof YTPUB.preflight !== 'function') return toolsUnavailable('Pre-flight');
+    const fileInput = $('#ytFile');
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    const res = YTPUB.preflight(file, collectFormMeta());
+    const html =
+      '<div class="yt-modal-head">' +
+        '<h3><i class="fas fa-clipboard-check"></i> Pre-flight</h3>' +
+        '<p class="yt-modal-sub">Chequeos que se hacen ANTES de subir el video (no gastan cuota).</p>' +
+      '</div>' +
+      '<div class="yt-preflight">' + (res.checks || []).map(function (c) {
+        const icon = c.ok ? 'fa-circle-check' : 'fa-circle-xmark';
+        const color = c.ok ? '#22c55e' : '#ef4444';
+        return '<div class="yt-preflight-item">' +
+          '<i class="fas ' + icon + '" style="color:' + color + ';"></i>' +
+          '<div><div class="yt-preflight-label">' + esc(c.label) + '</div>' +
+          '<div class="yt-preflight-detail">' + esc(c.detail) + '</div></div>' +
+        '</div>';
+      }).join('') + '</div>' +
+      '<div class="yt-modal-foot">' +
+        '<span class="yt-preflight-summary">' + (res.ok ? 'Todo OK: se puede publicar.' : 'Hay ' + (res.errors || []).length + ' problema(s) por corregir.') + '</span>' +
+        '<button type="button" id="ytPreflightClose" class="btn-luxury-action yt-btn--md">Cerrar</button>' +
+      '</div>';
+    const m = createYtModal('ytPreflightOverlay', { html: html });
+    const close = m.box.querySelector('#ytPreflightClose');
+    if (close) close.addEventListener('click', function () { closeModalIfExists('ytPreflightOverlay'); });
+  }
+
+  /* --- Simulación en el servidor (dry-run: no consume cuota de Google) --- */
+  async function runDryRun() {
+    if (!YTPUB || typeof YTPUB.dryRun !== 'function') return toolsUnavailable('Simulación');
+    const fileInput = $('#ytFile');
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    const meta = collectFormMeta();
+    const btn = $('#ytDryRunBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Simulando…'; }
+    try {
+      const res = await YTPUB.dryRun({
+        account_id: ($('#ytAccountSelect') || {}).value || '',
+        title: meta.title,
+        description: meta.description,
+        tags: meta.tags,
+        privacy: meta.privacy,
+        category_id: meta.categoryId,
+        file_size: file ? file.size : 0,
+        file_type: file ? (file.type || 'video/mp4') : 'video/mp4',
+        publish_at: meta.publishAt ? new Date(meta.publishAt).toISOString() : undefined,
+        embeddable: flagChecked('ytEmbeddable', true),
+        notify_subscribers: flagChecked('ytNotifySubs', true),
+        made_for_kids: flagChecked('ytMadeForKids', false),
+        license: (($('#ytLicense') || {}).value || 'youtube'),
+      });
+      const issues = (res && res.issues) || [];
+      const est = (res && res.estimate) || {};
+      const html =
+        '<div class="yt-modal-head">' +
+          '<h3><i class="fas fa-flask"></i> Simulación de publicación</h3>' +
+          '<p class="yt-modal-sub">El servidor validó el paquete SIN llamar a YouTube (0 unidades de cuota).</p>' +
+        '</div>' +
+        '<div class="yt-dryrun">' + (issues.length
+          ? issues.map(function (i) {
+              const color = i.level === 'error' ? '#ef4444' : (i.level === 'warning' ? '#f59e0b' : 'var(--text-dim)');
+              return '<div class="yt-dryrun-item" style="color:' + color + ';"><i class="fas fa-circle-dot"></i> ' + esc(i.message) + '</div>';
+            }).join('')
+          : '<div class="yt-dryrun-item" style="color:#22c55e;"><i class="fas fa-circle-check"></i> Sin observaciones: el paquete es válido.</div>') + '</div>' +
+        '<div class="yt-dryrun-est"><span>Título: ' + esc(String(est.title_length || 0)) + '/100</span>' +
+          '<span>Descripción: ' + esc(String(est.description_length || 0)) + '/5000</span>' +
+          '<span>Tags: ' + esc(String(est.tags_count || 0)) + ' (' + esc(String(est.tags_chars || 0)) + '/480)</span>' +
+          '<span>Cuota al publicar: ' + esc(String(est.quota_units || 1600)) + ' unidades</span></div>' +
+        '<div class="yt-modal-foot">' +
+          '<button type="button" id="ytDryRunClose" class="btn-luxury-action yt-btn--md">Cerrar</button>' +
+        '</div>';
+      const m = createYtModal('ytDryRunOverlay', { html: html });
+      const close = m.box.querySelector('#ytDryRunClose');
+      if (close) close.addEventListener('click', function () { closeModalIfExists('ytDryRunOverlay'); });
+    } catch (err) {
+      logError('Contenido: dry-run', err);
+      showToast(err.message || 'No se pudo simular la publicación.', 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-flask"></i> Simular'; }
+    }
+  }
+
+  /* --- Cola local de publicación (la metadata viaja; el archivo no) --- */
+  function enqueueCurrent(silent) {
+    if (!YTPUB || !YTPUB.queue) return toolsUnavailable('Cola de publicación');
+    const meta = collectFormMeta();
+    if (!meta.title) { showToast('Poné un título antes de encolar.', 'warning'); return; }
+    YTPUB.queue.add({
+      title: meta.title,
+      description: meta.description,
+      tags: meta.tags,
+      keyword: meta.keyword,
+      privacy: meta.privacy,
+      propertyId: meta.propertyId,
+      categoryId: meta.categoryId,
+      publishAt: meta.publishAt,
+    });
+    renderQueuePanel();
+    if (!silent) showToast('Metadata guardada en la cola.', 'success');
+  }
+
+  function applyQueueItem(id) {
+    if (!YTPUB || !YTPUB.queue) return;
+    const it = YTPUB.queue.get(id);
+    if (!it) return;
+    setFieldValue('ytTitle', it.title || '');
+    setFieldValue('ytDesc', it.description || '');
+    setFieldValue('ytTags', it.tags || '');
+    setFieldValue('ytKeyword', it.keyword || '');
+    if ($('#ytPrivacy')) $('#ytPrivacy').value = it.privacy || 'public';
+    if ($('#ytPublishAt')) $('#ytPublishAt').value = it.publishAt || '';
+    if ($('#ytCategory') && it.categoryId) $('#ytCategory').value = it.categoryId;
+    if ($('#ytProperty') && it.propertyId) $('#ytProperty').value = it.propertyId;
+    recomputeSeoPanel();
+    showToast('Metadata cargada — elegí el archivo y publicá.', 'info');
+  }
+
+  function removeQueueItem(id) {
+    if (!YTPUB || !YTPUB.queue) return;
+    YTPUB.queue.remove(id);
+    renderQueuePanel();
+  }
+
+  function renderQueuePanel() {
+    const panel = $('#ytQueuePanel');
+    if (!panel) return;
+    if (!YTPUB || !YTPUB.queue) { panel.innerHTML = ''; return; }
+    const items = YTPUB.queue.list();
+    if (!items.length) { panel.innerHTML = ''; return; }
+    panel.innerHTML =
+      '<div class="yt-queue">' +
+        '<div class="yt-queue-head"><i class="fas fa-list-check"></i> Cola de publicación (' + items.length + ')</div>' +
+        items.map(function (it) {
+          const when = it.publishAt ? new Date(it.publishAt).toLocaleString('es-AR') : 'sin fecha';
+          return '<div class="yt-queue-item">' +
+            '<div class="yt-queue-title">' + esc(it.label || it.title || 'Sin título') + '</div>' +
+            '<div class="yt-queue-meta">' + esc(when) + '</div>' +
+            '<button type="button" class="btn-luxury-action yt-btn--xs" data-yt-queue-load="' + esc(it.id) + '" title="Cargar la metadata en el formulario">Cargar</button>' +
+            '<button type="button" class="btn-luxury-action yt-btn--xs" data-yt-queue-del="' + esc(it.id) + '" title="Sacar de la cola" style="color:var(--danger);">Quitar</button>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+  }
+
+  /* --- Serie: N copias con fechas escalonadas (quedan en la cola) --- */
+  function openSeriesModal() {
+    if (!YTPUB || !YTPUB.queue) return toolsUnavailable('Serie de videos');
+    const meta = collectFormMeta();
+    if (!meta.title) { showToast('Poné un título base antes de crear la serie.', 'warning'); return; }
+    const html =
+      '<div class="yt-modal-head">' +
+        '<h3><i class="fas fa-layer-group"></i> Serie de videos</h3>' +
+        '<p class="yt-modal-sub">Crea N copias de esta metadata con fechas escalonadas. Quedan en la cola: el archivo se elige al publicar cada una.</p>' +
+      '</div>' +
+      '<div class="yt-field"><span class="yt-label">Cantidad de videos</span>' +
+        '<input id="ytSeriesCount" type="number" min="2" max="10" value="3" class="crm-field-input" style="width:100%;"></div>' +
+      '<div class="yt-field"><span class="yt-label">Días entre cada video</span>' +
+        '<input id="ytSeriesDays" type="number" min="1" max="30" value="2" class="crm-field-input" style="width:100%;"></div>' +
+      '<div class="yt-field"><span class="yt-label">Fecha del primero</span>' +
+        '<input id="ytSeriesStart" type="datetime-local" class="crm-field-input" style="width:100%;"></div>' +
+      '<div class="yt-modal-foot">' +
+        '<button type="button" id="ytSeriesCancel" class="btn-luxury-action yt-btn--md">Cancelar</button>' +
+        '<button type="button" id="ytSeriesApply" class="btn-luxury-action yt-btn--md"><i class="fas fa-layer-group"></i> Crear serie</button>' +
+      '</div>';
+    const m = createYtModal('ytSeriesOverlay', { html: html });
+    const box = m.box;
+    const start = box.querySelector('#ytSeriesStart');
+    if (start) {
+      const d = new Date(Date.now() + 86400000);
+      d.setHours(18, 0, 0, 0);
+      start.value = toLocalInput(d.toISOString());
+    }
+    const cancel = box.querySelector('#ytSeriesCancel');
+    if (cancel) cancel.addEventListener('click', function () { closeModalIfExists('ytSeriesOverlay'); });
+    const apply = box.querySelector('#ytSeriesApply');
+    if (!apply) return;
+    apply.addEventListener('click', function () {
+      const count = Math.max(2, Math.min(10, parseInt(box.querySelector('#ytSeriesCount').value, 10) || 3));
+      const days = Math.max(1, Math.min(30, parseInt(box.querySelector('#ytSeriesDays').value, 10) || 2));
+      const startVal = box.querySelector('#ytSeriesStart').value || '';
+      const startTs = startVal ? new Date(startVal).getTime() : (Date.now() + 86400000);
+      const dates = [];
+      for (let i = 0; i < count; i++) {
+        const when = new Date(startTs + i * days * 86400000);
+        dates.push({ publishAt: toLocalInput(when.toISOString()), label: meta.title + ' #' + (i + 1) });
+      }
+      YTPUB.queue.series({
+        title: meta.title,
+        description: meta.description,
+        tags: meta.tags,
+        keyword: meta.keyword,
+        privacy: meta.privacy,
+        propertyId: meta.propertyId,
+        categoryId: meta.categoryId,
+      }, dates);
+      renderQueuePanel();
+      closeModalIfExists('ytSeriesOverlay');
+      showToast(count + ' videos agregados a la cola.', 'success');
+    });
   }
 
   /* #2: plantillas locales (localStorage bh_yt_templates, tope 20) */
@@ -2137,139 +2661,64 @@
      de 8 MB y, tras cada fallo, se le pregunta a Google cuántos bytes
      recibió (PUT vacío con header Content-Range "bytes * sobre TOTAL",
      que responde con un header Range) y se reanuda desde ahí.
-     Los bytes ya subidos jamás se re-envían. */
+     Los bytes ya subidos jamás se re-envían.
 
-  const YT_CHUNK_SIZE = 8 * 1024 * 1024;   // 8 MB (32 × 256 KB, mínimo del protocolo)
-  const YT_CHUNK_TIMEOUT = 5 * 60 * 1000;  // por chunk — 8 MB tardan segundos
-  const YT_MAX_STALLS = 8;                 // reintentos sin progreso antes de rendirse
-
-  function ytPutChunk(sessionUrl, blob, contentRange, onChunkProgress) {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('PUT', sessionUrl);
-      xhr.setRequestHeader('Content-Range', contentRange);
-      xhr.setRequestHeader('Content-Type', blob.type || 'application/octet-stream');
-      xhr.timeout = YT_CHUNK_TIMEOUT;
-      /* MEJORA: progreso suave DENTRO del chunk (la barra saltaba cada 8 MB
-       y en una subida lenta parecía colgada). */
-      if (onChunkProgress) {
-        xhr.upload.onprogress = function (e) {
-          if (e.lengthComputable) onChunkProgress(e.loaded, e.total);
-        };
-      }
-      /* MEJORA: permite cancelar la subida (abort del XHR en vuelo). */
-      _activeXhr = xhr;
-      const settle = function (fn, arg) {
-        if (_activeXhr === xhr) _activeXhr = null;
-        fn(arg);
-      };
-      xhr.addEventListener('load', () => settle(resolve, xhr));
-      xhr.addEventListener('error', () => settle(reject, new Error('network')));
-      xhr.addEventListener('timeout', () => settle(reject, new Error('network')));
-      xhr.addEventListener('abort', () => settle(reject, new Error('abort')));
-      xhr.send(blob);
-    });
-  }
-
-  /* ¿Cuántos bytes tiene guardados Google? PUT vacío (sin body) con el
-     header Content-Range "bytes * sobre TOTAL". 200/201 = completo,
-     308 = parcial con header Range: bytes=0-N. Error de consulta →
-     received -1 (el caller reintenta). */
-  async function ytQueryUploadStatus(sessionUrl, total) {
-    try {
-      const xhr = await ytPutChunk(sessionUrl, new Blob([]), 'bytes */' + total);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        let resource = {};
-        try { resource = JSON.parse(xhr.responseText || '{}'); } catch (_) {}
-        return { received: total, complete: true, resource };
-      }
-      const m = (xhr.getResponseHeader('Range') || '').match(/bytes=0-(\d+)/);
-      return { received: m ? parseInt(m[1], 10) + 1 : 0, complete: false, resource: {} };
-    } catch (_) {
-      return { received: -1, complete: false, resource: {} };
-    }
-  }
-
-  function ytSleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+     La implementación vive ÚNICA en assets/js/yt-publish.js (módulo
+     compartido): ahí están los chunks, el backoff por stalls, la
+     cancelación y la sesión PERSISTENTE (si se recarga la pestaña, la
+     subida se puede retomar desde el último byte). Acá solo se conecta
+     la UI (progreso + botón cancelar) con ese módulo — dos copias de
+     este algoritmo se desincronizan yersen y el resultado es un video
+     "a medio subir" sin que nadie sepa por qué. */
 
   async function xhrUploadToGoogle(sessionUrl, file, onProgress) {
-    const total = file.size;
-    let offset = 0;
-    let stalls = 0;
-    /* #9: muestreo de velocidad (EMA) para el ETA del panel flotante */
-    let lastBytes = 0;
-    let lastTs = Date.now();
-    let bps = 0;
-    const tick = function (bytesNow) {
-      const now = Date.now();
-      const dt = (now - lastTs) / 1000;
-      if (dt > 0.25) {
-        const inst = (bytesNow - lastBytes) / dt;
-        if (inst > 0) bps = bps ? bps * 0.7 + inst * 0.3 : inst;
-        lastBytes = bytesNow;
-        lastTs = now;
-      }
-      const remaining = total - bytesNow;
-      return { bps: bps, etaSec: bps > 0 ? remaining / bps : 0 };
-    };
-    const advance = (to) => { offset = to; stalls = 0; };
-    while (offset < total) {
-      if (_uploadCancelled) throw new Error('Subida cancelada — no se publicó nada.');
-      const end = Math.min(offset + YT_CHUNK_SIZE, total) - 1;
-      try {
-        const xhr = await ytPutChunk(
-          sessionUrl,
-          file.slice(offset, end + 1),
-          'bytes ' + offset + '-' + end + '/' + total,
-          /* progreso suave: bytes del chunk ya enviados + offset global */
-          function (loadedInChunk) {
-            if (!onProgress) return;
-            const smooth = Math.min(offset + loadedInChunk, total);
-            onProgress(smooth, total, tick(smooth));
-          },
-        );
-        if (xhr.status >= 200 && xhr.status < 300) {
-          /* Último chunk aceptado: Google responde con el recurso del video. */
-          advance(total);
-          if (onProgress) onProgress(total, total, { bps: bps, etaSec: 0 });
-          try { return JSON.parse(xhr.responseText || '{}'); } catch (_) { return {}; }
-        }
-        if (xhr.status === 308) {
-          /* Chunk aceptado (o parcial): el header Range dice cuánto quedó. */
-          const m = (xhr.getResponseHeader('Range') || '').match(/bytes=0-(\d+)/);
-          const serverHas = m ? parseInt(m[1], 10) + 1 : 0;
-          if (serverHas > offset) advance(serverHas); else stalls++;
-        } else {
-          /* 4xx/5xx: consultar cuánto recibió y reanudar. */
-          const st = await ytQueryUploadStatus(sessionUrl, total);
-          if (st.complete) { advance(total); if (onProgress) onProgress(total, total, { bps: 0, etaSec: 0 }); return st.resource; }
-          if (st.received > offset) advance(st.received); else stalls++;
-        }
-      } catch (e) {
-        if (e.message === 'abort') {
-          if (_uploadCancelled) throw new Error('Subida cancelada — no se publicó nada.');
-          throw new Error('La subida se interrumpió porque la página se cerró o recargó. Volvé a intentarlo.');
-        }
-        const st = await ytQueryUploadStatus(sessionUrl, total);
-        if (st.complete) { advance(total); if (onProgress) onProgress(total, total, { bps: 0, etaSec: 0 }); return st.resource; }
-        if (st.received > offset) advance(st.received); else stalls++;
-      }
-      if (onProgress) onProgress(offset, total, tick(offset));
-      if (stalls >= YT_MAX_STALLS) {
-        throw new Error('La conexión falló varias veces seguidas. Verificá tu red y volvé a intentarlo.');
-      }
-      if (stalls > 0) await ytSleep(Math.min(1000 * Math.pow(2, stalls - 1), 30000));
+    if (!YTPUB || typeof YTPUB.upload !== 'function') {
+      throw new Error('Falta el módulo de publicación (yt-publish.js). Recargá la página e intentá de nuevo.');
     }
-    return {};
+    /* ctx: es el puente con la UI. El módulo expone el XHR en vuelo para
+       que el botón "Cancelar subida" pueda abortarlo. */
+    const ctx = {
+      sessionUrl: sessionUrl,
+      cancelled: function () { return _uploadCancelled; },
+      onProgress: function (pct, loaded, total, extra) {
+        if (onProgress) onProgress(loaded, total, extra);
+      },
+      onOffset: function (offset) {
+        /* La posición se persiste: si la página se recarga, el módulo puede
+           decir cuánto se había subido y desde dónde retomar. */
+        if (YTPUB.resume) YTPUB.resume.updateOffset(offset);
+      },
+    };
+    _uploadCtx = ctx;
+    return YTPUB.upload(sessionUrl, file, ctx);
   }
 
-  async function publishToYoutube() {
+  /* Llamada directa al backend de publicación. Solo se usa si el núcleo
+     compartido (yt-core.js) no está cargado — HTML viejo en caché. Con el
+     núcleo cargado, todo pasa por core.api.publish (timeout + reintentos). */
+  async function legacyPublishCall(action, payload) {
+    const res = await fetch(FN_BASE + '/social-publish-youtube', {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify(Object.assign({ action: action }, payload || {})),
+    });
+    const json = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
+    return json;
+  }
+
+  /* ---------- Publicación (normal o borrador) ----------
+     mode: 'publish' (default) | 'draft'
+     El borrador sube el video en PRIVADO y deja el post en estado 'draft'
+     (después se promueve desde el Studio con video_promote). */
+  async function publishToYoutube(mode) {
     if (_publishing) return;
+    const isDraft = mode === 'draft';
     const accountId = ($('#ytAccountSelect') || {}).value || '';
     const title = (($('#ytTitle') || {}).value || '').trim();
     const description = (($('#ytDesc') || {}).value || '').trim();
     const tags = (($('#ytTags') || {}).value || '').trim();
-    const privacy = (($('#ytPrivacy') || {}).value || 'public');
+    const privacy = isDraft ? 'private' : (($('#ytPrivacy') || {}).value || 'public');
     const publishAt = (($('#ytPublishAt') || {}).value || '').trim();
     const fileInput = $('#ytFile');
 
@@ -2283,6 +2732,16 @@
       showToast('El archivo no es un video (' + file.type + ').', 'error'); return;
     }
     if (file.size > MAX_FILE_BYTES) { showToast('El video supera el máximo de 2 GB.', 'error'); return; }
+    /* Pre-flight: formato, peso y límites de metadata ANTES de gastar los
+       1600 puntos de cuota de la subida. */
+    if (YTPUB && typeof YTPUB.preflight === 'function') {
+      const pre = YTPUB.preflight(file, { title: title, description: description, tags: tags });
+      if (!pre.ok) {
+        const lines = pre.errors.map(function (c) { return '• ' + c.label + ': ' + c.detail; }).join('\n');
+        showToast('No se puede publicar todavía:\n' + lines, 'error');
+        return;
+      }
+    }
     /* Programación: si se setea, validar que es futura y usar privacy=private
        + publishAt (YouTube lo pasa a público automáticamente en ese momento). */
     if (publishAt) {
@@ -2349,28 +2808,47 @@
 
     try {
       /* 1. init: sesión de subida en Google + registro del post */
-      const initRes = await fetch(FN_BASE + '/social-publish-youtube', {
-        method: 'POST',
-        headers: await authHeaders(),
-        body: JSON.stringify({
-          action: 'init',
-          account_id: accountId,
-          title,
-          description: descOut, // #11: con el auto-CTA si correspondía
-          tags,
-          privacy,
-          file_size: file.size,
-          file_type: file.type || 'video/mp4',
-          publish_at: publishAt || undefined,
-          property_id: (($('#ytProperty') || {}).value || undefined), // #1
-          seo_score: (typeof seoScore === 'number' && seoScore > 0 ? seoScore : undefined), // #18
-          keyword: (($('#ytKeyword') || {}).value || undefined), // se guarda en content (reintentar lo conserva)
-        }),
-      });
-      const init = await initRes.json().catch(() => ({}));
-      if (!initRes.ok) throw new Error(init.error || ('HTTP ' + initRes.status));
-      if (!init.session_url || !init.post_id) throw new Error('La función no devolvió la sesión de subida');
+      const initPayload = {
+        account_id: accountId,
+        title,
+        description: descOut, // #11: con el auto-CTA si correspondía
+        tags,
+        privacy,
+        file_size: file.size,
+        file_type: file.type || 'video/mp4',
+        publish_at: publishAt ? new Date(publishAt).toISOString() : undefined,
+        property_id: (($('#ytProperty') || {}).value || undefined), // #1
+        seo_score: (typeof seoScore === 'number' && seoScore > 0 ? seoScore : undefined), // #18
+        keyword: (($('#ytKeyword') || {}).value || undefined), // se guarda en content (reintentar lo conserva)
+        /* Flags de publicación: categoría real de YouTube, incrustación
+           (si es false las fichas NO pueden embeber el tour), aviso a
+           suscriptores, contenido para niños y licencia. */
+        category_id: (($('#ytCategory') || {}).value || undefined),
+        embeddable: flagChecked('ytEmbeddable', true),
+        notify_subscribers: flagChecked('ytNotifySubs', true),
+        made_for_kids: flagChecked('ytMadeForKids', false),
+        license: (($('#ytLicense') || {}).value || 'youtube'),
+        draft: isDraft,
+      };
+      const init = CORE && CORE.api
+        ? await CORE.api.publish('init', initPayload)
+        : await legacyPublishCall('init', initPayload);
+      if (!init || !init.session_url || !init.post_id) throw new Error('La función no devolvió la sesión de subida');
       postId = init.post_id;
+
+      /* Sesión persistente: si el navegador se recarga durante la subida,
+         queda registrado en qué byte iba (y qué post era) para poder
+         retomar la subida en vez de perderla. */
+      if (YTPUB && YTPUB.resume) {
+        YTPUB.resume.save({
+          sessionUrl: init.session_url,
+          postId: init.post_id,
+          fileName: file.name || '',
+          fileSize: file.size,
+          title: title,
+          offset: 0,
+        });
+      }
 
       /* Heartbeat: mientras la subida está viva refresca updated_at del post
          para que el zombie sweep del historial (30 min sin latido) no lo
@@ -2392,18 +2870,27 @@
 
       /* 3. complete: verifica y marca publicado */
       setUploadProgress(97, 'Verificando…');
-      const doneRes = await fetch(FN_BASE + '/social-publish-youtube', {
-        method: 'POST',
-        headers: await authHeaders(),
-        body: JSON.stringify({ action: 'complete', post_id: init.post_id, video_id: videoId }),
-      });
-      const done = await doneRes.json().catch(() => ({}));
-      if (!doneRes.ok) throw new Error(done.error || ('HTTP ' + doneRes.status));
+      const done = CORE && CORE.api
+        ? await CORE.api.publish('complete', { post_id: init.post_id, video_id: videoId })
+        : await legacyPublishCall('complete', { post_id: init.post_id, video_id: videoId });
 
-      setUploadProgress(100, '¡Publicado!');
+      setUploadProgress(100, isDraft ? '¡Borrador guardado!' : '¡Publicado!');
       trackQuota(1600); // #44: costo real de una subida resumable
-      showToast(publishAt ? 'Video programado para ' + new Date(publishAt).toLocaleString('es-AR') + '.' : 'Video publicado en YouTube.', 'success');
-      if (done.url && !publishAt) window.open(done.url, '_blank', 'noopener');
+      /* La sesión de reanudación ya no sirve (el video está en YouTube). */
+      if (YTPUB && YTPUB.resume) YTPUB.resume.clear();
+      if (CORE && CORE.audit) {
+        CORE.audit(isDraft ? 'yt_draft' : 'yt_publish', {
+          recordId: postId,
+          metadata: { title: title, video_id: videoId, draft: isDraft },
+        });
+      }
+      showToast(
+        isDraft
+          ? 'Borrador guardado en YouTube (privado). Promovélo desde el Studio cuando quieras.'
+          : (publishAt ? 'Video programado para ' + new Date(publishAt).toLocaleString('es-AR') + '.' : 'Video publicado en YouTube.'),
+        'success'
+      );
+      if (done.url && !publishAt && !isDraft) window.open(done.url, '_blank', 'noopener');
       setFieldValue('ytTitle', '');
       setFieldValue('ytDesc', '');
       setFieldValue('ytTags', '');
@@ -2422,12 +2909,20 @@
          y el historial mostraba un estado mentiroso hasta el zombie sweep. */
       if (postId) {
         try {
-          await fetch(FN_BASE + '/social-publish-youtube', {
-            method: 'POST',
-            headers: await authHeaders(),
-            body: JSON.stringify({ action: 'fail', post_id: postId, upload_error: err.message }),
-          });
+          const failPayload = { post_id: postId, upload_error: err.message };
+          if (CORE && CORE.api) await CORE.api.publish('fail', failPayload);
+          else await legacyPublishCall('fail', failPayload);
         } catch (_) { /* best-effort — el sweep lo cubre */ }
+      }
+      /* Traza del fallo en audit_log (la escribe el server: el cliente no
+         puede insertar en audit_log por RLS). */
+      if (CORE && CORE.audit) {
+        CORE.audit('yt_publish_fail', {
+          recordId: postId,
+          status: 'error',
+          errorCode: 'YT_UPLOAD_FAIL',
+          metadata: { message: err.message, draft: isDraft },
+        });
       }
       showToast(err.message, 'error');
       setUploadProgress(0, '');
@@ -2435,7 +2930,7 @@
     } finally {
       if (hbTimer) { clearInterval(hbTimer); hbTimer = null; }
       _publishing = false;
-      _activeXhr = null;
+      _uploadCtx = null;
       _uploadCancelled = false;
       LOCK_IDS.forEach(id => {
         const el = document.getElementById(id);
@@ -2676,6 +3171,16 @@
           /* MEJORA: chips con los tags que ya rindieron en el canal */
           '<div id="ytChannelTags" style="margin-top:8px;"></div>' +
           '</div>' +
+          /* Herramientas de publicación (lógica en assets/js/yt-seo-tools.js
+             y assets/js/yt-publish.js — acá solo el botón y el resultado). */
+          '<div class="yt-field"><span class="yt-label">Herramientas</span>' +
+          '<div class="yt-inline" style="flex-wrap:wrap;gap:6px;">' +
+            '<button type="button" id="ytTitleVariantsBtn" class="btn-luxury-action yt-btn--xs" title="Generar 5 títulos alternativos con su score"><i class="fas fa-wand-magic-sparkles"></i> Títulos alternativos</button>' +
+            '<button type="button" id="ytBlocksBtn" class="btn-luxury-action yt-btn--xs" title="Insertar bloques de descripción (contacto, aviso legal, zonas, hashtags, ficha)"><i class="fas fa-puzzle-piece"></i> Bloques</button>' +
+            '<select id="ytPresetSel" class="crm-field-input crm-field-input--select" title="Plantilla según el tipo de contenido" style="width:auto;padding:6px 10px;font-size:11.5px;"><option value="">＋ Plantilla por tipo…</option></select>' +
+            '<button type="button" id="ytPreflightBtn" class="btn-luxury-action yt-btn--xs" title="Revisar archivo y metadata antes de subir (no consume cuota)"><i class="fas fa-clipboard-check"></i> Pre-flight</button>' +
+            '<button type="button" id="ytDryRunBtn" class="btn-luxury-action yt-btn--xs" title="Simular la publicación en el servidor (no consume cuota de YouTube)"><i class="fas fa-flask"></i> Simular</button>' +
+          '</div></div>' +
           '<div class="yt-row" style="margin-bottom:18px;gap:14px;">' +
             '<div style="flex:2;min-width:250px;"><span class="yt-label">Video (máx. 2 GB)</span>' +
             /* MEJORA: se puede arrastrar el archivo a la zona */
@@ -2699,6 +3204,21 @@
               '<button type="button" data-quick-sched="jueves18" class="btn-luxury-action yt-btn--xs">Jueves 18:00</button>' +
             '</div></div>' +
           '</div>' +
+          /* Categoría real de YouTube + flags de publicación.
+             - embeddable=false → las fichas NO pueden embeber el tour.
+             - made_for_kids / license / notify_subscribers viajan a la API. */
+          '<div class="yt-row" style="margin-bottom:18px;gap:14px;">' +
+            '<div style="flex:1;min-width:220px;"><span class="yt-label">Categoría de YouTube</span>' +
+            '<select id="ytCategory" class="crm-field-input crm-field-input--select"><option value="22">People & Blogs</option></select>' +
+            '<span id="ytCategoryHint" class="yt-hint"></span></div>' +
+            '<div style="flex:1;min-width:250px;"><span class="yt-label">Opciones de publicación</span>' +
+            '<div class="yt-inline" style="flex-wrap:wrap;gap:10px;font-size:11.5px;color:var(--text-dim);">' +
+              '<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;"><input id="ytEmbeddable" type="checkbox" checked> Permitir incrustar</label>' +
+              '<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;"><input id="ytNotifySubs" type="checkbox" checked> Avisar a suscriptores</label>' +
+              '<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;"><input id="ytMadeForKids" type="checkbox"> Para niños</label>' +
+              '<select id="ytLicense" class="crm-field-input crm-field-input--select" title="Licencia del video" style="width:auto;padding:5px 8px;font-size:11px;"><option value="youtube">Licencia YouTube</option><option value="creativeCommon">Creative Commons</option></select>' +
+            '</div></div>' +
+          '</div>' +
           '<div id="ytProgress" class="yt-progress">' +
             '<div class="yt-progress-track">' +
               '<div id="ytUploadBar" class="yt-progress-bar"></div>' +
@@ -2710,7 +3230,14 @@
           '</div>' +
           '<div class="yt-actions yt-actions--left">' +
             '<button type="button" id="ytPublishBtn" class="btn-luxury-action yt-btn--lg"><i class="fas fa-paper-plane"></i> Publicar en YouTube</button>' +
+            /* Borrador: el video sube en privado y el post queda 'draft'. */
+            '<button type="button" id="ytDraftBtn" class="btn-luxury-action" title="Subir el video en privado y dejarlo como borrador (se promueve desde el Studio)"><i class="fas fa-file-circle-exclamation"></i> Guardar borrador</button>' +
+            /* Cola local: guarda la metadata (el archivo se elige al publicar). */
+            '<button type="button" id="ytQueueBtn" class="btn-luxury-action" title="Guardar la metadata en la cola local (el archivo lo elegís al publicar)"><i class="fas fa-list-check"></i> Encolar</button>' +
+            '<button type="button" id="ytSeriesBtn" class="btn-luxury-action" title="Programar una serie de videos con fechas escalonadas"><i class="fas fa-layer-group"></i> Serie</button>' +
           '</div>' +
+          /* Cola de publicación (render en vivo) */
+          '<div id="ytQueuePanel"></div>' +
           /* #44: HUD de cuota API estimada */
           '<div id="ytQuotaHud" style="margin-top:14px;"></div>' +
         '</div>' +
@@ -2723,6 +3250,9 @@
             '<div class="yt-field"><span class="yt-label">Palabra clave objetivo <span style="font-size:10.5px;text-transform:none;letter-spacing:0;">(vacío = la deduzco del título)</span></span>' +
             '<input id="ytKeyword" type="text" class="crm-field-input" placeholder="Ej: inmobiliaria córdoba" style="width:100%;"></div>' +
             '<div id="ytSeoBody"></div>' +
+            /* Validación en vivo (límites reales de YouTube + canibalización).
+               Vive en assets/js/yt-seo-tools.js: la UI solo la dibuja. */
+            '<div id="ytValidationPanel" class="yt-validation"></div>' +
             /* #7: completar tags con los presets sugeridos */
             '<button type="button" id="ytQuickFixTags" class="btn-luxury-action" title="Agrega los tags sugeridos hasta 15 (respeta el límite de 480 chars)" style="width:100%;margin-top:10px;padding:8px 12px;font-size:11px;"><i class="fas fa-wand-magic-sparkles"></i> Completar tags sugeridos</button>' +
           '</div>' +
@@ -2772,7 +3302,20 @@
         switchSubTab(which);
         return;
       }
-      if (e.target.closest('#ytPublishBtn')) publishToYoutube();
+      if (e.target.closest('#ytPublishBtn')) { publishToYoutube(); return; }
+      /* Herramientas de publicación (lote 50 mejoras) */
+      if (e.target.closest('#ytTitleVariantsBtn')) { openTitleVariantsModal(); return; }
+      if (e.target.closest('#ytBlocksBtn')) { openBlocksModal(); return; }
+      if (e.target.closest('#ytPreflightBtn')) { openPreflightModal(); return; }
+      if (e.target.closest('#ytDryRunBtn')) { runDryRun(); return; }
+      if (e.target.closest('#ytDraftBtn')) { publishToYoutube('draft'); return; }
+      if (e.target.closest('#ytQueueBtn')) { enqueueCurrent(false); return; }
+      if (e.target.closest('#ytSeriesBtn')) { openSeriesModal(); return; }
+      /* Cola de publicación */
+      const qLoad = e.target.closest('[data-yt-queue-load]');
+      if (qLoad) { applyQueueItem(qLoad.getAttribute('data-yt-queue-load')); return; }
+      const qDel = e.target.closest('[data-yt-queue-del]');
+      if (qDel) { removeQueueItem(qDel.getAttribute('data-yt-queue-del')); return; }
       const del = e.target.closest('[data-contenido-delete]');
       if (del) { deletePost(del.dataset.contenidoDelete); return; }
       /* STUDIO: acciones sobre videos del canal */
