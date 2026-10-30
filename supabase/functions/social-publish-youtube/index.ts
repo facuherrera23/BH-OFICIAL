@@ -64,6 +64,7 @@ Deno.serve(async (req) => {
         video_id?: string;
         upload_error?: string;
         publish_at?: string;
+        keyword?: string;
         seo_score?: number;
     };
     try {
@@ -136,6 +137,12 @@ Deno.serve(async (req) => {
 
             const accessToken = await getSocialAccessToken(supabase, accountId);
 
+            /* REPARACIÓN 2026-10-30: la keyword y la fecha de programación
+               NO se guardaban → al copiar/reintentar desde el historial se
+               perdían (y el reintento salía sin tour en la ficha). Ahora
+               viven en social_posts.content (JSONB, sin migración). */
+            const keyword = clip(String(body.keyword ?? ''), 100);
+
             // Post en 'publishing' ANTES de crear la sesión (queda traza aunque el PUT falle)
             const { data: post, error: postErr } = await supabase
                 .from('social_posts')
@@ -144,7 +151,15 @@ Deno.serve(async (req) => {
                     platform: 'youtube',
                     property_id: propertyId,
                     post_type: 'video',
-                    content: { title, description, tags, privacy, ...(seoScoreOk !== null ? { seo_score: seoScoreOk } : {}) },
+                    content: {
+                        title,
+                        description,
+                        tags,
+                        privacy,
+                        ...(keyword ? { keyword } : {}),
+                        ...(publishAtIso ? { publish_at: publishAtIso } : {}),
+                        ...(seoScoreOk !== null ? { seo_score: seoScoreOk } : {}),
+                    },
                     status: 'publishing',
                     created_by: adminId,
                 })

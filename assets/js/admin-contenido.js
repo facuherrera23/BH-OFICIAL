@@ -66,10 +66,12 @@
   const STUDIO_QUOTA = {
     channel: 3, videos: 6, video_update: 50, video_delete: 55, thumbnail: 52,
     playlists: 25, playlist_create: 50, playlist_item_add: 50, playlist_item_remove: 50,
-    snapshot: 8, analytics: 5,
+    snapshot: 8, analytics: 5, platforms_config: 1,
   };
 
   let _accounts = [];
+  let _platformConfig = {};   // { youtube: true, instagram: false, ... } — redes con app OAuth configurada
+  let _pendingPropertyId = null; // propiedad a re-seleccionar cuando carga el picker
   let _subTab = 'accounts';
   let _bound = false;
   let _publishing = false;
@@ -79,6 +81,8 @@
   let _studioChannel = null;   // datos del canal (subs, views, etc.)
   let _studioVideos = [];
   let _studioCanManage = false;
+  let _studioTotal = 0;      // videos reales del canal (el server pagina hasta 100)
+  let _studioTruncated = false;
 
   async function authHeaders() {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
@@ -88,15 +92,32 @@
 
   /* ---------- STUDIO: vista del canal (mini YouTube Studio) ---------- */
 
+  /* Timeout de las llamadas al Edge Function: sin él, un request colgado
+     (o una Edge Function dormida) deja la UI en "Cargando…" para siempre. */
+  const YT_FN_TIMEOUT = 30000;
+
   /* #44: cuota estimada — trackea la unidad de la acción recién hecha
      (Google suma unidades aunque el request falle en su lado). */
   async function studioApiCall(body) {
     const units = STUDIO_QUOTA[body.action] || 5;
-    const res = await fetch(FN_BASE + '/social-youtube-studio', {
-      method: 'POST',
-      headers: await authHeaders(),
-      body: JSON.stringify(body),
-    });
+    const headers = await authHeaders();
+    const ctrl = new AbortController();
+    const timer = setTimeout(function () { ctrl.abort(); }, YT_FN_TIMEOUT);
+    let res;
+    try {
+      res = await fetch(FN_BASE + '/social-youtube-studio', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+    } catch (err) {
+      trackQuota(units); // el request ya salió: la unidad se consume esté o no OK de Google
+      if (err && err.name === 'AbortError') throw new Error('La consulta a YouTube tardó demasiado — revisá la conexión e intentá de nuevo.');
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
     trackQuota(units); // el request ya salió: la unidad se consume esté o no OK de Google
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
@@ -128,6 +149,14 @@
     if (!bps || bps <= 0) return '';
     if (bps >= 1024 * 1024) return (bps / (1024 * 1024)).toFixed(1) + ' MB/s';
     return Math.round(bps / 1024) + ' KB/s';
+  }
+
+  /* ISO → valor de <input type="datetime-local"> (hora local del navegador) */
+  function toLocalInput(iso) {
+    const d = iso ? new Date(iso) : null;
+    if (!d || isNaN(d.getTime())) return '';
+    const pad = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
   /* #44: HUD de cuota — acumulador LOCAL por día (no hay API de quota
@@ -334,6 +363,8 @@
       _studioChannel = cached.chan;
       _studioCanManage = !!cached.can;
       _studioVideos = cached.vids;
+      _studioTotal = cached.vids.length;
+      _studioTruncated = false;
       renderStudio();
       loadStudioAux();
       return;
@@ -343,11 +374,15 @@
     try {
       const [chInfo, vidsInfo] = await Promise.all([
         studioApiCall({ action: 'channel', account_id: account.id }),
-        studioApiCall({ action: 'videos', account_id: account.id }),
+        studioApiCall({ action: 'videos', account_id: account.id, max: 100 }),
       ]);
       _studioChannel = chInfo.channel;
       _studioCanManage = !!chInfo.can_manage;
       _studioVideos = vidsInfo.videos || [];
+      /* REPARACIÓN: el inventario antes se truncaba a 50 sin avisar. Ahora el
+         server pagina hasta 100 y devuelve el total real del canal. */
+      _studioTotal = Number(vidsInfo.total || _studioVideos.length);
+      _studioTruncated = !!vidsInfo.truncated;
       studioCacheWrite(account.id, _studioChannel, _studioVideos, _studioCanManage);
       renderStudio();
       loadStudioAux();
@@ -412,6 +447,11 @@
           '</div>'
         : '') +
       /* #25: barra de búsqueda/orden/filtro y export (#28) */
+      (_studioTruncated
+        ? '<div class="glass-panel" style="padding:10px 14px;margin-bottom:12px;border-left:3px solid var(--warning);font-size:12px;color:var(--text-secondary);">' +
+            '<i class="fas fa-triangle-exclamation" style="color:var(--warning);margin-right:6px;"></i>Mostrando ' + _studioVideos.length + ' de ' + _studioTotal + ' videos del canal (el inventario carga hasta 100 por vez).' +
+          '</div>'
+        : '') +
       '<div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap;">' +
         '<h3 style="margin:0;font-size:16px;flex-shrink:0;"><i class="fas fa-list"></i> Contenido (<span id="studioCount">' + _studioVideos.length + '</span>)</h3>' +
         '<div style="flex:1;"></div>' +
@@ -433,7 +473,7 @@
         '</select>' +
         '<button type="button" id="studioCsv" class="btn-luxury-action" title="Descargar inventario filtrado en CSV" style="padding:8px 12px;font-size:11px;"><i class="fas fa-file-csv"></i> CSV</button>' +
       '</div>' +
-      '<div id="studioVideos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:14px;">' + renderStudioVideos() + '</div>';
+      '<div id="studioVideos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:14px;">' + renderStudioVideos() + '</div>';
 
     /* Acciones del header */
     const pubBtn = $('#studioPublishBtn');
@@ -511,6 +551,14 @@
       /* #24: badge de subida en procesamiento (upload_status del server) */
       const processing = v.upload_status && v.upload_status !== 'processed';
       const sparkData = sparkPointsFor(v.id, 14); // #23
+      /* REPARACIÓN: sin youtube.force-ssl (can_manage=false) los botones de
+         editar/borrar se mostraban igual → el server respondía 403 y el dueño
+         veía un error. Ahora se ocultan y el aviso de "solo lectura" explica
+         cómo habilitarlo. */
+      const manageActions = _studioCanManage
+        ? '<button type="button" class="btn-luxury-action" data-studio-edit="' + esc(v.id) + '" title="Editar título, descripción, tags, visibilidad y programación" style="padding:7px 11px;font-size:11px;"><i class="fas fa-pen"></i></button>' +
+          '<button type="button" class="btn-luxury-action" data-studio-delete="' + esc(v.id) + '" data-studio-title="' + esc(v.title) + '" title="Borrar video (permanente)" style="padding:7px 11px;font-size:11px;color:var(--danger);"><i class="fas fa-trash-can"></i></button>'
+        : '';
       /* Tarjeta en grid: miniatura grande arriba, info + acciones abajo */
       return '<div class="glass-panel" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">' +
         /* Miniatura a ancho completo de la tarjeta */
@@ -536,9 +584,8 @@
         '<div style="padding:8px 14px 12px;display:flex;align-items:center;gap:8px;border-top:1px solid rgba(255,255,255,0.04);">' +
           '<span style="font-size:10.5px;color:' + priv[1] + ';border:1px solid currentColor;border-radius:10px;padding:2px 10px;flex-shrink:0;margin-right:auto;">' + esc(priv[0]) + '</span>' +
           '<button type="button" class="btn-luxury-action" data-studio-detail="' + esc(v.id) + '" title="Detalles, playlists y métricas del video" style="padding:7px 11px;font-size:11px;"><i class="fas fa-circle-info"></i></button>' +
-          '<button type="button" class="btn-luxury-action" data-studio-edit="' + esc(v.id) + '" title="Editar título, descripción, tags, visibilidad y programación" style="padding:7px 11px;font-size:11px;"><i class="fas fa-pen"></i></button>' +
+          manageActions +
           '<a href="https://www.youtube.com/watch?v=' + esc(v.id) + '" target="_blank" rel="noopener" title="Ver en YouTube" class="btn-luxury-action" style="padding:7px 11px;font-size:11px;text-decoration:none;"><i class="fas fa-arrow-up-right-from-square"></i></a>' +
-          '<button type="button" class="btn-luxury-action" data-studio-delete="' + esc(v.id) + '" data-studio-title="' + esc(v.title) + '" title="Borrar video (permanente)" style="padding:7px 11px;font-size:11px;color:var(--danger);"><i class="fas fa-trash-can"></i></button>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -686,7 +733,8 @@
           '<option value="private"' + (v.privacy === 'private' ? ' selected' : '') + '>Privado</option>' +
         '</select></div>' +
         '<div style="flex:1;min-width:180px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Programar publicación (opcional)</span>' +
-        '<input id="stePublishAt" type="datetime-local" class="crm-field-input" style="width:100%;"></div>' +
+        '<input id="stePublishAt" type="datetime-local" class="crm-field-input" style="width:100%;">' +
+        '<span id="steSchedHint" style="display:block;font-size:10.5px;color:var(--text-dim);margin-top:4px;line-height:1.4;"></span></div>' +
       '</div>' +
       '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Miniatura (imagen JPG/PNG ≤ 2MB)</span>' +
       '<input id="steThumb" type="file" accept="image/jpeg,image/png" class="crm-field-input" style="width:100%;padding:8px;"></div>' +
@@ -702,6 +750,39 @@
     document.body.appendChild(ov);
     ov.addEventListener('mousedown', function (e) { if (e.target === ov) closeModalIfExists('studioEditOverlay'); });
     box.querySelector('#steCancel').addEventListener('click', function () { closeModalIfExists('studioEditOverlay'); });
+
+    /* REPARACIÓN: la programación real del video no se veía nunca (el server
+       no la devolvía y el input quedaba vacío) → el dueño no sabía si un
+       video estaba programado. Ahora se muestra la fecha real, y si cambia
+       la visibilidad a pública la programación se limpia (si no, YouTube
+       deja el video en "privado programado" que nunca se publica). */
+    const schedInput = box.querySelector('#stePublishAt');
+    const schedHint = box.querySelector('#steSchedHint');
+    const privSel = box.querySelector('#stePrivacy');
+    if (schedInput) {
+      schedInput.value = toLocalInput(v.publish_at);
+      const syncSchedHint = function () {
+        if (!schedHint) return;
+        const val = schedInput.value;
+        if (val) {
+          const d = new Date(val);
+          if (isNaN(d.getTime())) { schedHint.textContent = ''; return; }
+          schedHint.textContent = 'Se publica el ' + d.toLocaleString('es-AR') + ' — YouTube lo hace público solo en ese momento.';
+          return;
+        }
+        schedHint.textContent = v.publish_at
+          ? 'Este video estaba programado. Si borrás la fecha, queda privado.'
+          : '';
+      };
+      syncSchedHint();
+      schedInput.addEventListener('change', syncSchedHint);
+      if (privSel) {
+        privSel.addEventListener('change', function () {
+          if (this.value !== 'private' && schedInput.value) schedInput.value = '';
+          syncSchedHint();
+        });
+      }
+    }
 
     /* Score SEO en vivo dentro del modal: título/desc/tags del video → score + sugerencias.
        La SERP preview muestra el nombre del canal real del Studio.
@@ -883,7 +964,9 @@
               '<div>' + buildSparkSvgWide(sparkFull, 200, 44) + '</div>'
             : '') +
           '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">' +
-            '<button type="button" id="steDetailOpen" class="btn-luxury-action" style="padding:8px 14px;font-size:11.5px;"><i class="fas fa-pen"></i> Editar datos</button>' +
+            (_studioCanManage
+              ? '<button type="button" id="steDetailOpen" class="btn-luxury-action" style="padding:8px 14px;font-size:11.5px;"><i class="fas fa-pen"></i> Editar datos</button>'
+              : '') +
             '<a href="https://studio.youtube.com/video/' + esc(v.id) + '/edit" target="_blank" rel="noopener" title="Abrir en YouTube Studio" class="btn-luxury-action" style="padding:8px 14px;font-size:11.5px;text-decoration:none;"><i class="fas fa-sliders"></i> Studio</a>' +
             '<button type="button" id="steCopyLink" class="btn-luxury-action" title="Copiar link del video" style="padding:8px 14px;font-size:11.5px;"><i class="fas fa-link"></i> Copiar link</button>' +
           '</div>' +
@@ -1005,23 +1088,29 @@
       const pls = res.playlists || [];
       const rows = pls.map(function (p) {
         const mine = (p.items || []).find(function (it) { return it.video_id === video.id; });
+        /* REPARACIÓN: sin permiso de administración los botones de quitar/
+           agregar fallaban con 403 → se muestran solo si se puede administrar. */
+        const action = !_studioCanManage
+          ? (mine ? '<span style="font-size:10px;color:var(--text-dim);">En la lista</span>' : '')
+          : (mine
+            ? '<button type="button" data-pl-remove="' + esc(String(mine.item_id || '')) + '" class="btn-luxury-action" style="padding:6px 10px;font-size:10.5px;color:var(--warning);"><i class="fas fa-circle-minus"></i> En la lista — quitar</button>'
+            : '<button type="button" data-pl-add="' + esc(String(p.id || '')) + '" class="btn-luxury-action" style="padding:6px 10px;font-size:10.5px;"><i class="fas fa-circle-plus"></i> Agregar</button>');
         return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px dashed rgba(255,255,255,0.05);">' +
           '<div style="flex:1;min-width:0;">' +
             '<div style="font-size:12.5px;font-weight:600;">' + esc(p.title) + '</div>' +
             '<div style="font-size:10.5px;color:var(--text-dim);">' + Number(p.video_count || 0) + ' videos</div>' +
-          '</div>' +
-          (mine
-            ? '<button type="button" data-pl-remove="' + esc(String(mine.item_id || '')) + '" class="btn-luxury-action" style="padding:6px 10px;font-size:10.5px;color:var(--warning);"><i class="fas fa-circle-minus"></i> En la lista — quitar</button>'
-            : '<button type="button" data-pl-add="' + esc(String(p.id || '')) + '" class="btn-luxury-action" style="padding:6px 10px;font-size:10.5px;"><i class="fas fa-circle-plus"></i> Agregar</button>') +
+          '</div>' + action +
         '</div>';
       }).join('');
       wrap.innerHTML =
         '<div style="font-size:10.5px;color:var(--text-dim);font-weight:600;margin-bottom:6px;"><i class="fas fa-layer-group"></i> PLAYLISTS DEL CANAL</div>' +
         (rows || '<p style="font-size:12px;color:var(--text-dim);padding:2px 0 8px;">El canal no tiene playlists — creá la primera acá abajo.</p>') +
-        '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">' +
-          '<input id="stePlTitle" type="text" class="crm-field-input" maxlength="60" placeholder="Nueva playlist (queda privada)…" style="flex:1;min-width:180px;">' +
-          '<button type="button" id="stePlCreate" class="btn-luxury-action" style="padding:8px 12px;font-size:11px;"><i class="fas fa-plus"></i> Crear</button>' +
-        '</div>';
+        (_studioCanManage
+          ? '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">' +
+              '<input id="stePlTitle" type="text" class="crm-field-input" maxlength="60" placeholder="Nueva playlist (queda privada)…" style="flex:1;min-width:180px;">' +
+              '<button type="button" id="stePlCreate" class="btn-luxury-action" style="padding:8px 12px;font-size:11px;"><i class="fas fa-plus"></i> Crear</button>' +
+            '</div>'
+          : '<p style="font-size:11px;color:var(--text-dim);margin-top:10px;"><i class="fas fa-lock"></i> Reconectá la cuenta para modificar las playlists.</p>');
     } catch (err) {
       wrap.innerHTML = '<p style="font-size:12px;color:var(--danger);">No se pudieron cargar las playlists: ' + esc(err.message) + '</p>';
     }
@@ -1043,8 +1132,32 @@
       .order('created_at', { ascending: true });
     if (error) { logError('Contenido: loadAccounts', error); return; }
     _accounts = data || [];
+    /* REPARACIÓN: el estado de "configurada" de cada red se consulta antes de
+       pintar las tarjetas (si no, "Conectar" aparecía para redes sin app).
+       NO bloquea el render: si la Edge Function está lenta, las cuentas
+       conectadas se ven igual (y el estado de redes se actualiza al rato). */
     renderAccounts();
     renderCreateAccountOptions();
+    loadPlatformsConfig().then(function () { renderAccounts(); });
+  }
+
+  /* ¿Qué redes tienen credenciales OAuth configuradas? (app_settings
+     social_<plataforma> o env). Best-effort: si la consulta falla se asume
+     que están configuradas (comportamiento anterior). */
+  async function loadPlatformsConfig() {
+    try {
+      const res = await studioApiCall({ action: 'platforms_config' });
+      const map = {};
+      (res.platforms || []).forEach(function (p) { map[p.platform] = !!p.configured; });
+      _platformConfig = map;
+    } catch (_) {
+      _platformConfig = {};
+    }
+  }
+
+  function platformConfigured(pid) {
+    if (!_platformConfig || !Object.keys(_platformConfig).length) return true;
+    return _platformConfig[pid] !== false;
   }
 
   function renderAccounts() {
@@ -1082,6 +1195,7 @@
     // 2. Plataformas sin ninguna cuenta activa: conectar o "próximamente"
     Object.entries(PLATFORM_META).forEach(([pid, meta]) => {
       if (_accounts.some(a => a.platform === pid && a.status === 'active')) return;
+      const configured = platformConfigured(pid);
       const card = document.createElement('div');
       card.className = 'glass-panel';
       card.style.cssText = 'display:flex;align-items:center;gap:14px;padding:16px;flex:1;min-width:260px;';
@@ -1089,11 +1203,13 @@
         '<i class="' + esc(meta.icon) + '" style="font-size:26px;color:' + meta.color + ';width:42px;text-align:center;"></i>' +
         '<div style="flex:1;min-width:0;">' +
         '<div style="font-weight:600;font-size:14px;">' + esc(meta.name) + '</div>' +
-        '<div style="font-size:11.5px;color:var(--text-dim);">' + (meta.available ? 'Sin conectar' : 'Próximamente') + '</div>' +
+        '<div style="font-size:11.5px;color:var(--text-dim);">' + (!meta.available ? 'Próximamente' : (configured ? 'Sin conectar' : 'Sin app configurada')) + '</div>' +
         '</div>' +
-        (meta.available
-          ? '<button type="button" data-contenido-connect="' + esc(pid) + '" class="btn-luxury-action" style="padding:8px 14px;font-size:11px;"><i class="fas fa-plug"></i> Conectar</button>'
-          : '<span style="font-size:11px;color:var(--text-dim);"><i class="fas fa-clock"></i></span>');
+        (!meta.available
+          ? '<span style="font-size:11px;color:var(--text-dim);"><i class="fas fa-clock"></i></span>'
+          : (configured
+            ? '<button type="button" data-contenido-connect="' + esc(pid) + '" class="btn-luxury-action" style="padding:8px 14px;font-size:11px;"><i class="fas fa-plug"></i> Conectar</button>'
+            : '<span style="font-size:10.5px;color:var(--text-dim);text-align:right;max-width:140px;" title="Faltan las credenciales OAuth de esta red (app_settings social_' + esc(pid) + ')."><i class="fas fa-sliders"></i> Sin configurar</span>'));
       cards.push(card);
     });
     wrap.replaceChildren(...cards);
@@ -1174,7 +1290,12 @@
      derecha) + bloque dentro del modal de edición del Studio. El motor es puro:
      solo lo alimentamos con lo que hay en los inputs en vivo. */
   function activeYoutubeChannelName() {
-    const acc = _accounts.find(a => a.platform === 'youtube' && a.status === 'active');
+    /* REPARACIÓN: usaba la PRIMERA cuenta activa, no la SELECCIONADA en el
+       form → con 2+ canales el preview SERP y el nombre mostraban el
+       canal equivocado. */
+    const sel = $('#ytAccountSelect');
+    const selected = sel && sel.value ? _accounts.find(function (a) { return a.id === sel.value; }) : null;
+    const acc = selected || _accounts.find(function (a) { return a.platform === 'youtube' && a.status === 'active'; });
     return (acc && acc.display_name) || 'Bienenhaus Propiedades';
   }
 
@@ -1337,8 +1458,10 @@
       renderTemplateOptions();
       tpl.addEventListener('change', function () {
         const id = this.value || '';
+        /* REPARACIÓN: antes se reseteaba el select al aplicar → "Borrar la
+           plantilla seleccionada" nunca encontraba selección y era inusable.
+           Ahora la selección queda (y por eso el borrado funciona). */
         if (id) applyTemplateById(id);
-        this.value = '';
       });
     }
 
@@ -1361,7 +1484,11 @@
      clonado de metadata a otro canal (#8) y quick-fix de tags (#7). */
 
   function fichaUrlFor(code) {
-    return 'https://bienenhaus.com.ar/fichas/' + encodeURIComponent(String(code || '')) + '.html';
+    /* REPARACIÓN: sin property_code NO existe ficha (se generan por código) →
+       antes se publicaba un link roto "fichas/.html" en la descripción. */
+    const c = String(code || '').trim();
+    if (!c) return '';
+    return 'https://bienenhaus.com.ar/fichas/' + encodeURIComponent(c) + '.html';
   }
 
   /* #1: listado de propiedades para el vínculo (crea → social_posts.property_id) */
@@ -1394,6 +1521,19 @@
       _createProps.map(function (p) {
         return '<option value="' + esc(p.id) + '">' + esc(label(p)) + (p.is_published ? '' : ' (sin publicar)') + '</option>';
       }).join('');
+    /* Si el reintento/copia pidió una propiedad que no está en el picker
+       (no está entre las 300 más recientes), se re-agrega y queda seleccionada
+       → el reintento conserva el vínculo con la ficha. */
+    if (_pendingPropertyId) {
+      const exists = Array.prototype.some.call(sel.options, function (o) { return o.value === _pendingPropertyId; });
+      if (!exists) {
+        const opt = document.createElement('option');
+        opt.value = _pendingPropertyId;
+        opt.textContent = 'Propiedad vinculada';
+        sel.appendChild(opt);
+      }
+      sel.value = _pendingPropertyId;
+    }
   }
 
   /* #1: coaching del form — SOLO llena campos vacíos (nunca pisa lo escrito) */
@@ -1438,17 +1578,24 @@
       p.surface_total ? p.surface_total + ' m²' : '',
       p.zone ? 'en ' + p.zone : '',
     ].filter(Boolean).join(', ');
+    const ficha = fichaUrlFor(p.property_code);
+    /* REPARACIÓN: el link a la ficha solo se incluye si la propiedad tiene
+       código (si no, el texto publicaba una URL rota). */
+    const fichaBlock = ficha
+      ? 'Ficha completa con fotos, medidas y precio actualizado:\n' + ficha + '\n\n'
+      : 'Ficha completa con fotos, medidas y precio actualizado en bienenhaus.com.ar.\n\n';
     return 'Recorremos paso a paso esta ' + (p.property_type || 'propiedad') + (dets ? ': ' + dets + '.' : '.') + '\n' +
       'En el video mostramos todos los ambientes y detalles de construcción.\n\n' +
-      'Ficha completa con fotos, medidas y precio actualizado:\n' +
-      fichaUrlFor(p.property_code) + '\n\n' +
+      fichaBlock +
       'Consultas y visitas sin compromiso — respondemos por WhatsApp o desde bienenhaus.com.ar.\n\n' +
       CTA_HASHTAGS;
   }
 
   /* #11: bloque de CTA + hashtags institucionales (#17) */
   function buildCtaBlock(p) {
-    const link = p && p.property_code ? fichaUrlFor(p.property_code) : 'https://bienenhaus.com.ar/#propiedades';
+    const link = (p && p.property_code)
+      ? (fichaUrlFor(p.property_code) || 'https://bienenhaus.com.ar/#propiedades')
+      : 'https://bienenhaus.com.ar/#propiedades';
     const head = p ? 'Conocé la ficha completa de esta propiedad con fotos y precio actualizado:'
       : 'Conocé la lista completa de propiedades con fotos y precio:';
     return '\n\n' + head + '\n' + link + '\nConsultas y visitas sin compromiso — respondemos rápido por WhatsApp.\n' + CTA_HASHTAGS;
@@ -1572,7 +1719,33 @@
     setFieldValue('ytTags', Array.isArray(c.tags) ? c.tags.join(', ') : (c.tags ? String(c.tags) : ''));
     const pr = document.getElementById('ytPrivacy');
     if (pr && ['public', 'unlisted', 'private'].indexOf(c.privacy) >= 0) pr.value = c.privacy;
+    /* REPARACIÓN: al copiar/reintentar se perdían la keyword, la
+       programación y la propiedad vinculada — el reintento quedaba sin el
+       tour en la ficha y sin la fecha de publicación. */
+    setFieldValue('ytKeyword', c.keyword || '');
+    const pa = document.getElementById('ytPublishAt');
+    if (pa) pa.value = toLocalInput(c.publish_at);
+    restoreLinkedProperty(p.property_id);
     switchSubTab('create');
+  }
+
+  /* Vuelve a seleccionar la propiedad vinculada (agregando la opción si el
+     picker todavía no la cargó) → el reintento conserva el vínculo. */
+  function restoreLinkedProperty(propertyId) {
+    if (!propertyId) return;
+    /* Si el picker todavía no cargó, su render pisa el <select> → la opción
+       se re-agrega al final (ver loadPropertiesForPicker). */
+    _pendingPropertyId = propertyId;
+    const sel = document.getElementById('ytProperty');
+    if (!sel) return;
+    const known = _createProps.some(function (x) { return x.id === propertyId; });
+    if (!known) {
+      const opt = document.createElement('option');
+      opt.value = propertyId;
+      opt.textContent = 'Propiedad vinculada';
+      sel.appendChild(opt);
+    }
+    sel.value = propertyId;
   }
 
   /* #12: capítulos — modal con validación del formato de YouTube
@@ -1886,6 +2059,7 @@
           publish_at: publishAt || undefined,
           property_id: (($('#ytProperty') || {}).value || undefined), // #1
           seo_score: (typeof seoScore === 'number' && seoScore > 0 ? seoScore : undefined), // #18
+          keyword: (($('#ytKeyword') || {}).value || undefined), // se guarda en content (reintentar lo conserva)
         }),
       });
       const init = await initRes.json().catch(() => ({}));
@@ -1986,7 +2160,7 @@
 
     const { data, error } = await client
       .from('social_posts')
-      .select('id, platform, status, post_type, content, published_at, created_at, external_url, error, social_accounts(display_name)')
+      .select('id, platform, status, post_type, content, published_at, created_at, external_url, error, property_id, social_accounts(display_name)')
       .order('created_at', { ascending: false })
       .limit(30);
     if (error) { logError('Contenido: loadHistory', error); return; }
@@ -2085,6 +2259,27 @@
       renderQuotaHud();
       recomputeSeoPanel();
     }
+    /* REPARACIÓN: entrar al Studio sin ningún canal conectado mostraba un
+       panel vacío sin explicación → estado vacío con acción. */
+    if (sub === 'studio' && !hasYoutubeChannel()) renderStudioEmpty();
+  }
+
+  function hasYoutubeChannel() {
+    return _accounts.some(function (a) { return a.platform === 'youtube' && a.status === 'active'; });
+  }
+
+  function renderStudioEmpty() {
+    const wrap = $('#contenidoStudio');
+    if (!wrap) return;
+    wrap.innerHTML =
+      '<div class="glass-panel" style="padding:28px 24px;text-align:center;max-width:520px;margin:24px auto;">' +
+        '<i class="fab fa-youtube" style="font-size:38px;color:#FF0000;"></i>' +
+        '<div style="font-size:15px;font-weight:600;margin:10px 0 4px;">Todavía no hay un canal conectado</div>' +
+        '<p style="font-size:12.5px;color:var(--text-dim);margin:0 auto 16px;max-width:380px;line-height:1.6;">El Studio administra el contenido del canal: inventario completo, métricas, playlists, edición, miniaturas y programación.</p>' +
+        '<button type="button" id="studioGoAccounts" class="btn-luxury-action" style="padding:10px 18px;font-size:12px;"><i class="fas fa-plug"></i> Conectar un canal</button>' +
+      '</div>';
+    const btn = $('#studioGoAccounts');
+    if (btn) btn.addEventListener('click', function () { switchSubTab('accounts'); });
   }
 
   function renderShell() {
@@ -2096,13 +2291,16 @@
         '<button type="button" data-sub="accounts" class="btn-luxury-action is-active" style="padding:9px 16px;font-size:12px;"><i class="fas fa-link"></i> Cuentas</button>' +
         '<button type="button" data-sub="create" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;"><i class="fas fa-plus"></i> Crear publicación</button>' +
         '<button type="button" data-sub="history" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;"><i class="fas fa-clock-rotate-left"></i> Historial</button>' +
+        /* REPARACIÓN: el Studio no tenía botón — al abrirlo la barra quedaba
+           sin pestaña activa y el único regreso era el botón del header. */
+        '<button type="button" data-sub="studio" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;"><i class="fas fa-sliders"></i> Studio</button>' +
       '</div>' +
       '<div id="contenidoAccounts" style="display:flex;flex-wrap:wrap;gap:12px;"></div>' +
       '<div id="contenidoStudio" style="display:none;"></div>' +
       '<div id="contenidoCreate" style="display:none;">' +
         /* MEJORA 2026-10-30: layout en 2 columnas — form a la izquierda + Score SEO (vidIQ) pegado a la derecha */
         '<div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;">' +
-        '<div style="flex:3;min-width:340px;">' +
+        '<div style="flex:3;min-width:min(340px,100%);">' +
         '<div class="glass-panel" style="padding:24px;">' +
           '<h3 style="margin:0 0 4px;font-size:16px;"><i class="fab fa-youtube" style="color:#FF0000;"></i> Publicar video en YouTube</h3>' +
           '<p style="margin:0 0 20px;font-size:12px;color:var(--text-dim);">El video sube directo de tu navegador a Google — sin pasar por el servidor. El panel de la derecha puntúa tu SEO mientras escribís.</p>' +
@@ -2174,7 +2372,7 @@
         '</div>' +
         '</div>' +
         /* Columna derecha: Score SEO — el motor vive en assets/js/yt-seo-score.js (BH_YT_SEO) */
-        '<div style="flex:2;min-width:300px;max-width:430px;position:sticky;top:74px;">' +
+        '<div style="flex:2;min-width:min(300px,100%);max-width:430px;position:sticky;top:74px;">' +
           '<div class="glass-panel" style="padding:20px 18px 16px;">' +
             '<h3 style="margin:0 0 4px;font-size:15px;"><i class="fas fa-bullseye" style="color:var(--accent);"></i> Score SEO del video</h3>' +
             '<p style="margin:0 0 12px;font-size:11.5px;color:var(--text-dim);">Optimización medida en vivo (estilo vidIQ Vision).</p>' +
@@ -2207,7 +2405,17 @@
         return;
       }
       const sub = e.target.closest('#contenidoSubTabs button[data-sub]');
-      if (sub) { switchSubTab(sub.dataset.sub); return; }
+      if (sub) {
+        const which = sub.dataset.sub;
+        /* REPARACIÓN: el botón "Studio" abre el canal conectado (si hay
+           más de uno, el primero activo) en vez de mostrar un panel vacío. */
+        if (which === 'studio') {
+          const acc = _accounts.find(function (a) { return a.platform === 'youtube' && a.status === 'active'; });
+          if (acc) { openStudio(acc); return; }
+        }
+        switchSubTab(which);
+        return;
+      }
       if (e.target.closest('#ytPublishBtn')) publishToYoutube();
       const del = e.target.closest('[data-contenido-delete]');
       if (del) { deletePost(del.dataset.contenidoDelete); return; }

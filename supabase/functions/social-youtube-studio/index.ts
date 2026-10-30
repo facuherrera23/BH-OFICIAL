@@ -40,7 +40,7 @@ import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { jsonResponse, optionsResponse } from '../_shared/http.ts';
 import { requireAdmin } from '../_shared/auth.ts';
 import { rateLimitMiddleware } from '../_shared/rate-limit.ts';
-import { getSocialAccessToken } from '../_shared/social.ts';
+import { getSocialAccessToken, getSocialCredentials } from '../_shared/social.ts';
 
 const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -137,6 +137,7 @@ Deno.serve(async (req) => {
         playlist_description?: string;
         item_id?: string;
         position?: number;
+        max?: number;
     };
     try {
         body = await req.json();
@@ -146,6 +147,25 @@ Deno.serve(async (req) => {
 
     try {
         if (!body.action) return respond(400, { error: 'Falta la acción' });
+
+        /* ------- Plataformas configurables (¿hay credenciales OAuth?) -------
+           REPARACIÓN 2026-10-30: el módulo mostraba "Conectar" para redes
+           sin app configurada (Instagram sin app de Meta, por ejemplo) →
+           botón que moría con un error. Ahora la UI sabe qué redes están
+           realmente configuradas (app_settings social_<plataforma> o env). */
+        if (body.action === 'platforms_config') {
+            const names = ['youtube', 'instagram', 'facebook', 'tiktok'] as const;
+            const platforms: Array<{ platform: string; configured: boolean }> = [];
+            for (const name of names) {
+                try {
+                    const creds = await getSocialCredentials(supabase, name);
+                    platforms.push({ platform: name, configured: !!(creds.clientId && creds.clientSecret) });
+                } catch (_) {
+                    platforms.push({ platform: name, configured: false });
+                }
+            }
+            return respond(200, { platforms });
+        }
 
         /* ------- Info del canal (funciona con solo readonly) ------- */
         if (body.action === 'channel') {
@@ -191,32 +211,59 @@ Deno.serve(async (req) => {
             const acc = await loadAccount(supabase, accountId);
             const accessToken = await getSocialAccessToken(supabase, accountId);
 
-            // 1. Playlist de uploads del canal
+            // 1. Playlist de uploads del canal (+ videoCount real del canal)
             const ch = (await youtubeFetch(
-                `${YOUTUBE_API}/channels?part=contentDetails&mine=true`,
+                `${YOUTUBE_API}/channels?part=contentDetails,statistics&mine=true`,
                 accessToken,
-            )) as { items?: Array<{ contentDetails?: { relatedPlaylists?: { uploads?: string } } }> };
+            )) as {
+                items?: Array<{
+                    contentDetails?: { relatedPlaylists?: { uploads?: string } };
+                    statistics?: { videoCount?: string };
+                }>;
+            };
             const uploadsPlaylist = ch.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
             if (!uploadsPlaylist) throw new Error('No se encontró la playlist de uploads del canal');
+            const channelVideoCount = Number(ch.items?.[0]?.statistics?.videoCount ?? 0);
 
-            // 2. Los últimos 50 uploads (incluye videos subidos manualmente)
-            const pl = (await youtubeFetch(
-                `${YOUTUBE_API}/playlistItems?part=contentDetails&playlistId=${encodeURIComponent(uploadsPlaylist)}&maxResults=50`,
-                accessToken,
-            )) as { items?: Array<{ contentDetails?: { videoId?: string } }> };
-            const ids = (pl.items ?? []).map((i) => i.contentDetails?.videoId).filter(Boolean) as string[];
-            if (!ids.length) return respond(200, { videos: [] });
+            /* REPARACIÓN 2026-10-30: el inventario se truncaba a 50 videos SIN
+               aviso (un canal con más de 50 perdía videos en pantalla y en el
+               CSV). Ahora se pagina la playlist de uploads hasta `max`
+               (tope 200) y se informa el total real del canal. */
+            const maxRaw = Number(body.max ?? 100);
+            const max = Math.min(Math.max(Number.isFinite(maxRaw) ? maxRaw : 100, 50), 200);
+            const ids: string[] = [];
+            let pageToken: string | undefined;
+            do {
+                const url = new URL(`${YOUTUBE_API}/playlistItems`);
+                url.searchParams.set('part', 'contentDetails');
+                url.searchParams.set('playlistId', uploadsPlaylist);
+                url.searchParams.set('maxResults', '50');
+                if (pageToken) url.searchParams.set('pageToken', pageToken);
+                const pl = (await youtubeFetch(url.toString(), accessToken)) as {
+                    items?: Array<{ contentDetails?: { videoId?: string } }>;
+                    nextPageToken?: string;
+                };
+                for (const it of pl.items ?? []) {
+                    const vid = it.contentDetails?.videoId;
+                    if (vid) ids.push(vid);
+                }
+                pageToken = pl.nextPageToken || undefined;
+            } while (pageToken && ids.length < max);
+            const capped = ids.slice(0, max);
+            if (!capped.length) {
+                return respond(200, { videos: [], total: channelVideoCount, truncated: channelVideoCount > 0 });
+            }
 
             // 3. Detalles + estadísticas de esos videos
             const vids = (await youtubeFetch(
-                `${YOUTUBE_API}/videos?part=snippet,statistics,status,contentDetails&id=${ids.join(',')}`,
+                `${YOUTUBE_API}/videos?part=snippet,statistics,status,contentDetails&id=${capped.join(',')}`,
                 accessToken,
             )) as {
                 items?: Array<{
                     id?: string;
                     snippet?: { title?: string; description?: string; publishedAt?: string; thumbnails?: { medium?: { url?: string } }; categoryId?: string; tags?: string[] };
                     statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
-                    status?: { privacyStatus?: string; uploadStatus?: string };
+                    status?: { privacyStatus?: string; uploadStatus?: string; publishAt?: string };
                     contentDetails?: { duration?: string };
                 }>;
             };
@@ -227,6 +274,10 @@ Deno.serve(async (req) => {
                     title: v.snippet?.title ?? '',
                     description: v.snippet?.description ?? '',
                     published_at: v.snippet?.publishedAt ?? null,
+                    /* REPARACIÓN: la fecha de programación no volvía del server
+                       → el modal de edición no podía mostrar si un video estaba
+                       programado (y al guardar, la fecha se perdía). */
+                    publish_at: v.status?.publishAt ?? null,
                     thumbnail: v.snippet?.thumbnails?.medium?.url ?? null,
                     category_id: v.snippet?.categoryId ?? '22',
                     tags: v.snippet?.tags ?? [],
@@ -238,6 +289,10 @@ Deno.serve(async (req) => {
                     duration: v.contentDetails?.duration ?? '',
                 })),
                 can_manage: hasManageScope(acc),
+                /* total = videos del canal (incluye los que no trae la API de
+                   uploads); truncated = hay más de los que se está mostrando. */
+                total: channelVideoCount || capped.length,
+                truncated: (channelVideoCount || capped.length) > capped.length,
             });
         }
 
