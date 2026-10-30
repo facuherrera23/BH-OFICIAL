@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src https: data:; font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src https://www.google-analytics.com https://*.analytics.google.com https://stats.g.doubleclick.net https://www.clarity.ms https://*.clarity.ms https://c.bing.com; frame-src https://www.openstreetmap.org; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src https: data:; font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src https://www.google-analytics.com https://*.analytics.google.com https://stats.g.doubleclick.net https://www.clarity.ms https://*.clarity.ms https://c.bing.com; frame-src https://www.openstreetmap.org https://www.youtube-nocookie.com; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>Casa en Venta de 1 Dor. Estancia vieja | Bienenhaus Propiedades · DA-P0010</title>
 <meta name="description" content="Hermosa propiedad en Venta ubicada en Estancia Vieja, a solo minutos de Carlos Paz y a 50 metros del río. Cuenta con 1 dormitorio, amplia cocina comedor,…">
 <link rel="canonical" href="https://bienenhaus.com.ar/fichas/DA-P0010.html">
@@ -26,6 +26,7 @@
 <meta property="og:see_also" content="https://bienenhaus.com.ar/">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"RealEstateListing","name":"Casa en Venta de 1 Dor. Estancia vieja","url":"https://bienenhaus.com.ar/fichas/DA-P0010.html","provider":{"@type":"RealEstateAgent","@id":"https://bienenhaus.com.ar/#organization","name":"Bienenhaus Propiedades","url":"https://bienenhaus.com.ar/","telephone":"+54-9-3516-37-9651"},"description":"Hermosa propiedad en Venta ubicada en Estancia Vieja, a solo minutos de Carlos Paz y a 50 metros del río. Cuenta con 1 dormitorio, amplia cocina comedor,…","address":{"@type":"PostalAddress","addressLocality":"Estancia Vieja","addressRegion":"Córdoba","addressCountry":"AR"},"image":["https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679999/bienenhaus/properties/nz1ka7lmbc82bb0tgyhh.jpg"],"numberOfRooms":3,"floorSize":{"@type":"QuantitativeValue","value":50,"unitCode":"MTK"},"offers":{"@type":"Offer","price":60000,"priceCurrency":"USD","availability":"https://schema.org/InStock"}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Inicio","item":"https://bienenhaus.com.ar/"},{"@type":"ListItem","position":2,"name":"Propiedades","item":"https://bienenhaus.com.ar/#propiedades"},{"@type":"ListItem","position":3,"name":"DA-P0010","item":"https://bienenhaus.com.ar/fichas/DA-P0010.html"}]}</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -101,6 +102,16 @@
   .lb-prev { left:18px; top:50%; transform:translateY(-50%); }
   .lb-next { right:18px; top:50%; transform:translateY(-50%); }
   .lb-count { position:absolute; bottom:24px; left:50%; transform:translateX(-50%); background:rgba(2,3,5,0.6); border:1px solid rgba(255,255,255,0.16); backdrop-filter:blur(6px); color:#fff; font-size:13px; font-weight:600; padding:8px 18px; border-radius:999px; letter-spacing:1px; }
+  /* Tour en video — poster click-to-load: el iframe (youtube-nocookie) solo
+     se crea al abrir el lightbox, así la ficha no carga YouTube al entrar. */
+  .video-frame { position:relative; border:1px solid var(--line); border-radius:16px; overflow:hidden; cursor:pointer; background:#000; display:block; }
+  .video-frame img { width:100%; aspect-ratio:16/9; object-fit:cover; display:block; opacity:.82; transition:opacity .25s ease, transform .25s ease; }
+  .video-frame:hover img { opacity:.95; transform:scale(1.01); }
+  .video-frame .yt-play { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+  .video-frame .yt-play span { width:76px; height:54px; border-radius:16px; background:linear-gradient(135deg, var(--accent), var(--accent-deep)); color:#020305; display:flex; align-items:center; justify-content:center; font-size:24px; box-shadow:0 12px 32px rgba(0,0,0,0.55); transition:transform .2s ease; }
+  .video-frame:hover .yt-play span { transform:scale(1.07); }
+  .video-frame .yt-tag { position:absolute; top:12px; left:12px; display:inline-flex; align-items:center; gap:7px; background:rgba(2,3,5,0.72); border:1px solid rgba(255,255,255,0.16); backdrop-filter:blur(8px); color:#fff; font-size:11px; font-weight:700; letter-spacing:1.5px; padding:6px 12px; border-radius:999px; }
+  .lb iframe { position:absolute; inset:0; margin:auto; width:min(94vw, 1180px); aspect-ratio:16/9; border:0; border-radius:12px; background:#000; }
   .map-wrap { border:1px solid var(--line); border-radius:16px; overflow:hidden; }
   .map-wrap iframe { display:block; width:100%; height:340px; }
   .map-links { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-top:14px; }
@@ -173,6 +184,7 @@
     .cta { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
     .cta--outline { color:#0e7a76 !important; border-color:#0e7a76 !important; }
     .lb { display:none !important; }
+    .video-frame { display:none !important; }
     .map-wrap iframe { display:none !important; }
     .map-wrap { border-color:#dfe5e5 !important; }
     .gmaps-chip { color:#0e7a76 !important; border-color:#0e7a76 !important; background:transparent !important; }
@@ -219,6 +231,7 @@
       <span>Ref. DA-P0010</span>
     </nav>
     <div class="gallery"><img class="gallery-item" src="https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679999/bienenhaus/properties/l48iguxsjwqznwnobowj.jpg" alt="Casa en Venta de 1 Dor. Estancia vieja" loading="lazy" data-idx="1"><img class="gallery-item" src="https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679997/bienenhaus/properties/x93wkv93ohmdqymqeqk2.jpg" alt="Casa en Venta de 1 Dor. Estancia vieja" loading="lazy" data-idx="2"><img class="gallery-item" src="https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679997/bienenhaus/properties/dowwwxyb5xy3kpqofhk1.jpg" alt="Casa en Venta de 1 Dor. Estancia vieja" loading="lazy" data-idx="3"><img class="gallery-item" src="https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679996/bienenhaus/properties/mscg8rme0fiqv3br9m8h.jpg" alt="Casa en Venta de 1 Dor. Estancia vieja" loading="lazy" data-idx="4"><img class="gallery-item" src="https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679996/bienenhaus/properties/pfzvihoyojpfmiucq5i7.jpg" alt="Casa en Venta de 1 Dor. Estancia vieja" loading="lazy" data-idx="5"><a class="gallery-more" href="https://bienenhaus.com.ar/#prop=DA-P0010" target="_blank" rel="noopener"><img class="gallery-item" src="https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679998/bienenhaus/properties/afoevrnmcgtkkhy9rzrf.jpg" alt="Casa en Venta de 1 Dor. Estancia vieja" loading="lazy"><span class="more-badge">+17 fotos <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></span></a></div>
+    
     <section class="sec">
       <h2><i class="fas fa-list-check" aria-hidden="true"></i>Características</h2>
       <div class="specs"><div class="spec"><span class="spec-icon"><i class="fas fa-house" aria-hidden="true"></i></span><span class="spec-body"><span class="spec-label">Tipo de propiedad</span><span class="spec-value">Casa</span></span></div><div class="spec"><span class="spec-icon"><i class="fas fa-door-open" aria-hidden="true"></i></span><span class="spec-body"><span class="spec-label">Ambientes</span><span class="spec-value">3</span></span></div><div class="spec"><span class="spec-icon"><i class="fas fa-bed" aria-hidden="true"></i></span><span class="spec-body"><span class="spec-label">Dormitorios</span><span class="spec-value">1</span></span></div><div class="spec"><span class="spec-icon"><i class="fas fa-bath" aria-hidden="true"></i></span><span class="spec-body"><span class="spec-label">Baños</span><span class="spec-value">1</span></span></div><div class="spec"><span class="spec-icon"><i class="fas fa-ruler-combined" aria-hidden="true"></i></span><span class="spec-body"><span class="spec-label">Superficie total</span><span class="spec-value">50 m²</span></span></div><div class="spec"><span class="spec-icon"><i class="fas fa-vector-square" aria-hidden="true"></i></span><span class="spec-body"><span class="spec-label">Superficie cubierta</span><span class="spec-value">50 m²</span></span></div><div class="spec"><span class="spec-icon"><i class="fas fa-car" aria-hidden="true"></i></span><span class="spec-body"><span class="spec-label">Cocheras</span><span class="spec-value">2</span></span></div></div>
@@ -282,6 +295,7 @@ CPI.1834</p>
     <button type="button" id="lbNext" class="lb-btn lb-next" aria-label="Foto siguiente"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
     <span class="lb-count" id="lbCount"></span>
   </dialog>
+  
   <script>
   (function () {
     var allImgs = ["https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679999/bienenhaus/properties/nz1ka7lmbc82bb0tgyhh.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679999/bienenhaus/properties/l48iguxsjwqznwnobowj.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679997/bienenhaus/properties/x93wkv93ohmdqymqeqk2.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679997/bienenhaus/properties/dowwwxyb5xy3kpqofhk1.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679996/bienenhaus/properties/mscg8rme0fiqv3br9m8h.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679996/bienenhaus/properties/pfzvihoyojpfmiucq5i7.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679998/bienenhaus/properties/afoevrnmcgtkkhy9rzrf.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679998/bienenhaus/properties/e1vh9gxev6fn2kcbllwi.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679996/bienenhaus/properties/qp1vs6yxxq70hkx690dy.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679996/bienenhaus/properties/dnfoyzonvu8khhurrgkc.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679997/bienenhaus/properties/w23juw95wo0wmrrzga9h.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679997/bienenhaus/properties/kosxqd8mnzprg2s7y06a.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679998/bienenhaus/properties/mn5iyp0n5f2l6vdxc4vr.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679998/bienenhaus/properties/ynnc4pszz6sl5naaa4ua.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679996/bienenhaus/properties/quhc4nqemox3fmuu2v62.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679997/bienenhaus/properties/pqkqg3vsqrorbvj1y90n.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679998/bienenhaus/properties/ieqqslzbi8xn6xucyk13.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679998/bienenhaus/properties/trv6t3qeg6quu7jqfddv.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679998/bienenhaus/properties/wpczeyvxp8onghobhktd.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679997/bienenhaus/properties/goubfglcgnofqbcgycy9.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679998/bienenhaus/properties/x2oihugsf8rzuwwlbiwu.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679998/bienenhaus/properties/y1io1lqnomuxlflsicsa.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679996/bienenhaus/properties/vb4qjj30jyol1tqgbmmh.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787679998/bienenhaus/properties/ncbdiiknozyur03bufer.jpg"];
@@ -302,6 +316,28 @@ CPI.1834</p>
       if (e.target.closest('#lbNext')) { openLb(cur + 1); }
     });
     dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+    /* Tour en video: el iframe de youtube-nocookie se carga SOLO al abrir el
+       lightbox (click-to-load) — la ficha no pega un request a YouTube al
+       entrar, y al cerrar se vacía el src para cortar la reproducción. */
+    var ytFrame = document.getElementById('ytFrame');
+    var vidDlg = document.getElementById('lbVid');
+    var vidFrame = document.getElementById('lbVidFrame');
+    if (ytFrame && vidDlg && vidFrame) {
+      function openVid() {
+        var id = ytFrame.getAttribute('data-yt');
+        if (!id) return;
+        vidFrame.src = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(id) + '?autoplay=1&rel=0';
+        vidDlg.showModal();
+      }
+      ytFrame.addEventListener('click', openVid);
+      ytFrame.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); openVid(); }
+      });
+      var vidClose = document.getElementById('lbVidClose');
+      if (vidClose) vidClose.addEventListener('click', function () { vidDlg.close(); });
+      vidDlg.addEventListener('click', function (e) { if (e.target === vidDlg) vidDlg.close(); });
+      vidDlg.addEventListener('close', function () { vidFrame.src = ''; });
+    }
     var printBtn = document.getElementById('btnPrint');
     if (printBtn) printBtn.addEventListener('click', function () { window.print(); });
     var copyBtn = document.querySelector('[data-copy]');

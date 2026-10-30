@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src https: data:; font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src https://www.google-analytics.com https://*.analytics.google.com https://stats.g.doubleclick.net https://www.clarity.ms https://*.clarity.ms https://c.bing.com; frame-src https://www.openstreetmap.org; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src https: data:; font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src https://www.google-analytics.com https://*.analytics.google.com https://stats.g.doubleclick.net https://www.clarity.ms https://*.clarity.ms https://c.bing.com; frame-src https://www.openstreetmap.org https://www.youtube-nocookie.com; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>Lote 711 m2 Plano con Escritura El Cedrón Calamuchita | Bienenhaus Propiedades · DA-P0002</title>
 <meta name="description" content="Oportunidad única de inversión en un entorno natural privilegiado. El desarrollo El Cedrón cuenta con ingreso directo desde Ruta Provincial N5 y el…">
 <link rel="canonical" href="https://bienenhaus.com.ar/fichas/DA-P0002.html">
@@ -26,6 +26,7 @@
 <meta property="og:see_also" content="https://bienenhaus.com.ar/">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"RealEstateListing","name":"Lote 711 m2 Plano con Escritura El Cedrón Calamuchita","url":"https://bienenhaus.com.ar/fichas/DA-P0002.html","provider":{"@type":"RealEstateAgent","@id":"https://bienenhaus.com.ar/#organization","name":"Bienenhaus Propiedades","url":"https://bienenhaus.com.ar/","telephone":"+54-9-3516-37-9651"},"description":"Oportunidad única de inversión en un entorno natural privilegiado. El desarrollo El Cedrón cuenta con ingreso directo desde Ruta Provincial N5 y el…","address":{"@type":"PostalAddress","addressLocality":"El Cedrón","addressRegion":"Córdoba","addressCountry":"AR"},"image":["https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589471/bienenhaus/properties/epgea3f5jfjuhrehl2hu.jpg"],"floorSize":{"@type":"QuantitativeValue","value":711,"unitCode":"MTK"},"offers":{"@type":"Offer","price":11000,"priceCurrency":"USD","availability":"https://schema.org/InStock"}}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Inicio","item":"https://bienenhaus.com.ar/"},{"@type":"ListItem","position":2,"name":"Propiedades","item":"https://bienenhaus.com.ar/#propiedades"},{"@type":"ListItem","position":3,"name":"DA-P0002","item":"https://bienenhaus.com.ar/fichas/DA-P0002.html"}]}</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -101,6 +102,16 @@
   .lb-prev { left:18px; top:50%; transform:translateY(-50%); }
   .lb-next { right:18px; top:50%; transform:translateY(-50%); }
   .lb-count { position:absolute; bottom:24px; left:50%; transform:translateX(-50%); background:rgba(2,3,5,0.6); border:1px solid rgba(255,255,255,0.16); backdrop-filter:blur(6px); color:#fff; font-size:13px; font-weight:600; padding:8px 18px; border-radius:999px; letter-spacing:1px; }
+  /* Tour en video — poster click-to-load: el iframe (youtube-nocookie) solo
+     se crea al abrir el lightbox, así la ficha no carga YouTube al entrar. */
+  .video-frame { position:relative; border:1px solid var(--line); border-radius:16px; overflow:hidden; cursor:pointer; background:#000; display:block; }
+  .video-frame img { width:100%; aspect-ratio:16/9; object-fit:cover; display:block; opacity:.82; transition:opacity .25s ease, transform .25s ease; }
+  .video-frame:hover img { opacity:.95; transform:scale(1.01); }
+  .video-frame .yt-play { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+  .video-frame .yt-play span { width:76px; height:54px; border-radius:16px; background:linear-gradient(135deg, var(--accent), var(--accent-deep)); color:#020305; display:flex; align-items:center; justify-content:center; font-size:24px; box-shadow:0 12px 32px rgba(0,0,0,0.55); transition:transform .2s ease; }
+  .video-frame:hover .yt-play span { transform:scale(1.07); }
+  .video-frame .yt-tag { position:absolute; top:12px; left:12px; display:inline-flex; align-items:center; gap:7px; background:rgba(2,3,5,0.72); border:1px solid rgba(255,255,255,0.16); backdrop-filter:blur(8px); color:#fff; font-size:11px; font-weight:700; letter-spacing:1.5px; padding:6px 12px; border-radius:999px; }
+  .lb iframe { position:absolute; inset:0; margin:auto; width:min(94vw, 1180px); aspect-ratio:16/9; border:0; border-radius:12px; background:#000; }
   .map-wrap { border:1px solid var(--line); border-radius:16px; overflow:hidden; }
   .map-wrap iframe { display:block; width:100%; height:340px; }
   .map-links { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-top:14px; }
@@ -173,6 +184,7 @@
     .cta { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
     .cta--outline { color:#0e7a76 !important; border-color:#0e7a76 !important; }
     .lb { display:none !important; }
+    .video-frame { display:none !important; }
     .map-wrap iframe { display:none !important; }
     .map-wrap { border-color:#dfe5e5 !important; }
     .gmaps-chip { color:#0e7a76 !important; border-color:#0e7a76 !important; background:transparent !important; }
@@ -219,6 +231,7 @@
       <span>Ref. DA-P0002</span>
     </nav>
     <div class="gallery"><img class="gallery-item" src="https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589472/bienenhaus/properties/wuq69zo2btasu3yxeook.jpg" alt="Lote 711 m2 Plano con Escritura El Cedrón Calamuchita" loading="lazy" data-idx="1"><img class="gallery-item" src="https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589472/bienenhaus/properties/xta4gjadsftiscdkp2db.jpg" alt="Lote 711 m2 Plano con Escritura El Cedrón Calamuchita" loading="lazy" data-idx="2"><img class="gallery-item" src="https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589471/bienenhaus/properties/b9nckgavmpcm32qpojsy.jpg" alt="Lote 711 m2 Plano con Escritura El Cedrón Calamuchita" loading="lazy" data-idx="3"><img class="gallery-item" src="https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589471/bienenhaus/properties/gvrzucsivihamhzcm81d.jpg" alt="Lote 711 m2 Plano con Escritura El Cedrón Calamuchita" loading="lazy" data-idx="4"><img class="gallery-item" src="https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589471/bienenhaus/properties/wprlgnkjqz4qykfs1jxc.jpg" alt="Lote 711 m2 Plano con Escritura El Cedrón Calamuchita" loading="lazy" data-idx="5"><a class="gallery-more" href="https://bienenhaus.com.ar/#prop=DA-P0002" target="_blank" rel="noopener"><img class="gallery-item" src="https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589473/bienenhaus/properties/i6opbteknnjh7aofm0ce.jpg" alt="Lote 711 m2 Plano con Escritura El Cedrón Calamuchita" loading="lazy"><span class="more-badge">+9 fotos <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></span></a></div>
+    
     <section class="sec">
       <h2><i class="fas fa-list-check" aria-hidden="true"></i>Características</h2>
       <div class="specs"><div class="spec"><span class="spec-icon"><i class="fas fa-map" aria-hidden="true"></i></span><span class="spec-body"><span class="spec-label">Tipo de propiedad</span><span class="spec-value">Terreno</span></span></div><div class="spec"><span class="spec-icon"><i class="fas fa-ruler-combined" aria-hidden="true"></i></span><span class="spec-body"><span class="spec-label">Superficie total</span><span class="spec-value">711 m²</span></span></div><div class="spec"><span class="spec-icon"><i class="fas fa-vector-square" aria-hidden="true"></i></span><span class="spec-body"><span class="spec-label">Superficie cubierta</span><span class="spec-value">711 m²</span></span></div></div>
@@ -295,6 +308,7 @@ CPI. 1834</p>
     <button type="button" id="lbNext" class="lb-btn lb-next" aria-label="Foto siguiente"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
     <span class="lb-count" id="lbCount"></span>
   </dialog>
+  
   <script>
   (function () {
     var allImgs = ["https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589471/bienenhaus/properties/epgea3f5jfjuhrehl2hu.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589472/bienenhaus/properties/wuq69zo2btasu3yxeook.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589472/bienenhaus/properties/xta4gjadsftiscdkp2db.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589471/bienenhaus/properties/b9nckgavmpcm32qpojsy.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589471/bienenhaus/properties/gvrzucsivihamhzcm81d.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589471/bienenhaus/properties/wprlgnkjqz4qykfs1jxc.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589473/bienenhaus/properties/i6opbteknnjh7aofm0ce.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589473/bienenhaus/properties/ndqqzi76i6gvnes09bxi.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589473/bienenhaus/properties/p3uozekjvbqr9pdbjvcc.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589472/bienenhaus/properties/mvo06klelg7ibdwaajmo.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589473/bienenhaus/properties/qini9eskcmvho9i3uwho.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589471/bienenhaus/properties/fgakx1yxpfvslicb75gw.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589473/bienenhaus/properties/qno3jikuhczqljyff1t0.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589472/bienenhaus/properties/vqxntaitttfxg8n7tand.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589472/bienenhaus/properties/dviz4m4jsgltencn25d3.jpg","https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787589471/bienenhaus/properties/dqtbxniq7tbulzyvmgbw.jpg"];
@@ -315,6 +329,28 @@ CPI. 1834</p>
       if (e.target.closest('#lbNext')) { openLb(cur + 1); }
     });
     dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+    /* Tour en video: el iframe de youtube-nocookie se carga SOLO al abrir el
+       lightbox (click-to-load) — la ficha no pega un request a YouTube al
+       entrar, y al cerrar se vacía el src para cortar la reproducción. */
+    var ytFrame = document.getElementById('ytFrame');
+    var vidDlg = document.getElementById('lbVid');
+    var vidFrame = document.getElementById('lbVidFrame');
+    if (ytFrame && vidDlg && vidFrame) {
+      function openVid() {
+        var id = ytFrame.getAttribute('data-yt');
+        if (!id) return;
+        vidFrame.src = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(id) + '?autoplay=1&rel=0';
+        vidDlg.showModal();
+      }
+      ytFrame.addEventListener('click', openVid);
+      ytFrame.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); openVid(); }
+      });
+      var vidClose = document.getElementById('lbVidClose');
+      if (vidClose) vidClose.addEventListener('click', function () { vidDlg.close(); });
+      vidDlg.addEventListener('click', function (e) { if (e.target === vidDlg) vidDlg.close(); });
+      vidDlg.addEventListener('close', function () { vidFrame.src = ''; });
+    }
     var printBtn = document.getElementById('btnPrint');
     if (printBtn) printBtn.addEventListener('click', function () { window.print(); });
     var copyBtn = document.querySelector('[data-copy]');
