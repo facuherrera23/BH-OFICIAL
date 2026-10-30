@@ -45,11 +45,16 @@
   const YT_QUOTA_KEY = 'bh_yt_quota';     // #44: HUD de cuota (estimación local)
   const YT_SNAP_DAY_KEY = 'bh_yt_snapshot_day'; // #22: 1 snapshot por día
   const YT_CTA_AUTO_KEY = 'bh_yt_cta_auto';     // #11: preferencia del auto-CTA
+  const YT_LAST_ACCOUNT_KEY = 'bh_yt_last_account'; // MEJORA: recordar el último canal
+
+  /* Subida en curso (para cancelar) */
+  let _uploadCancelled = false;
+  let _activeXhr = null;
 
   /* #18: campos bloqueados durante la subida (UNA constante para las dos
      pasadas lock/unlock — antes eran arrays repetidos que divergían). */
   const LOCK_IDS = ['ytTitle', 'ytDesc', 'ytTags', 'ytFile', 'ytPrivacy', 'ytPublishAt',
-    'ytAccountSelect', 'ytProperty', 'ytTemplateSel', 'ytKeyword', 'ytCtaAuto', 'ytTitleBank'];
+    'ytAccountSelect', 'ytProperty', 'ytPropertySearch', 'ytTemplateSel', 'ytKeyword', 'ytCtaAuto', 'ytTitleBank'];
 
   /* #45/#46...: frases probadas para el final del título (#16). */
   const TITLE_BANK = [
@@ -83,6 +88,8 @@
   let _studioCanManage = false;
   let _studioTotal = 0;      // videos reales del canal (el server pagina hasta 100)
   let _studioTruncated = false;
+  let _studioViews = 'all';  // filtro por cantidad de vistas
+  let _studioAge = 'all';    // filtro por antigüedad de publicación
 
   async function authHeaders() {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
@@ -157,6 +164,30 @@
     if (!d || isNaN(d.getTime())) return '';
     const pad = function (n) { return String(n).padStart(2, '0'); };
     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  /* Copiar texto al portapapeles con fallback (clipboard API exige contexto
+     seguro; el panel puede abrirse por http en algunos accesos). */
+  async function copyText(text) {
+    const val = String(text || '');
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(val);
+        return true;
+      }
+    } catch (_) { /* fallback abajo */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = val;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch (_) { return false; }
   }
 
   /* #44: HUD de cuota — acumulador LOCAL por día (no hay API de quota
@@ -332,6 +363,32 @@
     return Array.from(freq.values()).sort(function (a, b) { return b.w - a.w; }).slice(0, 12).map(function (e) { return e.raw; });
   }
 
+  /* MEJORA: los tags que YA rindieron en el canal, como chips de un clic
+     (antes había que acordarse de ellos o copiarlos del Studio a mano). */
+  function renderChannelTags() {
+    const box = $('#ytChannelTags');
+    if (!box) return;
+    const tags = channelTopTags();
+    if (!tags.length) { box.innerHTML = ''; return; }
+    box.innerHTML =
+      '<div style="font-size:10.5px;color:var(--text-dim);margin-bottom:5px;"><i class="fas fa-tags"></i> Tags que ya rindieron en tu canal (clic para agregar):</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
+      tags.map(function (t) {
+        return '<button type="button" class="btn-luxury-action" data-yt-tag="' + esc(t) + '" style="padding:4px 9px;font-size:10.5px;">' + esc(t) + '</button>';
+      }).join('') +
+      '</div>';
+  }
+
+  /* Si el Studio ya se abrió (o quedó cacheado en esta sesión), los tags del
+     canal están disponibles sin volver a pegarle a la API de YouTube. */
+  function restoreStudioCacheForTags() {
+    if (_studioVideos.length) return;
+    const acc = _accounts.find(function (a) { return a.platform === 'youtube' && a.status === 'active'; });
+    if (!acc) return;
+    const cached = studioCacheRead(acc.id);
+    if (cached && Array.isArray(cached.vids) && cached.vids.length) _studioVideos = cached.vids;
+  }
+
   function fmtNum(n) {
     if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
     if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
@@ -366,6 +423,7 @@
       _studioTotal = cached.vids.length;
       _studioTruncated = false;
       renderStudio();
+      renderChannelTags();
       loadStudioAux();
       return;
     }
@@ -385,6 +443,7 @@
       _studioTruncated = !!vidsInfo.truncated;
       studioCacheWrite(account.id, _studioChannel, _studioVideos, _studioCanManage);
       renderStudio();
+      renderChannelTags(); // MEJORA: el inventario real del canal alimenta los chips de tags
       loadStudioAux();
     } catch (err) {
       logError('Contenido: studio', err);
@@ -425,6 +484,9 @@
         '</div>' +
         '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
           '<button type="button" id="studioPublishBtn" class="btn-luxury-action" style="padding:10px 18px;font-size:13px;"><i class="fas fa-plus"></i> Publicar</button>' +
+          /* MEJORA: forzar el refresh del inventario (el cache de 5 min
+             escondía los videos recién publicados en YouTube Studio). */
+          '<button type="button" id="studioRefreshBtn" class="btn-luxury-action" title="Volver a pedir el inventario a YouTube (ignora el caché)" style="padding:10px 18px;font-size:13px;"><i class="fas fa-rotate"></i> Actualizar</button>' +
           '<a href="' + esc(handleUrl) + '" target="_blank" rel="noopener" class="btn-luxury-action" style="padding:10px 18px;font-size:13px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-arrow-up-right-from-square"></i> Ver canal</a>' +
           '<a href="' + esc(handleUrl + '/community') + '" target="_blank" rel="noopener" title="Los posts de la comunidad no tienen API oficial — se crean desde YouTube" class="btn-luxury-action" style="padding:10px 18px;font-size:13px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-users"></i> Comunidad</a>' +
           '<button type="button" id="studioBackBtn" class="btn-luxury-action" style="padding:10px 18px;font-size:13px;"><i class="fas fa-arrow-left"></i> Volver</button>' +
@@ -471,6 +533,22 @@
           '<option value="processing">Procesando</option>' +
           '<option value="dead">Sin vistas +30 días</option>' +
         '</select>' +
+        /* MEJORA: filtros por rendimiento y antigüedad (el dueño pregunta
+           "¿cuáles rinden?" — con 100 videos no se filtraba a mano). */
+        '<select id="studioViews" class="crm-field-input crm-field-input--select" style="width:auto;font-size:12px;padding:8px;" title="Filtrar por cantidad de vistas">' +
+          '<option value="all">Vistas: todas</option>' +
+          '<option value="0">0 vistas</option>' +
+          '<option value="1-999">1 – 999</option>' +
+          '<option value="1k-9k">1.000 – 9.999</option>' +
+          '<option value="10k+">10.000+</option>' +
+        '</select>' +
+        '<select id="studioAge" class="crm-field-input crm-field-input--select" style="width:auto;font-size:12px;padding:8px;" title="Filtrar por antigüedad">' +
+          '<option value="all">Antigüedad: todas</option>' +
+          '<option value="7">Últimos 7 días</option>' +
+          '<option value="30">Últimos 30 días</option>' +
+          '<option value="90">Últimos 90 días</option>' +
+          '<option value="365">Último año</option>' +
+        '</select>' +
         '<button type="button" id="studioCsv" class="btn-luxury-action" title="Descargar inventario filtrado en CSV" style="padding:8px 12px;font-size:11px;"><i class="fas fa-file-csv"></i> CSV</button>' +
       '</div>' +
       '<div id="studioVideos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:14px;">' + renderStudioVideos() + '</div>';
@@ -478,6 +556,11 @@
     /* Acciones del header */
     const pubBtn = $('#studioPublishBtn');
     if (pubBtn) pubBtn.addEventListener('click', function () { switchSubTab('create'); });
+    const refreshBtn = $('#studioRefreshBtn');
+    if (refreshBtn) refreshBtn.addEventListener('click', function () {
+      studioInvalidate();
+      if (_studioAccount) openStudio(_studioAccount, true);
+    });
     const backBtn = $('#studioBackBtn');
     if (backBtn) backBtn.addEventListener('click', function () { switchSubTab('accounts'); });
 
@@ -491,6 +574,10 @@
     if (sortSel) sortSel.addEventListener('change', function () { _studioSort = this.value; renderStudioVideosGrid(); });
     const filterSel = $('#studioFilter');
     if (filterSel) filterSel.addEventListener('change', function () { _studioFilter = this.value; renderStudioVideosGrid(); });
+    const viewsSel = $('#studioViews');
+    if (viewsSel) viewsSel.addEventListener('change', function () { _studioViews = this.value; renderStudioVideosGrid(); });
+    const ageSel = $('#studioAge');
+    if (ageSel) ageSel.addEventListener('change', function () { _studioAge = this.value; renderStudioVideosGrid(); });
     const csvBtn = $('#studioCsv');
     if (csvBtn) csvBtn.addEventListener('click', downloadStudioCsv);
   }
@@ -512,6 +599,27 @@
     else if (_studioFilter === 'dead') {
       const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
       list = list.filter(function (v) { return v.views === 0 && v.published_at && new Date(v.published_at).getTime() < cutoff; });
+    }
+    /* MEJORA: filtro por volumen de vistas */
+    if (_studioViews && _studioViews !== 'all') {
+      list = list.filter(function (v) {
+        const n = Number(v.views || 0);
+        if (_studioViews === '0') return n === 0;
+        if (_studioViews === '1-999') return n >= 1 && n < 1000;
+        if (_studioViews === '1k-9k') return n >= 1000 && n < 10000;
+        if (_studioViews === '10k+') return n >= 10000;
+        return true;
+      });
+    }
+    /* MEJORA: filtro por antigüedad de publicación */
+    if (_studioAge && _studioAge !== 'all') {
+      const days = Number(_studioAge);
+      const cutoff = Date.now() - days * 24 * 3600 * 1000;
+      list = list.filter(function (v) {
+        if (!v.published_at) return false;
+        const t = new Date(v.published_at).getTime();
+        return !isNaN(t) && t >= cutoff;
+      });
     }
     const sorters = {
       recent: function (a, b) { return new Date(b.published_at || 0) - new Date(a.published_at || 0); },
@@ -584,6 +692,8 @@
         '<div style="padding:8px 14px 12px;display:flex;align-items:center;gap:8px;border-top:1px solid rgba(255,255,255,0.04);">' +
           '<span style="font-size:10.5px;color:' + priv[1] + ';border:1px solid currentColor;border-radius:10px;padding:2px 10px;flex-shrink:0;margin-right:auto;">' + esc(priv[0]) + '</span>' +
           '<button type="button" class="btn-luxury-action" data-studio-detail="' + esc(v.id) + '" title="Detalles, playlists y métricas del video" style="padding:7px 11px;font-size:11px;"><i class="fas fa-circle-info"></i></button>' +
+          /* MEJORA: copiar el link desde la card (sin abrir el detalle) */
+          '<button type="button" class="btn-luxury-action" data-studio-copy="' + esc(v.id) + '" title="Copiar el link del video" style="padding:7px 11px;font-size:11px;"><i class="fas fa-link"></i></button>' +
           manageActions +
           '<a href="https://www.youtube.com/watch?v=' + esc(v.id) + '" target="_blank" rel="noopener" title="Ver en YouTube" class="btn-luxury-action" style="padding:7px 11px;font-size:11px;text-decoration:none;"><i class="fas fa-arrow-up-right-from-square"></i></a>' +
         '</div>' +
@@ -1277,6 +1387,18 @@
     sel.innerHTML = active.length
       ? active.map(a => '<option value="' + esc(a.id) + '">' + esc(a.display_name) + '</option>').join('')
       : '<option value="">— Conectá un canal primero —</option>';
+    /* MEJORA: se recuerda el último canal usado (con 2+ canales el dueño
+       tenía que elegirlo de nuevo en cada publicación). */
+    let last = null;
+    try { last = localStorage.getItem(YT_LAST_ACCOUNT_KEY); } catch (_) {}
+    if (last && active.some(function (a) { return a.id === last; })) sel.value = last;
+    if (sel.dataset.bound !== '1') {
+      sel.dataset.bound = '1';
+      sel.addEventListener('change', function () {
+        if (!this.value) return;
+        try { localStorage.setItem(YT_LAST_ACCOUNT_KEY, this.value); } catch (_) {}
+      });
+    }
   }
 
   function fmtBytes(n) {
@@ -1428,6 +1550,51 @@
         } catch (_) { /* el probe es solo informativo */ }
       });
     }
+
+    /* MEJORA: arrastrar el archivo de video a la zona (sin usar el picker) */
+    const dropZone = $('#ytFileDrop');
+    if (dropZone && fileInput) {
+      const highlight = function (on) {
+        dropZone.style.borderColor = on ? 'var(--accent)' : 'rgba(255,255,255,0.18)';
+        dropZone.style.background = on ? 'rgba(45,212,191,0.06)' : '';
+      };
+      dropZone.addEventListener('dragover', function (e) { e.preventDefault(); highlight(true); });
+      dropZone.addEventListener('dragenter', function (e) { e.preventDefault(); highlight(true); });
+      dropZone.addEventListener('dragleave', function () { highlight(false); });
+      dropZone.addEventListener('drop', function (e) {
+        e.preventDefault();
+        highlight(false);
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (!files || !files.length) return;
+        const f = files[0];
+        if (f.type && f.type.indexOf('video/') !== 0) {
+          showToast('El archivo soltado no es un video.', 'warning');
+          return;
+        }
+        try { fileInput.files = files; } catch (_) { /* algunos navegadores no lo permiten */ }
+        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    }
+
+    /* MEJORA: cancelar la subida en curso */
+    const cancelUpload = $('#ytCancelUpload');
+    if (cancelUpload) {
+      cancelUpload.addEventListener('click', function () {
+        if (!_publishing) return;
+        _uploadCancelled = true;
+        this.disabled = true;
+        this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cancelando…';
+        if (_activeXhr) { try { _activeXhr.abort(); } catch (_) {} }
+      });
+    }
+
+    /* MEJORA: buscador de propiedades (filtra el <select> en vivo) */
+    const propSearch = $('#ytPropertySearch');
+    if (propSearch) {
+      propSearch.addEventListener('input', function () {
+        renderPropertyOptions(this.value);
+      });
+    }
     /* Score SEO en vivo: recalcula al escribir en título/descripción/tags/keyword */
     ['ytTitle', 'ytDesc', 'ytTags', 'ytKeyword'].forEach(function (id) {
       const el = document.getElementById(id);
@@ -1513,27 +1680,49 @@
       return;
     }
     _createProps = data || [];
+    renderPropertyOptions('');
+  }
+
+  /* MEJORA: el <select> con 300 propiedades era inmanejable → buscador por
+     código / título / zona que filtra las opciones en vivo. */
+  function renderPropertyOptions(query) {
+    const sel = $('#ytProperty');
+    if (!sel) return;
+    const selected = sel.value;
+    const q = bhNorm(String(query || '')).trim();
     const label = function (p) {
       const parts = [p.property_code || '', p.title || p.address || p.zone || ''];
       return parts.filter(Boolean).join(' — ') || '(sin título)';
     };
+    const list = q
+      ? _createProps.filter(function (p) {
+        const hay = bhNorm([p.property_code, p.title, p.address, p.zone].filter(Boolean).join(' '));
+        return hay.indexOf(q) >= 0;
+      })
+      : _createProps.slice();
     sel.innerHTML = '<option value="">— Sin propiedad vinculada —</option>' +
-      _createProps.map(function (p) {
+      list.map(function (p) {
         return '<option value="' + esc(p.id) + '">' + esc(label(p)) + (p.is_published ? '' : ' (sin publicar)') + '</option>';
       }).join('');
     /* Si el reintento/copia pidió una propiedad que no está en el picker
        (no está entre las 300 más recientes), se re-agrega y queda seleccionada
        → el reintento conserva el vínculo con la ficha. */
-    if (_pendingPropertyId) {
-      const exists = Array.prototype.some.call(sel.options, function (o) { return o.value === _pendingPropertyId; });
+    const wanted = _pendingPropertyId || selected;
+    if (wanted) {
+      const exists = Array.prototype.some.call(sel.options, function (o) { return o.value === wanted; });
       if (!exists) {
         const opt = document.createElement('option');
-        opt.value = _pendingPropertyId;
+        opt.value = wanted;
         opt.textContent = 'Propiedad vinculada';
         sel.appendChild(opt);
       }
-      sel.value = _pendingPropertyId;
+      sel.value = wanted;
     }
+    /* La pendiente se aplica UNA vez: si no, cada búsqueda del picker
+       volvería a seleccionar la propiedad del reintento. */
+    _pendingPropertyId = null;
+    const cnt = $('#ytPropertyCount');
+    if (cnt) cnt.textContent = list.length + ' de ' + _createProps.length + (q ? ' (filtrado)' : '');
   }
 
   /* #1: coaching del form — SOLO llena campos vacíos (nunca pisa lo escrito) */
@@ -1733,18 +1922,17 @@
      picker todavía no la cargó) → el reintento conserva el vínculo. */
   function restoreLinkedProperty(propertyId) {
     if (!propertyId) return;
-    /* Si el picker todavía no cargó, su render pisa el <select> → la opción
-       se re-agrega al final (ver loadPropertiesForPicker). */
-    _pendingPropertyId = propertyId;
     const sel = document.getElementById('ytProperty');
     if (!sel) return;
     const known = _createProps.some(function (x) { return x.id === propertyId; });
-    if (!known) {
-      const opt = document.createElement('option');
-      opt.value = propertyId;
-      opt.textContent = 'Propiedad vinculada';
-      sel.appendChild(opt);
-    }
+    if (known) { sel.value = propertyId; return; }
+    /* Si el picker todavía no cargó, su render pisa el <select> → la opción
+       se re-agrega al final (ver renderPropertyOptions). */
+    if (sel.dataset.loaded !== '1') { _pendingPropertyId = propertyId; return; }
+    const opt = document.createElement('option');
+    opt.value = propertyId;
+    opt.textContent = 'Propiedad vinculada';
+    sel.appendChild(opt);
     sel.value = propertyId;
   }
 
@@ -1870,17 +2058,30 @@
   const YT_CHUNK_TIMEOUT = 5 * 60 * 1000;  // por chunk — 8 MB tardan segundos
   const YT_MAX_STALLS = 8;                 // reintentos sin progreso antes de rendirse
 
-  function ytPutChunk(sessionUrl, blob, contentRange) {
+  function ytPutChunk(sessionUrl, blob, contentRange, onChunkProgress) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', sessionUrl);
       xhr.setRequestHeader('Content-Range', contentRange);
       xhr.setRequestHeader('Content-Type', blob.type || 'application/octet-stream');
       xhr.timeout = YT_CHUNK_TIMEOUT;
-      xhr.addEventListener('load', () => resolve(xhr));
-      xhr.addEventListener('error', () => reject(new Error('network')));
-      xhr.addEventListener('timeout', () => reject(new Error('network')));
-      xhr.addEventListener('abort', () => reject(new Error('abort')));
+      /* MEJORA: progreso suave DENTRO del chunk (la barra saltaba cada 8 MB
+       y en una subida lenta parecía colgada). */
+      if (onChunkProgress) {
+        xhr.upload.onprogress = function (e) {
+          if (e.lengthComputable) onChunkProgress(e.loaded, e.total);
+        };
+      }
+      /* MEJORA: permite cancelar la subida (abort del XHR en vuelo). */
+      _activeXhr = xhr;
+      const settle = function (fn, arg) {
+        if (_activeXhr === xhr) _activeXhr = null;
+        fn(arg);
+      };
+      xhr.addEventListener('load', () => settle(resolve, xhr));
+      xhr.addEventListener('error', () => settle(reject, new Error('network')));
+      xhr.addEventListener('timeout', () => settle(reject, new Error('network')));
+      xhr.addEventListener('abort', () => settle(reject, new Error('abort')));
       xhr.send(blob);
     });
   }
@@ -1928,9 +2129,20 @@
     };
     const advance = (to) => { offset = to; stalls = 0; };
     while (offset < total) {
+      if (_uploadCancelled) throw new Error('Subida cancelada — no se publicó nada.');
       const end = Math.min(offset + YT_CHUNK_SIZE, total) - 1;
       try {
-        const xhr = await ytPutChunk(sessionUrl, file.slice(offset, end + 1), 'bytes ' + offset + '-' + end + '/' + total);
+        const xhr = await ytPutChunk(
+          sessionUrl,
+          file.slice(offset, end + 1),
+          'bytes ' + offset + '-' + end + '/' + total,
+          /* progreso suave: bytes del chunk ya enviados + offset global */
+          function (loadedInChunk) {
+            if (!onProgress) return;
+            const smooth = Math.min(offset + loadedInChunk, total);
+            onProgress(smooth, total, tick(smooth));
+          },
+        );
         if (xhr.status >= 200 && xhr.status < 300) {
           /* Último chunk aceptado: Google responde con el recurso del video. */
           advance(total);
@@ -1950,6 +2162,7 @@
         }
       } catch (e) {
         if (e.message === 'abort') {
+          if (_uploadCancelled) throw new Error('Subida cancelada — no se publicó nada.');
           throw new Error('La subida se interrumpió porque la página se cerró o recargó. Volvé a intentarlo.');
         }
         const st = await ytQueryUploadStatus(sessionUrl, total);
@@ -2028,6 +2241,7 @@
     }
 
     _publishing = true;
+    _uploadCancelled = false;
     let postId = null;      // registro en social_posts (fail + heartbeat)
     let hbTimer = null;     // heartbeat de updated_at durante la subida
     const btn = $('#ytPublishBtn');
@@ -2130,12 +2344,16 @@
     } finally {
       if (hbTimer) { clearInterval(hbTimer); hbTimer = null; }
       _publishing = false;
+      _activeXhr = null;
+      _uploadCancelled = false;
       LOCK_IDS.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.disabled = false;
       });
       hideUploadFloat();
       if (btn) { btn.disabled = false; btn.innerHTML = btnHtml; }
+      const cancelBtn = $('#ytCancelUpload');
+      if (cancelBtn) { cancelBtn.disabled = false; cancelBtn.innerHTML = '<i class="fas fa-circle-xmark"></i> Cancelar subida'; }
     }
   }
 
@@ -2165,6 +2383,7 @@
       .limit(30);
     if (error) { logError('Contenido: loadHistory', error); return; }
     _lastHistory = data || []; // #3/#42: fuente del copiar/reintentar
+    renderChannelTags(); // MEJORA: los tags del historial alimentan los chips
     if (!data || !data.length) {
       wrap.innerHTML = '<p style="color:var(--text-dim);font-size:13px;padding:12px 0;">Todavía no hay publicaciones.</p>';
       return;
@@ -2258,6 +2477,10 @@
       loadPropertiesForPicker();
       renderQuotaHud();
       recomputeSeoPanel();
+      /* MEJORA: chips con los tags reales del canal (inventario cacheado +
+         historial) para no escribirlos a mano en cada video. */
+      restoreStudioCacheForTags();
+      renderChannelTags();
     }
     /* REPARACIÓN: entrar al Studio sin ningún canal conectado mostraba un
        panel vacío sin explicación → estado vacío con acción. */
@@ -2312,10 +2535,14 @@
           '</div></div>' +
           /* #1: vínculo con la propiedad (llena campos + registra social_posts.property_id) */
           '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Propiedad vinculada <span style="font-size:10.5px;">(opcional — llena los campos vacíos)</span></span>' +
+          /* MEJORA: buscador (el select trae hasta 300 propiedades) */
+          '<input id="ytPropertySearch" type="text" class="crm-field-input" placeholder="Buscar por código, título o zona…" style="margin-bottom:6px;">' +
           '<div style="display:flex;gap:8px;align-items:center;">' +
             '<select id="ytProperty" class="crm-field-input crm-field-input--select" style="flex:1;min-width:0;"><option value="">— Sin propiedad vinculada —</option></select>' +
             '<button type="button" id="ytPropertyFill" class="btn-luxury-action" title="Cargar título/descripción/tags desde la ficha (solo vacíos)" style="padding:9px 10px;font-size:11px;flex-shrink:0;"><i class="fas fa-house-circle-check"></i></button>' +
-          '</div></div>' +
+          '</div>' +
+          '<div id="ytPropertyCount" style="font-size:10.5px;color:var(--text-dim);margin-top:4px;"></div>' +
+          '</div>' +
           /* #2: plantillas locales */
           '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Plantillas locales <span style="font-size:10.5px;">(title/desc/tags/visibilidad)</span></span>' +
           '<div style="display:flex;gap:8px;align-items:center;">' +
@@ -2339,11 +2566,18 @@
             '</label>' +
           '</div></div>' +
           '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Tags SEO (separados por coma)</span>' +
-          '<input id="ytTags" type="text" class="crm-field-input" placeholder="inmobiliaria córdoba, departamentos, nueva córdoba" style="width:100%;"></div>' +
+          '<input id="ytTags" type="text" class="crm-field-input" placeholder="inmobiliaria córdoba, departamentos, nueva córdoba" style="width:100%;">' +
+          /* MEJORA: chips con los tags que ya rindieron en el canal */
+          '<div id="ytChannelTags" style="margin-top:8px;"></div>' +
+          '</div>' +
           '<div style="display:flex;gap:14px;margin-bottom:16px;flex-wrap:wrap;">' +
             '<div style="flex:2;min-width:250px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Video (máx. 2 GB)</span>' +
-            '<input id="ytFile" type="file" accept="video/*" class="crm-field-input" style="width:100%;padding:8px;">' +
-            '<div id="ytFileInfo" style="font-size:11px;color:var(--accent);margin-top:4px;display:none;"></div></div>' +
+            /* MEJORA: se puede arrastrar el archivo a la zona */
+            '<div id="ytFileDrop" style="border:1px dashed rgba(255,255,255,0.18);border-radius:12px;padding:10px;transition:border-color .2s,background .2s;">' +
+              '<input id="ytFile" type="file" accept="video/*" class="crm-field-input" style="width:100%;padding:8px;">' +
+              '<div id="ytFileInfo" style="font-size:11px;color:var(--accent);margin-top:4px;display:none;"></div>' +
+              '<div id="ytFileDropHint" style="font-size:10.5px;color:var(--text-dim);margin-top:5px;text-align:center;">o arrastrá el video acá</div>' +
+            '</div></div>' +
             '<div style="flex:1;min-width:140px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Visibilidad</span>' +
             '<select id="ytPrivacy" class="crm-field-input crm-field-input--select">' +
               '<option value="public">Público</option>' +
@@ -2365,6 +2599,8 @@
             '</div>' +
             '<div id="ytUploadPct" style="font-size:12px;color:var(--text-dim);margin-top:6px;display:flex;justify-content:space-between;"></div>' +
             '<div id="ytUploadEta" style="font-size:11px;color:var(--accent);margin-top:3px;"></div>' +
+            /* MEJORA: cancelar la subida (antes solo se podía cerrar la pestaña) */
+            '<button type="button" id="ytCancelUpload" class="btn-luxury-action" style="margin-top:10px;padding:7px 12px;font-size:11px;color:var(--danger);"><i class="fas fa-circle-xmark"></i> Cancelar subida</button>' +
           '</div>' +
           '<button type="button" id="ytPublishBtn" class="btn-luxury-action" style="padding:12px 28px;font-size:14px;"><i class="fas fa-paper-plane"></i> Publicar en YouTube</button>' +
           /* #44: HUD de cuota API estimada */
@@ -2426,6 +2662,15 @@
         if (v) openStudioEditModal(v);
         return;
       }
+      /* MEJORA: copiar link desde la card */
+      const copyVidBtn = e.target.closest('[data-studio-copy]');
+      if (copyVidBtn) {
+        const url = 'https://www.youtube.com/watch?v=' + copyVidBtn.dataset.studioCopy;
+        copyText(url).then(function (ok) {
+          showToast(ok ? 'Link copiado.' : 'No se pudo copiar el link.', ok ? 'success' : 'error');
+        });
+        return;
+      }
       const delVid = e.target.closest('[data-studio-delete]');
       if (delVid) { studioDeleteVideo(delVid.dataset.studioDelete, delVid.dataset.studioTitle || ''); return; }
       /* STUDIO: tarjeta/detalle de video (#26) */
@@ -2437,6 +2682,21 @@
       }
       /* MEJORAS 2026-10-30: form Crear */
       if (e.target.closest('#ytPropertyFill')) { fillFromProperty(); return; }
+      /* MEJORA: chip de tag del canal → lo agrega al campo de tags */
+      const tagChip = e.target.closest('[data-yt-tag]');
+      if (tagChip) {
+        const tag = tagChip.dataset.ytTag || '';
+        const input = $('#ytTags');
+        if (input && tag) {
+          const current = String(input.value || '').split(',').map(function (t) { return bhNorm(t.trim()); }).filter(Boolean);
+          if (current.indexOf(bhNorm(tag)) < 0) {
+            input.value = input.value ? (input.value.replace(/\s*,\s*$/, '') + ', ' + tag) : tag;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            showToast('Tag agregado: ' + tag, 'success');
+          }
+        }
+        return;
+      }
       const quickSched = e.target.closest('[data-quick-sched]');
       if (quickSched) { applyQuickSchedule(quickSched.dataset.quickSched || ''); return; }
       if (e.target.closest('#ytCtaInsert')) { insertCtaBlock(); return; }

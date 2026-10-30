@@ -110,12 +110,15 @@ async function boot(page, opts = {}) {
   /* Gate para simular una Edge Function que NO responde. */
   let release = null;
   const gate = new Promise((r) => { release = r; });
+  /* Contadores de llamadas a la Edge Function (para assertar refrescos). */
+  const calls = { channel: 0, videos: 0, analytics: 0, init: 0, complete: 0, fail: 0 };
 
   await page.route(/\/harness-contenido\.html/, (route) =>
     route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: HARNESS }));
   await page.route('**/functions/v1/social-youtube-studio', async (route) => {
     const body = route.request().postDataJSON() || {};
     const action = body.action;
+    if (calls[action] !== undefined) calls[action]++;
     if (opts.hangAction && action === opts.hangAction) {
       await gate;
       return route.abort('aborted');
@@ -143,6 +146,24 @@ async function boot(page, opts = {}) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
   });
 
+  /* Endpoint de publicación (init/complete/fail) + destino de la subida. */
+  await page.route('**/functions/v1/social-publish-youtube', async (route) => {
+    const body = route.request().postDataJSON() || {};
+    if (calls[body.action] !== undefined) calls[body.action]++;
+    if (body.action === 'init') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ post_id: 'post-99', session_url: 'http://localhost:8788/fake-upload-session' }),
+      });
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, url: 'https://youtube.com/watch?v=x' }) });
+  });
+  await page.route('**/fake-upload-session', async (route) => {
+    await gate;                       // la subida queda colgada hasta que se cancele
+    return route.abort('aborted');
+  });
+
   await page.goto('/harness-contenido.html' + (opts.fastAbort ? '?fastAbort=1' : ''));
   await page.addScriptTag({ url: '/assets/js/yt-seo-score.js' });
   await page.addScriptTag({ url: '/assets/js/admin-contenido.js' });
@@ -158,7 +179,7 @@ async function boot(page, opts = {}) {
   }
   await page.evaluate(() => window.__BH.loadContenido());
   await page.waitForTimeout(200);
-  return { release: () => release() };
+  return { release: () => release(), calls };
 }
 
 test.describe('Contenido/YouTube — reparaciones del lote', () => {
@@ -309,5 +330,120 @@ test.describe('Contenido/YouTube — reparaciones del lote', () => {
     const desc = await page.inputValue('#ytDesc');
     expect(desc).not.toContain('fichas/.html');
     expect(desc).toContain('bienenhaus.com.ar');
+  });
+});
+
+test.describe('Contenido/YouTube — mejoras del lote', () => {
+  test('el Studio tiene botón "Actualizar" que refresca el inventario (ignora el caché)', async ({ page }) => {
+    const h = await boot(page);
+    await page.click('#contenidoSubTabs button[data-sub="studio"]');
+    await expect(page.locator('#studioVideos')).toHaveCount(1);
+    expect(h.calls.videos).toBe(1);
+    await expect(page.locator('#studioRefreshBtn')).toHaveCount(1);
+    await page.click('#studioRefreshBtn');
+    await expect.poll(() => h.calls.videos).toBe(2);
+  });
+
+  test('el buscador de propiedades filtra las opciones en vivo', async ({ page }) => {
+    await boot(page, {
+      properties: [
+        { id: 'prop-1', property_code: 'ML-0001', title: 'Casa en Nueva Córdoba', property_type: 'casa', status: 'venta', zone: 'Nueva Córdoba', address: 'Av. Siempreviva 123', surface_total: 120, rooms: 3, bedrooms: 2, bathrooms: 1, is_published: true },
+        { id: 'prop-2', property_code: 'ML-0002', title: 'Depto en Alberdi', property_type: 'departamento', status: 'venta', zone: 'Alberdi', address: 'Av. Colon 100', surface_total: 70, rooms: 2, bedrooms: 1, bathrooms: 1, is_published: true },
+      ],
+    });
+    await page.click('#contenidoSubTabs button[data-sub="create"]');
+    await expect(page.locator('#ytProperty option')).toHaveCount(3); // placeholder + 2
+    await page.fill('#ytPropertySearch', 'alberdi');
+    await expect(page.locator('#ytProperty option')).toHaveCount(2); // placeholder + 1
+    await expect(page.locator('#ytPropertyCount')).toContainText('1 de 2');
+    // filtrar por código también funciona
+    await page.fill('#ytPropertySearch', 'ML-0001');
+    await expect(page.locator('#ytProperty option')).toHaveCount(2);
+    // limpiar vuelve a mostrar todo
+    await page.fill('#ytPropertySearch', '');
+    await expect(page.locator('#ytProperty option')).toHaveCount(3);
+  });
+
+  test('los tags reales del canal aparecen como chips y se agregan con un clic', async ({ page }) => {
+    await boot(page, {
+      videos: [{ ...VIDEO, id: 'vid-2', title: 'Otro tour', tags: ['inmobiliaria cordoba', 'deptos'], views: 900 }],
+    });
+    // el Studio carga el inventario real → tags del canal
+    await page.click('#contenidoSubTabs button[data-sub="studio"]');
+    await expect(page.locator('#studioVideos')).toHaveCount(1);
+    await page.click('#contenidoSubTabs button[data-sub="create"]');
+    const chips = page.locator('#ytChannelTags [data-yt-tag]');
+    await expect(chips.first()).toBeVisible();
+    const tag = await chips.first().getAttribute('data-yt-tag');
+    await chips.first().click();
+    await expect(page.locator('#ytTags')).toHaveValue(new RegExp(tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  });
+
+  test('se puede cancelar la subida en curso', async ({ page }) => {
+    const h = await boot(page);
+    await page.click('#contenidoSubTabs button[data-sub="create"]');
+    await page.fill('#ytTitle', 'Video de prueba');
+    await page.setInputFiles('#ytFile', { name: 'video.mp4', mimeType: 'video/mp4', buffer: Buffer.from('contenido de prueba') });
+    await page.click('#ytPublishBtn');
+    // la subida quedó colgada en el XHR → aparece el botón de cancelar
+    await expect(page.locator('#ytCancelUpload')).toBeVisible({ timeout: 10000 });
+    expect(h.calls.init).toBe(1);
+    await page.click('#ytCancelUpload');
+    await expect.poll(() => page.evaluate(() => window.__TOASTS.join('|'))).toContain('cancelada');
+    await expect(page.locator('#ytCancelUpload')).toBeHidden();
+    h.release();
+  });
+
+  test('la card del Studio tiene botón para copiar el link', async ({ page }) => {
+    await boot(page);
+    await page.click('#contenidoSubTabs button[data-sub="studio"]');
+    await expect(page.locator('#studioVideos')).toHaveCount(1);
+    await expect(page.locator('[data-studio-copy="vid-1"]')).toHaveCount(1);
+  });
+
+  test('se recuerda el último canal usado', async ({ page }) => {
+    await boot(page, {
+      accounts: [
+        { id: 'acc-1', platform: 'youtube', display_name: 'Canal Uno', avatar_url: '', status: 'active', last_publish_at: null },
+        { id: 'acc-2', platform: 'youtube', display_name: 'Canal Dos', avatar_url: '', status: 'active', last_publish_at: null },
+      ],
+    });
+    await page.click('#contenidoSubTabs button[data-sub="create"]');
+    await expect(page.locator('#ytAccountSelect option')).toHaveCount(2);
+    await page.selectOption('#ytAccountSelect', 'acc-2');
+    // recarga interna del módulo → debe restaurar el último canal
+    await page.evaluate(() => window.__BH.loadContenido());
+    await page.waitForTimeout(200);
+    await expect(page.locator('#ytAccountSelect')).toHaveValue('acc-2');
+  });
+
+  test('se puede arrastrar el archivo de video a la zona de subida', async ({ page }) => {
+    await boot(page);
+    await page.click('#contenidoSubTabs button[data-sub="create"]');
+    await page.evaluate(() => {
+      const dt = new DataTransfer();
+      dt.items.add(new File(['bytes'], 'mi-video.mp4', { type: 'video/mp4' }));
+      const zone = document.getElementById('ytFileDrop');
+      zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    });
+    await expect(page.locator('#ytFileInfo')).toContainText('mi-video.mp4');
+  });
+
+  test('los filtros de vistas y antigüedad acotan la grilla', async ({ page }) => {
+    await boot(page, {
+      videos: [
+        { ...VIDEO, id: 'vid-a', title: 'Con muchas vistas', views: 15000 },
+        { ...VIDEO, id: 'vid-b', title: 'Sin vistas', views: 0, published_at: '2026-08-01T10:00:00Z' },
+      ],
+    });
+    await page.click('#contenidoSubTabs button[data-sub="studio"]');
+    await expect(page.locator('#studioVideos .glass-panel')).toHaveCount(2);
+    await page.selectOption('#studioViews', '10k+');
+    await expect(page.locator('#studioVideos .glass-panel')).toHaveCount(1);
+    await expect(page.locator('#studioVideos')).toContainText('Con muchas vistas');
+    await page.selectOption('#studioViews', 'all');
+    await page.selectOption('#studioAge', '30');
+    await expect(page.locator('#studioVideos .glass-panel')).toHaveCount(1);
+    await expect(page.locator('#studioVideos')).toContainText('Con muchas vistas');
   });
 });
