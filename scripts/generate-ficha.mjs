@@ -42,8 +42,11 @@ function buildMetaDescription(text) {
   return cut.slice(0, lastSpace > 100 ? lastSpace : 155).trim() + '…';
 }
 
-function buildHtml(p, allProps) {
+function buildHtml(p, allProps, ytVideos) {
   const imgs = (p.image_urls || []).filter((u) => /^https?:\/\//.test(u));
+  /* Tour en video de la propiedad (social_posts published + platform youtube).
+     La clave del mapa es property_id; el video_id vive en external_post_id. */
+  const ytVideo = (ytVideos && p.id && ytVideos[p.id]) || null;
   const hero = imgs[0] || '';
   /* og:image: WhatsApp no previsualiza imágenes >300KB; colapsar la cadena de
      transformaciones previa (ej. /upload/f_auto,q_auto/) antes de agregar la nuestra,
@@ -166,13 +169,28 @@ function buildHtml(p, allProps) {
   // escapar < como \u003c evita el cierre prematuro de la etiqueta y mantiene JSON válido.
   const jsonLdText = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
   const jsonLdBreadcrumbText = JSON.stringify(jsonLdBreadcrumb).replace(/</g, '\\u003c');
+  /* JSON-LD VideoObject: habilita el rich result de video en Google y deja
+     el video declarado como parte de la ficha (no solo como iframe). */
+  const jsonLdVideo = ytVideo
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'VideoObject',
+        name: ytVideo.title || `${rawTitle} — Tour en video`,
+        description: metaDescription || `${rawTitle} — recorrido en video de la propiedad.`,
+        thumbnailUrl: [`https://i.ytimg.com/vi/${ytVideo.id}/hqdefault.jpg`],
+        ...(ytVideo.publishedAt ? { uploadDate: ytVideo.publishedAt } : {}),
+        embedUrl: `https://www.youtube-nocookie.com/embed/${ytVideo.id}`,
+        contentUrl: `https://www.youtube.com/watch?v=${ytVideo.id}`,
+      }
+    : null;
+  const jsonLdVideoText = jsonLdVideo ? JSON.stringify(jsonLdVideo).replace(/</g, '\\u003c') : '';
 
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src https: data:; font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src https://www.google-analytics.com https://*.analytics.google.com https://stats.g.doubleclick.net https://www.clarity.ms https://*.clarity.ms https://c.bing.com; frame-src https://www.openstreetmap.org; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src https: data:; font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src https://www.google-analytics.com https://*.analytics.google.com https://stats.g.doubleclick.net https://www.clarity.ms https://*.clarity.ms https://c.bing.com; frame-src https://www.openstreetmap.org https://www.youtube-nocookie.com; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>${esc(pageTitle)}</title>
 <meta name="description" content="${esc(metaDescription)}">
 <link rel="canonical" href="${esc(fichaUrl)}">
@@ -195,6 +213,7 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
 <meta property="og:see_also" content="https://bienenhaus.com.ar/">
 <script type="application/ld+json">${jsonLdText}</script>
 <script type="application/ld+json">${jsonLdBreadcrumbText}</script>
+${jsonLdVideoText ? `<script type="application/ld+json">${jsonLdVideoText}</script>` : ''}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -270,6 +289,16 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
   .lb-prev { left:18px; top:50%; transform:translateY(-50%); }
   .lb-next { right:18px; top:50%; transform:translateY(-50%); }
   .lb-count { position:absolute; bottom:24px; left:50%; transform:translateX(-50%); background:rgba(2,3,5,0.6); border:1px solid rgba(255,255,255,0.16); backdrop-filter:blur(6px); color:#fff; font-size:13px; font-weight:600; padding:8px 18px; border-radius:999px; letter-spacing:1px; }
+  /* Tour en video — poster click-to-load: el iframe (youtube-nocookie) solo
+     se crea al abrir el lightbox, así la ficha no carga YouTube al entrar. */
+  .video-frame { position:relative; border:1px solid var(--line); border-radius:16px; overflow:hidden; cursor:pointer; background:#000; display:block; }
+  .video-frame img { width:100%; aspect-ratio:16/9; object-fit:cover; display:block; opacity:.82; transition:opacity .25s ease, transform .25s ease; }
+  .video-frame:hover img { opacity:.95; transform:scale(1.01); }
+  .video-frame .yt-play { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+  .video-frame .yt-play span { width:76px; height:54px; border-radius:16px; background:linear-gradient(135deg, var(--accent), var(--accent-deep)); color:#020305; display:flex; align-items:center; justify-content:center; font-size:24px; box-shadow:0 12px 32px rgba(0,0,0,0.55); transition:transform .2s ease; }
+  .video-frame:hover .yt-play span { transform:scale(1.07); }
+  .video-frame .yt-tag { position:absolute; top:12px; left:12px; display:inline-flex; align-items:center; gap:7px; background:rgba(2,3,5,0.72); border:1px solid rgba(255,255,255,0.16); backdrop-filter:blur(8px); color:#fff; font-size:11px; font-weight:700; letter-spacing:1.5px; padding:6px 12px; border-radius:999px; }
+  .lb iframe { position:absolute; inset:0; margin:auto; width:min(94vw, 1180px); aspect-ratio:16/9; border:0; border-radius:12px; background:#000; }
   .map-wrap { border:1px solid var(--line); border-radius:16px; overflow:hidden; }
   .map-wrap iframe { display:block; width:100%; height:340px; }
   .map-links { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-top:14px; }
@@ -342,6 +371,7 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
     .cta { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
     .cta--outline { color:#0e7a76 !important; border-color:#0e7a76 !important; }
     .lb { display:none !important; }
+    .video-frame { display:none !important; }
     .map-wrap iframe { display:none !important; }
     .map-wrap { border-color:#dfe5e5 !important; }
     .gmaps-chip { color:#0e7a76 !important; border-color:#0e7a76 !important; background:transparent !important; }
@@ -396,6 +426,14 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
         ? `<a class="gallery-more" href="${SITE_URL}/#prop=${encodeURIComponent(code)}" target="_blank" rel="noopener">${img}<span class="more-badge">+${remaining} fotos <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></span></a>`
         : img;
     }).join('')}</div>` : ''}
+    ${ytVideo ? `<section class="sec">
+      <h2><i class="fas fa-clapperboard" aria-hidden="true"></i>Tour en video</h2>
+      <div class="video-frame" id="ytFrame" data-yt="${esc(ytVideo.id)}" role="button" tabindex="0" aria-label="Reproducir el tour en video de esta propiedad">
+        <img src="https://i.ytimg.com/vi/${esc(ytVideo.id)}/hqdefault.jpg" alt="${esc(ytVideo.title || rawTitle)}" loading="lazy">
+        <span class="yt-tag"><i class="fab fa-youtube" aria-hidden="true" style="color:#FF0000;"></i>TOUR EN VIDEO</span>
+        <span class="yt-play"><span><i class="fas fa-play" aria-hidden="true"></i></span></span>
+      </div>
+    </section>` : ''}
     ${specs.length ? `<section class="sec">
       <h2><i class="fas fa-list-check" aria-hidden="true"></i>Características</h2>
       <div class="specs">${specs.map((s) => `<div class="spec"><span class="spec-icon"><i class="fas ${s.icon}" aria-hidden="true"></i></span><span class="spec-body"><span class="spec-label">${s.label}</span><span class="spec-value">${esc(s.value)}</span></span></div>`).join('')}</div>
@@ -456,6 +494,11 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
     <button type="button" id="lbNext" class="lb-btn lb-next" aria-label="Foto siguiente"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
     <span class="lb-count" id="lbCount"></span>
   </dialog>
+  ${ytVideo ? `<dialog id="lbVid" class="lb">
+    <iframe id="lbVidFrame" title="Tour en video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+    <button type="button" id="lbVidClose" class="lb-btn lb-close" aria-label="Cerrar el video"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+    <a class="lb-count" href="https://www.youtube.com/watch?v=${esc(ytVideo.id)}" target="_blank" rel="noopener">Ver en YouTube <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></a>
+  </dialog>` : ''}
   <script>
   (function () {
     var allImgs = ${JSON.stringify(imgs.map(String))};
@@ -476,6 +519,28 @@ ${ogThumb ? `<meta property="og:image" content="${esc(ogThumb)}">
       if (e.target.closest('#lbNext')) { openLb(cur + 1); }
     });
     dlg.addEventListener('click', function (e) { if (e.target === dlg) dlg.close(); });
+    /* Tour en video: el iframe de youtube-nocookie se carga SOLO al abrir el
+       lightbox (click-to-load) — la ficha no pega un request a YouTube al
+       entrar, y al cerrar se vacía el src para cortar la reproducción. */
+    var ytFrame = document.getElementById('ytFrame');
+    var vidDlg = document.getElementById('lbVid');
+    var vidFrame = document.getElementById('lbVidFrame');
+    if (ytFrame && vidDlg && vidFrame) {
+      function openVid() {
+        var id = ytFrame.getAttribute('data-yt');
+        if (!id) return;
+        vidFrame.src = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(id) + '?autoplay=1&rel=0';
+        vidDlg.showModal();
+      }
+      ytFrame.addEventListener('click', openVid);
+      ytFrame.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); openVid(); }
+      });
+      var vidClose = document.getElementById('lbVidClose');
+      if (vidClose) vidClose.addEventListener('click', function () { vidDlg.close(); });
+      vidDlg.addEventListener('click', function (e) { if (e.target === vidDlg) vidDlg.close(); });
+      vidDlg.addEventListener('close', function () { vidFrame.src = ''; });
+    }
     var printBtn = document.getElementById('btnPrint');
     if (printBtn) printBtn.addEventListener('click', function () { window.print(); });
     var copyBtn = document.querySelector('[data-copy]');
@@ -566,6 +631,39 @@ function buildSitemap(props) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
 }
 
+/* Videos de YouTube publicados por propiedad (social_posts).
+   Solo status='published' + platform='youtube' + property_id no nulo:
+   el video_id vive en external_post_id. Si el video se borra del canal, el
+   Studio marca el post como 'failed' → deja de embeberse (sin embeds
+   muertos). Best-effort: si falla la consulta, las fichas salen sin video. */
+async function loadPropertyVideos() {
+  const map = {};
+  try {
+    const url = new URL(`${SUPABASE_URL}/rest/v1/social_posts`);
+    url.searchParams.set('select', 'property_id,external_post_id,content,published_at');
+    url.searchParams.set('platform', 'eq.youtube');
+    url.searchParams.set('status', 'eq.published');
+    url.searchParams.set('property_id', 'not.is.null');
+    url.searchParams.set('order', 'published_at.desc');
+    url.searchParams.set('limit', '500');
+    const res = await fetch(url, { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } });
+    if (!res.ok) throw new Error(`Supabase ${res.status}: ${(await res.text()).slice(0, 120)}`);
+    const rows = await res.json();
+    for (const r of rows || []) {
+      if (!r || !r.property_id || !r.external_post_id) continue;
+      if (map[r.property_id]) continue; // orden desc → el más reciente gana
+      map[r.property_id] = {
+        id: String(r.external_post_id),
+        title: (r.content && r.content.title) || '',
+        publishedAt: r.published_at || '',
+      };
+    }
+  } catch (e) {
+    console.error('videos de YouTube no cargados (las fichas salen sin tour):', e.message);
+  }
+  return map;
+}
+
 async function main() {
   const url = new URL(`${SUPABASE_URL}/rest/v1/properties`);
   url.searchParams.set('select', 'id,property_code,title,description,property_type,status,zone,address,price_usd,price_currency,area_m2,surface_covered,surface_total,rooms,bedrooms,bathrooms,garage_spaces,year_built,latitude,longitude,image_urls,agents(full_name,phone,photo_url)');
@@ -589,6 +687,14 @@ async function main() {
 
   const validFiles = new Set(published.map((p) => `${p.property_code}.html`));
   let removed = 0;
+
+  /* Videos publicados por propiedad (para el embed del tour en la ficha) */
+  const ytVideos = await loadPropertyVideos();
+  const videoIndex = [];
+  for (const p of published) {
+    const v = ytVideos[p.id];
+    if (v) videoIndex.push({ code: p.property_code, video_id: v.id, title: v.title || p.title || '' });
+  }
   /* Solo en regeneración completa: con ONLY_CODE el set sería de una sola
      ficha y borraría el resto. */
   if (!onlyCode) {
@@ -603,13 +709,17 @@ async function main() {
 
   let count = 0;
   for (const p of published) {
-    writeFileSync(`fichas/${p.property_code}.html`, buildHtml(p, published), 'utf8');
+    writeFileSync(`fichas/${p.property_code}.html`, buildHtml(p, published, ytVideos), 'utf8');
     count++;
   }
 
   if (!onlyCode) {
     writeFileSync('sitemap.xml', buildSitemap(published), 'utf8');
     console.log(`sitemap.xml actualizado (${published.length} fichas)`);
+    /* Índice de tours para el catálogo público (badge "Tour" en las cards). */
+    mkdirSync('assets/data', { recursive: true });
+    writeFileSync('assets/data/property-videos.json', JSON.stringify(videoIndex, null, 2) + '\n', 'utf8');
+    console.log(`property-videos.json actualizado (${videoIndex.length} propiedades con tour)`);
   }
   console.log(`Fichas generadas: ${count}${removed ? ` · huérfanas eliminadas: ${removed}` : ''}`);
 }

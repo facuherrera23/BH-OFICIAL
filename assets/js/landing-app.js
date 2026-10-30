@@ -549,6 +549,29 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
   let currentPage = 1;
   let allTeam = [];
 
+  /* Índice de tours en video por property_code (assets/data/property-videos.json,
+     generado por scripts/generate-ficha.mjs desde social_posts). Solo marca
+     la card con un badge "Tour": el video se mira en la ficha HTML. */
+  let propertyVideoMap = Object.create(null);
+  let propertyVideosPromise = Promise.resolve();
+
+  async function loadPropertyVideoIndex() {
+    try {
+      const res = await fetch('assets/data/property-videos.json', { cache: 'no-cache' });
+      if (!res.ok) return;
+      const rows = await res.json();
+      if (!Array.isArray(rows)) return;
+      const map = Object.create(null);
+      for (const row of rows) {
+        if (row && row.code && row.video_id) map[String(row.code)] = row;
+      }
+      propertyVideoMap = map;
+    } catch (_) {
+      /* Sin índice (o 404 en un deploy parcial) → cards sin badge.
+         Nunca rompe el catálogo: el video es un extra, no el contenido. */
+    }
+  }
+
   const FALLBACK_IMG = 'assets/images/hero-bg.webp';
 
   // Cloudinary sirve el original (hasta 3000px) si no se acota el ancho:
@@ -1008,6 +1031,11 @@ function renderSocialLinks(social) {
     const grid = document.getElementById('propertyGrid');
     if (!grid) return;
 
+    /* Sync-point: el índice de videos corre en paralelo con la consulta de
+       propiedades; el primer render espera a ambos (los renders por filtro
+       usan el mapa ya cargado). */
+    propertyVideosPromise = loadPropertyVideoIndex();
+
     try {
       const { data, error } = await window.supabaseClient
         .from('properties')
@@ -1018,6 +1046,7 @@ function renderSocialLinks(social) {
       if (error) throw error;
 
       allProperties = data || [];
+      await propertyVideosPromise;
       populateZoneOptions();
       renderCatalogPage(allProperties);
       updateResultsCount(allProperties.length);
@@ -1109,6 +1138,15 @@ function renderSocialLinks(social) {
         const badge = document.createElement('span');
         badge.className = 'card-badge card-badge--oportunidad';
         badge.textContent = 'Oportunidad';
+        imageWrapper.appendChild(badge);
+      }
+      /* Tour en video: la card marca que la propiedad tiene recorrido en
+         video (el video se mira en la ficha HTML, no se embeve en la card). */
+      if (p.property_code && propertyVideoMap[String(p.property_code)]) {
+        const badge = document.createElement('span');
+        badge.className = 'card-badge card-badge--tour';
+        badge.appendChild(makeIcon('fas fa-play'));
+        badge.appendChild(document.createTextNode(' Tour'));
         imageWrapper.appendChild(badge);
       }
 
