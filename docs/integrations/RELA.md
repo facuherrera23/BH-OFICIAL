@@ -259,3 +259,28 @@ modal de config que escribe `rela_config` con policy super_admin,
   aviso del reconcile (doc ambigua 2.5-2: marcado REQUIRES_CONFIRMATION),
   permisos del PUT `/configuracion/callbacks` y disponibilidad de créditos del
   plan SIMPLE.
+
+## Re-auditoría 2026-10-29 (ronda 2 — contra producción ya deployada)
+
+- **CI verificado**: "Deploy to Production" SUCCESS en el head `754ef68`
+  (auditoría ronda 1) — producción sirve exactamente los archivos de este repo
+  (`rela-callbacks` y `rela-sync` re-deployados por el CI, bytes idénticos a los
+  deploys de MCP).
+- **Gates re-sondeados en producción**: `rela-proxy` sin auth → 401 (gateway,
+  verify_jwt ON) · `rela-callbacks` con secret erróneo → 401 (timing-safe) ·
+  `rela-sync` sin secret → 503 (fail-closed).
+- **CORRECCIÓN del informe de ronda 1**: la entrada `'rela-proxy': 60/min` en
+  `RATE_LIMIT_CONFIG` existe pero **NO está cableada** en `rela-proxy/index.ts`
+  (la función es self-contained sin imports). Endpoint solo-super_admin:
+  residual aceptado, no bloqueante.
+- **Drift repo ↔ producción detectado en `rela_config`**: producción tiene
+  `rela_config_staff_read` (SELECT solo super_admin/broker) pero el repo
+  declaraba `rela_config_read` USING(TRUE) — el endurecimiento se aplicó ad-hoc
+  sin migración. Grabado en `20261029000002_rela_config_policy_parity.sql`
+  (idempotente; requiere apply vía MCP cuando vuelva el tooling o matches el
+  estado actual de producción).
+- **Wiring del panel verificado al átomo**: los 12 ids del modal de config
+  existen en admin.html (un id faltante pisaría `rela_config` con null),
+  delegación de clicks null-safe, scripts `defer` (DOM listo antes de bind),
+  `window.BH_CONFIG.SUPABASE_URL` existe, botones por fila correctos según
+  existencia de listing en `rela_listings`, `#propertiesTableBody` estático.
