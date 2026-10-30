@@ -214,12 +214,12 @@
     const pct = Math.min(100, Math.round(used / 100));
     const color = used >= 9000 ? 'var(--danger)' : (used >= 6000 ? 'var(--warning)' : 'var(--accent)');
     el.innerHTML =
-      '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim);margin-bottom:4px;">' +
+      '<div class="yt-quota-head">' +
         '<span><i class="fas fa-gauge-high"></i> Cuota API estimada hoy (local)</span>' +
         '<span style="color:' + color + ';">' + used + ' / 10.000</span>' +
       '</div>' +
-      '<div style="height:5px;border-radius:3px;background:rgba(255,255,255,0.08);overflow:hidden;">' +
-        '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:3px;"></div>' +
+      '<div class="yt-quota-track">' +
+        '<div class="yt-quota-bar" style="width:' + pct + '%;background:' + color + ';"></div>' +
       '</div>';
   }
 
@@ -319,16 +319,17 @@
       .filter(function (x) { return x > 0; });
     if (vals.length < 2) {
       el.innerHTML =
-        '<div class="glass-panel" style="padding:14px 18px;font-size:12px;color:var(--text-dim);">' +
-        '<i class="fas fa-chart-line"></i> Tendencia diaria del canal: se llena sola con los snapshots diarios (1 captura por día).</div>';
+        '<div class="yt-notice">' +
+        '<i class="fas fa-chart-line"></i>' +
+        '<span>Tendencia diaria del canal: se llena sola con los snapshots diarios (1 captura por día).</span></div>';
       return;
     }
     const delta = vals[vals.length - 1] - vals[0];
     el.innerHTML =
-      '<div class="glass-panel" style="padding:14px 18px;margin-bottom:16px;">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:10px;flex-wrap:wrap;">' +
-          '<span style="font-size:12.5px;color:var(--text-dim);"><i class="fas fa-chart-line"></i> Vistas acumuladas (' + vals.length + ' días de historia)</span>' +
-          '<span style="font-size:12px;color:' + (delta >= 0 ? 'var(--success)' : 'var(--danger)') + ';">' + (delta >= 0 ? '+' : '') + fmtNum(delta) + ' en el período</span>' +
+      '<div class="glass-panel yt-subpanel">' +
+        '<div class="yt-subpanel-head">' +
+          '<span><i class="fas fa-chart-line"></i> Vistas acumuladas (' + vals.length + ' días de historia)</span>' +
+          '<span class="' + (delta >= 0 ? 'yt-delta--up' : 'yt-delta--down') + '">' + (delta >= 0 ? '+' : '') + fmtNum(delta) + ' en el período</span>' +
         '</div>' +
         '<div style="width:100%">' + buildSparkSvgWide(vals, 200, 44) + '</div>' +
       '</div>';
@@ -371,10 +372,10 @@
     const tags = channelTopTags();
     if (!tags.length) { box.innerHTML = ''; return; }
     box.innerHTML =
-      '<div style="font-size:10.5px;color:var(--text-dim);margin-bottom:5px;"><i class="fas fa-tags"></i> Tags que ya rindieron en tu canal (clic para agregar):</div>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:6px;">' +
+      '<div class="yt-chip-label"><i class="fas fa-tags"></i> Tags que ya rindieron en tu canal (clic para agregar):</div>' +
+      '<div class="yt-chip-list">' +
       tags.map(function (t) {
-        return '<button type="button" class="btn-luxury-action" data-yt-tag="' + esc(t) + '" style="padding:4px 9px;font-size:10.5px;">' + esc(t) + '</button>';
+        return '<button type="button" class="yt-chip" data-yt-tag="' + esc(t) + '">' + esc(t) + '</button>';
       }).join('') +
       '</div>';
   }
@@ -400,6 +401,29 @@
     if (!m) return '';
     const h = Number(m[1] || 0), min = Number(m[2] || 0), s = Number(m[3] || 0);
     return h ? h + ':' + String(min).padStart(2, '0') + ':' + String(s).padStart(2, '0') : min + ':' + String(s).padStart(2, '0');
+  }
+
+  /* Skeleton de carga del Studio (mismo lenguaje que los loaders del panel):
+     en lugar de un texto con spinner, se insinúa la grilla que va a aparecer. */
+  function studioSkeletonHtml() {
+    const card = '<div class="yt-skeleton-card">' +
+      '<div class="yt-skeleton yt-skeleton-thumb"></div>' +
+      '<div class="yt-skeleton yt-skeleton-line"></div>' +
+      '<div class="yt-skeleton yt-skeleton-line yt-skeleton-line--short"></div>' +
+      '</div>';
+    return '<div class="yt-studio-head">' +
+        '<div class="yt-skeleton" style="width:72px;height:72px;border-radius:50%;flex-shrink:0;"></div>' +
+        '<div style="flex:1;min-width:220px;">' +
+          '<div class="yt-skeleton" style="height:20px;width:45%;"></div>' +
+          '<div class="yt-skeleton" style="height:12px;width:28%;margin-top:10px;"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="yt-kpis">' +
+        '<div class="yt-kpi"><div class="yt-skeleton" style="height:16px;width:50%;margin:0 auto 10px;"></div><div class="yt-skeleton" style="height:26px;width:35%;margin:0 auto;"></div></div>' +
+        '<div class="yt-kpi"><div class="yt-skeleton" style="height:16px;width:50%;margin:0 auto 10px;"></div><div class="yt-skeleton" style="height:26px;width:35%;margin:0 auto;"></div></div>' +
+        '<div class="yt-kpi"><div class="yt-skeleton" style="height:16px;width:50%;margin:0 auto 10px;"></div><div class="yt-skeleton" style="height:26px;width:35%;margin:0 auto;"></div></div>' +
+      '</div>' +
+      '<div class="yt-video-grid">' + card + card + card + card + '</div>';
   }
 
   /* #30: openStudio usa cache sessionStorage de 5 min (studioCacheRead) —
@@ -428,7 +452,7 @@
       return;
     }
 
-    if (wrap) wrap.innerHTML = '<p style="color:var(--text-dim);font-size:13px;padding:16px 0;"><i class="fas fa-spinner fa-spin"></i> Cargando datos del canal…</p>';
+    if (wrap) wrap.innerHTML = studioSkeletonHtml();
     try {
       const [chInfo, vidsInfo] = await Promise.all([
         studioApiCall({ action: 'channel', account_id: account.id }),
@@ -447,7 +471,7 @@
       loadStudioAux();
     } catch (err) {
       logError('Contenido: studio', err);
-      if (wrap) wrap.innerHTML = '<p style="color:var(--danger);font-size:13px;padding:16px 0;">Error: ' + esc(err.message) + '</p>';
+      if (wrap) wrap.innerHTML = '<div class="yt-notice yt-notice--danger"><i class="fas fa-triangle-exclamation"></i><span>Error: ' + esc(err.message) + '</span></div>';
     }
   }
 
@@ -468,64 +492,67 @@
     const handleUrl = ch.handle ? 'https://www.youtube.com/@' + ch.handle.replace(/^@/, '') : 'https://www.youtube.com/channel/' + ch.id;
 
     const kpi = (icono, valor, label) =>
-      '<div class="glass-panel" style="flex:1;min-width:160px;padding:18px;text-align:center;">' +
-        '<div style="font-size:26px;color:var(--accent);margin-bottom:4px;"><i class="' + icono + '"></i></div>' +
-        '<div style="font-size:22px;font-weight:700;">' + esc(fmtNum(valor)) + '</div>' +
-        '<div style="font-size:12px;color:var(--text-dim);margin-top:2px;">' + esc(label) + '</div>' +
+      '<div class="yt-kpi">' +
+        '<div class="yt-kpi-icon"><i class="' + icono + '"></i></div>' +
+        '<div class="yt-kpi-value">' + esc(fmtNum(valor)) + '</div>' +
+        '<div class="yt-kpi-label">' + esc(label) + '</div>' +
       '</div>';
 
     wrap.innerHTML =
       /* Header del canal — ancho completo */
-      '<div class="glass-panel" style="display:flex;align-items:center;gap:20px;padding:22px;margin-bottom:16px;flex-wrap:wrap;">' +
-        (ch.avatar ? '<img src="' + esc(ch.avatar) + '" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover;flex-shrink:0;">' : '<i class="fab fa-youtube" style="font-size:48px;color:#FF0000;flex-shrink:0;"></i>') +
+      '<div class="yt-studio-head">' +
+        (ch.avatar
+          ? '<img class="yt-studio-avatar" src="' + esc(ch.avatar) + '" alt="">'
+          : '<div class="yt-studio-avatar yt-studio-avatar--icon"><i class="fab fa-youtube" style="color:#FF0000;"></i></div>') +
         '<div style="flex:1;min-width:220px;">' +
-          '<div style="font-size:20px;font-weight:700;">' + esc(ch.title) + '</div>' +
-          '<div style="font-size:13px;color:var(--text-dim);margin-top:2px;">Canal de YouTube · gestionado desde Bienenhaus</div>' +
+          '<div class="yt-studio-title">' + esc(ch.title) + '</div>' +
+          '<div class="yt-studio-sub">Canal de YouTube · gestionado desde Bienenhaus</div>' +
         '</div>' +
-        '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
-          '<button type="button" id="studioPublishBtn" class="btn-luxury-action" style="padding:10px 18px;font-size:13px;"><i class="fas fa-plus"></i> Publicar</button>' +
+        '<div class="yt-inline">' +
+          '<button type="button" id="studioPublishBtn" class="btn-luxury-action yt-btn--md"><i class="fas fa-plus"></i> Publicar</button>' +
           /* MEJORA: forzar el refresh del inventario (el cache de 5 min
              escondía los videos recién publicados en YouTube Studio). */
           '<button type="button" id="studioRefreshBtn" class="btn-luxury-action" title="Volver a pedir el inventario a YouTube (ignora el caché)" style="padding:10px 18px;font-size:13px;"><i class="fas fa-rotate"></i> Actualizar</button>' +
-          '<a href="' + esc(handleUrl) + '" target="_blank" rel="noopener" class="btn-luxury-action" style="padding:10px 18px;font-size:13px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-arrow-up-right-from-square"></i> Ver canal</a>' +
-          '<a href="' + esc(handleUrl + '/community') + '" target="_blank" rel="noopener" title="Los posts de la comunidad no tienen API oficial — se crean desde YouTube" class="btn-luxury-action" style="padding:10px 18px;font-size:13px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-users"></i> Comunidad</a>' +
-          '<button type="button" id="studioBackBtn" class="btn-luxury-action" style="padding:10px 18px;font-size:13px;"><i class="fas fa-arrow-left"></i> Volver</button>' +
+          '<a href="' + esc(handleUrl) + '" target="_blank" rel="noopener" class="btn-luxury-action yt-btn--md yt-btn--link"><i class="fas fa-arrow-up-right-from-square"></i> Ver canal</a>' +
+          '<a href="' + esc(handleUrl + '/community') + '" target="_blank" rel="noopener" title="Los posts de la comunidad no tienen API oficial — se crean desde YouTube" class="btn-luxury-action yt-btn--md yt-btn--link"><i class="fas fa-users"></i> Comunidad</a>' +
+          '<button type="button" id="studioBackBtn" class="btn-luxury-action yt-btn--md"><i class="fas fa-arrow-left"></i> Volver</button>' +
         '</div>' +
       '</div>' +
       /* KPIs — ancho completo, 3 en fila */
-      '<div style="display:flex;gap:14px;margin-bottom:16px;flex-wrap:wrap;">' +
+      '<div class="yt-kpis">' +
         kpi('fas fa-users', ch.subscribers, 'Suscriptores') +
         kpi('fas fa-eye', ch.total_views, 'Vistas totales') +
         kpi('fas fa-video', ch.video_count, 'Videos') +
       '</div>' +
       /* MEJORAS 2026-10-30: métricas #21, tendencia #22 y calendario #46 */
-      '<div id="ytAnalyticsPanel" style="margin-bottom:16px;"></div>' +
-      '<div id="ytTrend" style="margin-bottom:16px;"></div>' +
+      '<div id="ytAnalyticsPanel" class="yt-block"></div>' +
+      '<div id="ytTrend" class="yt-block"></div>' +
       studioMonthGridHtml() +
       (!_studioCanManage
-        ? '<div class="glass-panel" style="padding:14px 18px;margin-bottom:16px;border-left:3px solid var(--warning);display:flex;align-items:center;gap:10px;">' +
-            '<i class="fas fa-triangle-exclamation" style="color:var(--warning);font-size:16px;"></i>' +
-            '<span style="font-size:13px;color:var(--text-secondary);">Modo solo lectura: reconectá la cuenta de YouTube desde la pestaña Cuentas para habilitar edición, borrado, programación y miniaturas.</span>' +
+        ? '<div class="yt-notice yt-notice--warning">' +
+            '<i class="fas fa-triangle-exclamation"></i>' +
+            '<span>Modo solo lectura: reconectá la cuenta de YouTube desde la pestaña Cuentas para habilitar edición, borrado, programación y miniaturas.</span>' +
           '</div>'
         : '') +
       /* #25: barra de búsqueda/orden/filtro y export (#28) */
       (_studioTruncated
-        ? '<div class="glass-panel" style="padding:10px 14px;margin-bottom:12px;border-left:3px solid var(--warning);font-size:12px;color:var(--text-secondary);">' +
-            '<i class="fas fa-triangle-exclamation" style="color:var(--warning);margin-right:6px;"></i>Mostrando ' + _studioVideos.length + ' de ' + _studioTotal + ' videos del canal (el inventario carga hasta 100 por vez).' +
+        ? '<div class="yt-notice yt-notice--warning">' +
+            '<i class="fas fa-triangle-exclamation"></i>' +
+            '<span>Mostrando ' + _studioVideos.length + ' de ' + _studioTotal + ' videos del canal (el inventario carga hasta 100 por vez).</span>' +
           '</div>'
         : '') +
-      '<div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap;">' +
-        '<h3 style="margin:0;font-size:16px;flex-shrink:0;"><i class="fas fa-list"></i> Contenido (<span id="studioCount">' + _studioVideos.length + '</span>)</h3>' +
-        '<div style="flex:1;"></div>' +
-        '<input id="studioSearch" type="text" placeholder="Buscar título o tag…" class="crm-field-input" style="max-width:220px;padding:8px 12px;font-size:12px;">' +
-        '<select id="studioSort" class="crm-field-input crm-field-input--select" style="width:auto;font-size:12px;padding:8px;">' +
+      '<div class="yt-toolbar">' +
+        '<h3 class="yt-toolbar-title"><i class="fas fa-list"></i> Contenido (<span id="studioCount">' + _studioVideos.length + '</span>)</h3>' +
+        '<div class="yt-spacer"></div>' +
+        '<input id="studioSearch" type="text" placeholder="Buscar título o tag…" class="crm-field-input yt-search">' +
+        '<select id="studioSort" class="crm-field-input crm-field-input--select">' +
           '<option value="recent">Más recientes</option>' +
           '<option value="old">Más antiguos</option>' +
           '<option value="views">Más vistas</option>' +
           '<option value="likes">Más likes</option>' +
           '<option value="comments">Más comentarios</option>' +
         '</select>' +
-        '<select id="studioFilter" class="crm-field-input crm-field-input--select" style="width:auto;font-size:12px;padding:8px;">' +
+        '<select id="studioFilter" class="crm-field-input crm-field-input--select">' +
           '<option value="all">Todos</option>' +
           '<option value="public">Públicos</option>' +
           '<option value="private">Privados</option>' +
@@ -535,14 +562,14 @@
         '</select>' +
         /* MEJORA: filtros por rendimiento y antigüedad (el dueño pregunta
            "¿cuáles rinden?" — con 100 videos no se filtraba a mano). */
-        '<select id="studioViews" class="crm-field-input crm-field-input--select" style="width:auto;font-size:12px;padding:8px;" title="Filtrar por cantidad de vistas">' +
+        '<select id="studioViews" class="crm-field-input crm-field-input--select" title="Filtrar por cantidad de vistas">' +
           '<option value="all">Vistas: todas</option>' +
           '<option value="0">0 vistas</option>' +
           '<option value="1-999">1 – 999</option>' +
           '<option value="1k-9k">1.000 – 9.999</option>' +
           '<option value="10k+">10.000+</option>' +
         '</select>' +
-        '<select id="studioAge" class="crm-field-input crm-field-input--select" style="width:auto;font-size:12px;padding:8px;" title="Filtrar por antigüedad">' +
+        '<select id="studioAge" class="crm-field-input crm-field-input--select" title="Filtrar por antigüedad">' +
           '<option value="all">Antigüedad: todas</option>' +
           '<option value="7">Últimos 7 días</option>' +
           '<option value="30">Últimos 30 días</option>' +
@@ -551,7 +578,7 @@
         '</select>' +
         '<button type="button" id="studioCsv" class="btn-luxury-action" title="Descargar inventario filtrado en CSV" style="padding:8px 12px;font-size:11px;"><i class="fas fa-file-csv"></i> CSV</button>' +
       '</div>' +
-      '<div id="studioVideos" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:14px;">' + renderStudioVideos() + '</div>';
+      '<div id="studioVideos" class="yt-video-grid">' + renderStudioVideos() + '</div>';
 
     /* Acciones del header */
     const pubBtn = $('#studioPublishBtn');
@@ -647,14 +674,24 @@
   function renderStudioVideos(source) {
     const list = (Array.isArray(source) && source) ? source : filteredStudioVideos();
     if (!_studioVideos.length) {
-      return '<p style="color:var(--text-dim);font-size:13px;padding:12px 0;">El canal no tiene videos todavía.</p>';
+      /* Estado vacío con el lenguaje del panel (.empty-state) */
+      return '<div class="empty-state">' +
+        '<i class="fab fa-youtube"></i>' +
+        '<div class="empty-state-title">El canal todavía no tiene videos</div>' +
+        '<div>Publicá el primero desde la pestaña Crear publicación.</div>' +
+        '<button type="button" class="btn-luxury-action" id="studioEmptyPublish"><i class="fas fa-plus"></i> Publicar un video</button>' +
+        '</div>';
     }
     if (!list.length) {
-      return '<p style="color:var(--text-dim);font-size:13px;padding:12px 0;">Ningún video coincide con la búsqueda o el filtro.</p>';
+      return '<div class="empty-state">' +
+        '<i class="fas fa-filter-circle-xmark"></i>' +
+        '<div class="empty-state-title">Ningún video coincide con la búsqueda o el filtro</div>' +
+        '<div>Probá con otro texto o volvé a "Todos".</div>' +
+        '</div>';
     }
-    const PRIVACY = { public: ['Público', 'var(--success)'], private: ['Privado', 'var(--danger)'], unlisted: ['Oculto', 'var(--warning)'] };
+    const PRIVACY = { public: ['Público', 'public'], private: ['Privado', 'private'], unlisted: ['Oculto', 'unlisted'] };
     return list.map(function (v) {
-      const priv = PRIVACY[v.privacy] || [v.privacy, 'var(--text-dim)'];
+      const priv = PRIVACY[v.privacy] || [v.privacy, 'other'];
       const fecha = window.__BH.formatDateTimeWithTZ ? window.__BH.formatDateTimeWithTZ(v.published_at) : (v.published_at || '');
       /* #24: badge de subida en procesamiento (upload_status del server) */
       const processing = v.upload_status && v.upload_status !== 'processed';
@@ -668,36 +705,36 @@
           '<button type="button" class="btn-luxury-action" data-studio-delete="' + esc(v.id) + '" data-studio-title="' + esc(v.title) + '" title="Borrar video (permanente)" style="padding:7px 11px;font-size:11px;color:var(--danger);"><i class="fas fa-trash-can"></i></button>'
         : '';
       /* Tarjeta en grid: miniatura grande arriba, info + acciones abajo */
-      return '<div class="glass-panel" style="padding:0;overflow:hidden;display:flex;flex-direction:column;">' +
+      return '<article class="yt-video-card">' +
         /* Miniatura a ancho completo de la tarjeta */
         (v.thumbnail
-          ? '<div data-studio-detail="' + esc(v.id) + '" style="position:relative;aspect-ratio:16/9;background:rgba(255,255,255,0.03);cursor:pointer;">' +
-              '<img src="' + esc(v.thumbnail) + '" alt="" style="width:100%;height:100%;object-fit:cover;" loading="lazy">' +
-              (v.duration ? '<span style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.8);color:#fff;font-size:11px;padding:2px 8px;border-radius:4px;">' + esc(isoDurationToText(v.duration)) + '</span>' : '') +
-              (processing ? '<span style="position:absolute;top:8px;left:8px;background:rgba(30,44,60,0.9);color:#fff;font-size:10.5px;padding:3px 10px;border-radius:999px;"><i class="fas fa-spinner fa-spin"></i> Procesando…</span>' : '') +
+          ? '<div class="yt-video-thumb" data-studio-detail="' + esc(v.id) + '">' +
+              '<img class="yt-thumb-img" src="' + esc(v.thumbnail) + '" alt="" loading="lazy">' +
+              (v.duration ? '<span class="yt-video-duration">' + esc(isoDurationToText(v.duration)) + '</span>' : '') +
+              (processing ? '<span class="yt-video-processing"><i class="fas fa-spinner fa-spin"></i> Procesando…</span>' : '') +
             '</div>'
-          : '<div data-studio-detail="' + esc(v.id) + '" style="aspect-ratio:16/9;background:rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;cursor:pointer;"><i class="fab fa-youtube" style="color:#FF0000;font-size:32px;"></i></div>') +
+          : '<div class="yt-video-thumb yt-video-thumb--empty" data-studio-detail="' + esc(v.id) + '"><i class="fab fa-youtube" style="color:#FF0000;font-size:32px;"></i></div>') +
         /* Info */
-        '<div style="padding:12px 14px;flex:1;display:flex;flex-direction:column;gap:8px;cursor:pointer;" data-studio-detail="' + esc(v.id) + '">' +
-          '<div style="font-size:13.5px;font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.6em;">' + esc(v.title) + '</div>' +
-          '<div style="display:flex;align-items:center;gap:12px;font-size:11.5px;color:var(--text-dim);flex-wrap:wrap;">' +
+        '<div class="yt-video-body" data-studio-detail="' + esc(v.id) + '">' +
+          '<div class="yt-video-title">' + esc(v.title) + '</div>' +
+          '<div class="yt-video-metrics">' +
             '<span title="Vistas"><i class="fas fa-eye"></i> ' + fmtNum(v.views) + '</span>' +
             '<span title="Likes"><i class="fas fa-thumbs-up"></i> ' + fmtNum(v.likes) + '</span>' +
             '<span title="Comentarios"><i class="fas fa-comment"></i> ' + fmtNum(v.comments) + '</span>' +
             (sparkData ? '<span title="Tendencia de las últimas 2 semanas">' + buildSparkSvg(sparkData, 62, 18) + '</span>' : '') +
           '</div>' +
-          '<div style="font-size:11px;color:var(--text-dim);">' + esc(fecha) + '</div>' +
+          '<div class="yt-video-date">' + esc(fecha) + '</div>' +
         '</div>' +
         /* Barra de acciones */
-        '<div style="padding:8px 14px 12px;display:flex;align-items:center;gap:8px;border-top:1px solid rgba(255,255,255,0.04);">' +
-          '<span style="font-size:10.5px;color:' + priv[1] + ';border:1px solid currentColor;border-radius:10px;padding:2px 10px;flex-shrink:0;margin-right:auto;">' + esc(priv[0]) + '</span>' +
+        '<div class="yt-video-actions">' +
+          '<span class="yt-privacy yt-privacy--' + esc(priv[1]) + '">' + esc(priv[0]) + '</span>' +
           '<button type="button" class="btn-luxury-action" data-studio-detail="' + esc(v.id) + '" title="Detalles, playlists y métricas del video" style="padding:7px 11px;font-size:11px;"><i class="fas fa-circle-info"></i></button>' +
           /* MEJORA: copiar el link desde la card (sin abrir el detalle) */
           '<button type="button" class="btn-luxury-action" data-studio-copy="' + esc(v.id) + '" title="Copiar el link del video" style="padding:7px 11px;font-size:11px;"><i class="fas fa-link"></i></button>' +
           manageActions +
-          '<a href="https://www.youtube.com/watch?v=' + esc(v.id) + '" target="_blank" rel="noopener" title="Ver en YouTube" class="btn-luxury-action" style="padding:7px 11px;font-size:11px;text-decoration:none;"><i class="fas fa-arrow-up-right-from-square"></i></a>' +
+          '<a href="https://www.youtube.com/watch?v=' + esc(v.id) + '" target="_blank" rel="noopener" title="Ver en YouTube" class="btn-luxury-action yt-btn--sm yt-btn--link"><i class="fas fa-arrow-up-right-from-square"></i></a>' +
         '</div>' +
-      '</div>';
+      '</article>';
     }).join('');
   }
 
@@ -752,13 +789,13 @@
     let cells = '';
     for (let i = 0; i < offset; i++) cells += '<div></div>';
     for (let d = 1; d <= daysInMonth; d++) {
-      cells += '<div style="font-size:10.5px;color:var(--text-dim);text-align:center;position:relative;padding:2px 0;">' + d +
-        (byDay[d] ? '<i class="fas fa-circle" style="position:absolute;left:50%;transform:translateX(-50%);bottom:0;font-size:5px;color:var(--accent);"></i>' : '') +
+      cells += '<div class="yt-month-cell">' + d +
+        (byDay[d] ? '<i class="fas fa-circle yt-month-dot"></i>' : '') +
         '</div>';
     }
-    return '<div id="ytMonthGrid" class="glass-panel" style="padding:14px 18px;margin-bottom:16px;">' +
-      '<div style="font-size:12.5px;color:var(--text-dim);margin-bottom:10px;"><i class="fas fa-calendar"></i> ' + esc(monthName) + ' · ' + estrenos + ' estreno(s)</div>' +
-      '<div style="display:grid;grid-template-columns:repeat(7,34px);gap:2px;max-width:300px;">' + cells + '</div>' +
+    return '<div id="ytMonthGrid" class="glass-panel yt-subpanel">' +
+      '<div class="yt-subpanel-head"><span><i class="fas fa-calendar"></i> ' + esc(monthName) + ' · ' + estrenos + ' estreno(s)</span></div>' +
+      '<div class="yt-month-grid">' + cells + '</div>' +
       '</div>';
   }
 
@@ -768,31 +805,31 @@
   async function loadAnalyticsPanel() {
     const el = $('#ytAnalyticsPanel');
     if (!el || !_studioAccount) return;
-    el.innerHTML = '<p style="font-size:12px;color:var(--text-dim);"><i class="fas fa-spinner fa-spin"></i> Cargando métricas…</p>';
+    el.innerHTML = '<p class="yt-muted"><i class="fas fa-spinner fa-spin"></i> Cargando métricas…</p>';
     try {
       const res = await studioApiCall({ action: 'analytics', account_id: _studioAccount.id });
       const t = res.totals || {};
       const stat = function (val, label) {
-        return '<div style="flex:1;min-width:110px;">' +
-          '<div style="font-size:20px;font-weight:700;">' + esc(fmtNum(Number(val) || 0)) + '</div>' +
-          '<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">' + esc(label) + '</div>' +
+        return '<div class="yt-stat">' +
+          '<div class="yt-stat-value">' + esc(fmtNum(Number(val) || 0)) + '</div>' +
+          '<div class="yt-stat-label">' + esc(label) + '</div>' +
         '</div>';
       };
       const statRaw = function (text, label) {
-        return '<div style="flex:1;min-width:110px;">' +
-          '<div style="font-size:20px;font-weight:700;">' + esc(text) + '</div>' +
-          '<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">' + esc(label) + '</div>' +
+        return '<div class="yt-stat">' +
+          '<div class="yt-stat-value">' + esc(text) + '</div>' +
+          '<div class="yt-stat-label">' + esc(label) + '</div>' +
         '</div>';
       };
       const avgNum = Number(t.avg_view_seconds) || 0;
       const avgTxt = Math.floor(avgNum / 60) + ':' + String(Math.round(avgNum % 60)).padStart(2, '0');
       el.innerHTML =
-        '<div class="glass-panel" style="padding:14px 18px;">' +
-          '<div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;">' +
-            '<span style="font-size:12.5px;color:var(--text-dim);"><i class="fas fa-chart-simple"></i> Últimos 28 días' + (res.range ? ' (' + esc(res.range.start) + ' → ' + esc(res.range.end) + ')' : '') + '</span>' +
-            '<span style="font-size:11px;color:var(--text-dim);">YouTube Analytics</span>' +
+        '<div class="glass-panel yt-subpanel">' +
+          '<div class="yt-subpanel-head">' +
+            '<span><i class="fas fa-chart-simple"></i> Últimos 28 días' + (res.range ? ' (' + esc(res.range.start) + ' → ' + esc(res.range.end) + ')' : '') + '</span>' +
+            '<span>YouTube Analytics</span>' +
           '</div>' +
-          '<div style="display:flex;gap:14px;flex-wrap:wrap;">' +
+          '<div class="yt-stats">' +
             stat(t.views, 'Vistas') +
             stat(t.watch_minutes, 'Minutos vistos') +
             statRaw(avgTxt, 'Duración prom. vista') +
@@ -802,9 +839,9 @@
     } catch (err) {
       if (/needs_reconnect/.test(String(err.message))) {
         el.innerHTML =
-          '<div class="glass-panel" style="padding:14px 18px;border-left:3px solid var(--info,var(--accent));display:flex;align-items:center;gap:10px;">' +
-            '<i class="fas fa-plug-circle-exclamation" style="color:var(--accent);font-size:16px;"></i>' +
-            '<span style="font-size:12.5px;color:var(--text-secondary);">Las métricas avanzadas piden un permiso nuevo (analítica). Desconectá la cuenta y conectala de nuevo en Cuentas — es una sola vez; el resto del canal sigue funcionando.</span>' +
+          '<div class="yt-notice">' +
+            '<i class="fas fa-plug-circle-exclamation"></i>' +
+            '<span>Las métricas avanzadas piden un permiso nuevo (analítica). Desconectá la cuenta y conectala de nuevo en Cuentas — es una sola vez; el resto del canal sigue funcionando.</span>' +
           '</div>';
       } else {
         el.innerHTML = '';
@@ -819,46 +856,40 @@
   /* ---------- STUDIO: editar video ---------- */
 
   function openStudioEditModal(v) {
-    closeModalIfExists('studioEditOverlay');
-    const ov = document.createElement('div');
-    ov.id = 'studioEditOverlay';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px;';
-    const box = document.createElement('div');
-    box.className = 'glass-panel';
-    box.style.cssText = 'max-width:640px;width:100%;padding:24px;max-height:85vh;overflow-y:auto;';
-    box.innerHTML =
-      '<h3 style="margin:0 0 6px;font-size:16px;"><i class="fas fa-pen"></i> Editar video</h3>' +
-      '<p style="margin:0 0 16px;font-size:12px;color:var(--text-dim);">' + esc(String(v.title).substring(0, 80)) + '</p>' +
-      '<div style="margin-bottom:12px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Título</span>' +
+    const html =
+      '<div class="yt-modal-head">' +
+        '<h3><i class="fas fa-pen"></i> Editar video</h3>' +
+        '<p class="yt-modal-sub">' + esc(String(v.title).substring(0, 80)) + '</p>' +
+      '</div>' +
+      '<div class="yt-field"><span class="yt-label">Título</span>' +
       '<input id="steTitle" type="text" class="crm-field-input" maxlength="100" value="' + esc(v.title) + '" style="width:100%;"></div>' +
-      '<div style="margin-bottom:12px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Descripción</span>' +
+      '<div class="yt-field"><span class="yt-label">Descripción</span>' +
       '<textarea id="steDesc" rows="4" class="crm-field-input" maxlength="5000" style="width:100%;">' + esc(v.description || '') + '</textarea></div>' +
-      '<div style="margin-bottom:12px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Tags SEO (coma)</span>' +
+      '<div class="yt-field"><span class="yt-label">Tags SEO (coma)</span>' +
       '<input id="steTags" type="text" class="crm-field-input" value="' + esc((v.tags || []).join(', ')) + '" style="width:100%;"></div>' +
-      '<div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap;">' +
-        '<div style="flex:1;min-width:150px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Visibilidad</span>' +
+      '<div class="yt-row" style="margin-bottom:16px;gap:12px;">' +
+        '<div style="flex:1;min-width:150px;"><span class="yt-label">Visibilidad</span>' +
         '<select id="stePrivacy" class="crm-field-input crm-field-input--select" style="width:100%;">' +
           '<option value="public"' + (v.privacy === 'public' ? ' selected' : '') + '>Público</option>' +
           '<option value="unlisted"' + (v.privacy === 'unlisted' ? ' selected' : '') + '>Oculto (link)</option>' +
           '<option value="private"' + (v.privacy === 'private' ? ' selected' : '') + '>Privado</option>' +
         '</select></div>' +
-        '<div style="flex:1;min-width:180px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Programar publicación (opcional)</span>' +
+        '<div style="flex:1;min-width:180px;"><span class="yt-label">Programar publicación (opcional)</span>' +
         '<input id="stePublishAt" type="datetime-local" class="crm-field-input" style="width:100%;">' +
-        '<span id="steSchedHint" style="display:block;font-size:10.5px;color:var(--text-dim);margin-top:4px;line-height:1.4;"></span></div>' +
+        '<span id="steSchedHint" class="yt-hint"></span></div>' +
       '</div>' +
-      '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Miniatura (imagen JPG/PNG ≤ 2MB)</span>' +
+      '<div class="yt-field"><span class="yt-label">Miniatura (imagen JPG/PNG ≤ 2MB)</span>' +
       '<input id="steThumb" type="file" accept="image/jpeg,image/png" class="crm-field-input" style="width:100%;padding:8px;"></div>' +
       /* MEJORA #13: keyword + competencia del canal + delta de score (#20) */
       '<div id="steKwInfo" style="font-size:11px;color:var(--text-dim);border-top:1px solid rgba(255,255,255,0.06);margin-top:2px;padding-top:8px;"></div>' +
       /* MEJORA 2026-10-30: Score SEO en vivo dentro del modal (motor yt-seo-score.js) */
       '<div id="steSeoBody" style="border-top:1px solid rgba(255,255,255,0.06);margin-top:2px;padding-top:10px;"></div>' +
-      '<div style="display:flex;gap:10px;justify-content:flex-end;">' +
-        '<button type="button" id="steCancel" class="btn-luxury-action" style="padding:10px 18px;font-size:12px;">Cancelar</button>' +
-        '<button type="button" id="steSave" class="btn-luxury-action" style="padding:10px 18px;font-size:12px;"><i class="fas fa-floppy-disk"></i> Guardar</button>' +
+      '<div class="yt-modal-foot">' +
+        '<button type="button" id="steCancel" class="btn-luxury-action yt-btn--md">Cancelar</button>' +
+        '<button type="button" id="steSave" class="btn-luxury-action yt-btn--md"><i class="fas fa-floppy-disk"></i> Guardar</button>' +
       '</div>';
-    ov.appendChild(box);
-    document.body.appendChild(ov);
-    ov.addEventListener('mousedown', function (e) { if (e.target === ov) closeModalIfExists('studioEditOverlay'); });
+    const m = createYtModal('studioEditOverlay', { html: html });
+    const box = m.box;
     box.querySelector('#steCancel').addEventListener('click', function () { closeModalIfExists('studioEditOverlay'); });
 
     /* REPARACIÓN: la programación real del video no se veía nunca (el server
@@ -1010,7 +1041,14 @@
 
   async function studioDeleteVideo(videoId, title) {
     /* MEJORA #45: confirmación con consecuencias en claro (links muertos). */
-    if (!window.confirm('Borrar "' + title.substring(0, 60) + '" de YouTube.\n\nPERMANENTE: los links compartidos hacia este video quedan muertos y no hay papelera. ¿Seguro?')) return;
+    const ok = await ytConfirm({
+      title: 'Borrar el video',
+      message: 'Borrar "' + title.substring(0, 60) + '" de YouTube.\n\nPERMANENTE: los links compartidos hacia este video quedan muertos y no hay papelera.',
+      icon: 'fas fa-trash-can',
+      confirmText: 'Borrar de YouTube',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await studioApiCall({ action: 'video_delete', account_id: _studioAccount.id, video_id: videoId });
       showToast('Video borrado del canal.', 'success');
@@ -1026,40 +1064,30 @@
      histórico, métricas por video (analytics con filters=video==ID),
      playlists (agregar/quitar/crear) y acciones de compartir/admin. */
   function openStudioVideoDetail(v) {
-    closeModalIfExists('studioDetailOverlay');
-    const ov = document.createElement('div');
-    ov.id = 'studioDetailOverlay';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px;';
-    const box = document.createElement('div');
-    box.className = 'glass-panel';
-    box.style.cssText = 'max-width:760px;width:100%;padding:24px;max-height:88vh;overflow-y:auto;';
     const PRIVACY_TXT = { public: 'Público', private: 'Privado', unlisted: 'Oculto (link)' };
     const priv = PRIVACY_TXT[v.privacy] || String(v.privacy || '');
     const fecha = window.__BH.formatDateTimeWithTZ ? window.__BH.formatDateTimeWithTZ(v.published_at) : (v.published_at || '');
     const sparkFull = sparkPointsFor(v.id, 30);
     const tagsChips = (v.tags || []).map(function (t) {
-      return '<span style="font-size:10.5px;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);color:var(--text-secondary);">' + esc(t) + '</span>';
+      return '<span class="yt-chip" style="cursor:default;">' + esc(t) + '</span>';
     }).join('');
     const watchUrl = 'https://www.youtube.com/watch?v=' + v.id;
     const processing = v.upload_status && v.upload_status !== 'processed';
 
-    box.innerHTML =
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;">' +
-        '<div style="min-width:0;">' +
-          '<h3 style="margin:0 0 4px;font-size:16px;line-height:1.35;">' + esc(v.title) + '</h3>' +
-          '<span style="font-size:11px;color:var(--text-dim);">' + esc(fecha) + ' · ' + esc(priv) +
-            (processing ? ' · <span style="color:var(--warning);"><i class="fas fa-spinner fa-spin"></i> procesando</span>' : '') + '</span>' +
-        '</div>' +
-        '<button type="button" id="steDetailClose" class="btn-luxury-action" title="Cerrar" style="padding:7px 11px;font-size:11px;flex-shrink:0;"><i class="fas fa-times"></i></button>' +
+    const html =
+      '<div class="yt-modal-head">' +
+        '<h3 style="font-size:17px;line-height:1.35;">' + esc(v.title) + '</h3>' +
+        '<p class="yt-modal-sub">' + esc(fecha) + ' · ' + esc(priv) +
+          (processing ? ' · <span style="color:var(--warning);"><i class="fas fa-spinner fa-spin"></i> procesando</span>' : '') + '</p>' +
       '</div>' +
-      '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:6px;">' +
+      '<div class="yt-row" style="margin-bottom:6px;gap:16px;">' +
         '<div style="flex:2;min-width:280px;">' +
           '<a href="' + esc(watchUrl) + '" target="_blank" rel="noopener" title="Ver en YouTube">' +
           (v.thumbnail
-            ? '<img src="' + esc(v.thumbnail) + '" alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;">'
+            ? '<img class="yt-thumb-img" src="' + esc(v.thumbnail) + '" alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;">'
             : '<div style="width:100%;aspect-ratio:16/9;border-radius:10px;background:rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center;"><i class="fab fa-youtube" style="color:#FF0000;font-size:40px;"></i></div>') +
           '</a>' +
-          '<div style="display:flex;gap:16px;font-size:12px;color:var(--text-dim);margin-top:10px;flex-wrap:wrap;">' +
+          '<div class="yt-video-metrics" style="margin-top:10px;font-size:12px;">' +
             '<span><i class="fas fa-eye"></i> <b>' + esc(fmtNum(v.views)) + '</b> vistas</span>' +
             '<span><i class="fas fa-thumbs-up"></i> <b>' + esc(fmtNum(v.likes)) + '</b> likes</span>' +
             '<span><i class="fas fa-comment"></i> <b>' + esc(fmtNum(v.comments)) + '</b> comentarios</span>' +
@@ -1067,17 +1095,17 @@
           '</div>' +
         '</div>' +
         '<div style="flex:3;min-width:260px;">' +
-          '<div style="font-size:10.5px;color:var(--text-dim);font-weight:600;margin-bottom:6px;"><i class="fas fa-tags"></i> TAGS (' + (v.tags || []).length + ')</div>' +
-          '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">' + (tagsChips || '<span style="font-size:11px;color:var(--text-dim);">sin tags</span>') + '</div>' +
+          '<div class="yt-label" style="margin-bottom:6px;"><i class="fas fa-tags"></i> TAGS (' + (v.tags || []).length + ')</div>' +
+          '<div class="yt-chip-list" style="margin-bottom:12px;">' + (tagsChips || '<span style="font-size:11px;color:var(--text-dim);">sin tags</span>') + '</div>' +
           (sparkFull
             ? '<div style="font-size:10.5px;color:var(--text-dim);margin-bottom:4px;"><i class="fas fa-chart-line"></i> Vistas · ' + sparkFull.length + ' puntos de historia</div>' +
               '<div>' + buildSparkSvgWide(sparkFull, 200, 44) + '</div>'
             : '') +
-          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">' +
+          '<div class="yt-inline" style="margin-top:12px;">' +
             (_studioCanManage
-              ? '<button type="button" id="steDetailOpen" class="btn-luxury-action" style="padding:8px 14px;font-size:11.5px;"><i class="fas fa-pen"></i> Editar datos</button>'
+              ? '<button type="button" id="steDetailOpen" class="btn-luxury-action yt-btn--sm"><i class="fas fa-pen"></i> Editar datos</button>'
               : '') +
-            '<a href="https://studio.youtube.com/video/' + esc(v.id) + '/edit" target="_blank" rel="noopener" title="Abrir en YouTube Studio" class="btn-luxury-action" style="padding:8px 14px;font-size:11.5px;text-decoration:none;"><i class="fas fa-sliders"></i> Studio</a>' +
+            '<a href="https://studio.youtube.com/video/' + esc(v.id) + '/edit" target="_blank" rel="noopener" title="Abrir en YouTube Studio" class="btn-luxury-action yt-btn--sm yt-btn--link"><i class="fas fa-sliders"></i> Studio</a>' +
             '<button type="button" id="steCopyLink" class="btn-luxury-action" title="Copiar link del video" style="padding:8px 14px;font-size:11.5px;"><i class="fas fa-link"></i> Copiar link</button>' +
           '</div>' +
         '</div>' +
@@ -1085,10 +1113,8 @@
       '<div id="steDetailAna" style="margin:10px 0 6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;"></div>' +
       '<div id="stePlaylists" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:6px;"></div>';
 
-    ov.appendChild(box);
-    document.body.appendChild(ov);
-    ov.addEventListener('mousedown', function (e) { if (e.target === ov) closeModalIfExists('studioDetailOverlay'); });
-    box.querySelector('#steDetailClose').addEventListener('click', function () { closeModalIfExists('studioDetailOverlay'); });
+    const m = createYtModal('studioDetailOverlay', { wide: true, html: html });
+    const box = m.box;
 
     /* #26 lazy: métricas del video + playlists a pedido */
     loadVideoAnalytics(box, v);
@@ -1154,7 +1180,7 @@
     const wrap = box.querySelector('#steDetailAna');
     if (!wrap) return;
     wrap.innerHTML =
-      '<button type="button" id="steAnaBtn" class="btn-luxury-action" style="padding:8px 14px;font-size:11.5px;"><i class="fas fa-chart-simple"></i> Métricas de YouTube Analytics (28 días)</button>' +
+      '<button type="button" id="steAnaBtn" class="btn-luxury-action yt-btn--sm"><i class="fas fa-chart-simple"></i> Métricas de YouTube Analytics (28 días)</button>' +
       '<div id="steDetailAnaBody" style="margin-top:8px;"></div>';
     wrap.querySelector('#steAnaBtn').addEventListener('click', async function () {
       const btn = this;
@@ -1218,7 +1244,7 @@
         (_studioCanManage
           ? '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">' +
               '<input id="stePlTitle" type="text" class="crm-field-input" maxlength="60" placeholder="Nueva playlist (queda privada)…" style="flex:1;min-width:180px;">' +
-              '<button type="button" id="stePlCreate" class="btn-luxury-action" style="padding:8px 12px;font-size:11px;"><i class="fas fa-plus"></i> Crear</button>' +
+              '<button type="button" id="stePlCreate" class="btn-luxury-action yt-btn--sm"><i class="fas fa-plus"></i> Crear</button>' +
             '</div>'
           : '<p style="font-size:11px;color:var(--text-dim);margin-top:10px;"><i class="fas fa-lock"></i> Reconectá la cuenta para modificar las playlists.</p>');
     } catch (err) {
@@ -1229,6 +1255,62 @@
   function closeModalIfExists(id) {
     const el = document.getElementById(id);
     if (el) el.remove();
+  }
+
+  /* ---------- Modales del módulo (mismo lenguaje visual que el panel) ----------
+     .yt-modal + .modal-box replican .admin-modal/.modal-box del admin
+     (tokens, blur, radios, sombra) y el botón X de cierre (.modal-x-close).
+     El panel inyecta su X solo sobre los modales estáticos del HTML, así que
+     los modales dinámicos de Contenido llevan el suyo. */
+  function createYtModal(id, opts) {
+    opts = opts || {};
+    closeModalIfExists(id);
+    const ov = document.createElement('div');
+    ov.id = id;
+    ov.className = 'yt-modal is-open';
+    const box = document.createElement('div');
+    box.className = 'modal-box' + (opts.wide ? ' modal-box--wide' : '');
+    /* El contenido se inyecta ANTES de la X: si se hiciera después, el
+       innerHTML borraría el botón de cierre. */
+    if (opts.html) box.innerHTML = opts.html;
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+    /* Clic en el fondo cierra (los modales del panel no lo hacen, pero acá
+       el fondo es un overlay propio y el dueño lo espera así). */
+    ov.addEventListener('mousedown', function (e) { if (e.target === ov) closeModalIfExists(id); });
+    /* X de cierre */
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'modal-x-close';
+    x.setAttribute('aria-label', 'Cerrar');
+    x.innerHTML = '<i class="fas fa-xmark"></i>';
+    x.addEventListener('click', function () { closeModalIfExists(id); });
+    box.appendChild(x);
+    /* Escape cierra */
+    const onKey = function (e) {
+      if (e.key !== 'Escape') return;
+      if (!document.getElementById(id)) { document.removeEventListener('keydown', onKey, true); return; }
+      e.stopPropagation();
+      closeModalIfExists(id);
+      document.removeEventListener('keydown', onKey, true);
+    };
+    document.addEventListener('keydown', onKey, true);
+    return { overlay: ov, box: box };
+  }
+
+  /* Confirmación y prompt con el DIÁLOGO DEL PANEL (mismo look que el resto
+     del admin) en vez del confirm()/prompt() nativo del navegador. Fallback
+     al nativo si admin-app.js no está cargado. */
+  function ytConfirm(opts) {
+    const fn = (window.__BH && window.__BH.showConfirmDialog) || window.showConfirmDialog;
+    if (typeof fn === 'function') return Promise.resolve(fn(opts));
+    return Promise.resolve(window.confirm(opts.message || opts.title || '¿Confirmás?'));
+  }
+
+  function ytPrompt(opts) {
+    const fn = (window.__BH && window.__BH.showInputPrompt) || window.showInputPrompt;
+    if (typeof fn === 'function') return Promise.resolve(fn(opts));
+    return Promise.resolve(window.prompt(opts.message || opts.title || '', opts.defaultValue || ''));
   }
 
   /* ---------- Cuentas ---------- */
@@ -1282,19 +1364,17 @@
     _accounts.filter(a => a.status === 'active').forEach((acc) => {
       const meta = PLATFORM_META[acc.platform] || { name: acc.platform, icon: 'fas fa-share', color: 'var(--text-dim)' };
       const card = document.createElement('div');
-      card.className = 'glass-panel';
-      card.style.cssText = 'display:flex;align-items:center;gap:14px;padding:16px;flex:1;min-width:260px;';
+      card.className = 'yt-account-card is-linked';
       const iconHtml = acc.avatar_url
-        ? '<img src="' + esc(acc.avatar_url) + '" alt="" style="width:42px;height:42px;border-radius:50%;object-fit:cover;">'
-        : '<i class="' + esc(meta.icon) + '" style="font-size:26px;color:' + meta.color + ';width:42px;text-align:center;"></i>';
+        ? '<div class="yt-account-icon"><img src="' + esc(acc.avatar_url) + '" alt=""></div>'
+        : '<div class="yt-account-icon" style="color:' + meta.color + ';"><i class="' + esc(meta.icon) + '" style="font-size:22px;"></i></div>';
       /* STUDIO: click en la tarjeta del canal abre la administración completa
          del contenido — pedir del dueño 2026-10-27. */
-      card.style.cursor = 'pointer';
       card.dataset.contenidoStudio = acc.id;
       card.innerHTML =
         '<div style="flex:1;min-width:0;">' +
-        '<div style="font-weight:600;font-size:14px;">' + esc(acc.display_name) + '</div>' +
-        '<div style="font-size:11.5px;color:var(--text-dim);">' + esc(meta.name) + ' · conectada' +
+        '<div class="yt-account-name">' + esc(acc.display_name) + '</div>' +
+        '<div class="yt-account-meta">' + esc(meta.name) + ' · conectada' +
         (acc.last_publish_at ? ' · última: ' + (window.__BH.formatDateTimeWithTZ ? window.__BH.formatDateTimeWithTZ(acc.last_publish_at) : '') : '') +
         ' <i class="fas fa-arrow-right" style="font-size:9px;margin-left:2px;"></i></div>' +
         '</div>' +
@@ -1307,19 +1387,18 @@
       if (_accounts.some(a => a.platform === pid && a.status === 'active')) return;
       const configured = platformConfigured(pid);
       const card = document.createElement('div');
-      card.className = 'glass-panel';
-      card.style.cssText = 'display:flex;align-items:center;gap:14px;padding:16px;flex:1;min-width:260px;';
+      card.className = 'yt-account-card';
       card.innerHTML =
-        '<i class="' + esc(meta.icon) + '" style="font-size:26px;color:' + meta.color + ';width:42px;text-align:center;"></i>' +
+        '<div class="yt-account-icon" style="color:' + meta.color + ';"><i class="' + esc(meta.icon) + '" style="font-size:22px;"></i></div>' +
         '<div style="flex:1;min-width:0;">' +
-        '<div style="font-weight:600;font-size:14px;">' + esc(meta.name) + '</div>' +
-        '<div style="font-size:11.5px;color:var(--text-dim);">' + (!meta.available ? 'Próximamente' : (configured ? 'Sin conectar' : 'Sin app configurada')) + '</div>' +
+        '<div class="yt-account-name">' + esc(meta.name) + '</div>' +
+        '<div class="yt-account-meta">' + (!meta.available ? 'Próximamente' : (configured ? 'Sin conectar' : 'Sin app configurada')) + '</div>' +
         '</div>' +
         (!meta.available
           ? '<span style="font-size:11px;color:var(--text-dim);"><i class="fas fa-clock"></i></span>'
           : (configured
             ? '<button type="button" data-contenido-connect="' + esc(pid) + '" class="btn-luxury-action" style="padding:8px 14px;font-size:11px;"><i class="fas fa-plug"></i> Conectar</button>'
-            : '<span style="font-size:10.5px;color:var(--text-dim);text-align:right;max-width:140px;" title="Faltan las credenciales OAuth de esta red (app_settings social_' + esc(pid) + ')."><i class="fas fa-sliders"></i> Sin configurar</span>'));
+            : '<span class="yt-account-state" title="Faltan las credenciales OAuth de esta red (app_settings social_' + esc(pid) + ')."><i class="fas fa-sliders"></i> Sin configurar</span>'));
       cards.push(card);
     });
     wrap.replaceChildren(...cards);
@@ -1368,7 +1447,14 @@
   }
 
   async function disconnectAccount(accountId) {
-    if (!window.confirm('¿Desconectar esta cuenta? Podés volver a conectarla cuando quieras.')) return;
+    const ok = await ytConfirm({
+      title: 'Desconectar la cuenta',
+      message: '¿Desconectar esta cuenta? Podés volver a conectarla cuando quieras.',
+      icon: 'fas fa-plug-circle-xmark',
+      confirmText: 'Desconectar',
+      danger: true,
+    });
+    if (!ok) return;
     const client = await getAuthedClient();
     if (!client) return;
     const { error } = await client.from('social_accounts')
@@ -1468,13 +1554,13 @@
   function createUploadFloat() {
     const float = document.createElement('div');
     float.id = 'ytUploadFloat';
-    float.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:9998;display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:12px;background:rgba(2,6,12,0.92);border:1px solid rgba(255,255,255,0.14);box-shadow:0 12px 30px rgba(0,0,0,.45);';
+    float.className = 'yt-upload-float';
     float.innerHTML =
       '<i class="fas fa-cloud-arrow-up" style="color:var(--accent);font-size:16px;"></i>' +
       '<div style="min-width:150px;">' +
-        '<div id="ytFloatPct" style="font-size:11.5px;font-weight:600;"></div>' +
-        '<div style="height:5px;border-radius:3px;background:rgba(255,255,255,0.1);margin-top:4px;overflow:hidden;">' +
-          '<div id="ytFloatBar" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width .3s;"></div>' +
+        '<div id="ytFloatPct" class="yt-upload-float-pct"></div>' +
+        '<div class="yt-quota-track" style="margin-top:4px;">' +
+          '<div id="ytFloatBar" class="yt-quota-bar" style="background:var(--accent);"></div>' +
         '</div>' +
       '</div>';
     document.body.appendChild(float);
@@ -1554,10 +1640,7 @@
     /* MEJORA: arrastrar el archivo de video a la zona (sin usar el picker) */
     const dropZone = $('#ytFileDrop');
     if (dropZone && fileInput) {
-      const highlight = function (on) {
-        dropZone.style.borderColor = on ? 'var(--accent)' : 'rgba(255,255,255,0.18)';
-        dropZone.style.background = on ? 'rgba(45,212,191,0.06)' : '';
-      };
+      const highlight = function (on) { dropZone.classList.toggle('is-over', !!on); };
       dropZone.addEventListener('dragover', function (e) { e.preventDefault(); highlight(true); });
       dropZone.addEventListener('dragenter', function (e) { e.preventDefault(); highlight(true); });
       dropZone.addEventListener('dragleave', function () { highlight(false); });
@@ -1827,12 +1910,19 @@
     recomputeSeoPanel();
     showToast('Plantilla aplicada: ' + String(t.name).substring(0, 40), 'success');
   }
-  function saveTemplateFromForm() {
+  async function saveTemplateFromForm() {
     const title = (($('#ytTitle') || {}).value || '').trim();
     const desc = (($('#ytDesc') || {}).value || '').trim();
     const tags = (($('#ytTags') || {}).value || '').trim();
     if (!title && !desc && !tags) { showToast('El formulario está vacío — nada para guardar.', 'warning'); return; }
-    const name = window.prompt('Nombre de la plantilla:', 'Plantilla ' + new Date().toLocaleDateString('es-AR'));
+    /* Nombre de la plantilla: diálogo del panel (no el prompt nativo). */
+    const name = await ytPrompt({
+      title: 'Guardar plantilla',
+      message: 'Leé un nombre para reconocerla después.',
+      icon: 'fas fa-floppy-disk',
+      placeholder: 'Plantilla ' + new Date().toLocaleDateString('es-AR'),
+      confirmText: 'Guardar',
+    });
     if (name === null) return;
     const tpls = getTemplates();
     tpls.unshift({
@@ -1847,11 +1937,18 @@
     renderTemplateOptions();
     showToast('Plantilla guardada.', 'success');
   }
-  function deleteCurrentTemplate() {
+  async function deleteCurrentTemplate() {
     const sel = $('#ytTemplateSel');
     const id = sel && sel.value;
     if (!id || String(id).indexOf('tpl_') !== 0) { showToast('Elegí una plantilla de la lista para borrarla.', 'warning'); return; }
-    if (!window.confirm('¿Borrar esta plantilla? (no toca el formulario)')) return;
+    const ok = await ytConfirm({
+      title: 'Borrar la plantilla',
+      message: '¿Borrar esta plantilla? (no toca el formulario)',
+      icon: 'fas fa-trash-can',
+      confirmText: 'Borrar',
+      danger: true,
+    });
+    if (!ok) return;
     localStorage.setItem(YT_TPL_KEY, JSON.stringify(getTemplates().filter(function (t) { return String(t.id) !== String(id); })));
     renderTemplateOptions();
     showToast('Plantilla borrada.', 'success');
@@ -1968,30 +2065,24 @@
     return { chap: chap };
   }
   function openChaptersModal() {
-    closeModalIfExists('ytChaptersOverlay');
     const descEl = $('#ytDesc');
     if (!descEl) return;
-    const ov = document.createElement('div');
-    ov.id = 'ytChaptersOverlay';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px;';
-    const box = document.createElement('div');
-    box.className = 'glass-panel';
-    box.style.cssText = 'max-width:560px;width:100%;padding:24px;';
     const cur = descEl.value || '';
     const idx = cur.indexOf('\nCAPÍTULOS:');
     const existing = idx === -1 ? '' : cur.slice(idx + '\nCAPÍTULOS:\n'.length);
-    box.innerHTML =
-      '<h3 style="margin:0 0 6px;font-size:16px;"><i class="fas fa-list-check"></i> Capítulos del video</h3>' +
-      '<p style="margin:0 0 12px;font-size:12px;color:var(--text-dim);line-height:1.5;">Una línea por capítulo con el tiempo y su nombre. YouTube los exige: arrancar en 0:00, en orden ascendente y mínimo 3. El bloque va al final de la descripción.</p>' +
+    const html =
+      '<div class="yt-modal-head">' +
+        '<h3 style="font-size:17px;"><i class="fas fa-list-check"></i> Capítulos del video</h3>' +
+        '<p class="yt-modal-sub" style="line-height:1.5;">Una línea por capítulo con el tiempo y su nombre. YouTube los exige: arrancar en 0:00, en orden ascendente y mínimo 3. El bloque va al final de la descripción.</p>' +
+      '</div>' +
       '<textarea id="ytChapText" rows="6" class="crm-field-input" placeholder="0:00 Entrada&#10;0:45 Living y cocina&#10;2:10 Dormitorios&#10;3:05 Contacto" style="width:100%;">' + esc(existing) + '</textarea>' +
       '<div id="ytChapErr" style="font-size:11.5px;color:var(--danger);margin-top:6px;min-height:15px;"></div>' +
-      '<div style="display:flex;gap:10px;justify-content:flex-end;">' +
-        '<button type="button" id="ytChapCancel" class="btn-luxury-action" style="padding:10px 18px;font-size:12px;">Cancelar</button>' +
-        '<button type="button" id="ytChapApply" class="btn-luxury-action" style="padding:10px 18px;font-size:12px;"><i class="fas fa-check"></i> Aplicar</button>' +
+      '<div class="yt-modal-foot">' +
+        '<button type="button" id="ytChapCancel" class="btn-luxury-action yt-btn--md">Cancelar</button>' +
+        '<button type="button" id="ytChapApply" class="btn-luxury-action yt-btn--md"><i class="fas fa-check"></i> Aplicar</button>' +
       '</div>';
-    ov.appendChild(box);
-    document.body.appendChild(ov);
-    ov.addEventListener('mousedown', function (e) { if (e.target === ov) closeModalIfExists('ytChaptersOverlay'); });
+    const m = createYtModal('ytChaptersOverlay', { html: html });
+    const box = m.box;
     box.querySelector('#ytChapCancel').addEventListener('click', function () { closeModalIfExists('ytChaptersOverlay'); });
     box.querySelector('#ytChapApply').addEventListener('click', function () {
       const r = parseChapters(box.querySelector('#ytChapText').value);
@@ -2015,26 +2106,20 @@
     const cur = sel && sel.value;
     const others = _accounts.filter(function (a) { return a.platform === 'youtube' && a.status === 'active' && a.id !== cur; });
     if (!others.length) { showToast('No hay otro canal conectado.', 'warning'); return; }
-    closeModalIfExists('ytCloneOverlay');
-    const ov = document.createElement('div');
-    ov.id = 'ytCloneOverlay';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px;';
-    const box = document.createElement('div');
-    box.className = 'glass-panel';
-    box.style.cssText = 'max-width:440px;width:100%;padding:24px;';
-    box.innerHTML =
-      '<h3 style="margin:0 0 6px;font-size:16px;"><i class="fas fa-copy"></i> Clonar metadata a otro canal</h3>' +
-      '<p style="margin:0 0 14px;font-size:12px;color:var(--text-dim);line-height:1.5;">Título, descripción, tags, visibilidad y programación quedan cargados para el canal que elijas. El archivo de video NO se repite: elegilo de nuevo al publicar en cada canal.</p>' +
-      '<select id="ytCloneSel" class="crm-field-input crm-field-input--select" style="width:100%;margin-bottom:14px;">' +
+    const html =
+      '<div class="yt-modal-head">' +
+        '<h3 style="font-size:17px;"><i class="fas fa-copy"></i> Clonar metadata a otro canal</h3>' +
+        '<p class="yt-modal-sub" style="line-height:1.5;">Título, descripción, tags, visibilidad y programación quedan cargados para el canal que elijas. El archivo de video NO se repite: elegilo de nuevo al publicar en cada canal.</p>' +
+      '</div>' +
+      '<select id="ytCloneSel" class="crm-field-input crm-field-input--select" style="width:100%;margin-bottom:16px;">' +
         others.map(function (a) { return '<option value="' + esc(a.id) + '">' + esc(a.display_name) + '</option>'; }).join('') +
       '</select>' +
-      '<div style="display:flex;gap:10px;justify-content:flex-end;">' +
-        '<button type="button" id="ytCloneCancel" class="btn-luxury-action" style="padding:10px 18px;font-size:12px;">Cancelar</button>' +
-        '<button type="button" id="ytCloneApply" class="btn-luxury-action" style="padding:10px 18px;font-size:12px;"><i class="fas fa-check"></i> Usar en ese canal</button>' +
+      '<div class="yt-modal-foot">' +
+        '<button type="button" id="ytCloneCancel" class="btn-luxury-action yt-btn--md">Cancelar</button>' +
+        '<button type="button" id="ytCloneApply" class="btn-luxury-action yt-btn--md"><i class="fas fa-check"></i> Usar en ese canal</button>' +
       '</div>';
-    ov.appendChild(box);
-    document.body.appendChild(ov);
-    ov.addEventListener('mousedown', function (e) { if (e.target === ov) closeModalIfExists('ytCloneOverlay'); });
+    const m = createYtModal('ytCloneOverlay', { html: html });
+    const box = m.box;
     box.querySelector('#ytCloneCancel').addEventListener('click', function () { closeModalIfExists('ytCloneOverlay'); });
     box.querySelector('#ytCloneApply').addEventListener('click', function () {
       const target = box.querySelector('#ytCloneSel');
@@ -2230,7 +2315,13 @@
           keyword: (($('#ytKeyword') || {}).value || ''),
         });
         if (!gateR.empty && gateR.score < 50) {
-          if (!window.confirm('El Score SEO de este video es bajo (' + gateR.score + '/100 — ' + gateR.label + ').\n\nCompletar las sugerencias del panel a la derecha le da más chances de aparecer en búsquedas. ¿Publicar igual?')) return;
+          const go = await ytConfirm({
+            title: 'El Score SEO está bajo',
+            message: 'El Score SEO de este video es bajo (' + gateR.score + '/100 — ' + gateR.label + ').\n\nCompletar las sugerencias del panel a la derecha le da más chances de aparecer en búsquedas. ¿Publicar igual?',
+            icon: 'fas fa-bullseye',
+            confirmText: 'Publicar igual',
+          });
+          if (!go) return;
         }
         const shipR = window.BH_YT_SEO.calc({
           title: title, description: descOut, tags: tags,
@@ -2254,7 +2345,7 @@
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Publicando…'; }
     setUploadProgress(0, 'Preparando…');
     const progressWrap = $('#ytProgress');
-    if (progressWrap) progressWrap.style.display = '';
+    if (progressWrap) progressWrap.classList.add('is-visible');
 
     try {
       /* 1. init: sesión de subida en Google + registro del post */
@@ -2340,7 +2431,7 @@
       }
       showToast(err.message, 'error');
       setUploadProgress(0, '');
-      if (progressWrap) progressWrap.style.display = 'none';
+      if (progressWrap) progressWrap.classList.remove('is-visible');
     } finally {
       if (hbTimer) { clearInterval(hbTimer); hbTimer = null; }
       _publishing = false;
@@ -2385,7 +2476,15 @@
     _lastHistory = data || []; // #3/#42: fuente del copiar/reintentar
     renderChannelTags(); // MEJORA: los tags del historial alimentan los chips
     if (!data || !data.length) {
-      wrap.innerHTML = '<p style="color:var(--text-dim);font-size:13px;padding:12px 0;">Todavía no hay publicaciones.</p>';
+      wrap.innerHTML =
+        '<div class="empty-state">' +
+          '<i class="fas fa-clock-rotate-left"></i>' +
+          '<div class="empty-state-title">Todavía no hay publicaciones</div>' +
+          '<div>Cuando publiques un video, acá vas a ver el historial con sus métricas.</div>' +
+          '<button type="button" class="btn-luxury-action" id="ytHistoryGoCreate"><i class="fas fa-plus"></i> Publicar un video</button>' +
+        '</div>';
+      const go = $('#ytHistoryGoCreate');
+      if (go) go.addEventListener('click', function () { switchSubTab('create'); });
       return;
     }
     /* #48: backup JSON de social_posts (solo lectura, descarga local) */
@@ -2404,11 +2503,11 @@
       const seoChip = typeof c.seo_score === 'number'
         ? '<span title="Score SEO guardado al publicar" style="font-size:10.5px;color:var(--accent);border:1px solid rgba(45,212,191,0.35);border-radius:8px;padding:2px 8px;flex-shrink:0;">SEO ' + c.seo_score + '</span>'
         : '';
-      return '<div class="glass-panel" style="display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;">' +
+      return '<div class="yt-history-row">' +
         '<i class="' + esc((PLATFORM_META[p.platform] || {}).icon || 'fas fa-share') + '" style="font-size:18px;"></i>' +
         '<div style="flex:1;min-width:0;">' +
-        '<div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(c.title || '(sin título)') + '</div>' +
-        '<div style="font-size:11px;color:var(--text-dim);">' + esc(accName) + ' · ' + esc(fecha) + (p.status === 'failed' && p.error ? ' · <span style="color:var(--danger);">' + esc(String(p.error).substring(0, 80)) + '</span>' : '') + '</div>' +
+        '<div class="yt-history-title">' + esc(c.title || '(sin título)') + '</div>' +
+        '<div class="yt-history-meta">' + esc(accName) + ' · ' + esc(fecha) + (p.status === 'failed' && p.error ? ' · <span style="color:var(--danger);">' + esc(String(p.error).substring(0, 80)) + '</span>' : '') + '</div>' +
         '</div>' +
         (p.external_url ? '<a href="' + esc(p.external_url) + '" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none;flex-shrink:0;">Ver <i class="fas fa-arrow-up-right-from-square"></i></a>' : '') +
         seoChip +
@@ -2421,7 +2520,14 @@
   }
 
   async function deletePost(postId) {
-    if (!window.confirm('¿Borrar este registro del historial? (si el video llegó a publicarse en YouTube, no se borra de YouTube)')) return;
+    const ok = await ytConfirm({
+      title: 'Borrar el registro',
+      message: '¿Borrar este registro del historial? (si el video llegó a publicarse en YouTube, no se borra de YouTube)',
+      icon: 'fas fa-trash-can',
+      confirmText: 'Borrar',
+      danger: true,
+    });
+    if (!ok) return;
     const client = await getAuthedClient();
     if (!client) return;
     const { error } = await client.from('social_posts').delete().eq('id', postId);
@@ -2495,11 +2601,11 @@
     const wrap = $('#contenidoStudio');
     if (!wrap) return;
     wrap.innerHTML =
-      '<div class="glass-panel" style="padding:28px 24px;text-align:center;max-width:520px;margin:24px auto;">' +
-        '<i class="fab fa-youtube" style="font-size:38px;color:#FF0000;"></i>' +
-        '<div style="font-size:15px;font-weight:600;margin:10px 0 4px;">Todavía no hay un canal conectado</div>' +
-        '<p style="font-size:12.5px;color:var(--text-dim);margin:0 auto 16px;max-width:380px;line-height:1.6;">El Studio administra el contenido del canal: inventario completo, métricas, playlists, edición, miniaturas y programación.</p>' +
-        '<button type="button" id="studioGoAccounts" class="btn-luxury-action" style="padding:10px 18px;font-size:12px;"><i class="fas fa-plug"></i> Conectar un canal</button>' +
+      '<div class="empty-state" style="max-width:520px;margin:24px auto;">' +
+        '<i class="fab fa-youtube" style="color:#FF0000;"></i>' +
+        '<div class="empty-state-title">Todavía no hay un canal conectado</div>' +
+        '<div style="max-width:380px;line-height:1.6;">El Studio administra el contenido del canal: inventario completo, métricas, playlists, edición, miniaturas y programación.</div>' +
+        '<button type="button" id="studioGoAccounts" class="btn-luxury-action yt-btn--md"><i class="fas fa-plug"></i> Conectar un canal</button>' +
       '</div>';
     const btn = $('#studioGoAccounts');
     if (btn) btn.addEventListener('click', function () { switchSubTab('accounts'); });
@@ -2510,53 +2616,53 @@
     if (!root || root.dataset.rendered === '1') return;
     root.dataset.rendered = '1';
     root.innerHTML =
-      '<div id="contenidoSubTabs" style="display:flex;gap:8px;margin-bottom:18px;">' +
-        '<button type="button" data-sub="accounts" class="btn-luxury-action is-active" style="padding:9px 16px;font-size:12px;"><i class="fas fa-link"></i> Cuentas</button>' +
-        '<button type="button" data-sub="create" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;"><i class="fas fa-plus"></i> Crear publicación</button>' +
-        '<button type="button" data-sub="history" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;"><i class="fas fa-clock-rotate-left"></i> Historial</button>' +
+      '<div id="contenidoSubTabs" class="yt-tabs">' +
+        '<button type="button" data-sub="accounts" class="yt-tab is-active"><i class="fas fa-link"></i> Cuentas</button>' +
+        '<button type="button" data-sub="create" class="yt-tab"><i class="fas fa-plus"></i> Crear publicación</button>' +
+        '<button type="button" data-sub="history" class="yt-tab"><i class="fas fa-clock-rotate-left"></i> Historial</button>' +
         /* REPARACIÓN: el Studio no tenía botón — al abrirlo la barra quedaba
            sin pestaña activa y el único regreso era el botón del header. */
-        '<button type="button" data-sub="studio" class="btn-luxury-action" style="padding:9px 16px;font-size:12px;"><i class="fas fa-sliders"></i> Studio</button>' +
+        '<button type="button" data-sub="studio" class="yt-tab"><i class="fas fa-sliders"></i> Studio</button>' +
       '</div>' +
-      '<div id="contenidoAccounts" style="display:flex;flex-wrap:wrap;gap:12px;"></div>' +
+      '<div id="contenidoAccounts" class="yt-account-grid"></div>' +
       '<div id="contenidoStudio" style="display:none;"></div>' +
       '<div id="contenidoCreate" style="display:none;">' +
         /* MEJORA 2026-10-30: layout en 2 columnas — form a la izquierda + Score SEO (vidIQ) pegado a la derecha */
-        '<div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;">' +
-        '<div style="flex:3;min-width:min(340px,100%);">' +
+        '<div class="yt-row">' +
+        '<div class="yt-col-form">' +
         '<div class="glass-panel" style="padding:24px;">' +
-          '<h3 style="margin:0 0 4px;font-size:16px;"><i class="fab fa-youtube" style="color:#FF0000;"></i> Publicar video en YouTube</h3>' +
-          '<p style="margin:0 0 20px;font-size:12px;color:var(--text-dim);">El video sube directo de tu navegador a Google — sin pasar por el servidor. El panel de la derecha puntúa tu SEO mientras escribís.</p>' +
-          '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Canal</span>' +
-          '<div style="display:flex;gap:8px;align-items:center;">' +
+          '<h3 class="yt-section-title" style="font-size:17px;"><i class="fab fa-youtube" style="color:#FF0000;"></i> Publicar video en YouTube</h3>' +
+          '<p class="yt-muted" style="margin:0 0 20px;">El video sube directo de tu navegador a Google — sin pasar por el servidor. El panel de la derecha puntúa tu SEO mientras escribís.</p>' +
+          '<div class="yt-field"><span class="yt-label">Canal</span>' +
+          '<div class="yt-inline">' +
             '<select id="ytAccountSelect" class="crm-field-input crm-field-input--select" style="flex:1;min-width:0;"></select>' +
             /* #8: con varios canales, la metadata viaja al otro canal */
             '<button type="button" id="ytCloneMeta" class="btn-luxury-action" title="Publicar el mismo contenido en otro canal (metadata, no archivo)" style="padding:9px 10px;font-size:11px;flex-shrink:0;"><i class="fas fa-copy"></i></button>' +
           '</div></div>' +
           /* #1: vínculo con la propiedad (llena campos + registra social_posts.property_id) */
-          '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Propiedad vinculada <span style="font-size:10.5px;">(opcional — llena los campos vacíos)</span></span>' +
+          '<div class="yt-field"><span class="yt-label">Propiedad vinculada <span style="font-size:10.5px;text-transform:none;letter-spacing:0;">(opcional — llena los campos vacíos)</span></span>' +
           /* MEJORA: buscador (el select trae hasta 300 propiedades) */
           '<input id="ytPropertySearch" type="text" class="crm-field-input" placeholder="Buscar por código, título o zona…" style="margin-bottom:6px;">' +
-          '<div style="display:flex;gap:8px;align-items:center;">' +
+          '<div class="yt-inline">' +
             '<select id="ytProperty" class="crm-field-input crm-field-input--select" style="flex:1;min-width:0;"><option value="">— Sin propiedad vinculada —</option></select>' +
             '<button type="button" id="ytPropertyFill" class="btn-luxury-action" title="Cargar título/descripción/tags desde la ficha (solo vacíos)" style="padding:9px 10px;font-size:11px;flex-shrink:0;"><i class="fas fa-house-circle-check"></i></button>' +
           '</div>' +
-          '<div id="ytPropertyCount" style="font-size:10.5px;color:var(--text-dim);margin-top:4px;"></div>' +
+          '<span id="ytPropertyCount" class="yt-hint"></span>' +
           '</div>' +
           /* #2: plantillas locales */
-          '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Plantillas locales <span style="font-size:10.5px;">(title/desc/tags/visibilidad)</span></span>' +
-          '<div style="display:flex;gap:8px;align-items:center;">' +
+          '<div class="yt-field"><span class="yt-label">Plantillas locales <span style="font-size:10.5px;text-transform:none;letter-spacing:0;">(title/desc/tags/visibilidad)</span></span>' +
+          '<div class="yt-inline">' +
             '<select id="ytTemplateSel" class="crm-field-input crm-field-input--select" style="flex:1;min-width:0;"></select>' +
             '<button type="button" id="ytTemplateSave" class="btn-luxury-action" title="Guardar el formulario actual como plantilla" style="padding:9px 10px;font-size:11px;flex-shrink:0;"><i class="fas fa-floppy-disk"></i></button>' +
             '<button type="button" id="ytTemplateDel" class="btn-luxury-action" title="Borrar la plantilla seleccionada" style="padding:9px 10px;font-size:11px;flex-shrink:0;"><i class="fas fa-trash-can"></i></button>' +
           '</div></div>' +
-          '<div style="margin-bottom:10px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Título * <span id="ytTitleCounter" style="color:var(--text-dim);font-size:11px;float:right;"></span></span>' +
+          '<div class="yt-field"><span class="yt-label">Título * <span id="ytTitleCounter" class="yt-counter"></span></span>' +
           '<input id="ytTitle" type="text" class="crm-field-input" maxlength="100" placeholder="Ej: Departamento 2 ambientes Nueva Córdoba — TOUR COMPLETO" style="width:100%;"></div>' +
           /* #16: banco de frases probadas */
-          '<div style="margin-bottom:14px;"><select id="ytTitleBank" class="crm-field-input crm-field-input--select" style="width:auto;padding:6px 10px;font-size:11.5px;"></select></div>' +
-          '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Descripción (con hashtags para SEO) <span id="ytDescCounter" style="color:var(--text-dim);font-size:11px;float:right;"></span></span>' +
+          '<div class="yt-field"><select id="ytTitleBank" class="crm-field-input crm-field-input--select" style="width:auto;padding:6px 10px;font-size:11.5px;"></select></div>' +
+          '<div class="yt-field"><span class="yt-label">Descripción (con hashtags para SEO) <span id="ytDescCounter" class="yt-counter"></span></span>' +
           '<textarea id="ytDesc" rows="5" class="crm-field-input" maxlength="5000" placeholder="Descripción del video + #hashtags…" style="width:100%;"></textarea>' +
-          '<div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap;">' +
+          '<div class="yt-inline" style="margin-top:8px;">' +
             /* #12: capítulos — modal con validación nativa */
             '<button type="button" id="ytChaptersBtn" class="btn-luxury-action" title="Agregar bloque de capítulos al final de la descripción" style="padding:7px 12px;font-size:11px;"><i class="fas fa-list-check"></i> Capítulos</button>' +
             /* #11: CTA + hashtags */
@@ -2565,54 +2671,56 @@
               '<input id="ytCtaAuto" type="checkbox" style="cursor:pointer;"> Agregar CTA automático si falta' +
             '</label>' +
           '</div></div>' +
-          '<div style="margin-bottom:14px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Tags SEO (separados por coma)</span>' +
+          '<div class="yt-field"><span class="yt-label">Tags SEO (separados por coma)</span>' +
           '<input id="ytTags" type="text" class="crm-field-input" placeholder="inmobiliaria córdoba, departamentos, nueva córdoba" style="width:100%;">' +
           /* MEJORA: chips con los tags que ya rindieron en el canal */
           '<div id="ytChannelTags" style="margin-top:8px;"></div>' +
           '</div>' +
-          '<div style="display:flex;gap:14px;margin-bottom:16px;flex-wrap:wrap;">' +
-            '<div style="flex:2;min-width:250px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Video (máx. 2 GB)</span>' +
+          '<div class="yt-row" style="margin-bottom:18px;gap:14px;">' +
+            '<div style="flex:2;min-width:250px;"><span class="yt-label">Video (máx. 2 GB)</span>' +
             /* MEJORA: se puede arrastrar el archivo a la zona */
-            '<div id="ytFileDrop" style="border:1px dashed rgba(255,255,255,0.18);border-radius:12px;padding:10px;transition:border-color .2s,background .2s;">' +
+            '<div id="ytFileDrop" class="yt-dropzone">' +
               '<input id="ytFile" type="file" accept="video/*" class="crm-field-input" style="width:100%;padding:8px;">' +
               '<div id="ytFileInfo" style="font-size:11px;color:var(--accent);margin-top:4px;display:none;"></div>' +
-              '<div id="ytFileDropHint" style="font-size:10.5px;color:var(--text-dim);margin-top:5px;text-align:center;">o arrastrá el video acá</div>' +
+              '<div id="ytFileDropHint" class="yt-dropzone-hint">o arrastrá el video acá</div>' +
             '</div></div>' +
-            '<div style="flex:1;min-width:140px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Visibilidad</span>' +
+            '<div style="flex:1;min-width:140px;"><span class="yt-label">Visibilidad</span>' +
             '<select id="ytPrivacy" class="crm-field-input crm-field-input--select">' +
               '<option value="public">Público</option>' +
               '<option value="unlisted">Oculto (link)</option>' +
               '<option value="private">Privado</option>' +
             '</select></div>' +
-            '<div style="flex:1;min-width:180px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Programar (opcional)</span>' +
+            '<div style="flex:1;min-width:180px;"><span class="yt-label">Programar (opcional)</span>' +
             '<input id="ytPublishAt" type="datetime-local" class="crm-field-input" style="width:100%;">' +
             /* #10: schedules rápidos */
-            '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">' +
-              '<button type="button" data-quick-sched="hoy18" class="btn-luxury-action" style="padding:5px 9px;font-size:10.5px;">Hoy 18:00</button>' +
-              '<button type="button" data-quick-sched="manana12" class="btn-luxury-action" style="padding:5px 9px;font-size:10.5px;">Mañana 12:00</button>' +
-              '<button type="button" data-quick-sched="jueves18" class="btn-luxury-action" style="padding:5px 9px;font-size:10.5px;">Jueves 18:00</button>' +
+            '<div class="yt-inline" style="margin-top:6px;gap:6px;">' +
+              '<button type="button" data-quick-sched="hoy18" class="btn-luxury-action yt-btn--xs">Hoy 18:00</button>' +
+              '<button type="button" data-quick-sched="manana12" class="btn-luxury-action yt-btn--xs">Mañana 12:00</button>' +
+              '<button type="button" data-quick-sched="jueves18" class="btn-luxury-action yt-btn--xs">Jueves 18:00</button>' +
             '</div></div>' +
           '</div>' +
-          '<div id="ytProgress" style="display:none;margin-bottom:16px;">' +
-            '<div style="height:8px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden;">' +
-              '<div id="ytUploadBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),#2DE2DA);border-radius:4px;transition:width .3s;"></div>' +
+          '<div id="ytProgress" class="yt-progress">' +
+            '<div class="yt-progress-track">' +
+              '<div id="ytUploadBar" class="yt-progress-bar"></div>' +
             '</div>' +
-            '<div id="ytUploadPct" style="font-size:12px;color:var(--text-dim);margin-top:6px;display:flex;justify-content:space-between;"></div>' +
-            '<div id="ytUploadEta" style="font-size:11px;color:var(--accent);margin-top:3px;"></div>' +
+            '<div id="ytUploadPct" class="yt-progress-label"></div>' +
+            '<div id="ytUploadEta" class="yt-progress-eta"></div>' +
             /* MEJORA: cancelar la subida (antes solo se podía cerrar la pestaña) */
             '<button type="button" id="ytCancelUpload" class="btn-luxury-action" style="margin-top:10px;padding:7px 12px;font-size:11px;color:var(--danger);"><i class="fas fa-circle-xmark"></i> Cancelar subida</button>' +
           '</div>' +
-          '<button type="button" id="ytPublishBtn" class="btn-luxury-action" style="padding:12px 28px;font-size:14px;"><i class="fas fa-paper-plane"></i> Publicar en YouTube</button>' +
+          '<div class="yt-actions yt-actions--left">' +
+            '<button type="button" id="ytPublishBtn" class="btn-luxury-action yt-btn--lg"><i class="fas fa-paper-plane"></i> Publicar en YouTube</button>' +
+          '</div>' +
           /* #44: HUD de cuota API estimada */
           '<div id="ytQuotaHud" style="margin-top:14px;"></div>' +
         '</div>' +
         '</div>' +
         /* Columna derecha: Score SEO — el motor vive en assets/js/yt-seo-score.js (BH_YT_SEO) */
-        '<div style="flex:2;min-width:min(300px,100%);max-width:430px;position:sticky;top:74px;">' +
+        '<div class="yt-col-side">' +
           '<div class="glass-panel" style="padding:20px 18px 16px;">' +
-            '<h3 style="margin:0 0 4px;font-size:15px;"><i class="fas fa-bullseye" style="color:var(--accent);"></i> Score SEO del video</h3>' +
-            '<p style="margin:0 0 12px;font-size:11.5px;color:var(--text-dim);">Optimización medida en vivo (estilo vidIQ Vision).</p>' +
-            '<div style="margin-bottom:6px;"><span style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:5px;">Palabra clave objetivo <span style="font-size:10.5px;">(vacío = la deduzco del título)</span></span>' +
+            '<h3 class="yt-section-title" style="font-size:16px;"><i class="fas fa-bullseye" style="color:var(--accent);"></i> Score SEO del video</h3>' +
+            '<p class="yt-muted" style="margin:0 0 12px;">Optimización medida en vivo (estilo vidIQ Vision).</p>' +
+            '<div class="yt-field"><span class="yt-label">Palabra clave objetivo <span style="font-size:10.5px;text-transform:none;letter-spacing:0;">(vacío = la deduzco del título)</span></span>' +
             '<input id="ytKeyword" type="text" class="crm-field-input" placeholder="Ej: inmobiliaria córdoba" style="width:100%;"></div>' +
             '<div id="ytSeoBody"></div>' +
             /* #7: completar tags con los presets sugeridos */
@@ -2628,6 +2736,18 @@
     if (_bound) return;
     _bound = true;
     listenOAuthMessages();
+    /* Miniatura rota (YouTube cambia las URLs de las thumbs): en vez de dejar
+       el ícono de imagen rota del navegador, se muestra el logo del canal.
+       El evento "error" no burbujea → se escucha en fase capture. */
+    document.addEventListener('error', function (e) {
+      const t = e.target;
+      if (!t || t.tagName !== 'IMG' || !t.classList.contains('yt-thumb-img')) return;
+      const holder = t.closest('.yt-video-thumb');
+      if (holder) {
+        holder.classList.add('yt-video-thumb--empty');
+        holder.innerHTML = '<i class="fab fa-youtube" style="color:#FF0000;font-size:32px;"></i>';
+      }
+    }, true);
     document.addEventListener('click', (e) => {
       const connect = e.target.closest('[data-contenido-connect]');
       if (connect) { connectPlatform(connect.dataset.contenidoConnect); return; }
@@ -2682,6 +2802,8 @@
       }
       /* MEJORAS 2026-10-30: form Crear */
       if (e.target.closest('#ytPropertyFill')) { fillFromProperty(); return; }
+      /* Estado vacío del Studio → lleva al formulario de publicación */
+      if (e.target.closest('#studioEmptyPublish')) { switchSubTab('create'); return; }
       /* MEJORA: chip de tag del canal → lo agrega al campo de tags */
       const tagChip = e.target.closest('[data-yt-tag]');
       if (tagChip) {

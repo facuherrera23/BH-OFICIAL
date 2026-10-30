@@ -1,0 +1,674 @@
+/* ============================================================
+   BIENENHAUS PROPIEDADES — Módulo CONTENIDO (YouTube)
+   ------------------------------------------------------------
+   CSS propio del módulo. NO inventa un lenguaje nuevo: usa los
+   tokens del panel (assets/css/admin.css → :root) y replica el
+   aspecto de los componentes que ya existen (.glass-panel,
+   .btn-luxury-action, .btn-action, .crm-field-input, .empty-state,
+   .admin-modal/.modal-box) para que Contenido se vea igual que
+   Propiedades, CRM, Portales y Agenda.
+
+   Sólo se definen aquí las piezas que el panel todavía no tiene:
+   barra de sub-tabs, tarjetas de video del Studio, KPIs, toolbar
+   de filtros, chips de tags, dropzone, skeletons y avisos.
+   ============================================================ */
+
+/* ================================================================
+   1. SUB-TABS (pestañas internas del módulo)
+   ================================================================ */
+.yt-tabs {
+    display: inline-flex;
+    gap: 4px;
+    padding: 5px;
+    margin-bottom: 22px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-btn);
+    flex-wrap: wrap;
+    max-width: 100%;
+}
+.yt-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 34px;
+    padding: 0 16px;
+    border-radius: var(--radius-btn);
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-dim);
+    font-family: var(--font-body);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    white-space: nowrap;
+}
+.yt-tab i { font-size: 12px; }
+.yt-tab:hover { color: var(--text-main); background: rgba(255, 255, 255, 0.05); }
+.yt-tab.is-active {
+    color: var(--bg-void);
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+    box-shadow: 0 0 18px var(--glow-soft);
+}
+.yt-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ================================================================
+   2. LAYOUT
+   ================================================================ */
+.yt-row { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.yt-col-form { flex: 3; min-width: min(360px, 100%); }
+.yt-col-side { flex: 2; min-width: min(300px, 100%); max-width: 430px; position: sticky; top: calc(var(--header-height) - 8px); }
+.yt-block { margin-bottom: 16px; }
+.yt-stack { display: flex; flex-direction: column; gap: 14px; }
+.yt-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.yt-spacer { flex: 1; }
+.yt-muted { color: var(--text-dim); font-size: 12px; }
+.yt-section-title {
+    font-family: var(--font-heading);
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin: 0 0 4px;
+}
+
+/* ================================================================
+   3. TARJETAS DE CUENTA / RED
+   ================================================================ */
+.yt-account-grid { display: flex; flex-wrap: wrap; gap: 14px; }
+.yt-account-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px;
+    flex: 1;
+    min-width: 260px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    transition: var(--transition);
+}
+.yt-account-card:hover { border-color: var(--border-accent); background: var(--card-hover); }
+.yt-account-card.is-linked { cursor: pointer; }
+.yt-account-card.is-linked:hover { transform: translateY(-2px); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35); }
+.yt-account-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-subtle);
+}
+.yt-account-icon img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.yt-account-name { font-weight: 700; font-size: 14px; color: var(--text-main); }
+.yt-account-meta { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+.yt-account-state { font-size: 10.5px; color: var(--text-dim); text-align: right; max-width: 150px; }
+
+/* ================================================================
+   4. FORMULARIO
+   ================================================================ */
+/* Tamaños de botón del módulo (evitan estilos inline repetidos). */
+.yt-btn--md { padding: 10px 18px; font-size: 13px; }
+.yt-btn--sm { padding: 7px 11px; font-size: 11px; }
+.yt-btn--xs { padding: 5px 9px; font-size: 10.5px; }
+.yt-btn--lg { padding: 12px 28px; font-size: 14px; }
+.yt-btn--icon { padding: 9px 10px; font-size: 11px; flex-shrink: 0; }
+.yt-btn--md-pad { padding: 7px 12px; }
+.yt-btn--block { width: 100%; }
+.yt-btn--danger { color: var(--danger); }
+.yt-btn--link { text-decoration: none; }
+.yt-field { margin-bottom: 16px; }
+.yt-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+}
+.yt-label .yt-counter { float: right; color: var(--text-dim); font-weight: 500; letter-spacing: 0; text-transform: none; }
+.yt-hint { display: block; font-size: 11px; color: var(--text-dim); margin-top: 5px; line-height: 1.45; }
+/* Los inputs del módulo usan .crm-field-input (el control estándar del
+   panel, compartido por CRM, Agenda y Contenido) — no se duplica el estilo. */
+.yt-actions { display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap; margin-top: 18px; }
+.yt-actions--left { justify-content: flex-start; }
+.yt-dropzone {
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    transition: var(--transition-fast);
+}
+.yt-dropzone.is-over { border-color: var(--accent); background: var(--glow-soft); }
+.yt-dropzone-hint { font-size: 10.5px; color: var(--text-dim); margin-top: 6px; text-align: center; }
+/* ================================================================
+   5. CHIPS DE TAGS
+   ================================================================ */
+.yt-chip-label { font-size: 10.5px; color: var(--text-dim); margin-bottom: 6px; }
+.yt-chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.yt-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: var(--radius-btn);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+.yt-chip:hover { border-color: var(--border-accent); color: var(--accent); background: var(--glow-soft); }
+
+/* ================================================================
+   6. STUDIO — header, KPIs, toolbar, grilla de videos
+   ================================================================ */
+.yt-studio-head {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 22px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+    background: var(--card-bg);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+}
+.yt-studio-avatar {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 1px solid var(--border-subtle);
+}
+.yt-studio-avatar--icon { display: flex; align-items: center; justify-content: center; font-size: 40px; }
+.yt-studio-title { font-family: var(--font-heading); font-size: 21px; font-weight: 700; color: var(--text-main); }
+.yt-studio-sub { font-size: 12.5px; color: var(--text-dim); margin-top: 3px; }
+
+.yt-kpis { display: flex; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+.yt-kpi {
+    flex: 1;
+    min-width: 160px;
+    padding: 18px;
+    text-align: center;
+    background: var(--card-bg);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+}
+.yt-kpi-icon { font-size: 22px; color: var(--accent); margin-bottom: 6px; }
+.yt-kpi-value { font-size: 24px; font-weight: 700; color: var(--text-main); line-height: 1.1; }
+.yt-kpi-label { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); margin-top: 4px; }
+
+.yt-toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+}
+.yt-toolbar .crm-field-input { width: auto; min-width: 150px; padding: 8px 12px; font-size: 12px; min-height: 34px; }
+.yt-toolbar .yt-search { max-width: 240px; }
+.yt-toolbar-title { font-size: 15px; font-weight: 700; color: var(--text-main); margin: 0; display: flex; align-items: center; gap: 8px; }
+.yt-toolbar-title i { color: var(--accent); }
+
+.yt-video-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+    gap: 16px;
+}
+.yt-video-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--card-bg);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    transition: var(--transition);
+}
+.yt-video-card:hover { border-color: var(--border-accent); transform: translateY(-2px); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35); }
+.yt-video-thumb {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background: rgba(255, 255, 255, 0.03);
+    cursor: pointer;
+    display: block;
+}
+.yt-video-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.yt-video-thumb--empty { display: flex; align-items: center; justify-content: center; }
+.yt-video-duration {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.82);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+}
+.yt-video-processing {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    padding: 3px 10px;
+    border-radius: var(--radius-btn);
+    background: rgba(30, 44, 60, 0.92);
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 600;
+}
+.yt-video-body { padding: 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; cursor: pointer; }
+.yt-video-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--text-main);
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.6em;
+}
+.yt-video-metrics { display: flex; gap: 14px; align-items: center; font-size: 11.5px; color: var(--text-dim); flex-wrap: wrap; }
+.yt-video-metrics i { margin-right: 3px; }
+.yt-video-date { font-size: 11px; color: var(--text-dim); }
+.yt-video-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px 12px;
+    border-top: 1px solid var(--border-subtle);
+}
+.yt-video-actions .yt-privacy { margin-right: auto; }
+
+/* badge de privacidad (mismo lenguaje que los badges del panel) */
+.yt-privacy {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 10px;
+    border-radius: var(--radius-btn);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: 1px solid currentColor;
+}
+.yt-privacy--public { color: var(--success); }
+.yt-privacy--private { color: var(--danger); }
+.yt-privacy--unlisted { color: var(--warning); }
+.yt-privacy--other { color: var(--text-dim); }
+
+/* ================================================================
+   7. SUBPANELES (tarjetas internas del Studio)
+   ================================================================ */
+.yt-subpanel { padding: 14px 18px; margin-bottom: 16px; }
+.yt-subpanel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+    font-size: 12.5px;
+    color: var(--text-dim);
+}
+.yt-subpanel-head i { color: var(--accent); }
+.yt-delta--up { color: var(--success); font-size: 12px; }
+.yt-delta--down { color: var(--danger); font-size: 12px; }
+.yt-stats { display: flex; gap: 14px; flex-wrap: wrap; }
+.yt-stat { flex: 1; min-width: 110px; }
+.yt-stat-value { font-size: 20px; font-weight: 700; color: var(--text-main); }
+.yt-stat-label { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.yt-month-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 34px);
+    gap: 2px;
+    max-width: 300px;
+}
+/* La grilla del mes es un bloque chico: no debe estirarse a todo el ancho. */
+#ytMonthGrid { width: fit-content; min-width: 280px; }
+.yt-month-cell {
+    font-size: 10.5px;
+    color: var(--text-dim);
+    text-align: center;
+    position: relative;
+    padding: 2px 0;
+}
+.yt-month-dot {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 0;
+    font-size: 5px;
+    color: var(--accent);
+}
+
+/* ================================================================
+   8. HISTORIAL (filas compactas)
+   ================================================================ */
+.yt-history-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    transition: var(--transition-fast);
+}
+.yt-history-row:hover { border-color: var(--border-accent); }
+.yt-history-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.yt-history-meta { font-size: 11px; color: var(--text-dim); }
+
+/* ================================================================
+   9. AVISOS (truncado, solo lectura, errores)
+   ================================================================ */
+.yt-notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    border-radius: 12px;
+    border-left: 3px solid var(--accent);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-secondary);
+    font-size: 12.5px;
+}
+.yt-notice i { color: var(--accent); font-size: 15px; flex-shrink: 0; }
+.yt-notice--warning { border-left-color: var(--warning); }
+.yt-notice--warning i { color: var(--warning); }
+.yt-notice--danger { border-left-color: var(--danger); }
+.yt-notice--danger i { color: var(--danger); }
+.yt-notice--success { border-left-color: var(--success); }
+.yt-notice--success i { color: var(--success); }
+
+/* ================================================================
+   9. MODALES (extienden los del panel: .admin-modal + .modal-box)
+   ================================================================ */
+.yt-modal {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    background: rgba(2, 3, 5, 0.88);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    opacity: 0;
+    visibility: hidden;
+    transition: var(--transition);
+    overflow-y: auto;
+}
+.yt-modal.is-open { opacity: 1; visibility: visible; }
+.yt-modal .modal-box {
+    width: 100%;
+    max-width: 680px;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-accent);
+    border-radius: var(--radius-lg);
+    padding: 28px;
+    box-shadow: var(--shadow-modal);
+    position: relative;
+    transform: translateY(12px) scale(0.985);
+    opacity: 0;
+}
+/* Animación (no transición): corre aunque el modal nazca ya con is-open,
+   que es el caso de los modales dinámicos de Contenido. */
+.yt-modal.is-open .modal-box { animation: ytModalIn 0.28s var(--ease-out) forwards; }
+@keyframes ytModalIn {
+    to { transform: translateY(0) scale(1); opacity: 1; }
+}
+.yt-modal .modal-box--wide { max-width: 980px; }
+/* La X del panel es muy sutil en reposo: en los modales del módulo se la
+   deja un poco más visible (mismo color/hover, solo más contraste). */
+.yt-modal .modal-x-close { color: var(--text-secondary); }
+.yt-modal .modal-box h3 { font-family: var(--font-heading); font-size: 20px; color: var(--text-main); margin: 0 0 6px; }
+.yt-modal-head { margin-bottom: 18px; }
+.yt-modal-sub { font-size: 12px; color: var(--text-dim); margin: 0; }
+.yt-modal-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
+
+/* ================================================================
+   10. SKELETONS (carga)
+   ================================================================ */
+@keyframes ytShimmer {
+    0% { background-position: -320px 0; }
+    100% { background-position: 320px 0; }
+}
+.yt-skeleton {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.09) 37%, rgba(255, 255, 255, 0.04) 63%);
+    background-size: 640px 100%;
+    animation: ytShimmer 1.4s ease-in-out infinite;
+    border-radius: 8px;
+}
+.yt-skeleton-card {
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--card-bg);
+    border: 1px solid var(--border-subtle);
+}
+.yt-skeleton-thumb { aspect-ratio: 16 / 9; }
+.yt-skeleton-line { height: 11px; margin: 10px 14px; }
+.yt-skeleton-line--short { width: 45%; }
+
+/* ================================================================
+   11. PROGRESO DE SUBIDA
+   ================================================================ */
+.yt-progress { display: none; margin-bottom: 18px; }
+.yt-progress.is-visible { display: block; }
+.yt-progress-track { height: 8px; background: rgba(255, 255, 255, 0.06); border-radius: 4px; overflow: hidden; }
+.yt-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent), #2DE2DA);
+    border-radius: 4px;
+    transition: width 0.3s var(--ease-out);
+}
+.yt-progress-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); margin-top: 7px; }
+.yt-progress-eta { font-size: 11px; color: var(--accent); margin-top: 4px; }
+
+/* HUD de cuota API estimada */
+.yt-quota-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+}
+.yt-quota-track { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.yt-quota-bar { height: 100%; width: 0%; border-radius: 3px; transition: width 0.3s var(--ease-out); }
+
+/* Panel flotante de progreso (visible aunque cambies de pestaña) */
+.yt-upload-float {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 9998;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-radius: 12px;
+    background: rgba(2, 6, 12, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+.yt-upload-float-pct { font-size: 11.5px; font-weight: 600; }
+
+/* ================================================================
+   13. MOTOR DE SCORE SEO (assets/js/yt-seo-score.js → BH_YT_SEO)
+   ------------------------------------------------------------
+   El motor dibuja el gauge, la vista previa SERP, las barras por
+   grupo, el checklist y los chips de tags. Acá vive su estilo para
+   que no sea un bloque de estilos inline dentro del JS.
+   ================================================================ */
+.yts-gauge-row { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+.yts-gauge { flex-shrink: 0; }
+.yts-gauge-info { min-width: 0; }
+.yts-gauge-label { font-size: 15px; font-weight: 700; line-height: 1.2; }
+.yts-gauge-sub { font-size: 11.5px; color: var(--text-dim); margin-top: 3px; }
+.yts-gauge-count { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.yts-muted { opacity: 0.7; }
+
+.yts-serp {
+    display: flex;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 14px;
+}
+.yts-serp-thumb {
+    width: 118px;
+    aspect-ratio: 16 / 9;
+    background: #0d1117;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.yts-serp-thumb i { color: #ff0000; font-size: 22px; }
+.yts-serp-info { min-width: 0; flex: 1; }
+.yts-serp-title { font-size: 12.5px; font-weight: 600; line-height: 1.35; color: var(--text-secondary); word-break: break-word; }
+.yts-serp-channel {
+    font-size: 10.5px;
+    color: var(--text-dim);
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.yts-serp-desc {
+    font-size: 10.5px;
+    color: var(--text-dim);
+    margin-top: 2px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.yts-serp-note { font-size: 10px; color: var(--text-dim); margin: -8px 0 12px; }
+.yts-empty-hint {
+    font-size: 12px;
+    color: var(--text-dim);
+    padding: 10px 0;
+    border-top: 1px dashed rgba(255, 255, 255, 0.07);
+}
+
+.yts-groups { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.yts-group { flex: 1; min-width: 90px; }
+.yts-group-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-bottom: 2px;
+}
+.yts-bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.yts-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--accent);
+    transition: width 0.3s var(--ease-out);
+}
+
+.yts-check {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 7px 0;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+}
+.yts-check-icon { font-size: 13px; margin-top: 2px; width: 15px; text-align: center; flex-shrink: 0; }
+.yts-check-body { flex: 1; min-width: 0; }
+.yts-check-text { font-size: 12px; line-height: 1.4; color: var(--text-secondary); }
+.yts-check-hint { font-size: 11px; color: var(--text-dim); margin-top: 2px; line-height: 1.4; }
+.yts-check-hint i { font-size: 9px; }
+.yts-check-points { font-size: 10.5px; flex-shrink: 0; }
+
+.yts-section { margin-top: 14px; }
+.yts-section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    gap: 8px;
+}
+.yts-section-title { font-size: 10.5px; color: var(--text-dim); font-weight: 600; }
+.yts-section-count { font-size: 10px; }
+.yts-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.yts-chip {
+    font-size: 10.5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+.yts-chip:hover { border-color: var(--accent); color: var(--accent); }
+.yts-chip i { font-size: 8px; opacity: 0.65; }
+.yts-preset {
+    font-size: 10.5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(45, 212, 191, 0.08);
+    border: 1px solid rgba(45, 212, 191, 0.25);
+    color: #5eead4;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+.yts-preset:hover { background: rgba(45, 212, 191, 0.16); color: #99f6e4; }
+.yts-footnote { font-size: 10px; color: var(--text-dim); margin-top: 14px; line-height: 1.5; }
+
+/* ================================================================
+   12. RESPONSIVE
+   ================================================================ */
+@media (max-width: 1100px) {
+    .yt-col-side { position: static; max-width: none; }
+}
+@media (max-width: 720px) {
+    .yt-tabs { width: 100%; overflow-x: auto; flex-wrap: nowrap; }
+    .yt-tab { flex: 0 0 auto; }
+    .yt-video-grid { grid-template-columns: 1fr; }
+    .yt-kpis { gap: 10px; }
+    .yt-kpi { min-width: 44%; padding: 14px; }
+    .yt-toolbar { gap: 8px; }
+    .yt-toolbar .crm-field-input { flex: 1 1 140px; min-width: 0; max-width: none; }
+    .yt-toolbar .yt-search { flex: 1 1 100%; max-width: none; }
+    .yt-modal { padding: 12px; align-items: flex-start; }
+    .yt-modal .modal-box { padding: 20px 18px; border-radius: var(--radius-md); }
+    .yt-studio-head { padding: 16px; gap: 14px; }
+    .yt-studio-avatar { width: 56px; height: 56px; }
+    .yt-studio-title { font-size: 18px; }
+}

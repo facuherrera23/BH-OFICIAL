@@ -11,7 +11,10 @@
 const { test, expect } = require('@playwright/test');
 
 const HARNESS = `<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><title>Harness Contenido</title></head>
+<html lang="es"><head><meta charset="utf-8"><title>Harness Contenido</title>
+<link rel="stylesheet" href="/assets/css/admin.css">
+<link rel="stylesheet" href="/assets/css/admin-contenido.css">
+</head>
 <body style="background:#020305;color:#fff;font-family:system-ui">
   <div id="contenidoRoot"></div>
   <script>
@@ -30,6 +33,9 @@ const HARNESS = `<!doctype html>
                 .split(AP).join(AP + '#39;');
       }
       window.__TOASTS = [];
+      window.__CONFIRM_CALLS = [];
+      window.__PROMPT_CALLS = [];
+      window.__NATIVE_CALLS = [];
       window.__BH = {
         $: function (s) { return document.querySelector(s); },
         $$: function (s) { return Array.from(document.querySelectorAll(s)); },
@@ -43,8 +49,19 @@ const HARNESS = `<!doctype html>
       window.supabaseClient = {
         auth: { getSession: async function () { return { data: { session: { access_token: 'test-token' } } }; } },
       };
-      window.confirm = function () { return window.__CONFIRM !== false; };
-      window.prompt = function () { return window.__PROMPT_VALUE; };
+      window.confirm = function (m) { window.__NATIVE_CALLS.push('confirm:' + String(m)); return window.__CONFIRM !== false; };
+      window.prompt = function (m, d) { window.__NATIVE_CALLS.push('prompt:' + String(m)); return window.__PROMPT_VALUE; };
+
+      /* Diálogos DEL PANEL (showConfirmDialog/showInputPrompt de admin-app.js).
+         El módulo debe usarlos en vez del confirm()/prompt() nativo. */
+      window.__BH.showConfirmDialog = function (o) {
+        window.__CONFIRM_CALLS.push(String(o && o.title) + '|' + String(o && o.message));
+        return Promise.resolve(window.__CONFIRM !== false);
+      };
+      window.__BH.showInputPrompt = function (o) {
+        window.__PROMPT_CALLS.push(String(o && o.title) + '|' + String(o && o.message));
+        return Promise.resolve(window.__PROMPT_VALUE);
+      };
 
       /* Modo "abort rápido": el AbortController corta a los 250 ms — permite
          testear el timeout de la Edge Function sin esperar 30 s. */
@@ -206,7 +223,7 @@ test.describe('Contenido/YouTube — reparaciones del lote', () => {
     await page.click('#contenidoSubTabs button[data-sub="studio"]');
     await expect(page.locator('#contenidoStudio')).toContainText('Bienenhaus Propiedades');
     await expect(page.locator('#contenidoStudio')).toContainText('Mostrando 1 de 120 videos');
-    await expect(page.locator('#studioVideos .glass-panel')).toHaveCount(1);
+    await expect(page.locator('#studioVideos .yt-video-card')).toHaveCount(1);
     await expect(page.locator('#studioVideos')).toContainText('Tour de la casa');
   });
 
@@ -230,8 +247,15 @@ test.describe('Contenido/YouTube — reparaciones del lote', () => {
     await page.click('#contenidoSubTabs button[data-sub="studio"]');
     // el render del Studio es async (espera la Edge Function)
     await expect(page.locator('#studioVideos')).toHaveCount(1);
-    const cols = await page.evaluate(() => document.getElementById('studioVideos').style.gridTemplateColumns);
-    expect(cols).toContain('min(100%');
+    await expect(page.locator('#studioVideos')).toHaveClass(/yt-video-grid/);
+    // en un viewport angosto la grilla no desborda horizontalmente
+    await page.setViewportSize({ width: 420, height: 800 });
+    const box = await page.evaluate(() => {
+      const g = document.getElementById('studioVideos');
+      return { scrollW: g.scrollWidth, clientW: g.clientWidth, cols: getComputedStyle(g).gridTemplateColumns };
+    });
+    expect(box.scrollW).toBeLessThanOrEqual(box.clientW + 2);
+    expect(box.cols).toBeTruthy();
   });
 
   test('el modal de edición muestra la programación real del video', async ({ page }) => {
@@ -266,7 +290,7 @@ test.describe('Contenido/YouTube — reparaciones del lote', () => {
   test('la red sin app configurada no ofrece "Conectar"', async ({ page }) => {
     await boot(page);
     await page.waitForTimeout(200);
-    const cards = page.locator('#contenidoAccounts .glass-panel');
+    const cards = page.locator('#contenidoAccounts .yt-account-card');
     await expect(cards.filter({ hasText: 'Instagram' })).toContainText('Sin configurar');
     await expect(page.locator('[data-contenido-connect="instagram"]')).toHaveCount(0);
     await expect(page.locator('[data-contenido-connect="youtube"]')).toHaveCount(0); // ya está conectada
@@ -437,13 +461,122 @@ test.describe('Contenido/YouTube — mejoras del lote', () => {
       ],
     });
     await page.click('#contenidoSubTabs button[data-sub="studio"]');
-    await expect(page.locator('#studioVideos .glass-panel')).toHaveCount(2);
+    await expect(page.locator('#studioVideos .yt-video-card')).toHaveCount(2);
     await page.selectOption('#studioViews', '10k+');
-    await expect(page.locator('#studioVideos .glass-panel')).toHaveCount(1);
+    await expect(page.locator('#studioVideos .yt-video-card')).toHaveCount(1);
     await expect(page.locator('#studioVideos')).toContainText('Con muchas vistas');
     await page.selectOption('#studioViews', 'all');
     await page.selectOption('#studioAge', '30');
-    await expect(page.locator('#studioVideos .glass-panel')).toHaveCount(1);
+    await expect(page.locator('#studioVideos .yt-video-card')).toHaveCount(1);
     await expect(page.locator('#studioVideos')).toContainText('Con muchas vistas');
+  });
+});
+
+test.describe('Contenido/YouTube — diseño (Lote 3)', () => {
+  test('las sub-pestañas usan la barra del módulo (.yt-tabs / .yt-tab)', async ({ page }) => {
+    await boot(page);
+    await expect(page.locator('#contenidoSubTabs')).toHaveClass(/yt-tabs/);
+    await expect(page.locator('#contenidoSubTabs button')).toHaveCount(4);
+    await expect(page.locator('#contenidoSubTabs button').first()).toHaveClass(/yt-tab/);
+    await expect(page.locator('#contenidoSubTabs button[data-sub="accounts"]')).toHaveClass(/is-active/);
+    // al cambiar de pestaña se mueve la clase activa
+    await page.click('#contenidoSubTabs button[data-sub="history"]');
+    await expect(page.locator('#contenidoSubTabs button[data-sub="history"]')).toHaveClass(/is-active/);
+    await expect(page.locator('#contenidoSubTabs button[data-sub="accounts"]')).not.toHaveClass(/is-active/);
+  });
+
+  test('las cuentas se pintan con .yt-account-card (no con el panel genérico)', async ({ page }) => {
+    await boot(page);
+    await expect(page.locator('#contenidoAccounts .yt-account-card')).not.toHaveCount(0);
+    await expect(page.locator('#contenidoAccounts .yt-account-icon')).not.toHaveCount(0);
+  });
+
+  test('el modal del Studio usa el lenguaje del panel (.yt-modal + .modal-box) y cierra con la X', async ({ page }) => {
+    await boot(page);
+    await page.click('#contenidoSubTabs button[data-sub="studio"]');
+    await expect(page.locator('#studioVideos')).toHaveCount(1);
+    await page.click('[data-studio-edit]');
+    const ov = page.locator('#studioEditOverlay');
+    await expect(ov).toHaveCount(1);
+    await expect(ov).toHaveClass(/yt-modal/);
+    await expect(page.locator('#studioEditOverlay .modal-box')).toHaveCount(1);
+    // la X de cierre del panel está presente y cierra
+    await expect(page.locator('#studioEditOverlay .modal-x-close')).toHaveCount(1);
+    await page.click('#studioEditOverlay .modal-x-close');
+    await expect(ov).toHaveCount(0);
+  });
+
+  test('el modal de detalle también usa .yt-modal y muestra el link del video', async ({ page }) => {
+    await boot(page);
+    await page.click('#contenidoSubTabs button[data-sub="studio"]');
+    await expect(page.locator('#studioVideos')).toHaveCount(1);
+    await page.click('[data-studio-detail]');
+    await expect(page.locator('#studioDetailOverlay')).toHaveClass(/yt-modal/);
+    await expect(page.locator('#studioDetailOverlay')).toContainText('Tour de la casa');
+    await expect(page.locator('#steCopyLink')).toHaveCount(1);
+  });
+
+  test('los avisos y KPIs del Studio usan las clases del módulo', async ({ page }) => {
+    await boot(page, { truncated: true, total: 120 });
+    await page.click('#contenidoSubTabs button[data-sub="studio"]');
+    await expect(page.locator('#contenidoStudio .yt-studio-head')).toHaveCount(1);
+    await expect(page.locator('#contenidoStudio .yt-kpi')).toHaveCount(3);
+    await expect(page.locator('#contenidoStudio .yt-notice--warning')).toHaveCount(1);
+    await expect(page.locator('#contenidoStudio .yt-toolbar')).toHaveCount(1);
+  });
+
+  test('un canal sin videos muestra un estado vacío con acción', async ({ page }) => {
+    await boot(page, { videos: [] });
+    await page.click('#contenidoSubTabs button[data-sub="studio"]');
+    await expect(page.locator('#studioVideos .empty-state')).toHaveCount(1);
+    await expect(page.locator('#studioVideos')).toContainText('todavía no tiene videos');
+    await page.click('#studioEmptyPublish');
+    await expect(page.locator('#contenidoCreate')).toBeVisible();
+  });
+
+  test('el historial vacío y con filas usan el estilo del módulo', async ({ page }) => {
+    await boot(page);
+    await page.click('#contenidoSubTabs button[data-sub="history"]');
+    await expect(page.locator('#contenidoHistory .empty-state')).toHaveCount(1);
+    await expect(page.locator('#contenidoHistory')).toContainText('Todavía no hay publicaciones');
+  });
+
+  test('borrar un video pide confirmación con el DIÁLOGO DEL PANEL (no el nativo)', async ({ page }) => {
+    await boot(page, { canManage: true });
+    await page.click('#contenidoSubTabs button[data-sub="studio"]');
+    await expect(page.locator('#studioVideos')).toHaveCount(1);
+    await page.click('[data-studio-delete]');
+    await expect.poll(() => page.evaluate(() => window.__CONFIRM_CALLS.length)).toBeGreaterThan(0);
+    const calls = await page.evaluate(() => window.__CONFIRM_CALLS);
+    expect(calls[0]).toContain('Borrar el video');
+  });
+
+  test('el nombre de la plantilla se pide con el diálogo del PANEL', async ({ page }) => {
+    await boot(page);
+    await page.click('#contenidoSubTabs button[data-sub="create"]');
+    await page.fill('#ytTitle', 'Título de prueba');
+    await page.evaluate(() => { window.__PROMPT_VALUE = 'Mi plantilla'; });
+    await page.click('#ytTemplateSave');
+    await expect.poll(() => page.evaluate(() => window.__PROMPT_CALLS.length)).toBeGreaterThan(0);
+    const calls = await page.evaluate(() => window.__PROMPT_CALLS);
+    expect(calls[0]).toContain('Guardar plantilla');
+  });
+
+  test('el módulo NO usa confirm()/prompt() nativos (identidad del panel)', async ({ page }) => {
+    await boot(page);
+    await page.click('#contenidoSubTabs button[data-sub="create"]');
+    await page.fill('#ytTitle', 'Título');
+    await page.evaluate(() => { window.__PROMPT_VALUE = 'X'; });
+    await page.click('#ytTemplateSave');
+    await page.waitForTimeout(200);
+    // el módulo debe usar los diálogos del panel (__BH.showInputPrompt),
+    // nunca el confirm()/prompt() nativo del navegador
+    const nativeCalls = await page.evaluate(() => window.__NATIVE_CALLS);
+    expect(nativeCalls).toEqual([]);
+  });
+
+  test('el CSS del módulo se carga en admin.html (identidad visual compartida)', async ({ page, request }) => {
+    const html = await (await request.get('/admin.html')).text();
+    expect(html).toContain('assets/css/admin-contenido.css');
   });
 });

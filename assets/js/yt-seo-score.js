@@ -343,46 +343,46 @@
 
     var html =
       /* Gauge + veredicto */
-      '<div style="display:flex;align-items:center;gap:16px;margin-bottom:14px;flex-wrap:wrap;">' +
-        '<svg viewBox="0 0 84 84" width="92" height="92" style="flex-shrink:0;" aria-hidden="true">' +
+      '<div class="yts-gauge-row">' +
+        '<svg class="yts-gauge" viewBox="0 0 84 84" width="92" height="92" aria-hidden="true">' +
           '<circle cx="42" cy="42" r="36" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="9"></circle>' +
           '<circle cx="42" cy="42" r="36" fill="none" stroke="' + r.color + '" stroke-width="9" stroke-linecap="round" ' +
             'stroke-dasharray="' + C + '" stroke-dashoffset="' + off + '" transform="rotate(-90 42 42)"></circle>' +
           '<text x="42" y="49" text-anchor="middle" font-size="22" font-weight="700" fill="#fff">' + r.score + '</text>' +
         '</svg>' +
-        '<div style="min-width:0;">' +
-          '<div style="font-size:15px;font-weight:700;color:' + r.color + ';line-height:1.2;">' + esc(r.label || 'Empezá a optimizar') + '</div>' +
-          '<div style="font-size:11.5px;color:var(--text-dim);margin-top:3px;">' +
+        '<div class="yts-gauge-info">' +
+          '<div class="yts-gauge-label" style="color:' + r.color + ';">' + esc(r.label || 'Empezá a optimizar') + '</div>' +
+          '<div class="yts-gauge-sub">' +
             'Palabra clave: ' + (r.keyword ? '«' + esc(r.keyword) + '»' : '<i>sin definir</i>') +
-            (r.keywordDerived ? ' <span style="opacity:.7;">(auto)</span>' : '') +
+            (r.keywordDerived ? ' <span class="yts-muted">(auto)</span>' : '') +
           '</div>' +
-          (r.empty ? '' : '<div style="font-size:11px;color:var(--text-dim);margin-top:2px;">' + suggestionsCountText(r.checks) + '</div>') +
+          (r.empty ? '' : '<div class="yts-gauge-count">' + suggestionsCountText(r.checks) + '</div>') +
         '</div>' +
       '</div>' +
 
       /* Vista previa: así aparece el video en el buscador (SERP) */
-      '<div style="display:flex;gap:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:10px;margin-bottom:14px;">' +
-        '<div style="width:118px;aspect-ratio:16/9;background:#0d1117;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fab fa-youtube" style="color:#FF0000;font-size:22px;"></i></div>' +
-        '<div style="min-width:0;flex:1;">' +
-          '<div style="font-size:12.5px;font-weight:600;line-height:1.35;color:var(--text-secondary);word-break:break-word;">' + esc(titleShown) + '</div>' +
-          '<div style="font-size:10.5px;color:var(--text-dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(channelName) + ' · hoy</div>' +
-          '<div style="font-size:10.5px;color:var(--text-dim);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">' + esc(lineShown) + '</div>' +
+      '<div class="yts-serp">' +
+        '<div class="yts-serp-thumb"><i class="fab fa-youtube"></i></div>' +
+        '<div class="yts-serp-info">' +
+          '<div class="yts-serp-title">' + esc(titleShown) + '</div>' +
+          '<div class="yts-serp-channel">' + esc(channelName) + ' · hoy</div>' +
+          '<div class="yts-serp-desc">' + esc(lineShown) + '</div>' +
         '</div>' +
       '</div>' +
-      '<div style="font-size:10px;color:var(--text-dim);margin:-8px 0 12px;">Así se ve tu video en el buscador — a los 70 chars el título se corta.</div>';
+      '<div class="yts-serp-note">Así se ve tu video en el buscador — a los 70 chars el título se corta.</div>';
 
     if (r.empty) {
       html +=
-        '<div style="font-size:12px;color:var(--text-dim);padding:10px 0;border-top:1px dashed rgba(255,255,255,0.07);">' +
+        '<div class="yts-empty-hint">' +
         '<i class="fas fa-pen"></i> Completá título, descripción y tags — el checklist de mejora aparece acá.</div>';
     } else {
       /* Barras por grupo */
-      html += '<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">' + r.groups.map(function (g) {
+      html += '<div class="yts-groups">' + r.groups.map(function (g) {
         var pct = g.earned / g.max * 100;
-        return '<div style="flex:1;min-width:90px;">' +
-          '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-bottom:2px;"><span>' + esc(g.name) + '</span><span>' + g.earned + '/' + g.max + '</span></div>' +
-          '<div style="height:5px;border-radius:3px;background:rgba(255,255,255,0.08);overflow:hidden;">' +
-            '<div style="height:100%;width:' + pct + '%;border-radius:3px;background:var(--accent);transition:width .3s;"></div>' +
+        return '<div class="yts-group">' +
+          '<div class="yts-group-head"><span>' + esc(g.name) + '</span><span>' + g.earned + '/' + g.max + '</span></div>' +
+          '<div class="yts-bar">' +
+            '<div class="yts-bar-fill" style="width:' + pct + '%;"></div>' +
           '</div></div>';
       }).join('') + '</div>';
 
@@ -390,13 +390,13 @@
       html += r.checks.map(function (c) {
         var icon = c.state === 'ok' ? 'fa-circle-check' : (c.state === 'warn' ? 'fa-triangle-exclamation' : 'fa-circle-xmark');
         var col = c.state === 'ok' ? '#22c55e' : (c.state === 'warn' ? '#f59e0b' : '#ef4444');
-        return '<div class="yts-check" style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px dashed rgba(255,255,255,0.05);">' +
-          '<i class="fas ' + icon + '" style="color:' + col + ';font-size:13px;margin-top:2px;width:15px;text-align:center;flex-shrink:0;"></i>' +
-          '<div style="flex:1;min-width:0;">' +
-            '<div style="font-size:12px;line-height:1.4;color:var(--text-secondary);">' + esc(c.text) + '</div>' +
-            (c.hint ? '<div style="font-size:11px;color:var(--text-dim);margin-top:2px;line-height:1.4;"><i class="fas fa-arrow-right" style="font-size:9px;"></i> ' + esc(c.hint) + '</div>' : '') +
+        return '<div class="yts-check">' +
+          '<i class="fas ' + icon + ' yts-check-icon" style="color:' + col + ';"></i>' +
+          '<div class="yts-check-body">' +
+            '<div class="yts-check-text">' + esc(c.text) + '</div>' +
+            (c.hint ? '<div class="yts-check-hint"><i class="fas fa-arrow-right"></i> ' + esc(c.hint) + '</div>' : '') +
           '</div>' +
-          '<span style="font-size:10.5px;color:' + col + ';flex-shrink:0;">' + c.points + '/' + c.max + '</span>' +
+          '<span class="yts-check-points" style="color:' + col + ';">' + c.points + '/' + c.max + '</span>' +
         '</div>';
       }).join('');
     }
@@ -404,32 +404,32 @@
     /* Tags actuales como chips clicables (quitar) */
     var chipsHtml = tagsArr.length
       ? tagsArr.map(function (tag, i) {
-          return '<button type="button" class="yts-chip" data-yts-chip="' + i + '" title="Quitar este tag" style="font-size:10.5px;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);color:var(--text-secondary);cursor:pointer;">' + esc(tag) + ' <i class="fas fa-times" style="font-size:8px;opacity:.65;"></i></button>';
+          return '<button type="button" class="yts-chip" data-yts-chip="' + i + '" title="Quitar este tag">' + esc(tag) + ' <i class="fas fa-times"></i></button>';
         }).join('')
-      : '<span style="font-size:11px;color:var(--text-dim);">Sin tags — usá los sugeridos de abajo</span>';
+      : '<span class="yts-muted">Sin tags — usá los sugeridos de abajo</span>';
     var over = joined.length > 480;
     html +=
-      '<div style="margin-top:14px;">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px;">' +
-          '<span style="font-size:10.5px;color:var(--text-dim);font-weight:600;"><i class="fas fa-tags"></i> TAGS ACTUALES</span>' +
-          '<span style="font-size:10px;color:' + (over ? '#ef4444' : 'var(--text-dim)') + ';">' + tagsArr.length + ' tags · ' + joined.length + '/480</span>' +
+      '<div class="yts-section">' +
+        '<div class="yts-section-head">' +
+          '<span class="yts-section-title"><i class="fas fa-tags"></i> TAGS ACTUALES</span>' +
+          '<span class="yts-section-count" style="color:' + (over ? '#ef4444' : 'var(--text-dim)') + ';">' + tagsArr.length + ' tags · ' + joined.length + '/480</span>' +
         '</div>' +
-        '<div class="yts-chips" style="display:flex;flex-wrap:wrap;gap:6px;">' + chipsHtml + '</div>' +
+        '<div class="yts-chips">' + chipsHtml + '</div>' +
       '</div>';
 
     /* Sugerencias del nicho — click agrega al formulario real */
     if (presets.length && onTags) {
       html +=
-        '<div style="margin-top:12px;">' +
-          '<div style="font-size:10.5px;color:var(--text-dim);font-weight:600;margin-bottom:6px;"><i class="fas fa-wand-magic-sparkles"></i> SUGERIDOS PARA EL NICHO (click para agregar)</div>' +
-          '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + presets.map(function (p) {
-            return '<button type="button" class="yts-preset" data-yts-preset="' + escAttr(p) + '" style="font-size:10.5px;padding:3px 10px;border-radius:999px;background:rgba(45,212,191,0.08);border:1px solid rgba(45,212,191,0.25);color:#5eead4;cursor:pointer;">+ ' + esc(p) + '</button>';
+        '<div class="yts-section">' +
+          '<div class="yts-section-title" style="margin-bottom:6px;"><i class="fas fa-wand-magic-sparkles"></i> SUGERIDOS PARA EL NICHO (click para agregar)</div>' +
+          '<div class="yts-chips">' + presets.map(function (p) {
+            return '<button type="button" class="yts-preset" data-yts-preset="' + escAttr(p) + '">+ ' + esc(p) + '</button>';
           }).join('') + '</div>' +
         '</div>';
     }
 
     html +=
-      '<div style="font-size:10px;color:var(--text-dim);margin-top:14px;line-height:1.5;">' +
+      '<div class="yts-footnote">' +
       'Heurística propia inspirada en vidIQ Vision y en las guías de YouTube. Orientativa, no garantiza el orden en las búsquedas.' +
       '</div>';
 
