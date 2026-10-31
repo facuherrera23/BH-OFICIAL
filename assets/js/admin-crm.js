@@ -27,7 +27,7 @@ var _sortKey = 'prox', _sortDir = 'asc'; /* default del dueño (2026-10-20): pr�
 var DEFAULT_SORT_DIR = { created: 'desc', cliente: 'asc', propiedad: 'asc', estado: 'asc', prioridad: 'desc', actividad: 'desc', prox: 'asc' };
 var SERVER_SORT_COLUMNS = { created: 'created_at', cliente: 'full_name', estado: 'stage', prioridad: 'lead_score', actividad: 'last_contacted_at', prox: 'next_followup_at' };
 var _showTrash = false;
-var _kpiFilter = ''; // '', 'nuevos7d', 'stale48'
+var _kpiFilter = ''; // '', 'nuevos7d', 'stale48', 'conversion', 'tasksOverdue', 'tasksSoon', 'tasksPending', 'properties'
 var _ownerSortKey = 'prox', _ownerSortDir = 'asc';
 var OWNER_DEFAULT_SORT_DIR = { propietario: 'asc', dni: 'asc', propiedades: 'desc', agente: 'asc', tareas: 'desc', exclusivo: 'asc', prox: 'asc' };
 var _leads = [];
@@ -37,7 +37,8 @@ var _hasFollowupFilter = false;
 var _searchTimer = null;
 var __initialized = false;
 var _viewMode = 'leads';
-var _kpiTaskIds = null; /* ids de leads con tareas vencidas/por vencer (filtro KPI) */
+var _kpiTaskIds = null; /* ids de leads con tareas vencidas/por vencer/pendientes (filtro KPI) */
+var _kpiPropIds = null; /* ids de leads con al menos una propiedad vinculada (filtro KPI) */
 var _owners = [];
 var _ownerTasks = {};
 var _agentMapById = {};
@@ -49,6 +50,11 @@ var _ownerAgentFilter = '';
 var _ownerExclFilter = '';
 var _ownerTaskFilter = '';
 var _ownerTrash = false;
+/* Estado comercial del propietario (2026-10-30): 'activos' (default, solo los
+   que están en cartera) | 'inactivos' (vendió / no hay contacto, pero se
+   conserva TODO su historial) | 'todos'. Es distinto de la papelera
+   (_ownerTrash = deleted_at), que es la baja lógica. */
+var _ownerStatusFilter = 'activos';
 var _loadSeq = 0; /* #27: distingue cargas disparadas por init vs deep-links (#tab-leads/owners) */
 
 function $id(id) { return document.getElementById(id); }
@@ -191,10 +197,19 @@ function applyBaseFilters(q) {
     var staleCut = new Date(Date.now() - 2 * 86400000).toISOString();
     q = q.or('last_contacted_at.is.null,last_contacted_at.lt.' + staleCut)
          .not('stage', 'in', '("cerrado_ganado","cerrado_perdido")');
-  } else if (_kpiFilter === 'tasksOverdue' || _kpiFilter === 'tasksSoon') {
-    /* Leads con tareas vencidas / por vencer en 24h. Los ids se resolvieron
-       en loadLeads (query a lead_tasks) — mismo patrón que los filtros de owners. */
+  } else if (_kpiFilter === 'tasksOverdue' || _kpiFilter === 'tasksSoon' || _kpiFilter === 'tasksPending') {
+    /* Leads con tareas vencidas / por vencer en 24h / con cualquier tarea
+       pendiente. Los ids se resolvieron en loadLeads (query a lead_tasks) —
+       mismo patrón que los filtros de owners. */
     if (_kpiTaskIds && _kpiTaskIds.length) q = q.in('id', _kpiTaskIds);
+    else q = q.eq('id', '00000000-0000-0000-0000-000000000000'); /* sin coincidencias */
+  } else if (_kpiFilter === 'conversion') {
+    /* Conversión: los leads que GANARON (cerrado_ganado). */
+    q = q.eq('stage', 'cerrado_ganado');
+  } else if (_kpiFilter === 'properties') {
+    /* Leads vinculados a al menos una propiedad (lead_properties o
+       lead.property_id). Los ids se resolvieron en loadLeads. */
+    if (_kpiPropIds && _kpiPropIds.length) q = q.in('id', _kpiPropIds);
     else q = q.eq('id', '00000000-0000-0000-0000-000000000000'); /* sin coincidencias */
   }
   if (_showTrash) return q.not('deleted_at', 'is', null);
@@ -272,8 +287,8 @@ async function loadOwners() {
       ? db().from('owners').select('id', { count: 'exact', head: true }).not('deleted_at', 'is', null)
       : db().from('owners').select('id', { count: 'exact', head: true }).is('deleted_at', null);
     var qw = _ownerTrash
-      ? db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, dni_expiry, cuit_expiry, created_at, agent_id, deleted_at').not('deleted_at', 'is', null)
-      : db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, dni_expiry, cuit_expiry, created_at, agent_id').is('deleted_at', null);
+      ? db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, dni_expiry, cuit_expiry, created_at, agent_id, deleted_at, status, status_reason, status_changed_at').not('deleted_at', 'is', null)
+      : db().from('owners').select('id, full_name, email, phone, preferred_contact, exclusive, exclusive_start, exclusive_end, dni_cuit, address, notes, documents, commission_sale, commission_rent, commission_split, contract_notes, dni_expiry, cuit_expiry, created_at, agent_id, status, status_reason, status_changed_at').is('deleted_at', null);
     if (_ownerSearch.trim()) {
       /* FIX 2026-10-21: solo se sanitiza % — el _ como wildcard de ilike hace
          encontrables los emails con guión bajo (antes se convertía en espacio). */
@@ -283,10 +298,24 @@ async function loadOwners() {
       try {
         var pr = await db().from('properties').select('owner_id').or('title.ilike.%' + os + '%,property_code.ilike.%' + os + '%').is('deleted_at', null).limit(200);
         ownerIdsByProp = (pr.data || []).map(function (p) { return p.owner_id; }).filter(Boolean);
-      } catch (e) { window.__BH.logError('CRM owner search by property failed:', e); }
+      } catch (e) { if (window.__BH && window.__BH.logError) window.__BH.logError('CRM owner search by property failed:', e); else console.warn('[crm] owner search by property failed:', e); }
       if (ownerIdsByProp.length) ors += ',id.in.(' + ownerIdsByProp.join(',') + ')';
       q0 = q0.or(ors);
       qw = qw.or(ors);
+    }
+
+    /* Filtro de estado comercial (activo / inactivo / todos) — 2026-10-30.
+       REGLA: si hay texto de búsqueda NO se aplica el filtro por defecto
+       ('activos'): el objetivo de buscar es encontrar a la persona, aunque
+       esté desactivada. Si no, el historial de un dueño que vendió su
+       propiedad quedaría inaccesible (justo lo que este filtro resuelve). */
+    var _stWanted = (!_ownerTrash && _ownerStatusFilter && _ownerStatusFilter !== 'todos') ? _ownerStatusFilter : '';
+    var _stSearching = !!_ownerSearch.trim();
+    var _stIgnored = (_stWanted === 'activos' && _stSearching);
+    if (_stWanted && !_stIgnored) {
+      var _stVal = _stWanted === 'inactivos' ? 'inactivo' : 'activo';
+      q0 = q0.eq('status', _stVal);
+      qw = qw.eq('status', _stVal);
     }
 
     /* Filtros desplegables: exclusividad, agente asignado y tareas pendientes.
@@ -413,7 +442,14 @@ applyOwnerSort();
     updateOwnerKpis();
     renderOwnerAlerts();
     var sub = $id('crmSubtitle');
-    if (sub) sub.textContent = _totalRows + (_ownerSearch.trim() ? ' propietarios (filtro)' : ' propietarios');
+    if (sub) {
+      var _parts = [];
+      if (_ownerSearch.trim()) _parts.push('filtro');
+      if (_ownerStatusFilter === 'inactivos') _parts.push('desactivados');
+      else if (_ownerStatusFilter === 'todos') _parts.push('todos');
+      if (_stIgnored) _parts.push('incluye desactivados');
+      sub.textContent = _totalRows + ' propietarios' + (_parts.length ? ' (' + _parts.join(' · ') + ')' : '');
+    }
   } catch (e) {
     c.innerHTML = '<div style="padding:40px;text-align:center;color:var(--danger);">Error: ' + esc(e.message) + '</div>';
   }
@@ -452,11 +488,16 @@ function renderOwnerList(c) {
   if (!_owners.length) {
     c.innerHTML = (_ownerTrash
       ? '<div style="padding:40px;text-align:center;color:var(--text-dim);">La papelera de propietarios está vacía.</div>'
+      : _ownerStatusFilter === 'inactivos'
+      ? '<div style="padding:40px;text-align:center;color:var(--text-dim);">No hay propietarios desactivados.</div>'
       : _ownerSearch.trim()
       ? '<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin propietarios que coincidan con la búsqueda.</div>'
       : '<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin propietarios cargados.</div>');
     return;
   }
+  /* Solo el super_admin puede cambiar el estado de un propietario (RLS:
+     UPDATE de owners es super_admin-only). */
+  var canManageOwnerStatus = !!((window.currentProfile || window._bhCurrentProfile) && (window.currentProfile || window._bhCurrentProfile).role === 'super_admin');
   var sortArrow = function (k) {
     return _ownerSortKey === k ? '<span class="crm-sort-ind">' + (_ownerSortDir === 'asc' ? '▲' : '▼') + '</span>' : '';
   };
@@ -493,8 +534,23 @@ function renderOwnerList(c) {
     } else {
       proxCell = '<span class="crm-muted">—</span>';
     }
+    /* Estado comercial del propietario (2026-10-30). RLS: UPDATE de owners
+       es super_admin-only → el botón solo se muestra a quien puede ejecutarlo. */
+    var isInactive = (o.status === 'inactivo');
+    var statusChip;
+    if (_ownerTrash) {
+      statusChip = '<span class="crm-tipo-chip" style="background:rgba(239,68,68,0.12);color:var(--danger);">ELIMINADO</span>';
+    } else if (isInactive) {
+      var _why = o.status_reason ? (' — ' + o.status_reason) : '';
+      var _when = o.status_changed_at ? (' · ' + fmtDate(o.status_changed_at)) : '';
+      statusChip = '<span class="crm-tipo-chip" style="background:rgba(148,163,184,0.16);color:#94a3b8;" title="Desactivado' + esc(_why + _when) + '">DESACTIVADO</span>';
+    } else if (o.exclusive) {
+      statusChip = '<span class="crm-tipo-chip crm-tipo-chip--estado">EXCLUSIVO</span>';
+    } else {
+      statusChip = '';
+    }
     rows += '<tr class="crm-row" data-id="' + o.id + '" data-kind="owner">' +
-      '<td><div class="crm-client-row"><span class="crm-client-avatar" style="background:' + avColor + '">' + inits + '</span><div><strong>' + esc(o.full_name) + '</strong>' + (_ownerTrash ? '<span class="crm-tipo-chip" style="background:rgba(239,68,68,0.12);color:var(--danger);">ELIMINADO</span>' : (o.exclusive ? '<span class="crm-tipo-chip crm-tipo-chip--estado">EXCLUSIVO</span>' : '')) + '<div class="crm-meta">' + esc(contactMetrics.join(' · ')) + '</div></div></div></td>' +
+      '<td><div class="crm-client-row"><span class="crm-client-avatar" style="background:' + avColor + '">' + inits + '</span><div><strong>' + esc(o.full_name) + '</strong>' + statusChip + '<div class="crm-meta">' + esc(contactMetrics.join(' · ')) + '</div></div></div></td>' +
       '<td>' + (o.dni_cuit ? '<code style="font-size:11px;color:var(--text-secondary);">' + esc(o.dni_cuit) + '</code>' : '<span class="crm-muted">—</span>') + '</td>' +
       '<td>' + renderOwnerPropsCell(o.id) + '</td>' +
       '<td>' + renderOwnerAgentCell(o) + '</td>' +
@@ -507,6 +563,9 @@ function renderOwnerList(c) {
         '<button class="btn-action" data-action="viewOwner" data-id="' + o.id + '" title="Ver detalle"><i class="fas fa-eye"></i></button>' +
         '<button class="btn-action crm-icon-action" data-action="addOwnerNote" data-id="' + o.id + '" title="Agregar nota"><i class="fas fa-sticky-note"></i></button>' +
         '<button class="btn-action crm-icon-action" data-action="genOwnerToken" data-id="' + o.id + '" title="Acceso directo al portal (o generar si no tiene token)"><i class="fas fa-key"></i></button>' +
+        (canManageOwnerStatus
+          ? '<button class="btn-action" data-action="' + (isInactive ? 'reactivateOwner' : 'deactivateOwner') + '" data-id="' + o.id + '" title="' + (isInactive ? 'Reactivar: vuelve a la cartera' : 'Desactivar: deja de recibir alertas, se conserva todo su historial') + '"><i class="fas ' + (isInactive ? 'fa-toggle-on' : 'fa-user-slash') + '"></i></button>'
+          : '') +
         '<button class="btn-action" data-action="editOwner" data-id="' + o.id + '" title="Editar"><i class="fas fa-pen"></i></button>' +
         '<button class="btn-action danger" data-action="deleteOwner" data-id="' + o.id + '" title="Eliminar"><i class="fas fa-trash"></i></button>') +
       '</td>' +
@@ -587,6 +646,24 @@ function renderOwnerList(c) {
       if (window.adminApp && window.adminApp.deleteOwner) window.adminApp.deleteOwner(this.dataset.id);
     });
   });
+  /* Desactivar / Reactivar propietario (2026-10-30). El modal con el motivo
+     obligatorio y las consecuencias vive en admin-propietarios.js
+     (window.adminApp.setOwnerStatus) — acá solo se dispara y se refresca. */
+  c.querySelectorAll('[data-action="deactivateOwner"],[data-action="reactivateOwner"]').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var id = this.dataset.id;
+      var next = this.dataset.action === 'reactivateOwner' ? 'activo' : 'inactivo';
+      if (!window.adminApp || !window.adminApp.setOwnerStatus) {
+        toast('Acción no disponible.', 'error');
+        return;
+      }
+      window.adminApp.setOwnerStatus(id, next).then(function () {
+        loadOwners();
+        if (window.updateSidebarBadges) window.updateSidebarBadges();
+      }, function () { loadOwners(); });
+    });
+  });
   c.querySelectorAll('[data-action="viewOwnerTasks"]').forEach(function (b) {
     b.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -626,15 +703,31 @@ async function loadLeads() {
      Los cierres intencionales (papelera, eliminar, perdido) llaman closeDetailPanel explicitamente. */
   try {
     /* Filtro KPI por tareas: resolver primero los lead_ids con tareas
-       vencidas / por vencer 24h (patrón de los filtros de owners). */
+       vencidas / por vencer 24h / con tareas pendientes (patrón de los
+       filtros de owners). */
     _kpiTaskIds = null;
-    if (_kpiFilter === 'tasksOverdue' || _kpiFilter === 'tasksSoon') {
+    if (_kpiFilter === 'tasksOverdue' || _kpiFilter === 'tasksSoon' || _kpiFilter === 'tasksPending') {
       var kpiTq = db().from('lead_tasks').select('lead_id, status, due_at, title').in('status', ['pendiente', 'en_progreso']).limit(1000);
       if (_kpiFilter === 'tasksOverdue') kpiTq = kpiTq.lt('due_at', new Date().toISOString());
-      else kpiTq = kpiTq.gte('due_at', new Date().toISOString()).lte('due_at', new Date(Date.now() + 86400000).toISOString());
+      else if (_kpiFilter === 'tasksSoon') kpiTq = kpiTq.gte('due_at', new Date().toISOString()).lte('due_at', new Date(Date.now() + 86400000).toISOString());
       var kpiTr = await kpiTq;
       var kpiIds = [...new Set((kpiTr.data || []).map(function (tk) { return tk.lead_id; }).filter(Boolean))];
       _kpiTaskIds = kpiIds;
+    }
+    /* Filtro KPI "Propiedades": lead_ids con al menos un inmueble vinculado
+       (lead_properties o el campo directo lead.property_id). */
+    _kpiPropIds = null;
+    if (_kpiFilter === 'properties') {
+      try {
+        var kpiLp = await db().from('lead_properties').select('lead_id').limit(5000);
+        var kpiPropSet = new Set((kpiLp.data || []).map(function (r) { return r.lead_id; }).filter(Boolean));
+        var kpiDirect = await db().from('leads').select('id').not('property_id', 'is', null).limit(5000);
+        (kpiDirect.data || []).forEach(function (l) { if (l && l.id) kpiPropSet.add(l.id); });
+        _kpiPropIds = [...kpiPropSet];
+      } catch (e) {
+        if (window.__BH && window.__BH.logError) window.__BH.logError('CRM kpi properties load failed:', e);
+        _kpiPropIds = [];
+      }
     }
     var countRes = await applyBaseFilters(
       db().from('leads').select('id', { count: 'exact', head: true }));
@@ -715,8 +808,22 @@ async function loadLeads() {
 }
 
 function setKpiLabels(labels) {
-  var els = document.querySelectorAll('.crm-kpis .crm-kpi-label');
-  for (var i = 0; i < els.length && i < labels.length; i++) els[i].textContent = labels[i];
+  /* Scoped a la fila de KPIs del CRM (#tab-leads): el selector global
+     '.crm-kpis .crm-kpi-label' también hitaba las filas de tasaciones
+     (admin.html tiene 3 .crm-kpis) y escribía en la primera. */
+  var row = document.querySelector('#tab-leads .crm-kpis');
+  if (!row) return;
+  var els = row.querySelectorAll('.crm-kpi-label');
+  var cards = row.querySelectorAll('.crm-kpi');
+  var i;
+  for (i = 0; i < els.length && i < labels.length; i++) els[i].textContent = labels[i];
+  /* Slots sin label → la card entera se oculta (si no quedan cards muertas
+     con "0" y labels de otro modo). */
+  for (i = labels.length; i < cards.length; i++) {
+    cards[i].style.display = 'none';
+    if (els[i]) els[i].textContent = '';
+  }
+  for (i = 0; i < cards.length && i < labels.length; i++) cards[i].style.display = '';
 }
 
 /* Colores por slot: el 3er KPI es "Vencidas" (rojo) y el 4to "Vencen en 24h"
@@ -735,21 +842,65 @@ function setKpiColors(mode) {
   }
 }
 
-/* KPI clickeables: Activos=reset, Nuevos(7d), Sin contacto +48h */
+/* KPI clickeables: Activos=reset, Nuevos(7d), Sin contacto +48h.
+   Los bindings son MODE-AWARE: la misma card física representa otra cosa en
+   modo propietarios (ej: crmKpiPend = "Tareas pendientes" en leads pero
+   "Desactivados" en el padrón) → dos mapas, uno por modo.
+   Modo leads:      Total=reset · Nuevos=nuevos7d · Sin contacto=stale48 ·
+                    Conversión=conversion · Vencidas=tasksOverdue ·
+                    24h=tasksSoon · Pendientes=tasksPending · Propiedades=properties
+   Modo propietarios: Propietarios=reset · Desactivados=inactivos */
 var KPI_CARD_BINDINGS = { crmKpiTotal: 'reset', crmKpiNuevo: 'nuevos7d', crmKpiGanados: 'stale48', crmKpiPerdidos: 'conversion', crmKpiVenc: 'tasksOverdue', crmKpiSoon: 'tasksSoon', crmKpiPend: 'tasksPending', crmKpiProp: 'properties' };
+var OWNER_KPI_CARD_BINDINGS = { crmKpiTotal: 'reset', crmKpiPend: 'inactivos' };
+function _activeKpiBindings() {
+  return _viewMode === 'owners' ? OWNER_KPI_CARD_BINDINGS : KPI_CARD_BINDINGS;
+}
 function syncKpiCards() {
   var clickable = _viewMode === 'leads' && !_showTrash;
-  Object.keys(KPI_CARD_BINDINGS).forEach(function (id) {
+  var ownerMode = _viewMode === 'owners' && !_ownerTrash;
+  var map = _activeKpiBindings();
+  /* Se recorren TODAS las cards (unión de los 2 mapas): al cambiar de modo
+     hay que limpiar las clases de las cards que no aplican, si no quedan
+     "clickeables" (y con `is-active`) del modo anterior. */
+  var allIds = Object.keys(KPI_CARD_BINDINGS);
+  Object.keys(OWNER_KPI_CARD_BINDINGS).forEach(function (id) {
+    if (allIds.indexOf(id) === -1) allIds.push(id);
+  });
+  allIds.forEach(function (id) {
     var el = $id(id);
     var card = el && el.closest('.crm-kpi');
     if (!card) return;
-    var k = KPI_CARD_BINDINGS[id];
-    card.classList.toggle('crm-kpi--btn', clickable && k !== 'reset');
-    card.classList.toggle('is-active', clickable && k === _kpiFilter);
-    if (clickable && k !== 'reset') card.title = 'Clic para filtrar'; else card.removeAttribute('title');
+    var k = map[id] || '';
+    var enabled = (clickable || ownerMode) && !!k;
+    card.classList.toggle('crm-kpi--btn', enabled && k !== 'reset');
+    card.classList.toggle('is-active', enabled && k !== 'reset' && (
+      _viewMode === 'owners'
+        ? (k === 'inactivos' && _ownerStatusFilter === 'inactivos')
+        : k === _kpiFilter
+    ));
+    if (enabled && k !== 'reset') card.title = 'Clic para filtrar'; else card.removeAttribute('title');
   });
 }
 function toggleKpiFilter(key) {
+  /* Modo propietarios: la única card clickeable es "Desactivados"
+     (filtra el padrón por estado) — el resto de KPIs del padrón son de solo
+     lectura (mixas de varias fuentes). */
+  if (_viewMode === 'owners') {
+    if (_ownerTrash) return;
+    if (key === 'inactivos') {
+      _ownerStatusFilter = (_ownerStatusFilter === 'inactivos') ? 'activos' : 'inactivos';
+    } else if (key === 'reset') {
+      _ownerStatusFilter = 'activos';
+    } else {
+      return;
+    }
+    var osel = $id('crmOwnerStatusFilter');
+    if (osel) osel.value = _ownerStatusFilter;
+    _page = 1;
+    syncKpiCards();
+    loadOwners();
+    return;
+  }
   if (_viewMode !== 'leads' || _showTrash) return;
   _kpiFilter = (key === 'reset' || _kpiFilter === key) ? '' : key;
   _page = 1;
@@ -757,28 +908,53 @@ function toggleKpiFilter(key) {
   loadLeads();
 }
 function bindKpiCards() {
-  Object.keys(KPI_CARD_BINDINGS).forEach(function (id) {
+  var ids = Object.keys(KPI_CARD_BINDINGS).concat(Object.keys(OWNER_KPI_CARD_BINDINGS));
+  ids.forEach(function (id) {
     var el = $id(id);
     var card = el && el.closest('.crm-kpi');
     if (card && !card.dataset.kpiBound) {
       card.dataset.kpiBound = '1';
-      card.addEventListener('click', function () { toggleKpiFilter(KPI_CARD_BINDINGS[id]); });
+      card.addEventListener('click', function () {
+        /* La card puede tener binding distinto según el modo → se resuelve
+           en el momento del clic (no al bindear). Si la card no tiene
+           binding en este modo, el clic no hace nada. */
+        var map = _activeKpiBindings();
+        var key = map[id];
+        if (!key) return;
+        toggleKpiFilter(key);
+      });
     }
   });
 }
 
 async function updateOwnerKpis() {
-  setKpiLabels(['Propietarios', 'Exclusivos', 'Vencidas', 'Vencen en 24h', 'Tareas pendientes', 'Propiedades']);
+  /* 7 slots usados en modo propietarios (el 8to queda oculto):
+     Propietarios · Exclusivos · Vencidas · Vencen en 24h · Tareas pendientes ·
+     Propiedades · Desactivados.
+     REGLA 2026-10-30: los KPIs del padrón cuentan SOLO propietarios activos.
+     Un dueño desactivado (vendió / no hay contacto) no genera alertas ni
+     ocupa lugar en la cartera; su historial sigue intacto y visible con el
+     filtro "desactivados". */
+  setKpiLabels(['Propietarios', 'Exclusivos', 'Vencidas', 'Vencen en 24h', 'Tareas pendientes', 'Propiedades', 'Desactivados']);
   setKpiColors('owners');
   try {
     var in24 = new Date(Date.now() + 86400000).toISOString();
+    var nowIso = new Date().toISOString();
+    /* ids de propietarios activos: se resuelven 1 vez y se reutilizan para
+       las tareas y las propiedades (evita N+1 y mantiene el conteo coherente). */
+    var actRes = await db().from('owners').select('id').is('deleted_at', null).eq('status', 'activo');
+    var activeIds = (actRes.data || []).map(function (o) { return o.id; });
+    /* .in() con array vacío devuelve error de sintaxis en PostgREST → se usa
+       un id centinela que no existe (resultado = 0, que es lo correcto). */
+    var scope = activeIds.length ? activeIds : ['00000000-0000-0000-0000-000000000000'];
     var counts = await Promise.all([
-      db().from('owners').select('id', { count: 'exact', head: true }).is('deleted_at', null),
-      db().from('owners').select('id', { count: 'exact', head: true }).eq('exclusive', true).is('deleted_at', null),
-      db().from('owner_tasks').select('id', { count: 'exact', head: true }).not('status', 'in', '("completada","cancelada")').lt('due_date', new Date().toISOString()),
-      db().from('owner_tasks').select('id', { count: 'exact', head: true }).not('status', 'in', '("completada","cancelada")').gte('due_date', new Date().toISOString()).lte('due_date', in24),
-      db().from('owner_tasks').select('id', { count: 'exact', head: true }).not('status', 'in', '("completada","cancelada")'),
-      db().from('properties').select('id', { count: 'exact', head: true }).is('deleted_at', null).not('owner_id', 'is', null)
+      db().from('owners').select('id', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'activo'),
+      db().from('owners').select('id', { count: 'exact', head: true }).eq('exclusive', true).is('deleted_at', null).eq('status', 'activo'),
+      db().from('owner_tasks').select('id', { count: 'exact', head: true }).not('status', 'in', '("completada","cancelada")').lt('due_date', nowIso).in('owner_id', scope),
+      db().from('owner_tasks').select('id', { count: 'exact', head: true }).not('status', 'in', '("completada","cancelada")').gte('due_date', nowIso).lte('due_date', in24).in('owner_id', scope),
+      db().from('owner_tasks').select('id', { count: 'exact', head: true }).not('status', 'in', '("completada","cancelada")').in('owner_id', scope),
+      db().from('properties').select('id', { count: 'exact', head: true }).is('deleted_at', null).not('owner_id', 'is', null).in('owner_id', scope),
+      db().from('owners').select('id', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'inactivo')
     ]);
     var el;
     el = $id('crmKpiTotal'); if (el) el.textContent = counts[0].count || 0;
@@ -787,6 +963,7 @@ async function updateOwnerKpis() {
     el = $id('crmKpiPerdidos'); if (el) el.textContent = counts[3].count || 0;
     el = $id('crmKpiVenc'); if (el) el.textContent = counts[4].count || 0;
     el = $id('crmKpiSoon'); if (el) el.textContent = counts[5].count || 0;
+    el = $id('crmKpiPend'); if (el) el.textContent = counts[6].count || 0;
   } catch (e) { console.warn('[crm] owner kpis:', e.message); }
 }
 
@@ -798,8 +975,13 @@ async function renderOwnerAlerts() {
   if (!el) return;
   if (_viewMode !== 'owners' || _ownerTrash) { el.style.display = 'none'; return; }
   try {
-    var oRes = await db().from('owners').select('id, exclusive, exclusive_end, dni_expiry, cuit_expiry').is('deleted_at', null).limit(500);
+    /* REGLA 2026-10-30: las alertas son de la CARTERA → solo propietarios
+       activos. Un dueño desactivado no puede generar exclusividad vencida
+       ni DNI/CUIT por vencer: no lo tenemos en operación. */
+    var oRes = await db().from('owners').select('id, exclusive, exclusive_end, dni_expiry, cuit_expiry').is('deleted_at', null).eq('status', 'activo').limit(500);
     var owners = oRes.data || [];
+    var inactRes = await db().from('owners').select('id', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'inactivo');
+    var inactiveCount = (inactRes && inactRes.count) || 0;
     var now = Date.now();
     var in30 = now + 30 * 86400000;
     var in90 = now + 90 * 86400000;
@@ -827,6 +1009,10 @@ async function renderOwnerAlerts() {
     if (expiring > 0) chips += '<span class="crm-oa-chip crm-oa-chip--warn"><i class="fas fa-stopwatch"></i> ' + expiring + (expiring > 1 ? ' exclusividades vencen en 30 días' : ' exclusividad vence en 30 días') + '</span>';
     if (expiredExcl > 0) chips += '<span class="crm-oa-chip crm-oa-chip--danger"><i class="fas fa-bell"></i> ' + expiredExcl + (expiredExcl > 1 ? ' exclusividades vencidas' : ' exclusividad vencida') + '</span>';
     if (docAlerts > 0) chips += '<span class="crm-oa-chip crm-oa-chip--warn"><i class="fas fa-id-card"></i> ' + docAlerts + (docAlerts > 1 ? ' documentos DNI/CUIT vencidos o por vencer' : ' documento DNI/CUIT vencido o por vencer') + '</span>';
+    /* Propietarios desactivados: no son una alerta (es un estado, no un
+       problema), pero se informa para que el dueño sepa que hay historial
+       guardado fuera de la cartera. */
+    if (inactiveCount > 0) chips += '<span class="crm-oa-chip" style="background:rgba(148,163,184,0.08);border-color:rgba(148,163,184,0.25);color:#94a3b8;"><i class="fas fa-user-slash"></i> ' + inactiveCount + (inactiveCount > 1 ? ' propietarios desactivados' : ' propietario desactivado') + ' (historial conservado)</span>';
     if (!chips) { el.style.display = 'none'; return; }
     el.innerHTML = chips;
     el.style.display = 'flex';
@@ -844,7 +1030,7 @@ async function updateKpis() {
       ['crmKpiNuevo', 'crmKpiGanados', 'crmKpiPerdidos', 'crmKpiVenc', 'crmKpiSoon'].forEach(function (k) { var e = $id(k); if (e) e.textContent = '—'; });
       return;
     }
-    setKpiLabels(['Activos', 'Nuevos (7d)', 'Sin contacto +48h', 'Conversión', 'Tareas vencidas', 'Vencen en 24h']);
+    setKpiLabels(['Activos', 'Nuevos (7d)', 'Sin contacto +48h', 'Conversión', 'Tareas vencidas', 'Vencen en 24h', 'Tareas pendientes', 'Propiedades']);
     setKpiColors('leads');
     var CLOSED = ['cerrado_ganado', 'cerrado_perdido'];
     var now = Date.now();
@@ -860,7 +1046,17 @@ async function updateKpis() {
       leads.select('id', { count: 'exact', head: true }).in('stage', CLOSED).is('deleted_at', null),
       db().from('lead_tasks').select('id', { count: 'exact', head: true }).in('status', ['pendiente', 'en_progreso']).lt('due_at', new Date().toISOString()),
       db().from('lead_tasks').select('id', { count: 'exact', head: true }).in('status', ['pendiente', 'en_progreso']).gte('due_at', new Date().toISOString()).lte('due_at', in24),
+      db().from('lead_tasks').select('id', { count: 'exact', head: true }).in('status', ['pendiente', 'en_progreso']),
     ]);
+    /* Propiedades vinculadas a leads (lead_properties + lead.property_id).
+       Son los 2 slots que antes quedaban muertos en la fila de KPIs. */
+    var propIdsSet = new Set();
+    try {
+      var lpKpi = await db().from('lead_properties').select('lead_id, property_id').limit(5000);
+      (lpKpi.data || []).forEach(function (r) { if (r && r.property_id) propIdsSet.add(r.property_id); });
+      var lkKpi = await db().from('leads').select('property_id').not('property_id', 'is', null).limit(5000);
+      (lkKpi.data || []).forEach(function (r) { if (r && r.property_id) propIdsSet.add(r.property_id); });
+    } catch (e) { console.warn('[crm] kpi propiedades:', e.message); }
     var activos = counts[0].count || 0;
     var nuevos7 = counts[1].count || 0;
     var stale = counts[2].count || 0;
@@ -868,6 +1064,8 @@ async function updateKpis() {
     var cerrados = counts[4].count || 0;
     var vencidas = counts[5].count || 0;
     var pronto = counts[6].count || 0;
+    var pendientes = counts[7].count || 0;
+    var propsCount = propIdsSet.size;
     var conv = cerrados > 0 ? Math.round((ganados / cerrados) * 100) + '%' : '—';
     var el;
     el = $id('crmKpiTotal'); if (el) el.textContent = activos;
@@ -876,6 +1074,8 @@ async function updateKpis() {
     el = $id('crmKpiPerdidos'); if (el) el.textContent = conv;
     el = $id('crmKpiVenc'); if (el) el.textContent = vencidas;
     el = $id('crmKpiSoon'); if (el) el.textContent = pronto;
+    el = $id('crmKpiPend'); if (el) el.textContent = pendientes;
+    el = $id('crmKpiProp'); if (el) el.textContent = propsCount;
     syncKpiCards();
   } catch (e) { console.warn('[crm] kpis:', e.message); }
 }
@@ -2412,6 +2612,18 @@ if (search) search.addEventListener('input', function () {
     otSel.dataset.bound = '1';
     otSel.addEventListener('change', function () { _ownerTaskFilter = this.value; _page = 1; loadOwners(); });
   }
+  /* Filtro de estado comercial del propietario (activos / desactivados / todos).
+     Es DISTINTO de la papelera (que es la baja lógica, otro canal). */
+  var osSel = $id('crmOwnerStatusFilter');
+  if (osSel && !osSel.dataset.bound) {
+    osSel.dataset.bound = '1';
+    osSel.addEventListener('change', function () {
+      _ownerStatusFilter = this.value || 'activos';
+      _page = 1;
+      syncKpiCards();
+      loadOwners();
+    });
+  }
   var stSel = $id('crmStatusFilter');
   if (stSel && !stSel.dataset.filled) {
     stSel.dataset.filled = '1';
@@ -2486,7 +2698,10 @@ function _bindViewModeToggle() {
     try { localStorage.setItem('bh_crm_viewmode', _viewMode); } catch (_) {}
     _ownerSearch = '';
     _ownerAgentFilter = ''; _ownerExclFilter = ''; _ownerTaskFilter = '';
-    ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter'].forEach(function (id) { var el = $id(id); if (el) el.value = ''; });
+    /* Al cambiar de vista el estado comercial vuelve a "activos" (el padrón
+       operativo). El filtro de papelera es otro canal (baja lógica). */
+    _ownerStatusFilter = 'activos';
+    ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter', 'crmOwnerStatusFilter'].forEach(function (id) { var el = $id(id); if (el) el.value = id === 'crmOwnerStatusFilter' ? 'activos' : ''; });
     var sr = $id('crmSearch');
     if (sr) sr.value = '';
     _page = 1;
@@ -2518,7 +2733,7 @@ function _syncTrashBtn() {
   btn.innerHTML = on
     ? '<i class="fas fa-arrow-left"></i> Volver a activos'
     : '<i class="fas fa-trash-can"></i> Papelera';
-  ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter'].forEach(function (id) {
+  ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter', 'crmOwnerStatusFilter'].forEach(function (id) {
     var el = $id(id);
     if (el) el.disabled = _viewMode === 'owners' ? _ownerTrash : false;
   });
@@ -2531,7 +2746,7 @@ function _syncHeader() {
   var titleEl = $id('crmTitle');
   var searchEl = $id('crmSearch');
   var leadOnly = ['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmAgentFilter', 'crmFollowupWrap'];
-  var ownerOnly = ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter'];
+  var ownerOnly = ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter', 'crmOwnerStatusFilter'];
   if (btn) {
     /* Pedido del empleador: el botón del modo contrario avisa tareas vencidas
        (rojo) o por vencer en 24h (ámbar) — lee el cache de la RPC del sidebar. */
@@ -2587,7 +2802,8 @@ function openOwners(ownerId) {
   _viewMode = 'owners';
   try { localStorage.setItem('bh_crm_viewmode', 'owners'); } catch (_) {}
   _ownerSearch = ''; _ownerAgentFilter = ''; _ownerExclFilter = ''; _ownerTaskFilter = '';
-  ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter'].forEach(function (id) { var el = $id(id); if (el) el.value = ''; });
+  _ownerStatusFilter = 'activos';
+  ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter', 'crmOwnerStatusFilter'].forEach(function (id) { var el = $id(id); if (el) el.value = id === 'crmOwnerStatusFilter' ? 'activos' : ''; });
   var sr = $id('crmSearch');
   if (sr) sr.value = '';
   _page = 1;

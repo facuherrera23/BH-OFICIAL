@@ -413,6 +413,18 @@ closeModal('ownerModal');
           (tel ? '<a class="crm-contact-btn" href="tel:+' + tel + '"><i class="fas fa-phone"></i> Llamar</a>' : '') +
           (data.email ? '<a class="crm-contact-btn" href="mailto:' + esc(data.email) + '"><i class="fas fa-envelope"></i> Email</a>' : '');
         contactRow.style.display = contactRow.innerHTML ? 'flex' : 'none';
+
+        /* Estado comercial (2026-10-30): chip + acción en el expediente.
+           Desactivado NO es eliminado: el dueño sigue acá con todo su
+           historial (datos + propiedad vendida). */
+        let statusRow = title.parentElement && title.parentElement.querySelector('.owner-status-row');
+        if (!statusRow) {
+          statusRow = document.createElement('div');
+          statusRow.className = 'owner-status-row';
+          statusRow.style.cssText = 'display:flex; gap:8px; align-items:center; margin:-6px 0 14px; flex-wrap:wrap;';
+          title.parentElement.insertBefore(statusRow, title.nextSibling);
+        }
+        _paintOwnerStatusRow(statusRow, data, id);
       }
 
       /* Reset tabs to first */
@@ -1822,7 +1834,7 @@ closeModal('ownerModal');
   }
 
   function getTimelineIcon(type) {
-    const icons = { note: 'fa-sticky-note', whatsapp: 'fa-whatsapp', email: 'fa-envelope', call: 'fa-phone', meeting: 'fa-handshake' };
+    const icons = { note: 'fa-sticky-note', whatsapp: 'fa-whatsapp', email: 'fa-envelope', call: 'fa-phone', meeting: 'fa-handshake', status: 'fa-user-slash' };
     return icons[type] || 'fa-comment';
   }
 
@@ -1888,6 +1900,279 @@ closeModal('ownerModal');
       showToast('Error: ' + err.message, 'error');
     }
   };
+
+  /* ============================================================
+     ESTADO COMERCIAL DEL PROPIETARIO (2026-10-30)
+     Desactivado ≠ eliminado: el dueño queda en el padrón con TODO su
+     historial (datos + propiedad vendida) pero fuera de la cartera
+     operativa (sin alertas, sin KPIs, sin recordatorios, sin acceso al
+     portal). Solo el super_admin puede hacerlo (RLS: UPDATE de owners).
+     ============================================================ */
+  let _ownerStatusCtx = null;
+
+  /* Pinta el chip de estado + la acción (desactivar/reactivar) del
+     expediente. Se reutiliza al abrir el modal y después de aplicar un
+     cambio (sin recargar el formulario: no se pierde lo que el usuario
+     estaba editando). */
+  function _paintOwnerStatusRow(statusRow, data, id) {
+    if (!statusRow) return;
+    const isInactive = data.status === 'inactivo';
+    const prof = window.currentProfile || window._bhCurrentProfile;
+    const canManage = !!(prof && prof.role === 'super_admin');
+    statusRow.innerHTML =
+      '<span class="crm-tipo-chip" style="margin-left:0;background:' + (isInactive ? 'rgba(148,163,184,0.16)' : 'rgba(31,200,195,0.15)') + ';color:' + (isInactive ? '#94a3b8' : 'var(--accent)') + ';">' + (isInactive ? 'Desactivado' : 'Activo') + '</span>'
+      + (isInactive && data.status_reason ? '<span style="font-size:11.5px;color:var(--text-dim);">Motivo: ' + esc(data.status_reason) + '</span>' : '')
+      + (canManage
+        ? '<button type="button" class="btn-luxury-action btn-sm" data-owner-status-action="' + (isInactive ? 'activo' : 'inactivo') + '">'
+          + '<i class="fas ' + (isInactive ? 'fa-toggle-on' : 'fa-user-slash') + '"></i> ' + (isInactive ? 'Reactivar' : 'Desactivar') + '</button>'
+        : '');
+    const stBtn = statusRow.querySelector('[data-owner-status-action]');
+    if (stBtn) {
+      stBtn.addEventListener('click', async () => {
+        stBtn.disabled = true;
+        try {
+          await window.adminApp.setOwnerStatus(id, stBtn.dataset.ownerStatusAction);
+        } finally {
+          stBtn.disabled = false;
+        }
+      });
+    }
+  }
+
+  async function _refreshAfterOwnerStatus() {
+    /* El loader real del padrón vive en admin-crm.js (el loadOwners de este
+       módulo es un no-op legacy: el #ownersTableBody ya no existe). */
+    try { loadOwners(); } catch (_) { /* legacy no-op */ }
+    try { if (window.BH_CRM && window.BH_CRM.refreshOwners) window.BH_CRM.refreshOwners(); } catch (_) {}
+    try { if (window.updateSidebarBadges) window.updateSidebarBadges(); } catch (_) {}
+  }
+
+  async function _applyOwnerStatus(id, nextStatus, reason, unpublish, ownerName) {
+    const payload = {
+      status: nextStatus,
+      status_reason: nextStatus === 'inactivo' ? (reason || null) : null,
+      status_changed_at: new Date().toISOString()
+    };
+    try {
+      const { error } = await window.supabaseClient.from('owners').update(payload).eq('id', id);
+      if (error) throw error;
+
+      /* Despublicar propiedades (opt-in explícito del dueño). Nunca automático. */
+      if (nextStatus === 'inactivo' && unpublish) {
+        try {
+          const pr = await window.supabaseClient
+            .from('properties')
+            .update({ is_published: false })
+            .eq('owner_id', id)
+            .eq('is_published', true);
+          if (pr.error) throw pr.error;
+        } catch (e) {
+          logError('Propietarios: falló despublicar propiedades al desactivar:', e);
+          showToast('Propietario desactivado, pero hubo un error al despublicar sus propiedades.', 'warning');
+        }
+      }
+
+      /* Traza en el Timeline del expediente (auditoría: por qué y cuándo). */
+      try {
+        const when = new Date().toLocaleString('es-AR');
+        const text = nextStatus === 'inactivo'
+          ? ('Propietario desactivado (' + when + '). Motivo: ' + (reason || '—')
+             + (unpublish ? ' · Se despublicaron sus propiedades.' : ''))
+          : ('Propietario reactivado (' + when + '). Vuelve a la cartera.');
+        const { error: tErr } = await window.supabaseClient
+          .from('owner_timeline_entries')
+          .insert([{ owner_id: id, type: 'status', text, created_by: currentUser?.id || null }]);
+        if (tErr) throw tErr;
+      } catch (e) {
+        logError('Propietarios: falló registrar el cambio de estado en el timeline:', e);
+      }
+
+      showToast(
+        nextStatus === 'inactivo'
+          ? ('Propietario desactivado. Se conserva todo su historial.')
+          : ('Propietario reactivado. Vuelve a la cartera.'),
+        'success'
+      );
+      /* Si el expediente de este dueño está abierto, se actualiza el chip
+         y el timeline EN EL LUGAR (sin recargar el formulario). */
+      try {
+        if (editingOwnerId === id) {
+          const title = $('#ownerModalTitle');
+          const row = title && title.parentElement && title.parentElement.querySelector('.owner-status-row');
+          _paintOwnerStatusRow(row, {
+            status: nextStatus,
+            status_reason: nextStatus === 'inactivo' ? (reason || null) : null
+          }, id);
+          loadOwnerTimeline(id);
+        }
+      } catch (e) {
+        logError('Propietarios: no se pudo refrescar el chip de estado:', e);
+      }
+      await _refreshAfterOwnerStatus();
+      return true;
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+      return false;
+    }
+  }
+
+  window.adminApp.setOwnerStatus = async function (id, nextStatus) {
+    /* Guarda de rol: el RLS de owners es super_admin-only para UPDATE.
+       El botón ya viene oculto para los demás, pero el API queda cerrado. */
+    const profile = window.currentProfile || window._bhCurrentProfile;
+    if (!profile || profile.role !== 'super_admin') {
+      showToast('Solo el administrador puede cambiar el estado de un propietario.', 'error');
+      return false;
+    }
+    if (!id || (nextStatus !== 'activo' && nextStatus !== 'inactivo')) return false;
+
+    let owner = null, props = [], openTasks = 0;
+    try {
+      const { data, error } = await window.supabaseClient
+        .from('owners')
+        .select('id, full_name, status, status_reason')
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      owner = data;
+      const pr = await window.supabaseClient
+        .from('properties')
+        .select('id, property_code, title, is_published')
+        .eq('owner_id', id)
+        .is('deleted_at', null);
+      props = pr.data || [];
+      const tr = await window.supabaseClient
+        .from('owner_tasks')
+        .select('id', { count: 'exact', head: true })
+        .eq('owner_id', id)
+        .not('status', 'in', '("completada","cancelada")');
+      openTasks = (tr && tr.count) || 0;
+    } catch (err) {
+      showToast('Error al cargar el propietario: ' + err.message, 'error');
+      return false;
+    }
+
+    const name = owner.full_name || 'el propietario';
+
+    /* ── REACTIVAR: confirmación simple (no se pide motivo) ── */
+    if (nextStatus === 'activo') {
+      const ok = await showConfirmDialog({
+        title: 'Reactivar a ' + name,
+        message: 'Vuelve a la cartera operativa: cuenta en los KPIs, genera alertas y vuelve a recibir recordatorios. '
+          + 'El historial se conserva y el acceso al portal se genera de nuevo con un clic.',
+        icon: 'fas fa-toggle-on',
+        confirmText: 'Reactivar'
+      });
+      if (!ok) return false;
+      return _applyOwnerStatus(id, 'activo', null, false, name);
+    }
+
+    /* ── DESACTIVAR: modal propio con motivo obligatorio + consecuencias ── */
+    const modal = $('#ownerStatusModal');
+    const reasonEl = $('#ownerStatusReason');
+    const unpublishEl = $('#ownerStatusUnpublish');
+    if (!modal || !reasonEl) {
+      /* Fallback: si el modal no está en el DOM (carga parcial), se usa el
+         prompt genérico del panel — nunca se pierde la validación del motivo. */
+      const reason = await showInputPrompt({
+        title: 'Desactivar a ' + name,
+        message: 'Se conserva todo su historial. Ingresá el motivo (obligatorio).',
+        placeholder: 'Ej: Vendió ML-1234, no posee otras propiedades',
+        confirmText: 'Desactivar'
+      });
+      if (!reason || !String(reason).trim()) return false;
+      return _applyOwnerStatus(id, 'inactivo', String(reason).trim(), false, name);
+    }
+
+    const titleEl = $('#ownerStatusModalTitle');
+    const subEl = $('#ownerStatusModalSub');
+    const infoEl = $('#ownerStatusModalInfo');
+    const iconEl = $('#ownerStatusModalIcon');
+    const reasonWrap = $('#ownerStatusReasonWrap');
+    const unpublishWrap = $('#ownerStatusUnpublishWrap');
+
+    const published = props.filter(p => p.is_published);
+    if (titleEl) titleEl.textContent = 'Desactivar a ' + name;
+    if (iconEl) iconEl.className = 'fas fa-user-slash';
+    if (subEl) subEl.textContent = 'Deja de estar en la cartera operativa. No se borra nada: conserva sus datos, documentos, propiedades y todo el historial.';
+    if (infoEl) {
+      let html = '<div style="margin-bottom:6px;"><strong>Qué pasa:</strong></div>'
+        + '<ul style="margin:0 0 10px; padding-left:18px; line-height:1.6;">'
+        + '<li>Deja de generar alertas (exclusividad, DNI/CUIT).</li>'
+        + '<li>Deja de contar en los KPIs y deja de recibir recordatorios.</li>'
+        + '<li>Se revoca su acceso al portal de propiedades.</li>'
+        + '<li>Queda anotado en el Timeline del expediente.</li>'
+        + '</ul>'
+        + '<div><strong>Se conserva:</strong> ' + props.length + ' propiedad(es), sus datos, documentos, comisiones, tasaciones y todo el historial.</div>';
+      if (openTasks > 0) {
+        html += '<div style="margin-top:6px;color:var(--warning);"><i class="fas fa-bell"></i> '
+          + openTasks + ' tarea(s) abierta(s): dejan de avisarte pero NO se borran (vuelven a contar si lo reactivás).</div>';
+      }
+      if (published.length) {
+        html += '<div style="margin-top:6px;color:var(--danger);"><i class="fas fa-exclamation-triangle"></i> '
+          + published.length + ' propiedad(es) PUBLICADA(s): '
+          + published.map(p => esc(p.property_code || p.title || 'sin código')).join(', ') + '</div>';
+      }
+      infoEl.innerHTML = html;
+    }
+    if (reasonWrap) reasonWrap.style.display = '';
+    if (unpublishWrap) unpublishWrap.style.display = published.length ? '' : 'none';
+    if (reasonEl) reasonEl.value = '';
+    if (unpublishEl) unpublishEl.checked = false;
+
+    _ownerStatusCtx = { id, nextStatus, name };
+    openModal('ownerStatusModal');
+    setTimeout(() => { try { reasonEl.focus(); } catch (_) {} }, 60);
+    return true;
+  };
+
+  /* ── Listeners del modal de estado comercial ── */
+  (function bindOwnerStatusModal() {
+    const confirmBtn = $('#ownerStatusConfirm');
+    const cancelBtn = $('#ownerStatusCancel');
+    const modal = $('#ownerStatusModal');
+    const reasonEl = $('#ownerStatusReason');
+    const unpublishEl = $('#ownerStatusUnpublish');
+
+    on(cancelBtn, 'click', () => {
+      _ownerStatusCtx = null;
+      closeModal('ownerStatusModal');
+    });
+
+    on(modal, 'click', (e) => {
+      /* Click fuera del box = cancelar (mismo criterio del resto de modales). */
+      if (e.target === modal) {
+        _ownerStatusCtx = null;
+        closeModal('ownerStatusModal');
+      }
+    });
+
+    on(confirmBtn, 'click', async () => {
+      const ctx = _ownerStatusCtx;
+      /* Si el modal se cerró con la X (o con ESC) el contexto queda viejo:
+         se descarta para no aplicar una acción de otro propietario. */
+      if (!ctx || (modal && !modal.classList.contains('is-open'))) {
+        _ownerStatusCtx = null;
+        closeModal('ownerStatusModal');
+        return;
+      }
+      const reason = (reasonEl?.value || '').trim();
+      if (ctx.nextStatus === 'inactivo' && !reason) {
+        showToast('Ingresá el motivo de la desactivación (es obligatorio).', 'warning');
+        try { reasonEl?.focus(); } catch (_) {}
+        return;
+      }
+      const unpublish = !!(unpublishEl && unpublishEl.checked);
+      _ownerStatusCtx = null;
+      closeModal('ownerStatusModal');
+      if (confirmBtn) { confirmBtn.disabled = true; }
+      try {
+        await _applyOwnerStatus(ctx.id, ctx.nextStatus, reason, unpublish, ctx.name);
+      } finally {
+        if (confirmBtn) { confirmBtn.disabled = false; }
+      }
+    });
+  })();
 
   on($('#ownerTrashToggle'), 'click', () => window.adminApp.toggleOwnersTrash && window.adminApp.toggleOwnersTrash());
 

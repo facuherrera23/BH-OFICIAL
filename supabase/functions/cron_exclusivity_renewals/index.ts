@@ -35,7 +35,10 @@ Deno.serve(async (req: Request) => {
         .from("owners")
         .select("id, full_name, email, phone, exclusive_end")
         .eq("exclusive", true)
-        .eq("exclusive_end", targetDateStr);
+        .eq("exclusive_end", targetDateStr)
+        /* 2026-10-30: un propietario desactivado (vendió / no hay contacto)
+           no debe recibir mails de renovación de exclusividad. */
+        .eq("status", "activo");
 
       if (error) throw error;
 
@@ -64,7 +67,10 @@ Deno.serve(async (req: Request) => {
       .from("owners")
       .select("id, full_name, email, phone, exclusive_end")
       .eq("exclusive", true)
-      .lt("exclusive_end", now.toISOString().split("T")[0]);
+      .lt("exclusive_end", now.toISOString().split("T")[0])
+      /* 2026-10-30: un propietario desactivado no genera más alertas de
+         exclusividad (vendió / no hay contacto). */
+      .eq("status", "activo");
 
     await Promise.all((expired || []).map(async (owner) => {
       const text = `🚨 EXCLUSIVIDAD VENCIDA el ${new Date(owner.exclusive_end).toLocaleDateString("es-AR")}`;

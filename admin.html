@@ -584,6 +584,15 @@
     <option value="vencen_24">Vencen en próximas 24 h</option>
     <option value="sin_pendientes">Sin tareas pendientes</option>
   </select>
+  <!-- Estado comercial del propietario (2026-10-30). Es DISTINTO de la papelera:
+       la papelera es la baja lógica (deleted_at); acá el dueño queda en el
+       padrón con TODO su historial (datos + propiedad vendida) pero fuera de
+       la cartera operativa. -->
+  <select id="crmOwnerStatusFilter" class="crm-field-input crm-field-input--select" style="display:none">
+    <option value="activos">Estado: activos</option>
+    <option value="inactivos">Estado: desactivados</option>
+    <option value="todos">Estado: todos</option>
+  </select>
 </div>
 
 <div id="crmOwnerAlerts" class="crm-owner-alerts" style="display:none;"></div>
@@ -3408,8 +3417,31 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
     </div>
   </div>
 </div>
-<!-- MODAL ACCESO PORTAL PROPIETARIO (reutiliza el token vigente; regenerar pide confirmación) -->
-<div class="admin-modal" id="portalLinkModal">
+<!-- MODAL ESTADO COMERCIAL DEL PROPIETARIO (desactivar / reactivar, 2026-10-30).
+     Desactivar NO elimina: conserva todo el historial (datos + propiedad vendida)
+     y solo saca al dueño de la cartera operativa (alertas, KPIs, recordatorios,
+     mails de exclusividad y acceso al portal). El motivo es obligatorio. -->
+<div class="admin-modal" id="ownerStatusModal">
+  <div class="modal-box confirm-box" role="dialog" aria-modal="true" aria-labelledby="ownerStatusModalTitle">
+    <div class="confirm-icon"><i id="ownerStatusModalIcon" class="fas fa-user-slash"></i></div>
+    <h3 class="confirm-title" id="ownerStatusModalTitle">Desactivar propietario</h3>
+    <p class="confirm-msg" id="ownerStatusModalSub"></p>
+    <div id="ownerStatusModalInfo" style="text-align:left; font-size:12.5px; color:var(--text-secondary); margin:0 0 14px;"></div>
+    <div class="form-field" style="text-align:left;" id="ownerStatusReasonWrap">
+      <label>Motivo (obligatorio)</label>
+      <textarea id="ownerStatusReason" rows="3" placeholder="Ej: Vendió ML-1234, no posee otras propiedades"></textarea>
+    </div>
+    <label id="ownerStatusUnpublishWrap" style="display:none; text-align:left; font-size:12.5px; color:var(--text-secondary); margin-bottom:14px; cursor:pointer;">
+      <input type="checkbox" id="ownerStatusUnpublish" style="margin-right:8px;vertical-align:middle;" />
+      <span>Despublicar también sus propiedades publicadas (si ya no nos representa)</span>
+    </label>
+    <div class="confirm-actions">
+      <button type="button" class="btn-ghost" id="ownerStatusCancel">Cancelar</button>
+      <button type="button" class="btn-luxury-action" id="ownerStatusConfirm">Confirmar</button>
+    </div>
+  </div>
+</div>
+<!-- MODAL ACCESO PORTAL PROPIETARIO (reutiliza el token vigente; regenerar pide confirmación) --><div class="admin-modal" id="portalLinkModal">
   <div class="modal-box confirm-box" role="dialog" aria-modal="true" aria-labelledby="portalLinkTitle">
     <div class="confirm-icon"><i class="fas fa-key" style="color:var(--accent);"></i></div>
     <h3 class="confirm-title" id="portalLinkTitle">Acceso al Portal</h3>
@@ -3460,11 +3492,11 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 <i class="fas fa-exclamation-triangle">
 </i>El panel no pudo cargar recursos críticos. Revisá tu conexión a internet y recargá la página (F5).<a href="#" data-action="closeCdnWarning">Cerrar</a>
 </div>
-<!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Recursos críticos no cargaron.</strong> Revisá tu conexión a internet y recargá la página (F5). Si persiste, tus datos están a salvo — reintentá más tarde. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script defer src="assets/vendor/supabase-js.umd.js?v=1"></script><script defer src="assets/js/zod.umd.js"></script><script defer src="assets/js/utils.js?v=271"></script><script defer src="assets/js/config.js?v=272"></script><script defer src="assets/js/supabase-client.js?v=271"></script><script defer src="assets/js/cloudinary.js?v=273"></script><script defer src="assets/js/admin-crm-tasks.js?v=14"></script>
-<script defer src="assets/js/admin-crm.js?v=96"></script>
+<!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Recursos críticos no cargaron.</strong> Revisá tu conexión a internet y recargá la página (F5). Si persiste, tus datos están a salvo — reintentá más tarde. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script defer src="assets/vendor/supabase-js.umd.js?v=1"></script><script defer src="assets/js/zod.umd.js"></script><script defer src="assets/js/utils.js?v=270"></script><script defer src="assets/js/config.js?v=271"></script><script defer src="assets/js/supabase-client.js?v=270"></script><script defer src="assets/js/cloudinary.js?v=272"></script><script defer src="assets/js/admin-crm-tasks.js?v=14"></script>
+<script defer src="assets/js/admin-crm.js?v=98"></script>
 <script defer src="assets/js/disable-search-autocomplete.js?v=3"></script>
-<script defer src="assets/js/admin-app.js?v=590"></script>
-<script defer src="assets/js/admin-propietarios.js?v=21"></script>
+<script defer src="assets/js/admin-app.js?v=591"></script>
+<script defer src="assets/js/admin-propietarios.js?v=23"></script>
 <script defer src="assets/js/admin-usuarios.js?v=11"></script>
 <script defer src="assets/js/admin-agentes.js?v=11"></script>
 <script defer src="assets/js/admin-cms.js?v=6"></script>

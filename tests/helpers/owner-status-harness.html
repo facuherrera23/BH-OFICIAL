@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Harness — modal de estado del propietario</title>
+</head>
+<body>
+<!-- Harness del modal "desactivar propietario" (2026-10-30).
+     Carga admin-propietarios.js REAL contra un cliente Supabase falso y
+     reproduce el markup del modal que está en admin.html. No toca la DB. -->
+<div class="admin-modal" id="ownerStatusModal">
+  <div class="modal-box confirm-box" role="dialog" aria-modal="true" aria-labelledby="ownerStatusModalTitle">
+    <div class="confirm-icon"><i id="ownerStatusModalIcon" class="fas fa-user-slash"></i></div>
+    <h3 class="confirm-title" id="ownerStatusModalTitle">Desactivar propietario</h3>
+    <p class="confirm-msg" id="ownerStatusModalSub"></p>
+    <div id="ownerStatusModalInfo" style="text-align:left;"></div>
+    <div class="form-field" style="text-align:left;" id="ownerStatusReasonWrap">
+      <label>Motivo (obligatorio)</label>
+      <textarea id="ownerStatusReason" rows="3"></textarea>
+    </div>
+    <label id="ownerStatusUnpublishWrap" style="display:none;">
+      <input type="checkbox" id="ownerStatusUnpublish" />
+      <span>Despublicar también sus propiedades publicadas</span>
+    </label>
+    <div class="confirm-actions">
+      <button type="button" class="btn-ghost" id="ownerStatusCancel">Cancelar</button>
+      <button type="button" class="btn-luxury-action" id="ownerStatusConfirm">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastMsg" style="display:none;"></div>
+<div id="ownerTimelineList"></div>
+<div id="ownerModalTitle" style="display:none;"></div>
+<div id="ownerForm" style="display:none;"></div>
+
+<script src="fake-postgrest.js"></script>
+<script>
+  window.__HARNESS_LOG = [];
+  window.__FAKE_PG.install({
+    owners: [
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        full_name: 'Roberto Activo', email: 'roberto@test.com', phone: '1112223333',
+        dni_cuit: '20-12345678-9', address: 'Calle Falsa 123', notes: '', documents: [],
+        preferred_contact: 'whatsapp', exclusive: false, exclusive_start: null,
+        exclusive_end: null, commission_sale: null, commission_rent: null,
+        commission_split: null, contract_notes: null, dni_expiry: null, cuit_expiry: null,
+        created_at: '2026-01-01T00:00:00Z', agent_id: null, deleted_at: null,
+        status: 'activo', status_reason: null, status_changed_at: null
+      }
+    ],
+    agents: [],
+    properties: [
+      {
+        id: 'aaaaaaaa-1111-1111-1111-111111111111', owner_id: '11111111-1111-1111-1111-111111111111',
+        title: 'Casa de Roberto', property_code: 'ML-777', price_usd: 120000,
+        price_currency: 'USD', status: 'publicada', agent_id: null, is_published: true
+      }
+    ],
+    owner_tasks: [
+      {
+        id: 'cccccccc-1111-1111-1111-111111111111', owner_id: '11111111-1111-1111-1111-111111111111',
+        type: 'contact', description: 'Llamar por renovación', status: 'pendiente',
+        priority: 'alta', due_date: '2026-10-25T00:00:00Z'
+      }
+    ],
+    owner_timeline_entries: [],
+    lead_activities: [], properties_leads: []
+  }, window.__HARNESS_LOG);
+
+  /* Globals que admin-app.js expone en el panel real. */
+  window.currentUser = { id: '99999999-9999-9999-9999-999999999999', email: 'admin@test.com' };
+  window.editingOwnerId = null;
+  window.editingPropertyId = null;
+  window.currentProfile = { role: 'super_admin', full_name: 'Harness' };
+  /* admin-app.js crea window.adminApp antes de que carguen los módulos. */
+  window.adminApp = {};
+
+  window.$ = function (sel) { return document.querySelector(sel); };
+  window.$$ = function (sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); };
+
+  window.__TOASTS = [];
+  window.__BH = {
+    logError: function () {},
+    on: function (el, evt, fn) { if (el) el.addEventListener(evt, fn); },
+    formatDateTimeWithTZ: function (d) { return String(d); },
+    validateForm: function () { return {}; },
+    getAuthedClient: function () { return Promise.resolve(window.supabaseClient); },
+    navigateTo: function () {},
+    setKPI: function () {},
+    refreshOwnerSelect: function () {},
+    openModal: function (id) { var m = document.getElementById(id); if (m) m.classList.add('is-open'); },
+    closeModal: function (id) { var m = document.getElementById(id); if (m) m.classList.remove('is-open'); },
+    showConfirmDialog: function (opts) {
+      window.__LAST_CONFIRM = opts;
+      return Promise.resolve(window.__CONFIRM_RESULT !== false);
+    },
+    showInputPrompt: function () { return Promise.resolve(window.__PROMPT_RESULT || ''); },
+    showToast: function (msg, type) { window.__TOASTS.push({ msg: msg, type: type }); },
+    invalidateSearchCache: function () {},
+    updateSidebarBadges: function () {},
+    formatNumber: function (n) { return String(n); },
+    OwnerSchema: {},
+    esc: function (s) {
+      if (s === null || s === undefined) return '';
+      return String(s)
+        .replace(/&/g, '\u0026')
+        .replace(/</g, '\u003c')
+        .replace(/>/g, '\u003e')
+        .replace(/"/g, '\u0022')
+        .replace(/'/g, '\u0027');
+    },
+    mutate: function (table, fn) { return fn(); },
+    loadAgentSelect: function () {}
+  };
+</script>
+<script src="../../assets/js/admin-propietarios.js"></script>
+<script>
+  window.__HARNESS_READY = true;
+</script>
+</body>
+</html>

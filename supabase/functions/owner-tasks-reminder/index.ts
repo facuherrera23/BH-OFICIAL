@@ -217,6 +217,28 @@ Deno.serve(async (req: Request) => {
 
   // Fire-and-forget: el cron no espera respuesta, pero respondemos 200 ok.
   const process = async (): Promise<{ sent: number; failed: number; skipped: number }> => {
+    /* 2026-10-30 — estado comercial del propietario (owners.status):
+       un propietario DESACTIVADO (vendió su única propiedad / no hay
+       contacto) no genera recordatorios. Sus tareas NO se borran ni se
+       cancelan: quedan en el historial y vuelven a contar si se reactiva
+       el dueño. Se resuelve el set de ids aparte (y no con un filtro
+       embebido) para no depender de la sintaxis de filtros sobre
+       relaciones de PostgREST. */
+    let inactiveOwnerIds = new Set<string>();
+    try {
+      const { data: inactiveOwners, error: inactiveErr } = await supabase
+        .from("owners")
+        .select("id")
+        .eq("status", "inactivo");
+      if (inactiveErr) {
+        console.warn("owner-tasks-reminder: no se pudo leer owners.status", inactiveErr);
+      } else {
+        inactiveOwnerIds = new Set((inactiveOwners || []).map((o) => o.id));
+      }
+    } catch (e) {
+      console.warn("owner-tasks-reminder: fallo al leer owners.status", e);
+    }
+
     const { data: tasks, error } = await supabase
       .from("owner_tasks")
       .select(`
@@ -228,7 +250,7 @@ Deno.serve(async (req: Request) => {
         status,
         assigned_to,
         remind_before_minutes,
-        owner:owners!inner(full_name)
+        owner:owners!inner(id, full_name)
       `)
       .is("reminder_sent_at", null)
       .in("status", ["pendiente", "en_progreso"]);
@@ -243,6 +265,12 @@ Deno.serve(async (req: Request) => {
     let skipped = 0;
 
     for (const task of tasks || []) {
+      /* Propietario desactivado → no se avisa (la tarea queda como está). */
+      if (task.owner?.id && inactiveOwnerIds.has(task.owner.id)) {
+        skipped += 1;
+        continue;
+      }
+
       const triggerAt = new Date(
         new Date(task.due_date).getTime() - (task.remind_before_minutes || 1440) * 60 * 1000
       );

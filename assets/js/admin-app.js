@@ -3035,14 +3035,24 @@ function esc(s) {
   async function refreshOwnerSelect(selectEl, selectedId = null) {
     if (!selectEl || !window.supabaseClient) return;
     try {
-      const { data, error } = await window.supabaseClient
+      let res = await window.supabaseClient
         .from('owners')
-        .select('id, full_name')
+        .select('id, full_name, status')
         .is('deleted_at', null)
         .order('full_name');
-      if (error) return;
+      /* Fallback: si la columna status no existiera (migración no aplicada),
+         se reintenta sin ella para no dejar el select vacío. */
+      if (res.error) {
+        res = await window.supabaseClient
+          .from('owners')
+          .select('id, full_name')
+          .is('deleted_at', null)
+          .order('full_name');
+      }
+      if (res.error) return;
+      const data = res.data || [];
       selectEl.innerHTML = '<option value="">Sin propietario asignado</option>' +
-        (data || []).map(o => `<option value="${esc(o.id)}">${esc(o.full_name)}</option>`).join('');
+        (data || []).map(o => `<option value="${esc(o.id)}">${esc(o.full_name)}${o.status === 'inactivo' ? ' (inactivo)' : ''}</option>`).join('');
       if (selectedId) selectEl.value = selectedId;
     } catch (_) { /* silent */ }
   }

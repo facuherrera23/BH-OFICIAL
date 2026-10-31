@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Harness — CRM propietarios (owners.status)</title>
+</head>
+<body>
+<!-- Harness mínimo para probar el modo Propietarios del CRM con un
+     cliente Supabase falso (sin tocar la base real). Reproduce el DOM
+     que admin-crm.js necesita: fila de KPIs, barra de filtros, lista y
+     panel lateral. -->
+<section class="tab-module" id="tab-leads">
+  <div class="crm-kpis">
+    <div class="crm-kpi"><span class="crm-kpi-label">Total</span><span class="crm-kpi-value" id="crmKpiTotal">0</span></div>
+    <div class="crm-kpi"><span class="crm-kpi-label">Nuevos</span><span class="crm-kpi-value" id="crmKpiNuevo">0</span></div>
+    <div class="crm-kpi"><span class="crm-kpi-label">Ganados</span><span class="crm-kpi-value" id="crmKpiGanados">0</span></div>
+    <div class="crm-kpi"><span class="crm-kpi-label">Perdidos</span><span class="crm-kpi-value" id="crmKpiPerdidos">0</span></div>
+    <div class="crm-kpi"><span class="crm-kpi-label">Vencidas</span><span class="crm-kpi-value" id="crmKpiVenc">0</span></div>
+    <div class="crm-kpi"><span class="crm-kpi-label">Próximas 24h</span><span class="crm-kpi-value" id="crmKpiSoon">0</span></div>
+    <div class="crm-kpi"><span class="crm-kpi-label">Tareas pendientes</span><span class="crm-kpi-value" id="crmKpiPend">0</span></div>
+    <div class="crm-kpi"><span class="crm-kpi-label">Propiedades</span><span class="crm-kpi-value" id="crmKpiProp">0</span></div>
+  </div>
+
+  <div class="crm-filters">
+    <input type="search" id="crmSearch" />
+    <select id="crmStatusFilter"></select>
+    <select id="crmOriginFilter"></select>
+    <select id="crmTipoOperacionFilter"></select>
+    <select id="crmAgentFilter"></select>
+    <span id="crmFollowupWrap"></span>
+    <select id="crmOwnerAgentFilter"></select>
+    <select id="crmOwnerExclFilter"></select>
+    <select id="crmOwnerTaskFilter"></select>
+    <select id="crmOwnerStatusFilter">
+      <option value="activos">Estado: activos</option>
+      <option value="inactivos">Estado: desactivados</option>
+      <option value="todos">Estado: todos</option>
+    </select>
+  </div>
+
+  <div id="crmOwnerAlerts" style="display:none;"></div>
+  <div id="crmLeadList"></div>
+  <div class="crm-side-panel" id="crmSidePanel"></div>
+</section>
+
+<p id="crmSubtitle"></p>
+<button id="crmModeToggle"></button>
+<button id="crmTrashToggle"></button>
+<div id="toastMsg" style="display:none;"></div>
+
+<script src="fake-postgrest.js"></script>
+<script>
+  window.__HARNESS_LOG = [];
+  window.__FAKE_PG.install({
+    owners: [
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        full_name: 'Roberto Activo', email: 'roberto@test.com', phone: '1112223333',
+        dni_cuit: '20-12345678-9', address: 'Calle Falsa 123', notes: '', documents: [],
+        preferred_contact: 'whatsapp', exclusive: true, exclusive_start: '2026-01-01',
+        exclusive_end: '2026-12-31', commission_sale: 3, commission_rent: null,
+        commission_split: null, contract_notes: null, dni_expiry: null, cuit_expiry: null,
+        created_at: '2026-01-01T00:00:00Z', agent_id: null, deleted_at: null,
+        status: 'activo', status_reason: null, status_changed_at: null
+      },
+      {
+        id: '22222222-2222-2222-2222-222222222222',
+        full_name: 'Mirta Desactivada', email: 'mirta@test.com', phone: '4445556666',
+        dni_cuit: '27-87654321-0', address: 'Av. Vieja 456', notes: 'Vendió ML-1234',
+        documents: [], preferred_contact: 'email', exclusive: false, exclusive_start: null,
+        exclusive_end: null, commission_sale: null, commission_rent: null,
+        commission_split: null, contract_notes: null, dni_expiry: null, cuit_expiry: null,
+        created_at: '2025-06-01T00:00:00Z', agent_id: null, deleted_at: null,
+        status: 'inactivo', status_reason: 'Vendió ML-1234, no posee otras',
+        status_changed_at: '2026-10-20T10:00:00Z'
+      }
+    ],
+    agents: [],
+    properties: [
+      {
+        id: 'aaaaaaaa-1111-1111-1111-111111111111', owner_id: '11111111-1111-1111-1111-111111111111',
+        title: 'Casa de Roberto', property_code: 'ML-777', price_usd: 120000,
+        price_currency: 'USD', status: 'publicada', agent_id: null, is_published: true
+      },
+      {
+        id: 'bbbbbbbb-2222-2222-2222-222222222222', owner_id: '22222222-2222-2222-2222-222222222222',
+        title: 'Casa de Mirta (vendida)', property_code: 'ML-1234', price_usd: 90000,
+        price_currency: 'USD', status: 'vendida', agent_id: null, is_published: false
+      }
+    ],
+    owner_tasks: [
+      {
+        id: 'cccccccc-1111-1111-1111-111111111111', owner_id: '11111111-1111-1111-1111-111111111111',
+        type: 'contact', description: 'Llamar por renovación', status: 'pendiente',
+        priority: 'alta', due_date: '2026-10-25T00:00:00Z'
+      }
+    ],
+    leads: [], lead_tasks: [], lead_properties: [], visits: [], owner_portal_tokens: []
+  }, window.__HARNESS_LOG);
+
+  /* El CRM solo deja ver el botón de estado a super_admin (RLS owners UPDATE). */
+  window.currentProfile = { role: 'super_admin', full_name: 'Harness' };
+
+  /* Stub del engine del padrón: captura la llamada de setOwnerStatus. */
+  window.__OWNER_STATUS_CALLS = [];
+  window.adminApp = {
+    setOwnerStatus: function (id, nextStatus) {
+      window.__OWNER_STATUS_CALLS.push({ id: id, nextStatus: nextStatus });
+      return Promise.resolve(true);
+    },
+    editOwner: function () { return Promise.resolve(true); },
+    deleteOwner: function () { return Promise.resolve(true); },
+    restoreOwner: function () { return Promise.resolve(true); }
+  };
+  window.__BH = { logError: function () {}, setContext: function () {} };
+</script>
+<script src="../../assets/js/admin-crm.js"></script>
+<script>
+  window.__HARNESS_READY = true;
+</script>
+</body>
+</html>

@@ -152,7 +152,10 @@ Deno.serve(async (req: Request) => {
         .eq('exclusive', true)
         .is('deleted_at', null)
         .not('exclusive_end', 'is', null)
-        .eq('exclusive_end', dateStr);
+        .eq('exclusive_end', dateStr)
+        /* 2026-10-30: un propietario desactivado (vendió / no hay contacto)
+           no debe recibir avisos de exclusividad por vencer. */
+        .eq('status', 'activo');
 
       if (error) throw error;
 
