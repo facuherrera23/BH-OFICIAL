@@ -539,7 +539,7 @@ erDiagram
 | Tabla | Descripción |
 |---|---|
 | `social_accounts` | Cuentas conectadas por plataforma (`platform`: youtube\|facebook\|instagram\|tiktok): `external_id`, `display_name`, tokens AES-256-GCM (`*_encrypted` + `*_iv`), `refresh_token`, `scope`, `status`, `last_publish_at`. UNIQUE (`platform`, `external_id`) → reconectar no duplica |
-| `social_posts` | Publicaciones por plataforma: `post_type`, `content` JSONB (metadata, score, categoría, flags), `media`, `status` (`draft`\|`scheduled`\|`publishing`\|`published`\|`failed`), `external_post_id` (id del video en YouTube), `external_url`, `property_id` (vínculo con la ficha) |
+| `social_posts` | Publicaciones por plataforma: `platform` (`youtube`\|`instagram`\|…), `post_type`, `content` JSONB (metadata, score, categoría, flags), `media`, `status` (`draft`\|`scheduled`\|`publishing`\|`published`\|`failed`), `external_post_id` (id del video en YouTube), `external_url`, `property_id` (vínculo con la ficha y origen del tour en video), `metrics` (incluye `youtube_privacy`) |
 
 #### 💬 Chat Zernio
 
@@ -659,7 +659,7 @@ SPA con hash routing (`#tab-dashboard`) y sidebar en 4 categorías: **Principal*
 | 9 | Agentes & Brokers | `tab-agentes` |
 | 10 | Chat Redes | `tab-chat-redes` |
 | 11 | Ficha HTML | `tab-ficha-html` |
-| 12 | Contenido & Redes (YouTube) | `tab-contenido` |
+| 12 | Contenido & Redes (YouTube + Instagram) | `tab-contenido` |
 | 13 | Usuarios & Permisos | `tab-usuarios` |
 | 14 | Configuración | `tab-configuracion` |
 | 15 | Centro de Supervisión | `tab-supervision` |
@@ -691,13 +691,18 @@ Expone los handlers al HTML (39 métodos):
 
 **Pipeline de fichas públicas (canónico):** `scripts/generate-ficha.mjs` genera `fichas/<code>.html` estáticas (template v3 dark: JSON-LD, OG, mapa, broker, relacionadas, lightbox, botón PDF, analytics) + `sitemap.xml`, y **reconcilia huérfanas**: al despublicar una propiedad su ficha se borra en la siguiente corrida. Corre por CI (`ficha-generate.yml`: cada 30 min + `repository_dispatch`), se commitea a `main` y Cloudflare Pages las sirve en `bienenhaus.com.ar/fichas/<code>.html`. Guard de seguridad: si la consulta devuelve 0 propiedades publicadas, aborta sin escribir ni borrar. Cada ficha lleva CSP propia.
 
+La misma corrida genera los **índices del módulo Contenido** que el workflow stagea junto a las
+fichas: `assets/data/property-videos.json` (tours en video por `property_code` → badge "Tour" del
+catálogo) y `assets/data/canal-videos.json` (vídeos del canal público). Si se agrega otro archivo
+generado, hay que sumarlo al `git add` de `ficha-generate.yml` o nunca llega a producción.
+
 > `ficha-publish` (Edge Function → Supabase Storage) quedó **deprecado como stub 410** (2026-10-11): duplicaba la generación con un template inferior que ningún consumidor usaba y divergía del canónico. El redirector legado `/ficha?code=X` sigue apuntando a la ficha estática.
 
 **Compartir:** en la tab Propiedades, cada propiedad publicada tiene "Ver ficha pública" y "Compartir por WhatsApp" — el link se arma con `?de=<agente>&tel=<tel>` del usuario logueado, y la ficha muestra ese contacto con su WhatsApp como CTA.
 
 **Generador manual (tab Ficha HTML):** layout de dos columnas (formulario + preview 1:1, responsive 1200/1024/680px), autocompletado desde el CRM (debounce 250 ms), drag & drop de fotos y tres exportaciones: `navigator.share`, `window.print` (PDF) y HTML autocontenido descargable. Para fichas ad-hoc de propiedades no publicadas.
 
-### 🧩 Módulo Contenido & Redes (YouTube)
+### 🧩 Módulo Contenido & Redes (YouTube + Instagram)
 
 Publicación y gestión de videos de YouTube **sin pasar por Cloudinary**: los bytes del video van del
 navegador directo a Google (subida resumable por chunks, con cancelación y reanudación) y la
@@ -717,10 +722,53 @@ cargados antes que él, todos bajo `window.BH_YT`:
 | `ops` | `assets/js/yt-ops.js` | Semáforo de salud del canal, publicaciones fallidas y historial de acciones (`audit_log`) |
 | `integrations` | `assets/js/yt-integrations.js` | Ficha del video, compartir por WhatsApp, republicar y payload de publicación desde una propiedad |
 
-**Edge Functions:** `social-auth-youtube` (OAuth), `social-youtube-studio` (Studio: canal, inventario,
-edición, borrado, miniaturas, playlists, categorías, snapshots, analítica, ajustes y auditoría),
-`social-publish-youtube` (sesión de subida + `complete`/`fail`) y `social-youtube-comments`
-(listar/responder/moderar/crear lead). Todas con `verify_jwt` ON (solo panel).
+**Edge Functions:**
+
+| Función | `verify_jwt` | Qué hace |
+|---|---|---|
+| `social-auth-youtube` | **OFF** | OAuth de Google (popup + `postMessage`). El callback vuelve por redirect **sin JWT** → no puede llevar `verify_jwt` ON; se protege con `state` firmado (HMAC) + `requireAdmin` en el `start` |
+| `social-auth-instagram` | **OFF** | OAuth de Meta (mismo patrón: `state` firmado + `requireAdmin`) |
+| `social-youtube-studio` | ON | Backend del Studio (acciones abajo) |
+| `social-publish-youtube` | ON | Sesión de subida resumable: `init` → `complete` / `fail`, más `dry_run` (simulación) |
+| `social-youtube-comments` | ON | Bandeja del canal: `comments_list`, `comments_inbox`, `comment_reply`, `comment_heart`, `comment_moderate`, `comment_lead` |
+| `social-instagram` | ON | Publicación y administración en Instagram (ver abajo) |
+
+> ⚠️ **El `verify_jwt` de cada Edge Function lo decide `.github/workflows/deploy.yml`** (listas `NO_VERIFY` y `EXCLUDED_FUNCTIONS`), no el código: las dos de OAuth están en `NO_VERIFY` **a propósito** (el callback externo no puede mandar un JWT del panel). El resto se auto-protege con `requireAdmin` + rate limit.
+
+**Actions del Studio** (`social-youtube-studio`, todas vía `body.action`): `channel`, `videos`,
+`video_update`, `video_delete`, `video_promote`, `thumbnail`, `playlists`, `playlist_create`,
+`playlist_item_add`, `playlist_item_remove`, `video_categories`, `snapshot`, `analytics`,
+`analytics_report`, `videos_sync_public`, `platforms_config`, `settings_get`, `settings_set` y
+`audit_log`.
+
+- `platforms_config`: qué redes tienen app OAuth configurada (`app_settings.social_<plataforma>`) →
+  la tarjeta distingue **"Sin configurar"** (no hay app) de **"Sin conectar"** (hay app, falta autorizar).
+- `video_promote`: promueve un video a público → escribe `metrics.youtube_privacy` (la visibilidad real).
+- `audit_log`: única vía de auditoría desde el panel (ver abajo).
+
+**OAuth (app y credenciales):** las credenciales se leen de `app_settings` con la clave
+`social_<plataforma>` (`{client_id, client_secret}`) y, si no están, del fallback
+`SOCIAL_<PLATAFORMA>_CLIENT_ID` / `SOCIAL_<PLATAFORMA>_CLIENT_SECRET` (`_shared/social.ts`).
+
+- **YouTube**: redirect URI exacta `${SUPABASE_URL}/functions/v1/social-auth-youtube`; scopes
+  `youtube.upload`, `youtube.readonly`, `youtube.force-ssl` (editar/borrar) y `yt-analytics.readonly`
+  (métricas). Pide `access_type=offline` + `prompt=consent` para renovar el refresh token.
+  ⚠️ La app de Google debe estar **en modo Producción con el consentimiento externo publicado**: en
+  modo "Pruebas" el refresh token muere a los 7 días y el canal hay que reconectarlo.
+- **Instagram**: requiere cuenta IG **Business/Creator** (las personales no funcionan) vinculada a una
+  página de Facebook (Meta Business Suite) y una app con el producto "Instagram Graph API"; scopes
+  `instagram_basic`, `instagram_content_publish`, `pages_show_list`. En modo Development funciona solo
+  para los administradores de la app (sin review de Meta).
+
+**Instagram (fase 2 — backend listo, publicación sin UI):** `social-instagram` expone `profile`,
+`media`, `upload_temp`, `create`, `publish`, `delete` y `cleanup_temp`. La Graph API de IG exige una
+**URL pública** de la que Meta descargue el archivo, así que las subidas desde PC van a un bucket
+temporal de Supabase Storage (`social-temp`) que se borra en `cleanup_temp`; las fotos de propiedades
+reusan las URLs de Cloudinary que ya existen (no son contenido nuevo). El contenido termina viviendo
+**únicamente en Instagram** (Cloudinary no interviene, igual que en YouTube).
+**Estado en el panel:** la tarjeta "Instagram" ya ofrece **Conectar** (el OAuth funciona), pero
+**no hay pantalla de publicación**: el flujo de subida del panel es el de YouTube. Facebook y TikTok
+están marcados `available: false` → "Próximamente".
 
 **Persistencia (sin migraciones):** `social_posts.content` (JSONB: metadata, score, categoría,
 flags), `app_settings` (`social_yt_stats_history`, `social_yt_categories`,
@@ -742,9 +790,35 @@ dato de visibilidad no se publica). La visibilidad real la reporta YouTube y la 
 visibilidad y reconcilia los videos que ya no están). Es lo que hace que `/canal.html` muestre los
 videos ya publicados, incluidos los que se subieron fuera del panel.
 
+**Tour en video por propiedad:** un video publicado y vinculado a una propiedad
+(`social_posts.platform='youtube'` + `status='published'` + `property_id` no nulo) aparece en la
+**ficha** como poster *click-to-load* (el iframe `youtube-nocookie` solo se carga al abrirlo) y en el
+**catálogo público** con el badge **"Tour"**. El índice `assets/data/property-videos.json` (lo genera
+el mismo CI de las fichas) mapea `property_code → video_id`; la ficha además incluye JSON-LD
+`VideoObject` (rich result de video en Google) y su CSP lleva `frame-src` para
+`https://www.youtube-nocookie.com`. Si el video se borra del canal, el post pasa a `status='failed'`
+y la ficha deja de embeberlo (nunca se embebe un video muerto).
+
 **Permisos:** `youtube.force-ssl` habilita edición/borrado/programación/moderación;
 `yt-analytics.readonly` habilita los reportes. Las conexiones hechas antes de agregar el scope de
 analítica responden `needs_reconnect` (banner claro) y el resto del módulo sigue funcionando.
+
+**Auditoría desde el panel:** `audit_log` **no** es insertable desde el cliente (RLS) → todo pasa
+por la action `audit_log` del Studio (`service_role`). El contrato evita la colisión de nombres:
+`body.action` **despacha** y `body.audit_action` es la acción real (los ids no-UUID se filtran a
+`null`). `core.audit()` nunca lanza: devuelve `true/false` y el semáforo de salud solo marca "ya
+avisado" si la traza se guardó de verdad.
+
+**Cola de publicación compartida:** la cola vive en `localStorage` (`bh_yt_publish_queue`) y su copia
+en `app_settings` (`social_yt_publish_queue`, escrita por el server con `service_role`; `settings_get/set`
+solo acepta claves `social_yt_*`). Merge por `id` con la local ganando; "última escritura gana"
+(aceptable para un usuario único). La categoría pedida antes de que la API conteste queda
+**pendiente** (`_pendingCategoryId`) y se aplica cuando llegan las opciones — si no, se pierde en
+silencio.
+
+**HUD de cuota (estimación local):** el panel estima las unidades de cuota por acción (`publish` =
+1600). **No es la cuota real de Google** (todo request suma, incluso los que fallan): no prometer
+exactitud ni usarlo como alerta.
 
 **Cliente autenticado del panel (warning de GoTrue):** además de `window.supabaseClient`, el admin
 usa un cliente Supabase "authed" (`storageKey` propio) para las queries autenticadas. Es un
@@ -1281,6 +1355,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 | Documento | Contenido |
 |---|---|
 | [`docs/audit/AUDITORIA_COMPLETA_2026-10-15.md`](docs/audit/AUDITORIA_COMPLETA_2026-10-15.md) | **Auditoría completa del proyecto** (score 79/100 con desglose por dimensión, hallazgos P1/P2/P3 y roadmap priorizado) |
+| [`docs/audit/AUDITORIA_YOUTUBE_50_MEJORAS_2026-10-30.md`](docs/audit/AUDITORIA_YOUTUBE_50_MEJORAS_2026-10-30.md) | **Auditoría de las 50 mejoras del módulo Contenido/YouTube** (Studio v2, comentarios, analítica, canal público, cola de publicación) |
 | [`docs/CIERRE_PROYECTO_2026-10.md`](docs/CIERRE_PROYECTO_2026-10.md) | **Cierre del proyecto para el dueño**: entregables, cómo usar cada módulo nuevo y pendientes que solo él puede resolver |
 | [`docs/GUIA_ENCUESTA_VISITA.md`](docs/GUIA_ENCUESTA_VISITA.md) | Guía de uso de la Encuesta de Visita (HOJA DE VISITA) para el equipo |
 | [`docs/COTIZACION_PROYECTO_COMPLETA_2026-10.md`](docs/COTIZACION_PROYECTO_COMPLETA_2026-10.md) | Valorización completa módulo por módulo (octubre 2026) |
@@ -1297,6 +1372,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 
 | Fecha | Versión | Cambios |
 |---|---|---|
+| 2026-10-31 | — | **Documentación del módulo Contenido & Redes** (solo `README.md`, sin cambios de código). El módulo ya estaba documentado (arquitectura de los 8 módulos `window.BH_YT.*`, Edge Functions, persistencia, canal público, privacidad fail-closed, sincronización canal→CRM, scopes y cliente autenticado singleton); el delta que faltaba: **corrección** — "todas las Edge Functions con `verify_jwt` ON" era falso: `social-auth-youtube` y `social-auth-instagram` se despliegan con **verify_jwt OFF** (lista `NO_VERIFY` de `deploy.yml`) porque el callback de Google/Meta vuelve por redirect sin JWT; se autoprotegen con `state` firmado (HMAC) + `requireAdmin`. **Instagram documentado** (OAuth vía Meta + `social-instagram` con 7 acciones: `profile`, `media`, `upload_temp`, `create`, `publish`, `delete`, `cleanup_temp`; requisitos IG Business/Creator + página de Facebook; bucket temporal `social-temp` con cleanup; sin Cloudinary) y su **estado real**: la tarjeta "Conectar" funciona pero no hay pantalla de publicación (el flujo de subida del panel es el de YouTube) — Facebook y TikTok siguen en "Próximamente". **Tour en video por propiedad** (`assets/data/property-videos.json`: badge "Tour" en el catálogo + poster click-to-load en la ficha + JSON-LD `VideoObject` + `frame-src youtube-nocookie`). **OAuth**: dónde viven las credenciales (`app_settings.social_<plataforma>` + fallback env), redirect URI, scopes y el aviso de que la app de Google debe estar en **Producción con consentimiento externo publicado** (en "Pruebas" el refresh token muere a los 7 días). **Studio**: catálogo completo de actions (incluye `platforms_config` y `video_promote`). **Auditoría desde el cliente** (`audit_log` no es insertable por RLS → todo pasa por la action del Studio). **Cola compartida** (local + `app_settings`, merge por id) y **HUD de cuota = estimación local, no cuota real de Google**. Ficha HTML: los dos índices generados que el CI stagea |
 | 2026-10-30 (2) | — | **Propietario DESACTIVADO (sin eliminar)** — feature pedida por el empleador: un propietario que vendió su única propiedad y con el que ya no hay contacto no puede quedar "activo" (genera alertas, cuenta en los KPIs, recibe recordatorios) ni se lo puede eliminar (se pierde el historial de sus datos y de la propiedad vendida, y puede volver a vender con nosotros). Nuevo estado comercial explícito `owners.status` (`activo`/`inactivo`) + `status_reason` + `status_changed_at` (migración `20261030000001_owner_status`, **aditiva: 0 de los 28 propietarios alterados**), con trigger que revoca el token del portal y `portal_validate_token` que ya no valida tokens de inactivos. **UI**: filtro Activos/Desactivados/Todos en la vista Propietarios del CRM (la búsqueda ignora el filtro "activos" a propósito: si no, el historial de un dueño que vendió quedaría inaccesible), chip `DESACTIVADO` con el motivo en el tooltip, botón Desactivar/Reactivar **solo para super_admin** (RLS: UPDATE de `owners`), modal propio con **motivo obligatorio** + consecuencias + aviso de propiedades publicadas y de tareas abiertas + **opt-in** para despublicarlas (nunca automático), traza en `owner_timeline_entries` (`type='status'`) y chip de estado en el expediente. **KPIs/alertas del padrón cuentan solo activos** + nuevo KPI "Desactivados" (clickeable, filtra por estado); la fila de KPIs de leads pasa a 8 slots (se rellenan "Tareas pendientes" y "Propiedades", que estaban muertos) y sus 3 filtros KPI fantasma (conversión / tareas pendientes / propiedades) ahora filtran de verdad. **Notificaciones**: `owner-tasks-reminder`, `cron_exclusivity_renewals` y `exclusive-expiry-alert` dejan de avisar a los inactivos (las tareas NO se borran: vuelven a contar si se reactiva; la comisión de una venta vieja se liquida igual). Tests: 7 guards estáticos + 16 tests funcionales en browser con harnesses de cliente Supabase falso (corren el JS real sin tocar la DB) |
 | 2026-10-18 | — | **Proyecto Sidebar completo — 50/50 mejoras en 5 fases + auditoría crítica**. **F1 Infraestructura**: RPC `get_sidebar_badge_counts` v2 (todo en una llamada: leads 24h, tareas vencidas leads/owners/total, chat unread, estancadas, ML, visitas hoy), bus `scheduleBadgeRefresh()` con debounce 800ms (antes: una ráfaga de ML = 5 RPCs), delegación de eventos (eliminó el doble-bind histórico), tooltips premium `data-bh-tip`, navegación persistente (último módulo `bh_last_tab`, último modo del CRM `bh_crm_viewmode`, sub-vistas `#tab-leads/owners`, back/forward real con pushState + guard de rol en la restauración). **F2 Señales**: chat sin leer (badge verde al boot vía RPC, relevo del módulo con su realtime), Agenda "0 Citas · 30 venc." en rojo (las 27 tareas de leads vencidas eran invisibles), Propiedades "· N estanc." ámbar, count-up animado, ML "Live" con tooltip del último evento del webhook, pulso de Supervisión, "+N hoy" en leads, **modo offline** (badges grises + toast + refresco al reconectar, estado del canal vía callback SUBSCRIBE), **anillo del avatar** = realtime vivo. **Hallazgo crítico y resucitado**: el canal core (`setupCoreRealtime`) estaba MUERTO — `table: [array]` en un solo `.on()` ya no funciona en supabase-js v2 (la suscripción muere en silencio y el canal desaparece); vivía anidado dentro de `loadChatRedes` (el boot nunca lo creaba) — movido al top-level del IIFE + un `.on()` por tabla + blindado con try/catch (jamás rompe el boot). **F3 Acciones**: búsqueda global `Ctrl+K` revivida (motor completo existía sin UI — al agregarle el DOM resucitó el hashchange que estaba atrapado en el IIFE de resultados: el back/forward cambiaba la URL pero la UI no seguía), favoritos con pin (flotan arriba de su categoría, baseline original capturada al boot para que quitar el pin restaure), orden por rol (agente→leads+agenda, broker→propiedades), botón "+" de alta rápida (reusa los chips del dashboard), menú contextual (click derecho: fijar, alta, padrón, refrescar, compacto, acento), `Alt+1..9`, tag NUEVO con dismiss persistido, badges clickeables con desglose en hover. **F4 Contexto**: widget "Hoy" colapsable bajo el Dashboard (citas del día clickeables → panel de visita, tareas del agente → panel del lead, dots de servicios realtime/ML/Zernio con "hace N" legible — ya señala real: 6 días sin mensajes de Zernio), dirty check con lista blanca de 5 forms + confirm con "navegar igual" (el modal sobrevive) + MutationObserver de limpieza, ítems de sistema solo super_admin, build `v.NNN` en el footer (leído del propio script), hover card de chats sin leer, prefetch de la caché de búsqueda con throttle. **F5 Pulido**: skeleton shimmer de badges (solo primer boot), ripple, micro-bounce, modo compacto, acento del menú por usuario (teal/violeta/ámbar — solo sidebar, la identidad del sistema queda teal), separadores degradados, barra de scroll del menú, stagger del drawer móvil, breadcrumb contextual "CRM › <lead>", handle del borde estilo VSCode, quick-stats al hover de los ítems. **Auditoría crítica final**: popover de canales de chat como flotante body-level (el despliegue inline empujaba TODO el menú — bug reportado por el empleador; verificado cero movimiento por medición), convivencia tooltip/hover-card resuelta, accesibilidad real (tabindex + Enter/Espacio + aria-current + focus-visible + prefers-reduced-motion en 4 familias de animación), 5 specs nuevos (35 guards), AGENTS.md con la sección de gotchas. localStorage: 9 keys `bh_*` documentadas. **Deuda declarada**: "recientes" quedan como tracking sin reordenar el menú (decisión: el pin es la herramienta explícita; reordenar automático = menú inestable) |
 | 2026-10-17 | — | **Propietarios vive en el CRM** (pedido del empleador: "el apartado Propietarios es inútil, todos están en el CRM"): el CRM ya tenía una vista Propietarios completa (listado, filtros de exclusividad/tareas/agente, orden server-side, token de portal) — el item del sidebar duplicaba el acceso. Removidos el nav-item y la sección `#tab-propietarios` (86 líneas); el engine `admin-propietarios.js` queda intacto como editor (CUIT con dígito verificador, dedupe, papelera, exports). Migrado al modo Propietarios del CRM: papelera propia (chip ELIMINADO + restaurar, filtros deshabilitados, orden por fecha de baja), exports .csv/.pdf en el header (reusan las funciones del engine), banner de alertas del padrón (valor en exclusividad, vencimientos, DNI/CUIT), alta "Expediente de Propietario" con título correcto (`openNewOwner`). Sidebar reorganizado: Agentes & Brokers pasa a "Equipo & Sistema", modo colapsado desktop (84px, tooltips, persistido), indicador activo con barra glow. **Selector de propiedad para encuesta** (el empleador tenía que QUITAR propiedades del lead para mandar una encuesta): botón "Encuesta" con múltiples propiedades abre modal premium con un botón "Enviar" verde por propiedad — cero quites. Fix `ensureSurveyToken`: filtro `archived_at IS NULL` (sin él, `maybeSingle()` reventaba con encuestas archivadas del mismo par) |
