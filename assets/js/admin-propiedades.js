@@ -27,6 +27,12 @@
      y consulta el map del último load. */
   let _propVideoMap = {};
 
+  /* Datos de fotos por propiedad para la descarga en ZIP (pedido del
+     empleador). Se arma en cada loadProperties con los datos que YA
+     trae la tabla (image_urls + metadatos de la fila): no suma queries. */
+  let _propZipMap = {};
+  let _zipDownloading = false;
+
   async function loadPropVideoMap(client) {
     const map = {};
     try {
@@ -121,6 +127,26 @@
       const ownerMap = {};
       (ownersRes.data || []).forEach(o => { ownerMap[o.id] = o.full_name; });
 
+      /* Mapa de fotos + metadatos para la descarga en ZIP.
+         Sin query extra: la tabla ya trae image_urls y los datos de la fila. */
+      const zipMap = {};
+      (data || []).forEach(p => {
+        if (!p || !p.id) return;
+        const urls = Array.isArray(p.image_urls) ? p.image_urls.filter(Boolean) : [];
+        if (!urls.length) return;
+        zipMap[p.id] = {
+          urls: urls,
+          title: p.title || '',
+          code: p.property_code || '',
+          zone: p.zone || '',
+          address: p.address || '',
+          status: p.status || '',
+          price_usd: p.price_usd,
+          price_currency: p.price_currency || ''
+        };
+      });
+      _propZipMap = zipMap;
+
       const ownerSelect = $('#propOwnerSelect');
       if (ownerSelect) {
         const currentVal = ownerSelect.value;
@@ -203,6 +229,11 @@
           p.is_reservada ? '<span class="props-badge" style="background:rgba(234,179,8,0.18); color:#ca8a04;"><i class="fas fa-lock"></i>Reservada</span>' : ''
         ].filter(Boolean).join('');
 
+        /* Botón de descarga ZIP: solo si la propiedad tiene fotos. */
+        const zipBtn = _propZipMap[p.id]
+          ? `<button class="btn-action" style="color:#38bdf8;" title="Descargar todas las fotos en un ZIP" data-prop-act="download-zip" data-prop-id="${esc(p.id)}"><i class="fas fa-file-zipper"></i></button>`
+          : '';
+
         return `
         <tr>
           <td><input type="checkbox" class="prop-row-check props-check" data-prop-id="${esc(p.id)}" ${_propSelected.has(p.id) ? 'checked' : ''} /></td>
@@ -227,6 +258,7 @@
             <td data-col-actions>
             ${_propViewTrash ? `
             <div class="props-actions">
+              ${zipBtn}
               <button class="btn-action" style="color:var(--success);" title="Restaurar propiedad" data-prop-act="restore" data-prop-id="${esc(p.id)}"><i class="fas fa-trash-arrow-up"></i></button>
               <button class="btn-action danger" title="Eliminar definitivamente (solo Super Admin; borra fotos y documentos)" data-prop-act="destroy" data-prop-id="${esc(p.id)}"><i class="fas fa-ban"></i></button>
             </div>` : `
@@ -238,6 +270,7 @@
               ${p.is_published ? `<button class="btn-action" style="color:#FFB800;" title="Campaña WhatsApp a leads que encajan" data-prop-act="campaign" data-prop-id="${esc(p.id)}" data-prop-code="${esc(p.property_code || '')}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-bullhorn"></i></button>` : ''}
               <button class="btn-action" style="color:#8b5cf6;" title="Ver encuestas de visitas" data-prop-act="surveys" data-prop-id="${esc(p.id)}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-clipboard-list"></i></button>
               <button class="btn-action" title="Duplicar propiedad" data-prop-act="duplicate" data-prop-id="${esc(p.id)}"><i class="fas fa-copy"></i></button>
+              ${zipBtn}
               <button class="btn-action" title="Editar" data-prop-act="edit" data-prop-id="${esc(p.id)}"><i class="fas fa-pen"></i></button>
               <button class="btn-action danger" title="Eliminar (va a la papelera)" data-prop-act="delete" data-prop-id="${esc(p.id)}"><i class="fas fa-trash"></i></button>
             </div>`}
@@ -1174,6 +1207,7 @@
         else if (act === 'duplicate') window.adminApp.duplicateProperty(id);
         else if (act === 'surveys') showPropertySurveys(id, btn.dataset.propTitle || '');
         else if (act === 'campaign') showWhatsAppCampaign(id, btn.dataset.propCode || '', btn.dataset.propTitle || '');
+        else if (act === 'download-zip') downloadPropertyZip(id);
       });
       tbodyEl.addEventListener('change', (e) => {
         const chk = e.target.closest('.prop-row-check');
@@ -1250,6 +1284,159 @@
         });
       }
     } catch (_) { logError('Propiedades: falló cargar select masivo de agentes:', _); }
+  }
+
+  /* ------------------------------------------------
+     5-bis. DESCARGA DE TODAS LAS FOTOS EN UN ZIP
+     ------------------------------------------------
+     Feature pedida por el empleador (2026-10-31): descargar el
+     ZIP con el nombre de la propiedad y TODAS sus imagenes.
+
+     Decisiones:
+     - Se arma en el navegador (sin Edge Function): las fotos viven
+       en Cloudinary, que sirve Access-Control-Allow-Origin: * y
+       convierte a JPG real con f_jpg,q_auto — mismo peso que el
+       WebP que ya usa el panel, pero universal (portales, WhatsApp,
+       impresion).
+     - ZIP en modo STORE: JPEG/PNG no se comprimen, asi que no hace
+       falta meter una libreria de compresion (assets/js/zip.js).
+     - Si una foto falla, se avisa y el ZIP sale con el resto.
+     - Es 100% lectura: no escribe en properties ni dispara triggers.
+     ------------------------------------------------ */
+  const ZIP_FETCH_CONCURRENCY = 4;
+
+  function zipFolderName(info) {
+    const zipApi = window.BHZip;
+    const base = [info.code, info.title].filter(Boolean).join(' - ');
+    return zipApi ? zipApi.sanitizeFilename(base, 'propiedad') : (base || 'propiedad');
+  }
+
+  function zipEntryExt(mime) {
+    const m = String(mime || '').toLowerCase();
+    if (m.indexOf('png') !== -1) return '.png';
+    if (m.indexOf('webp') !== -1) return '.webp';
+    if (m.indexOf('gif') !== -1) return '.gif';
+    if (m.indexOf('avif') !== -1) return '.avif';
+    return '.jpg';
+  }
+
+  /* Baja las fotos con concurrencia limitada (no 27 pedidos de una vez). */
+  async function fetchImagesForZip(urls, onProgress) {
+    const zipApi = window.BHZip;
+    const files = [];
+    const failed = [];
+    let cursor = 0;
+    let done = 0;
+
+    async function worker() {
+      while (cursor < urls.length) {
+        const i = cursor++;
+        const original = urls[i];
+        try {
+          const url = zipApi.toJpgUrl(original);
+          const res = await fetch(url, { credentials: 'omit' });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const blob = await res.blob();
+          if (!blob.size) throw new Error('respuesta vacía');
+          files.push({
+            index: i,
+            ext: zipEntryExt(blob.type),
+            data: new Uint8Array(await blob.arrayBuffer())
+          });
+        } catch (err) {
+          failed.push({ url: original, error: err });
+          logWarn('Propiedades: no se pudo descargar la foto ' + original, err);
+        }
+        done++;
+        if (onProgress) onProgress(done, urls.length);
+      }
+    }
+
+    const n = Math.min(ZIP_FETCH_CONCURRENCY, urls.length);
+    const workers = [];
+    for (let i = 0; i < n; i++) workers.push(worker());
+    await Promise.all(workers);
+
+    /* Se restaura el orden original (la portada primero) y se renumera
+       correlativo para que no queden huecos si faltó alguna foto. */
+    files.sort(function (a, b) { return a.index - b.index; });
+    return { files: files, failed: failed };
+  }
+
+  /* Ficha de texto que acompaña al ZIP (datos de la propiedad). */
+  function buildPropertyFichaTxt(info) {
+    const precio = (info.price_usd !== null && info.price_usd !== undefined && info.price_usd !== '')
+      ? formatPrice(info.price_usd, info.price_currency)
+      : '-';
+    return [
+      'BIENENHAUS PROPIEDADES',
+      '=======================',
+      '',
+      'Codigo: ' + (info.code || '-'),
+      'Titulo: ' + (info.title || '-'),
+      'Ubicacion: ' + ([info.zone, info.address].filter(Boolean).join(', ') || '-'),
+      'Estado: ' + (info.status || '-'),
+      'Precio: ' + precio,
+      'Fotos: ' + ((info.urls || []).length),
+      '',
+      'Generado: ' + new Date().toLocaleString('es-AR'),
+      ''
+    ].join('\n');
+  }
+
+  async function downloadPropertyZip(propertyId) {
+    const zipApi = window.BHZip;
+    if (!zipApi) {
+      showToast('El generador de ZIP no está disponible. Recargá la página.', 'error');
+      return;
+    }
+    if (_zipDownloading) {
+      showToast('Ya hay una descarga en curso. Esperá a que termine.', 'info');
+      return;
+    }
+
+    const info = _propZipMap[propertyId];
+    const urls = (info && info.urls) || [];
+    if (!urls.length) {
+      showToast('Esta propiedad no tiene fotos para descargar.', 'error');
+      return;
+    }
+
+    _zipDownloading = true;
+    const folder = zipFolderName(info);
+    try {
+      showToast('Descargando ' + urls.length + ' foto(s) de "' + (info.title || 'la propiedad') + '"...', 'info');
+      const result = await fetchImagesForZip(urls, function (hechas, total) {
+        showToast('Descargando fotos ' + hechas + '/' + total + '...', 'info');
+      });
+
+      if (!result.files.length) {
+        showToast('No se pudo descargar ninguna foto de esta propiedad.', 'error');
+        return;
+      }
+
+      const entries = result.files.map(function (f, i) {
+        return {
+          name: folder + '/' + String(i + 1).padStart(2, '0') + '-foto' + f.ext,
+          data: f.data
+        };
+      });
+      entries.push({ name: folder + '/_ficha.txt', data: buildPropertyFichaTxt(info) });
+
+      const blob = zipApi.buildZipBlob(entries);
+      zipApi.downloadBlob(blob, folder + '.zip');
+
+      if (result.failed.length) {
+        showToast('ZIP descargado con ' + result.files.length + ' foto(s). ' + result.failed.length + ' no se pudieron bajar.', 'warning');
+      } else {
+        showToast('ZIP descargado: ' + result.files.length + ' foto(s).', 'success');
+      }
+    } catch (err) {
+      logError('Propiedades: falló la descarga de fotos en ZIP:', err);
+      showToast('Error al generar el ZIP: ' + (err && err.message ? err.message : 'error desconocido'), 'error');
+    } finally {
+      _zipDownloading = false;
+    }
   }
 
   /* ------------------------------------------------

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Harness — Propiedades: descarga de fotos en ZIP</title>
+</head>
+<body>
+<!-- Harness del modulo REAL admin-propiedades.js con un cliente Supabase
+     falso (no toca la base real). Comprueba que:
+       1. el boton de ZIP se renderiza SOLO en las propiedades con fotos;
+       2. el click dispara la descarga;
+       3. el ZIP sale con el nombre de la propiedad (codigo + titulo),
+          las fotos numeradas y la ficha de texto. -->
+  <input type="checkbox" id="propSelectAll" />
+  <button id="propTrashToggle" type="button">Papelera</button>
+  <div id="propPageInfo"></div>
+  <button id="propPagePrev" type="button">prev</button>
+  <button id="propPageNext" type="button">next</button>
+  <select id="propPageSize"></select>
+  <select id="propStatusFilter"></select>
+  <select id="propPubFilter"></select>
+  <select id="propAgentFilter"></select>
+  <input type="search" id="propSearchInput" />
+  <div id="propBulkBar"><span id="propBulkCount">0</span></div>
+
+  <table>
+    <tbody id="propertiesTableBody"></tbody>
+  </table>
+
+  <div id="toastMsg"><i></i><span id="toastText"></span></div>
+
+  <script src="fake-postgrest.js"></script>
+  <script src="../../assets/js/zip.js"></script>
+  <script>
+    window.$ = window.$ || function (sel, ctx) { return (ctx || document).querySelector(sel); };
+    window.$$ = window.$$ || function (sel, ctx) { return Array.from((ctx || document).querySelectorAll(sel)); };
+    /* admin-app.js publica estos por accessor; admin-propiedades.js los lee
+       como identificadores sueltos (si no existen, ReferenceError). */
+    window.ml_connected = false;
+    window.ml_configured = false;
+    window.ml_listings = [];
+    window.ml_user = null;
+    window.currentUser = null;
+    window.currentProfile = { role: 'super_admin' };
+    window.editingPropertyId = null;
+    window._propPage = 1;
+    window._propPageSize = 20;
+    window._propTotalCount = 0;
+    window._propSearchQuery = '';
+    window._propStatusFilter = '';
+    window._propPubFilter = '';
+    window._propAgentFilter = '';
+    window._propViewTrash = false;
+    window._propTrashCount = 0;
+    window._propPaginationBound = false;
+    window._propSelected = new Set();
+    window._pendingPropertyNotes = [];
+    window._newImageFiles = [];
+    window.__TOASTS = [];
+    window.__HARNESS_LOG = [];
+
+    var FOTO = '../../assets/images/pwa-512x512.png';
+
+    var client = window.__FAKE_PG.install({
+      properties: [
+        {
+          id: 'aaaa1111-2222-3333-4444-555555555555',
+          title: 'Terreno 787 m² a 2 Cuadras del Lago',
+          property_code: 'DA-P0026',
+          image_urls: [FOTO, FOTO],
+          zone: 'San Javier del Lago',
+          address: 'Ruta 20 km 12',
+          status: 'venta',
+          price_usd: 85000,
+          price_currency: 'USD',
+          area_m2: 787,
+          rooms: null,
+          is_published: true,
+          owner_id: null,
+          agent_id: null,
+          deleted_at: null,
+          created_at: '2026-10-01T00:00:00Z'
+        },
+        {
+          id: 'bbbb1111-2222-3333-4444-555555555555',
+          title: 'Propiedad sin fotos',
+          property_code: 'DA-P0027',
+          image_urls: [],
+          zone: 'Córdoba',
+          address: 'Av. Siempreviva 742',
+          status: 'venta',
+          price_usd: 120000,
+          price_currency: 'USD',
+          area_m2: 100,
+          rooms: 3,
+          is_published: false,
+          owner_id: null,
+          agent_id: null,
+          deleted_at: null,
+          created_at: '2026-10-02T00:00:00Z'
+        }
+      ],
+      owners: [], agents: [], rela_listings: [], social_posts: [], ml_listings: []
+    }, window.__HARNESS_LOG);
+
+    window.adminApp = window.adminApp || {};
+
+    window.__BH = {
+      logError: function () {},
+      logWarn: function () {},
+      on: function (el, evt, fn) { if (el) el.addEventListener(evt, fn); },
+      PropertySchema: null,
+      validateForm: function () { return { success: true, data: {} }; },
+      getAuthedClient: function () { return Promise.resolve(client); },
+      loadAgentSelect: function () {},
+      openModal: function () {},
+      closeModal: function () {},
+      showConfirmDialog: function () { return Promise.resolve(true); },
+      showToast: function (msg, type) {
+        window.__TOASTS.push({ msg: msg, type: type });
+        var t = document.getElementById('toastText');
+        if (t) t.textContent = msg;
+      },
+      invalidateSearchCache: function () {},
+      updateSidebarBadges: function () {},
+      formatPrice: function (v, cur) {
+        return (cur === 'ARS' ? '$' : 'USD') + ' ' + Number(v || 0).toLocaleString('es-AR');
+      },
+      esc: function (s) {
+        var A = String.fromCharCode(38);
+        var map = { '&': A + 'amp;', '<': A + 'lt;', '>': A + 'gt;', '"': A + 'quot;', "'": A + '#39;' };
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return map[c]; });
+      },
+      mutate: function () { return Promise.resolve({ data: [], error: null }); }
+    };
+  </script>
+  <script src="../../assets/js/admin-propiedades.js"></script>
+  <script>
+    window.__HARNESS_READY = true;
+  </script>
+</body>
+</html>

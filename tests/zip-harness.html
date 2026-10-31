@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Harness ZIP — Propiedades</title>
+  <!-- MISMA CSP que admin.html: el test tiene que fallar si la descarga
+       por blob: o el fetch a Cloudinary quedan bloqueados en produccion. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://*.supabase.co https://r.ldngts.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://*.cloudinary.com https://images.unsplash.com https://*.supabase.co https://res.cloudinary.com https://*.tile.openstreetmap.org https://*.ggpht.com https://*.googleusercontent.com https://*.ytimg.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.mercadolibre.com https://api.telegram.org https://api.cloudinary.com https://res.cloudinary.com https://r.ldngts.com https://static.cloudflareinsights.com https://api.cloudflareinsights.com https://nominatim.openstreetmap.org https://www.googleapis.com; frame-src 'self';" />
+</head>
+<body>
+  <h1>Harness ZIP</h1>
+  <button id="go" type="button">Descargar ZIP de prueba</button>
+  <button id="goReal" type="button">Descargar ZIP real (Cloudinary)</button>
+  <p id="out">idle</p>
+  <p id="outReal">idle</p>
+
+  <script src="../assets/js/zip.js"></script>
+  <script>
+    (function () {
+      var IMAGES = [
+        { src: '../assets/images/pwa-512x512.png', name: '01-foto.png' },
+        { src: '../assets/images/hero-bg.webp', name: '02-foto.webp' }
+      ];
+
+      /* URLs REALES de produccion, de las DOS formas que hay en
+         properties.image_urls: con transformaciones y sin ellas. */
+      var REAL = [
+        'https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787582021/bienenhaus/properties/asembszfw1oaff3o9ynt.jpg',
+        'https://res.cloudinary.com/jpyigjrh/image/upload/f_auto,q_auto/v1787582022/bienenhaus/properties/klnihrjshbaeeehho6p9.jpg',
+        'https://res.cloudinary.com/jpyigjrh/image/upload/v1790387240/bienenhaus/properties/blz7yidtfeadp3awl8cw.jpg',
+        'https://res.cloudinary.com/jpyigjrh/image/upload/v1790387242/bienenhaus/properties/kbdq8k198cgwlt2zkb8n.jpg'
+      ];
+
+      document.getElementById('go').addEventListener('click', async function () {
+        var out = document.getElementById('out');
+        try {
+          out.textContent = 'working';
+          var entries = [];
+          for (var i = 0; i < IMAGES.length; i++) {
+            var res = await fetch(IMAGES[i].src);
+            if (!res.ok) throw new Error('HTTP ' + res.status + ' en ' + IMAGES[i].src);
+            var blob = await res.blob();
+            var bytes = new Uint8Array(await blob.arrayBuffer());
+            entries.push({ name: 'DA-P0001 - Propiedad de prueba/' + IMAGES[i].name, data: bytes });
+          }
+          entries.push({
+            name: 'DA-P0001 - Propiedad de prueba/_ficha.txt',
+            data: 'Codigo: DA-P0001\nTitulo: Propiedad de prueba\nFotos: 2\n'
+          });
+
+          var blob = BHZip.buildZipBlob(entries);
+          BHZip.downloadBlob(blob, 'DA-P0001 - Propiedad de prueba.zip');
+          out.textContent = 'done';
+        } catch (err) {
+          out.textContent = 'error: ' + err.message;
+        }
+      });
+
+      document.getElementById('goReal').addEventListener('click', async function () {
+        var out = document.getElementById('outReal');
+        try {
+          out.textContent = 'working';
+          var entries = [];
+          for (var i = 0; i < REAL.length; i++) {
+            var url = BHZip.toJpgUrl(REAL[i]);
+            var res = await fetch(url, { credentials: 'omit' });
+            if (!res.ok) throw new Error('HTTP ' + res.status + ' en ' + url);
+            var blob = await res.blob();
+            if (!blob.size) throw new Error('respuesta vacía');
+            var bytes = new Uint8Array(await blob.arrayBuffer());
+            entries.push({
+              name: 'FH-P0010 - Casa 2 dormitorios/' + String(i + 1).padStart(2, '0') + '-foto.jpg',
+              data: bytes
+            });
+          }
+          entries.push({
+            name: 'FH-P0010 - Casa 2 dormitorios/_ficha.txt',
+            data: 'Codigo: FH-P0010\nTitulo: Casa 2 dormitorios y pileta - Villa Allende\nFotos: 4\n'
+          });
+
+          var blob = BHZip.buildZipBlob(entries);
+          BHZip.downloadBlob(blob, 'FH-P0010 - Casa 2 dormitorios.zip');
+          out.textContent = 'done';
+        } catch (err) {
+          out.textContent = 'error: ' + err.message;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
