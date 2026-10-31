@@ -863,8 +863,9 @@ function syncKpiCards() {
      hay que limpiar las clases de las cards que no aplican, si no quedan
      "clickeables" (y con `is-active`) del modo anterior. */
   var allIds = Object.keys(KPI_CARD_BINDINGS);
+  var seen = new Set(allIds);
   Object.keys(OWNER_KPI_CARD_BINDINGS).forEach(function (id) {
-    if (allIds.indexOf(id) === -1) allIds.push(id);
+    if (!seen.has(id)) { seen.add(id); allIds.push(id); }
   });
   allIds.forEach(function (id) {
     var el = $id(id);
