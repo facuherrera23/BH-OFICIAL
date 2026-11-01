@@ -177,7 +177,7 @@ async function fetchProperty(id: string): Promise<PropertyRow | null> {
     const { data } = await supabase
         .from('properties')
         .select(
-            'id, title, description, status, listing_type, price, price_usd, price_currency, currency, address, area_total, area_covered, bedrooms, bathrooms, garages, property_type, rooms, full_bathrooms, pets_allowed, has_storage, furnished, maintenance_fee, inscription_number, images:property_images(url, storage_path)',
+            'id, title, description, status, listing_type, price, price_usd, price_currency, currency, address, area_total, area_covered, surface_total, surface_covered, bedrooms, bathrooms, garages, garage_spaces, property_type, rooms, full_bathrooms, pets_allowed, has_storage, furnished, maintenance_fee, inscription_number, images:property_images(url, storage_path)',
         )
         .eq('id', id)
         .maybeSingle();
@@ -190,6 +190,16 @@ async function fetchProperty(id: string): Promise<PropertyRow | null> {
             : (data.status === 'venta' ? 'venta' : (data.listing_type ?? 'venta')),
         price: data.price_usd ?? data.price ?? null,
         currency: data.price_currency ?? data.currency ?? 'USD',
+        /* FIX 2026-11-01: el dato viviente es `surface_*/garage_spaces` (lo edita
+           el form del panel); `area_*/garages` son legacy que sólo rellenan los
+           import de ML, y `surface_covered` estaba NULL en las editadas a mano.
+           Prioridad surface_* con fallback al legacy — mismo patrón ya vigente
+           de _shared/rela.mapper.ts. Sin esto, el publish de la cola dejaba la
+           superficie fuera (22 props sin area_* llena) y PARKING_LOTS jamás
+           viajaba (garages 0/45 vs garage_spaces 45/45). */
+        area_total: data.surface_total ?? data.area_total ?? null,
+        area_covered: data.surface_covered ?? data.area_covered ?? null,
+        garages: data.garages ?? data.garage_spaces ?? null,
     };
 }
 

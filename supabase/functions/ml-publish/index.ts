@@ -58,7 +58,7 @@ async function fetchProperty(id: string): Promise<PropertyRow | null> {
     const { data: property } = await supabase
         .from('properties')
         .select(
-            'id, title, description, status, listing_type, price, price_usd, price_currency, currency, address, area_total, area_covered, surface_total, surface_covered, bedrooms, bathrooms, garages, property_type, rooms, full_bathrooms, pets_allowed, has_storage, furnished, maintenance_fee, inscription_number, image_urls',
+            'id, title, description, status, listing_type, price, price_usd, price_currency, currency, address, area_total, area_covered, surface_total, surface_covered, bedrooms, bathrooms, garages, garage_spaces, property_type, rooms, full_bathrooms, pets_allowed, has_storage, furnished, maintenance_fee, inscription_number, image_urls',
         )
         .eq('id', id)
         .maybeSingle();
@@ -89,11 +89,16 @@ async function fetchProperty(id: string): Promise<PropertyRow | null> {
         price: property.price_usd ?? property.price ?? null,
         currency: property.price_currency ?? property.currency ?? 'USD',
         address: property.address,
-        area_total: property.area_total ?? property.surface_total ?? null,
-        area_covered: property.area_covered ?? property.surface_covered ?? null,
+        area_total: property.surface_total ?? property.area_total ?? null,
+        area_covered: property.surface_covered ?? property.area_covered ?? null,
+        /* FIX 2026-11-01: prioridad surface_* sobre area_* (el form del panel
+           edita surface_*; area_*/garages son legacy sólo de los import ML).
+           Sin esto, el import pisaba el dato fresco del panel — y las cocheras
+           reales (garage_spaces 45/45 lleno vs garages 0/45) jamás llegaban a
+           ML. Mismo patrón de _shared/rela.mapper.ts y ml-sync. */
+        garages: property.garages ?? property.garage_spaces ?? null,
         bedrooms: property.bedrooms,
         bathrooms: property.bathrooms,
-        garages: property.garages,
         property_type: property.property_type,
         rooms: property.rooms,
         full_bathrooms: property.full_bathrooms,
@@ -205,19 +210,30 @@ function buildItemPayload(property: PropertyRow, defaults: MlDefaults): MlItemPa
         ML_CATEGORY_MAP[normalizedType]?.[operationKey] ??
         defaults.category_id;
 
-    // En inmuebles, estos atributos son obligatorios en la mayoría de categorías.
-    // ML los descarta si se omiten, así que siempre se envían con defaults razonables.
+    // En inmuebles, ROOMS/BEDROOMS/FULL_BATHROOMS son obligatorios en la
+    // mayoría de categorías: siempre se envían con defaults razonables.
     // PROPERTY_TYPE/OPERATION se omiten: la categoría hoja ya fija ambos y ML valida
     // value_id rígido, no texto libre.
+    /* FIX 2026-11-01: antes la falta de superficie mandaba literal "1 m²" a ML
+       (default ficticio) y PARKING_LOTS "0" aunque garage_spaces tuviera el
+       dato real (garages es legacy sólo de los import ML). Ahora: si un campo
+       falta cae a la otra superficie; si NO hay ninguna real, se OMITE el
+       atributo (como ml-sync en publish) — preferible al "1 m²" mentiroso. */
     const fullBathrooms = property.full_bathrooms ?? property.bathrooms ?? 1;
+    const coveredArea = property.area_covered ?? property.area_total ?? null;
+    const totalArea = property.area_total ?? property.area_covered ?? null;
     const attributes: Array<{ id: string; value_name: string }> = [
         { id: 'ROOMS', value_name: String(property.rooms ?? property.bedrooms ?? 1) },
         { id: 'BEDROOMS', value_name: String(property.bedrooms ?? 1) },
         { id: 'FULL_BATHROOMS', value_name: String(fullBathrooms) },
-        { id: 'COVERED_AREA', value_name: `${property.area_covered ?? property.area_total ?? 1} m²` },
-        { id: 'TOTAL_AREA', value_name: `${property.area_total ?? property.area_covered ?? 1} m²` },
-        { id: 'PARKING_LOTS', value_name: String(property.garages ?? 0) },
     ];
+    if (coveredArea !== null)
+        attributes.push({ id: 'COVERED_AREA', value_name: `${coveredArea} m²` });
+    if (totalArea !== null)
+        attributes.push({ id: 'TOTAL_AREA', value_name: `${totalArea} m²` });
+    // property.garages ya viene unificado con garage_spaces en fetchProperty.
+    if (property.garages !== null)
+        attributes.push({ id: 'PARKING_LOTS', value_name: String(property.garages) });
 
     if (property.pets_allowed !== null) {
         attributes.push({ id: 'PETS', value_name: property.pets_allowed ? 'Si' : 'No' });
