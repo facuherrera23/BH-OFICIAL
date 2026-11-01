@@ -1221,10 +1221,10 @@
           .select('id, is_vendida, is_reservada')
           .in('id', ids);
         if (selErr) { showToast('Error: ' + selErr.message, 'error'); return; }
-        const bloqueadas = (sel || []).filter((p) => p.is_vendida || p.is_reservada).map((p) => p.id);
-        if (bloqueadas.length) {
-          targets = targets.filter((x) => bloqueadas.indexOf(x) === -1);
-          omitidas = bloqueadas.length;
+        const bloqueadas = new Set((sel || []).filter((p) => p.is_vendida || p.is_reservada).map((p) => p.id));
+        if (bloqueadas.size) {
+          targets = targets.filter((x) => !bloqueadas.has(x));
+          omitidas = bloqueadas.size;
         }
       }
       if (!targets.length) {
