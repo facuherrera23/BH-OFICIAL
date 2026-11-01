@@ -92,7 +92,7 @@ async function fetchProperty(id: string): Promise<PropertyRow | null> {
         area_total: property.surface_total ?? property.area_total ?? null,
         area_covered: property.surface_covered ?? property.area_covered ?? null,
         /* FIX 2026-11-01: prioridad surface_* sobre area_* (el form del panel
-           edita surface_*; area_*/garages son legacy sólo de los import ML).
+           edita surface_*; area_* y garages son legacy sólo de los import ML).
            Sin esto, el import pisaba el dato fresco del panel — y las cocheras
            reales (garage_spaces 45/45 lleno vs garages 0/45) jamás llegaban a
            ML. Mismo patrón de _shared/rela.mapper.ts y ml-sync. */

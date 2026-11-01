@@ -190,8 +190,8 @@ async function fetchProperty(id: string): Promise<PropertyRow | null> {
             : (data.status === 'venta' ? 'venta' : (data.listing_type ?? 'venta')),
         price: data.price_usd ?? data.price ?? null,
         currency: data.price_currency ?? data.currency ?? 'USD',
-        /* FIX 2026-11-01: el dato viviente es `surface_*/garage_spaces` (lo edita
-           el form del panel); `area_*/garages` son legacy que sólo rellenan los
+        /* FIX 2026-11-01: el dato viviente es surface_* y garage_spaces (lo edita
+           el form del panel); area_* y garages son legacy que sólo rellenan los
            import de ML, y `surface_covered` estaba NULL en las editadas a mano.
            Prioridad surface_* con fallback al legacy — mismo patrón ya vigente
            de _shared/rela.mapper.ts. Sin esto, el publish de la cola dejaba la
