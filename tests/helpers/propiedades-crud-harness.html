@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Harness — Propiedades: CRUD, payload y bulk</title>
+</head>
+<body>
+<!-- =====================================================================
+     Harness del modulo REAL de Propiedades (admin-propiedades.js) con un
+     cliente Supabase FALSO: NO toca la base real ni produccion.
+
+     El spec (tests/propiedades-crud.spec.js) inyecta:
+       1. el markup REAL del tab y del modal, extraido de admin.html;
+       2. el codigo REAL de validacion (PropertySchema / validateForm),
+          extraido de assets/js/admin-app.js.
+
+     Con eso se ejercita el modulo tal cual esta en produccion:
+       - payload exacto de INSERT y UPDATE (created_by, nulls, precio);
+       - bulk publicar (excluye vendidas/reservadas + conteo real);
+       - papelera (soft-delete / restore / destroy);
+       - handlers de fila (WhatsApp, ML, RELA) sin doble listener;
+       - selector de propietarios (marca los inactivos).
+     ===================================================================== -->
+  <div id="bh-injected"><!-- markup real inyectado por el spec --></div>
+  <div id="toastMsg"><i></i><span id="toastText"></span></div>
+
+  <script src="fake-postgrest.js"></script>
+  <script src="../../assets/js/zod.umd.js"></script>
+  <script>
+    window.$ = window.$ || function (sel, ctx) { return (ctx || document).querySelector(sel); };
+    window.$$ = window.$$ || function (sel, ctx) { return Array.from((ctx || document).querySelectorAll(sel)); };
+
+    /* Estado global que admin-app.js publica por accessor y los modulos leen
+       como identificadores sueltos. */
+    window.ml_connected = false;
+    window.ml_configured = false;
+    window.ml_listings = [];
+    window.ml_user = null;
+    window.currentUser = { id: '11111111-1111-1111-1111-111111111111', email: 'harness@test.local' };
+    window.currentProfile = { role: 'super_admin', full_name: 'Harness' };
+    window.editingPropertyId = null;
+    window._submittingProperty = false;
+    window._propPage = 1;
+    window._propPageSize = 25;
+    window._propTotalCount = 0;
+    window._propSearchQuery = '';
+    window._propStatusFilter = '';
+    window._propPubFilter = '';
+    window._propAgentFilter = '';
+    window._propViewTrash = false;
+    window._propTrashCount = 0;
+    window._propPaginationBound = false;
+    window._propSelected = new Set();
+    window._pendingPropertyNotes = [];
+    window._newImageFiles = [];
+    /* admin-tasaciones.js los usa como identificadores sueltos */
+    window._tasacionesPage = 1;
+    window._tasacionesPageSize = 20;
+    window._tasacionesTotalCount = 0;
+    /* admin-propietarios.js los expone como globals (los usa admin-propiedades.js) */
+    window.loadPropertyDocs = function () { return Promise.resolve(); };
+    window.loadPropertyNotes = function () { return Promise.resolve(); };
+    window.flushPendingPropertyNotes = function () { return Promise.resolve(); };
+    /* admin-portales.js los expone como globals */
+    window.mlApiCall = function () { return Promise.resolve({ ok: true }); };
+    window.mlCheckStatus = function () { return Promise.resolve(); };
+
+    window.__ERRORS = [];
+    window.__TOASTS = [];
+    window.__CONFIRMS = [];
+    window.__WA_CALLS = [];
+    window.__ML_CALLS = [];
+    window.__RELA_CALLS = [];
+    window.__OPENED = [];
+    window.__HARNESS_LOG = [];
+    /* Resultado de showConfirmDialog: el spec lo cambia a false para probar
+       el caso "el usuario cancela". */
+    window.__CONFIRM_RESULT = true;
+
+    window.__CLIENT = null;
+    /* Instala (o reinstala) la base falsa. fixture = { tabla: [filas] }
+       opts = { rls: true, blockedIds: [id,...] } -> simula la policy
+       properties_admin_update: esas filas NO se modifican (0 filas afectadas). */
+    window.__setupDb = function (fixture, opts) {
+      opts = opts || {};
+      window.__HARNESS_LOG.length = 0;
+      var blocked = new Set(opts.blockedIds || []);
+      window.__CLIENT = window.__FAKE_PG.install(fixture || {}, window.__HARNESS_LOG, {
+        mutate: true,
+        rls: opts.rls ? function (table, row) { return !blocked.has(row.id); } : null
+      });
+      return true;
+    };
+
+    /* Leaflet stub: el mapa del modal no debe pedir tiles a OSM ni cargar el
+       script real durante los tests. */
+    window.L = {
+      map: function () {
+        return {
+          setView: function () { return this; },
+          on: function () { return this; },
+          removeLayer: function () { return this; },
+          panTo: function () { return this; },
+          invalidateSize: function () { return this; }
+        };
+      },
+      tileLayer: function () { return { addTo: function () { return this; } }; },
+      divIcon: function () { return {}; },
+      marker: function () { return { setLatLng: function () { return this; }, addTo: function () { return this; } }; }
+    };
+
+    window.open = function (url) { window.__OPENED.push(url); return null; };
+    /* El confirm() NATIVO esta prohibido en el panel (rompe la identidad
+       visual). Se deja un stub que REGISTRA el uso: los tests pueden assertar
+       que no se uso. */
+    window.__NATIVE_CONFIRMS = [];
+    window.confirm = function (msg) {
+      window.__NATIVE_CONFIRMS.push(String(msg));
+      return true;
+    };
+
+    window.adminApp = window.adminApp || {};
+    window.adminApp.mlUpdateProperty = function (id, listing) { window.__ML_CALLS.push({ action: 'update', id: id, listing: listing }); return Promise.resolve(); };
+    window.adminApp.mlRemoveProperty = function (listing, id) { window.__ML_CALLS.push({ action: 'remove', id: id, listing: listing }); return Promise.resolve(); };
+    window.adminApp.mlPublishProperty = function (id) { window.__ML_CALLS.push({ action: 'publish', id: id }); return Promise.resolve(); };
+    window.adminApp.relaPropertyAction = function (id, action) { window.__RELA_CALLS.push({ id: id, action: action }); return Promise.resolve(); };
+
+    window.__BH = {
+      logError: function () { window.__ERRORS.push({ kind: 'error', args: Array.prototype.slice.call(arguments) }); },
+      logWarn: function () { window.__ERRORS.push({ kind: 'warn', args: Array.prototype.slice.call(arguments) }); },
+      on: function (el, evt, fn, opts) { if (el) el.addEventListener(evt, fn, opts); },
+      PropertySchema: null,
+      validateForm: function () { return { success: true, data: {} }; },
+      getAuthedClient: function () { return Promise.resolve(window.__CLIENT); },
+      loadAgentSelect: function () { return Promise.resolve(); },
+      openModal: function (id) { var el = document.getElementById(id); if (el) el.classList.add('is-open'); },
+      closeModal: function (id) { var el = document.getElementById(id); if (el) el.classList.remove('is-open'); },
+      showConfirmDialog: function (opts) {
+        window.__CONFIRMS.push(opts || {});
+        return Promise.resolve(window.__CONFIRM_RESULT !== false);
+      },
+      showToast: function (msg, type) {
+        window.__TOASTS.push({ msg: String(msg), type: type || 'success' });
+        var t = document.getElementById('toastText');
+        if (t) t.textContent = msg;
+      },
+      invalidateSearchCache: function () {},
+      updateSidebarBadges: function () {},
+      formatPrice: function (v, cur) {
+        return (cur === 'ARS' ? '$' : 'USD') + ' ' + Number(v || 0).toLocaleString('es-AR');
+      },
+      esc: function (s) {
+        var A = String.fromCharCode(38);
+        var map = { '&': A + 'amp;', '<': A + 'lt;', '>': A + 'gt;', '"': A + 'quot;', "'": A + '#39;' };
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return map[c]; });
+      },
+      mutate: async function (table, fn) {
+        var result = await fn();
+        if (window.Bus) window.Bus.emit(table + ':changed', result);
+        return result;
+      },
+      navigateTo: function () {},
+      setKpi: function () {}
+    };
+  </script>
+</body>
+</html>

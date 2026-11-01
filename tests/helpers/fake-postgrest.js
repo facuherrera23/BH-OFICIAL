@@ -93,14 +93,19 @@
     }
   }
 
-  function makeQuery(table, rows, log) {
+  function makeQuery(table, rows, log, opts, store) {
     var filters = [];
     var head = false, countMode = false, singleMode = false;
     var op = null, payload = null;
+    /* select() DESPUES de una mutacion (.update(...).select('id')) pide las
+       filas afectadas: es lo que usa el modulo de Propiedades para contar
+       cuantas filas se actualizaron de verdad (la RLS filtra en silencio). */
+    var wantRows = false;
     var q = {
-      select: function (cols, opts) {
-        if (opts && opts.count) countMode = true;
-        if (opts && opts.head) head = true;
+      select: function (cols, selOpts) {
+        if (selOpts && selOpts.count) countMode = true;
+        if (selOpts && selOpts.head) head = true;
+        if (op) wantRows = true;
         return q;
       },
       update: function (p) { op = 'update'; payload = p; return q; },
@@ -125,7 +130,48 @@
       then: function (resolve, reject) {
         if (op) {
           if (log) log.push({ op: op, table: table, payload: payload, filters: filters.slice() });
-          return Promise.resolve({ data: null, error: null, count: null }).then(resolve, reject);
+          /* Modo lectura (default): las mutaciones no tocan nada y devuelven null.
+             Modo mutacion (opts.mutate): el store en memoria se actualiza de verdad. */
+          if (!opts || !opts.mutate) {
+            return Promise.resolve({ data: null, error: null, count: null }).then(resolve, reject);
+          }
+          var list = store[table] || (store[table] = []);
+          var matched = list.filter(function (r) {
+            return filters.every(function (f) { return applyFilter([r], f).length === 1; });
+          });
+          /* RLS simulada: opts.rls(table, row) === false -> la fila NO se
+             modifica (como la policy properties_admin_update). */
+          if (opts.rls) matched = matched.filter(function (r) { return opts.rls(table, r); });
+          var affected = [];
+          if (op === 'update') {
+            matched.forEach(function (r) {
+              Object.keys(payload || {}).forEach(function (k) { r[k] = payload[k]; });
+              affected.push(r);
+            });
+          } else if (op === 'insert') {
+            var incoming = Array.isArray(payload) ? payload : [payload];
+            incoming.forEach(function (row) {
+              var copy = Object.assign({}, row);
+              if (!copy.id) copy.id = 'gen-' + Math.random().toString(16).slice(2, 10);
+              list.push(copy);
+              affected.push(copy);
+            });
+          } else if (op === 'delete') {
+            var keep = list.filter(function (r) { return matched.indexOf(r) === -1; });
+            store[table] = keep;
+            affected = matched;
+          } else if (op === 'upsert') {
+            var ups = Array.isArray(payload) ? payload : [payload];
+            ups.forEach(function (row) {
+              var existing = list.filter(function (r) { return row.id && r.id === row.id; })[0];
+              if (existing) { Object.keys(row).forEach(function (k) { existing[k] = row[k]; }); affected.push(existing); }
+              else { var copy2 = Object.assign({}, row); if (!copy2.id) copy2.id = 'gen-' + Math.random().toString(16).slice(2, 10); list.push(copy2); affected.push(copy2); }
+            });
+          }
+          if (log && log.length) log[log.length - 1].affected = affected.length;
+          var outData = wantRows ? affected : null;
+          if (wantRows && singleMode && affected.length === 1) outData = affected[0];
+          return Promise.resolve({ data: outData, error: null, count: affected.length }).then(resolve, reject);
         }
         var out = (rows || []).slice();
         filters.forEach(function (f) { out = applyFilter(out, f); });
@@ -146,11 +192,14 @@
   }
 
   window.__FAKE_PG = {
-    install: function (data, log) {
+    /* opts (opcional):
+         mutate: true  -> update/insert/delete modifican el store en memoria
+         rls: fn       -> (table, row) => boolean; false = la RLS filtra la fila */
+    install: function (data, log, opts) {
       var store = data || {};
       var client = {
         from: function (table) {
-          return makeQuery(table, store[table] || [], log);
+          return makeQuery(table, store[table] || [], log, opts, store);
         },
         auth: {
           getSession: function () { return Promise.resolve({ data: { session: null }, error: null }); },
