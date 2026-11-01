@@ -22,6 +22,15 @@
     return `<span class="props-badge" style="background:${meta.bg}; color:${meta.color};">${esc(meta.label)}</span>`;
   }
 
+  /* Columnas que el formulario puede dejar vacias y que hay que mandar como
+     null explicito al editar (si no viajan, el UPDATE conserva el valor
+     viejo y no se pueden limpiar). Todas son nullable en la DB. */
+  const PROP_CLEARABLE_FIELDS = [
+    'description', 'address', 'locality', 'video_url', 'facebook_url',
+    'tiktok_url', 'inscription_number', 'year_built', 'maintenance_fee',
+    'agent_id', 'owner_id', 'full_bathrooms',
+  ];
+
   /* Tour en video por propiedad (social_posts published + platform youtube).
      El map vive a nivel del módulo: el listener delegado se registra UNA vez
      y consulta el map del último load. */
@@ -107,7 +116,7 @@
         ml_connected
           ? client.from('ml_listings').select('property_id, ml_listing_id:ml_item_id, status:ml_status')
           : Promise.resolve({ data: [] }),
-        client.from('owners').select('id, full_name').is('deleted_at', null).order('full_name'),
+        client.from('owners').select('id, full_name, status').is('deleted_at', null).order('full_name'),
         client.from('rela_listings').select('property_id, codigo_aviso, status, remote_status, last_error'),
       ]);
 
@@ -150,8 +159,14 @@
       const ownerSelect = $('#propOwnerSelect');
       if (ownerSelect) {
         const currentVal = ownerSelect.value;
+        /* Un propietario desactivado (vendió y no hay contacto) sigue siendo
+           dueño de sus propiedades: se muestra, pero marcado para no
+           asignarle una ficha nueva por error. */
         ownerSelect.innerHTML = '<option value="">Sin propietario asignado</option>' +
-          (ownersRes.data || []).map(o => `<option value="${esc(o.id)}">${esc(o.full_name)}</option>`).join('');
+          (ownersRes.data || []).map(o => {
+            const inactivo = o.status && o.status !== 'activo';
+            return `<option value="${esc(o.id)}">${esc(o.full_name)}${inactivo ? ' (inactivo)' : ''}</option>`;
+          }).join('');
         if (currentVal) ownerSelect.value = currentVal;
       }
 
@@ -750,7 +765,9 @@
 
       // Zod validation
       const validated = validateForm(PropertySchema, formData);
-      // price_ars se excluye del payload: es columna generada a partir de price_usd + price_currency (enviarla da error)
+      /* price_ars NO es una columna de properties: es el campo del form para el
+         precio en pesos. El valor viaja en price_usd con price_currency='ARS'
+         (price/currency son el espejo que dispara el trigger de precios). */
       const { price_currency, price_ars: _priceArsDropped, ...rest } = validated;
       
       let priceUsd;
@@ -770,12 +787,20 @@
         price_currency,
         area_m2: validated.surface_covered,
         owner_id: validated.owner_id || null,
-        created_by: currentUser?.id || null,
       };
       if (!data.property_code) delete data.property_code;
       if (editingPropertyId) delete data.property_code;
-      if (data.year_built == null) delete data.year_built;
-      if (data.maintenance_fee == null) delete data.maintenance_fee;
+
+      /* Campos que el usuario puede vaciar. validateForm descarta los valores
+         vacios, asi que sin esto el UPDATE no los tocaba y el dato viejo
+         sobrevivia: no habia forma de limpiar la descripcion ni la direccion.
+         Se mandan como null explicito (todas son columnas nullable). */
+      if (editingPropertyId) {
+        PROP_CLEARABLE_FIELDS.forEach((f) => {
+          const raw = formData.get(f);
+          if (raw === null || raw === '') data[f] = null;
+        });
+      }
 
       if (validated.is_vendida || validated.is_reservada) {
         data.is_published = false;
@@ -812,10 +837,13 @@
         showToast('Propiedad actualizada correctamente', 'success');
 
       } else {
+        /* created_by solo en el ALTA: mandarlo en el UPDATE pisaba la autoria
+           original de la ficha (y no lo lee nadie, pero ensuciaba el dato). */
+        const insertData = { ...data, created_by: currentUser?.id || null };
         const newPropId = await mutate('properties', async () => {
           const { data: inserted, error } = await window.supabaseClient
             .from('properties')
-            .insert([data])
+            .insert([insertData])
             .select('id');
           if (error) throw error;
           return inserted?.[0]?.id || null;
@@ -891,6 +919,8 @@
         if (form.elements.maintenance_fee) form.elements.maintenance_fee.value = data.maintenance_fee || '';
         if (form.elements.pets_allowed) form.elements.pets_allowed.checked = data.pets_allowed || false;
         if (form.elements.furnished) form.elements.furnished.checked = data.furnished || false;
+        if (form.elements.full_bathrooms) form.elements.full_bathrooms.value = data.full_bathrooms ?? '';
+        if (form.elements.has_storage) form.elements.has_storage.checked = data.has_storage || false;
 
         const ownerSel = $('#propOwnerSelect');
         if (ownerSel) ownerSel.value = data.owner_id || '';
@@ -946,7 +976,16 @@
 
   /* Delete property → soft-delete (va a la papelera, recuperable) */
   window.adminApp.deleteProperty = async function (id) {
-    if (!confirm('¿Enviar esta propiedad a la papelera?\nSe puede restaurar después desde la vista Papelera.')) return;
+    /* Dialogo del panel: el confirm nativo rompe la identidad visual y
+       queda atado al hilo del navegador. */
+    const ok = await showConfirmDialog({
+      title: 'Mover a la papelera',
+      message: '¿Enviar esta propiedad a la papelera?\nSe puede restaurar después desde la vista Papelera.',
+      icon: 'fas fa-trash-can',
+      confirmText: 'Mover a la papelera',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       const { error } = await window.supabaseClient
         .from('properties')
@@ -984,8 +1023,23 @@
       showToast('Solo un Super Admin puede eliminar definitivamente', 'error');
       return;
     }
-    if (!confirm('⚠️ ELIMINACIÓN DEFINITIVA\n\nSe borra la propiedad y todos sus documentos, y NO se puede recuperar.\n¿Confirmás?')) return;
-    if (!confirm('Última confirmación: ¿eliminar permanentemente esta propiedad?')) return;
+    /* Doble confirmacion (siempre con el dialogo del panel). */
+    const ok1 = await showConfirmDialog({
+      title: 'Eliminación definitiva',
+      message: '⚠️ ELIMINACIÓN DEFINITIVA\n\nSe borra la propiedad y todos sus documentos, y NO se puede recuperar.\n¿Confirmás?',
+      icon: 'fas fa-triangle-exclamation',
+      confirmText: 'Eliminar definitivamente',
+      danger: true,
+    });
+    if (!ok1) return;
+    const ok2 = await showConfirmDialog({
+      title: 'Última confirmación',
+      message: 'Última confirmación: ¿eliminar permanentemente esta propiedad?',
+      icon: 'fas fa-triangle-exclamation',
+      confirmText: 'Sí, eliminar',
+      danger: true,
+    });
+    if (!ok2) return;
     try {
       const { data: propDocs } = await window.supabaseClient
         .from('property_documents')
@@ -1054,6 +1108,8 @@
         if (form.elements.maintenance_fee) form.elements.maintenance_fee.value = data.maintenance_fee || '';
         if (form.elements.pets_allowed) form.elements.pets_allowed.checked = data.pets_allowed || false;
         if (form.elements.furnished) form.elements.furnished.checked = data.furnished || false;
+        if (form.elements.full_bathrooms) form.elements.full_bathrooms.value = data.full_bathrooms ?? '';
+        if (form.elements.has_storage) form.elements.has_storage.checked = data.has_storage || false;
 
         const ownerSel = $('#propOwnerSelect');
         if (ownerSel) ownerSel.value = data.owner_id || '';
@@ -1110,6 +1166,24 @@
     updatePropBulkBar();
   }
 
+  /* Toast del bulk con el conteo REAL de filas afectadas.
+     La RLS filtra en silencio (un update devuelve 0 filas y ningun error):
+     con el conteo de ids el panel decia "3 publicadas" sin publicar nada. */
+  function showBulkResult(accion, updated, total, omitidas) {
+    const ok = Array.isArray(updated) ? updated.length : 0;
+    const omit = omitidas || 0;
+    const sinCambio = Math.max(0, total - ok - omit);
+    if (!ok) {
+      showToast(`No se actualizó ninguna propiedad (0 de ${total + omit}). Revisá permisos o filtros.`, 'error');
+      return;
+    }
+    const extras = [];
+    if (omit) extras.push(`${omit} vendidas/reservadas`);
+    if (sinCambio) extras.push(`${sinCambio} sin cambios`);
+    const detalle = extras.length ? ' · ' + extras.join(' · ') : '';
+    showToast(`${ok} ${accion}${detalle}`, extras.length ? 'warning' : 'success');
+  }
+
   async function propBulkAction(action) {
     const ids = [..._propSelected];
     if (!ids.length) return;
@@ -1117,9 +1191,13 @@
       const sel = $('#propBulkAgentSelect');
       const agentId = sel ? sel.value : '';
       if (!agentId) { showToast('Elegí un broker en el selector', 'error'); return; }
-      const res = await window.supabaseClient.from('properties').update({ agent_id: agentId }).in('id', ids);
-      if (res.error) { showToast('Error: ' + res.error.message, 'error'); return; }
-      showToast('Broker asignado a ' + ids.length + ' propiedades', 'success');
+      const { data: updated, error } = await window.supabaseClient
+        .from('properties')
+        .update({ agent_id: agentId })
+        .in('id', ids)
+        .select('id');
+      if (error) { showToast('Error: ' + error.message, 'error'); return; }
+      showBulkResult('propiedades con broker asignado', updated, ids.length, '');
     } else if (action === 'publish_ml') {
       if (!ml_connected) { showToast('Conectá tu cuenta de Mercado Libre primero', 'warning'); return; }
       const bar = $('#propBulkPublishMl');
@@ -1132,9 +1210,37 @@
       await mlCheckStatus(true);
     } else {
       const publish = action === 'publish';
-      const res = await window.supabaseClient.from('properties').update({ is_published: publish }).in('id', ids);
-      if (res.error) { showToast('Error: ' + res.error.message, 'error'); return; }
-      showToast(ids.length + (publish ? ' publicadas' : ' pasadas a borrador'), 'success');
+      /* Publicar en lote NO puede re-publicar una propiedad vendida o
+         reservada: "Vendida" es incompatible con "Publicada" y la venta
+         volveria a aparecer en el catalogo publico. */
+      let targets = ids;
+      let omitidas = 0;
+      if (publish) {
+        const { data: sel, error: selErr } = await window.supabaseClient
+          .from('properties')
+          .select('id, is_vendida, is_reservada')
+          .in('id', ids);
+        if (selErr) { showToast('Error: ' + selErr.message, 'error'); return; }
+        const bloqueadas = (sel || []).filter((p) => p.is_vendida || p.is_reservada).map((p) => p.id);
+        if (bloqueadas.length) {
+          targets = targets.filter((x) => bloqueadas.indexOf(x) === -1);
+          omitidas = bloqueadas.length;
+        }
+      }
+      if (!targets.length) {
+        showToast('No se actualizó ninguna propiedad: todas están vendidas o reservadas', 'warning');
+        resetPropSelection();
+        loadProperties();
+        updateSidebarBadges();
+        return;
+      }
+      const { data: updated, error } = await window.supabaseClient
+        .from('properties')
+        .update({ is_published: publish })
+        .in('id', targets)
+        .select('id');
+      if (error) { showToast('Error: ' + error.message, 'error'); return; }
+      showBulkResult(publish ? 'publicadas' : 'pasadas a borrador', updated, targets.length, omitidas);
     }
     resetPropSelection();
     loadProperties();
@@ -1185,9 +1291,19 @@
     if (tbodyEl && !tbodyEl.dataset.propDelegation) {
       tbodyEl.dataset.propDelegation = '1';
       tbodyEl.addEventListener('click', (e) => {
-        /* Fix: el botón data-wa-share no tenía handler en properties (solo en tasaciones) */
+        /* Los handlers viven ACÁ, en el modulo que renderiza estos botones:
+           antes los de ML/RELA/WhatsApp estaban en admin-tasaciones.js y el
+           de WhatsApp ademas estaba duplicado aca (abriaba 2 chats). */
         const waBtn = e.target.closest('[data-wa-share]');
         if (waBtn) { window.adminApp.sharePropertyWhatsApp(waBtn.dataset.waShare, waBtn.dataset.waCode || ''); return; }
+        const mlUpd = e.target.closest('[data-ml-update-prop]');
+        if (mlUpd) { window.adminApp.mlUpdateProperty(mlUpd.dataset.mlUpdateProp, mlUpd.dataset.mlListing || ''); return; }
+        const mlRem = e.target.closest('[data-ml-remove]');
+        if (mlRem) { window.adminApp.mlRemoveProperty(mlRem.dataset.mlListing || '', mlRem.dataset.mlProp || ''); return; }
+        const mlPub = e.target.closest('[data-ml-publish]');
+        if (mlPub) { window.adminApp.mlPublishProperty(mlPub.dataset.mlPublish); return; }
+        const relaBtn = e.target.closest('[data-rela-action]');
+        if (relaBtn) { window.adminApp.relaPropertyAction(relaBtn.dataset.relaProp, relaBtn.dataset.relaAction); return; }
         /* Tour en video: abre el video de YouTube de la propiedad */
         const vidBtn = e.target.closest('[data-prop-video]');
         if (vidBtn) {

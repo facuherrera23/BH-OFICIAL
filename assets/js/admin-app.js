@@ -163,13 +163,17 @@ function esc(s) {
     price_usd: z.number().min(0).default(0),
     price_ars: z.number().min(0).default(0),
     price_currency: z.enum(['USD', 'ARS'], { errorMap: () => ({ message: 'Moneda debe ser USD o ARS' }) }).default('USD'),
-    property_type: z.enum(['casa', 'departamento', 'terreno', 'local', 'oficina', 'galpon', 'quinta', 'otro'], { errorMap: () => ({ message: 'Tipo de propiedad inválido' }) }).default('casa'),
+    property_type: z.enum(['casa', 'departamento', 'terreno', 'local', 'oficina', 'galpon', 'quinta', 'ph', 'otro'], { errorMap: () => ({ message: 'Tipo de propiedad inválido' }) }).default('casa'),
     status: z.enum(['venta', 'alquiler', 'vendido', 'alquilado', 'pausado'], { errorMap: () => ({ message: 'Operación debe ser venta o alquiler' }) }).default('venta'),
-    zone: z.string().min(2, 'Zona/barrio requerido').max(80, 'Máximo 80 caracteres').optional().nullable(),
+    /* zone es NOT NULL en la DB: si el form la deja vacia, Zod avisa aca
+       (antes el error llegaba tarde, como un fallo de PostgREST). */
+    zone: z.string({ required_error: 'Zona/barrio requerido' }).min(2, 'Zona/barrio requerido').max(80, 'Máximo 80 caracteres'),
     locality: z.string().max(80, 'Máximo 80 caracteres').optional().nullable(),
     address: z.string().max(200, 'Máximo 200 caracteres').optional().nullable(),
     bedrooms: z.number().int().min(0).max(20).default(0),
     bathrooms: z.number().int().min(0).max(20).default(0),
+    full_bathrooms: z.number().int().min(0).max(20).optional().nullable(),
+    has_storage: z.boolean().default(false),
     surface_covered: z.number().min(0).max(999999).default(0),
     surface_total: z.number().min(0).max(999999).default(0),
     garage_spaces: z.number().int().min(0).max(10).default(0),
@@ -768,6 +772,18 @@ function esc(s) {
         }, 500);
       }
 
+      /* Refresh de la tabla de Propiedades con debounce: el sync de ML puede
+         tocar varias propiedades en rafaga y cada una re-renderiza la tabla. */
+      let _propertiesRefreshTimer = null;
+      function debouncedPropertiesRefresh() {
+        clearTimeout(_propertiesRefreshTimer);
+        _propertiesRefreshTimer = setTimeout(() => {
+          if (window.__BH && typeof window.__BH.loadProperties === 'function') {
+            try { window.__BH.loadProperties(); } catch (e) { logError('realtime: no se pudo refrescar Propiedades:', e); }
+          }
+        }, 400);
+      }
+
       /* supabase-js v2 ya no acepta table: [array] en un solo .on() — la
          suscripción muere en silencio y el canal desaparece (hallazgo F2: el
          realtime core estaba caído). Un .on() por tabla, mismo handler. */
@@ -807,11 +823,12 @@ function esc(s) {
               scheduleBadgeRefresh();
               break;
             case 'properties':
-              if (event === 'INSERT' || event === 'UPDATE') {
-                upsertPropertyRow(newRecord);
-              } else if (event === 'DELETE') {
-                removePropertyRow(oldRecord.id);
-              }
+              /* La tabla de Propiedades la dibuja admin-propiedades.js con su
+                 propio markup. upsertPropertyRow() (admin-agenda.js) inserta
+                 una fila LEGACY de otra forma: como las filas reales no tienen
+                 data-id, cada cambio de properties dejaba una fila fantasma
+                 arriba. Se delega el redibujado al modulo que la renderiza. */
+              debouncedPropertiesRefresh();
               /* Una propiedad vinculada a un lead cambia → el CRM la muestra en el contexto */
               debouncedCRMRefresh();
               scheduleBadgeRefresh();
@@ -3339,11 +3356,13 @@ function esc(s) {
 
   window.exportPropertiesCSV = async function() {
     if (!window.supabaseClient) return;
-    const { data, error } = await window.supabaseClient.from('properties').select('*').order('created_at', { ascending: false });
+    /* La papelera NO se exporta: son fichas dadas de baja, no parte del inventario. */
+    const { data, error } = await window.supabaseClient.from('properties').select('*').is('deleted_at', null).order('created_at', { ascending: false });
     if (error) { showToast('Error exportando: ' + error.message, 'error'); return; }
     const headers = ['ID', 'Título', 'Tipo', 'Zona', 'Dirección', 'Precio', 'Moneda', 'Dormitorios', 'Baños', 'm²', 'Estado', 'Publicada', 'Fecha'];
-    const rows = data.map(function(p) {
-      return [p.id, p.title, p.property_type, p.zone, p.address, p.price_usd, p.price_currency || 'USD', p.bedrooms, p.bathrooms, p.area_m2, p.status, p.published, p.created_at];
+    const rows = (data || []).map(function(p) {
+      /* La columna real es is_published (la anterior no existia y salia siempre vacia). */
+      return [p.id, p.title, p.property_type, p.zone, p.address, p.price_usd, p.price_currency || 'USD', p.bedrooms, p.bathrooms, p.area_m2, p.status, p.is_published ? 'Sí' : 'No', p.created_at];
     });
     const date = new Date().toISOString().slice(0, 10);
     downloadCSV('propiedades-' + date + '.csv', rows, headers);

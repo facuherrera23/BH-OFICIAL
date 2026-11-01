@@ -1185,37 +1185,6 @@
         </div>`;
     }
 
-    function buildPropertyRowHtml(p) {
-      return `<tr data-id="${p.id}">
-        <td style="font-weight:600; color:#fff;">${esc(p.title)}</td>
-        <td>${esc(p.property_code || '')}</td>
-        <td>${esc(p.zone)}</td>
-        <td>${p.surface_total ? p.surface_total + ' m²' : '-'}</td>
-        <td>${p.rooms || '-'}</td>
-        <td style="font-weight:600; color:var(--accent);">${p.price_usd ? '$ ' + Number(p.price_usd).toLocaleString('es-AR') : '-'}</td>
-        <td><span class="nav-badge" style="background:${p.status === 'venta' ? 'rgba(31,200,195,0.15)' : 'rgba(255,184,0,0.15)'}; color:${p.status === 'venta' ? 'var(--accent)' : 'var(--warning)'};">${esc(p.status || 'venta')}</span></td>
-        <td style="color:${p.owner_id ? '#fff' : 'var(--text-dim)'};">${esc(p.owner_id ? '?' : '—')}</td>
-        <td>
-          <div style="display:flex; gap:4px; flex-wrap:wrap;">
-            ${p.is_published ? '<span class="nav-badge" style="background:rgba(0,200,120,0.15); color:var(--success);">Publicada</span>' : '<span class="nav-badge" style="background:rgba(255,255,255,0.06); color:var(--text-dim);">Borrador</span>'}
-            ${p.featured ? '<span class="nav-badge" style="background:rgba(255,184,0,0.15); color:var(--warning);"><i class="fas fa-star" style="margin-right:4px;"></i>Destacada</span>' : ''}
-            ${p.is_retasada ? '<span class="nav-badge" style="background:rgba(139,92,246,0.15); color:#8b5cf6;"><i class="fas fa-tag" style="margin-right:4px;"></i>Retasada</span>' : ''}
-            ${p.is_oportunidad ? '<span class="nav-badge" style="background:rgba(239,68,68,0.15); color:#ef4444;"><i class="fas fa-bolt" style="margin-right:4px;"></i>Oportunidad</span>' : ''}
-            ${p.is_shared ? '<span class="nav-badge" style="background:rgba(6,182,212,0.15); color:#06b6d4;"><i class="fas fa-share-nodes" style="margin-right:4px;"></i>Compartido</span>' : ''}
-            ${p.is_vendida ? '<span class="nav-badge" style="background:rgba(75,85,99,0.18); color:#4b5563;"><i class="fas fa-check-circle" style="margin-right:4px;"></i>Vendida</span>' : ''}
-            ${p.is_reservada ? '<span class="nav-badge" style="background:rgba(234,179,8,0.18); color:#ca8a04;"><i class="fas fa-lock" style="margin-right:4px;"></i>Reservada</span>' : ''}
-
-          </div>
-        </td>
-        <td>
-          <div style="display:flex; gap:6px; align-items:center;">
-            <button class="btn-action" title="Editar" data-action="editProperty" data-id="' + p.id + '"><i class="fas fa-pen"></i></button>
-            <button class="btn-action danger" title="Eliminar" data-action="deleteProperty" data-id="' + p.id + '"><i class="fas fa-trash"></i></button>
-          </div>
-        </td>
-      </tr>`;
-    }
-
     function buildAgentRowHtml(a) {
       return `<tr data-id="${a.id}">
         <td>
@@ -1372,22 +1341,6 @@
 
     function removeVisitRow(id) {
       const row = $('#visitsTableBody')?.querySelector('tr[data-id="' + id + '"]');
-      if (row) row.remove();
-    }
-
-    function upsertPropertyRow(p) {
-      const tbody = $('#propertiesTableBody');
-      if (!tbody) return;
-      const existing = tbody.querySelector('tr[data-id="' + p.id + '"]');
-      if (existing) {
-        existing.outerHTML = buildPropertyRowHtml(p);
-      } else {
-        tbody.insertAdjacentHTML('afterbegin', buildPropertyRowHtml(p));
-      }
-    }
-
-    function removePropertyRow(id) {
-      const row = $('#propertiesTableBody')?.querySelector('tr[data-id="' + id + '"]');
       if (row) row.remove();
     }
 
@@ -2362,10 +2315,6 @@ window.adminApp.editVisit = async function (id) {
   if (!Object.prototype.hasOwnProperty.call(window, 'removeLeadCard')) Object.defineProperty(window, 'removeLeadCard', { get: () => removeLeadCard, set: (v) => { removeLeadCard = v; }, configurable: true });
   window.__BH.populateBrokerFilters = populateBrokerFilters;
   if (!Object.prototype.hasOwnProperty.call(window, 'populateBrokerFilters')) Object.defineProperty(window, 'populateBrokerFilters', { get: () => populateBrokerFilters, set: (v) => { populateBrokerFilters = v; }, configurable: true });
-  window.__BH.upsertPropertyRow = upsertPropertyRow;
-  if (!Object.prototype.hasOwnProperty.call(window, 'upsertPropertyRow')) Object.defineProperty(window, 'upsertPropertyRow', { get: () => upsertPropertyRow, set: (v) => { upsertPropertyRow = v; }, configurable: true });
-  window.__BH.removePropertyRow = removePropertyRow;
-  if (!Object.prototype.hasOwnProperty.call(window, 'removePropertyRow')) Object.defineProperty(window, 'removePropertyRow', { get: () => removePropertyRow, set: (v) => { removePropertyRow = v; }, configurable: true });
   window.__BH.upsertAgentRow = upsertAgentRow;
   if (!Object.prototype.hasOwnProperty.call(window, 'upsertAgentRow')) Object.defineProperty(window, 'upsertAgentRow', { get: () => upsertAgentRow, set: (v) => { upsertAgentRow = v; }, configurable: true });
   window.__BH.removeAgentRow = removeAgentRow;

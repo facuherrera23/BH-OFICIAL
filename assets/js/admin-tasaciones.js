@@ -263,19 +263,11 @@
 
   /* ------------------------------------------------
      Security: delegated handlers (sin onclick inline; datos externos viajan en data-* esc()'
-     ------------------------------------------------ */
-  on($('#propertiesTableBody'), 'click', (e) => {
-    const upd = e.target.closest('[data-ml-update-prop]');
-    if (upd) { window.adminApp.mlUpdateProperty(upd.dataset.mlUpdateProp, upd.dataset.mlListing || ''); return; }
-    const rem = e.target.closest('[data-ml-remove]');
-    if (rem) { window.adminApp.mlRemoveProperty(rem.dataset.mlListing || '', rem.dataset.mlProp || ''); return; }
-    const pub = e.target.closest('[data-ml-publish]');
-    if (pub) { window.adminApp.mlPublishProperty(pub.dataset.mlPublish); return; }
-    const relaBtn = e.target.closest('[data-rela-action]');
-    if (relaBtn) { window.adminApp.relaPropertyAction(relaBtn.dataset.relaProp, relaBtn.dataset.relaAction); return; }
-    const waBtn = e.target.closest('[data-wa-share]');
-    if (waBtn) { window.adminApp.sharePropertyWhatsApp(waBtn.dataset.waShare, waBtn.dataset.waCode || ''); }
-  });
+     ------------------------------------------------
+     Los handlers de la tabla de PROPIEDADES (ML, RELA y WhatsApp) viven en
+     admin-propiedades.js, que es el modulo que renderiza esos botones. Antes
+     estaban aca y el de WhatsApp ademas estaba duplicado: cada click abria
+     dos chats de WhatsApp. */
 
   /* Delegado "Agendar visita" desde CRM (kanban, detalle de lead, listado).
      Los datos viajan en data-* con esc(); capture corta el bubble ANTES del onclick

@@ -507,7 +507,7 @@
 </thead>
 <tbody id="propertiesTableBody">
 <tr>
-<td colspan="9" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando propiedades...</td>
+<td colspan="10" style="text-align:center; padding:40px; color:var(--text-dim);">Cargando propiedades...</td>
 </tr>
 </tbody>
 </table>
@@ -2320,6 +2320,7 @@
 <option value="oficina">Oficina</option>
 <option value="galpon">Galpón</option>
 <option value="quinta">Quinta</option>
+<option value="ph">PH (Piso Horizontal)</option>
 <option value="otro">Otro</option>
 </select>
 </div>
@@ -2416,6 +2417,10 @@
           <input type="number" name="bathrooms" placeholder="1" min="0" />
         </div>
         <div class="form-field">
+          <label>Baños completos</label>
+          <input type="number" name="full_bathrooms" placeholder="1" min="0" max="20" title="Baños completos (con ducha)" />
+        </div>
+        <div class="form-field">
           <label>Cocheras</label>
           <input type="number" name="garage_spaces" placeholder="1" min="0" />
         </div>
@@ -2456,6 +2461,11 @@
 <input type="checkbox" name="furnished" id="propFurnished" />
 <span class="toggle-slider"></span>
 <span class="toggle-label">Amoblado</span>
+</label>
+<label class="pf-toggle pf-toggle--chip" for="propHasStorage" title="Tiene depósito o baulera">
+<input type="checkbox" name="has_storage" id="propHasStorage" />
+<span class="toggle-slider"></span>
+<span class="toggle-label">Depósito</span>
 </label>
 </div>
 </div>
@@ -3496,7 +3506,7 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 <!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Recursos críticos no cargaron.</strong> Revisá tu conexión a internet y recargá la página (F5). Si persiste, tus datos están a salvo — reintentá más tarde. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script defer src="assets/vendor/supabase-js.umd.js?v=1"></script><script defer src="assets/js/zod.umd.js"></script><script defer src="assets/js/utils.js?v=275"></script><script defer src="assets/js/config.js?v=276"></script><script defer src="assets/js/supabase-client.js?v=275"></script><script defer src="assets/js/cloudinary.js?v=277"></script><script defer src="assets/js/admin-crm-tasks.js?v=14"></script>
 <script defer src="assets/js/admin-crm.js?v=99"></script>
 <script defer src="assets/js/disable-search-autocomplete.js?v=3"></script>
-<script defer src="assets/js/admin-app.js?v=595"></script>
+<script defer src="assets/js/admin-app.js?v=596"></script>
 <script defer src="assets/js/admin-propietarios.js?v=23"></script>
 <script defer src="assets/js/admin-usuarios.js?v=11"></script>
 <script defer src="assets/js/admin-agentes.js?v=11"></script>
@@ -3513,13 +3523,13 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 <script defer src="assets/js/yt-seo-score.js?v=3"></script>
 <script defer src="assets/js/admin-contenido.js?v=20"></script>
 <script defer src="assets/js/admin-portales.js?v=21"></script>
-<script defer src="assets/js/admin-tasaciones.js?v=10"></script>
+<script defer src="assets/js/admin-tasaciones.js?v=11"></script>
 <script defer src="assets/js/admin-supervision-panel.js?v=4"></script>
 <script defer src="assets/js/admin-ficha.js?v=2"></script>
 
 <script defer src="assets/js/zip.js?v=1"></script>
-<script defer src="assets/js/admin-propiedades.js?v=21"></script>
+<script defer src="assets/js/admin-propiedades.js?v=22"></script>
 <script defer src="assets/js/tasacion-calc.js?v=1"></script>
-<script defer src="assets/js/admin-agenda.js?v=21"></script>
+<script defer src="assets/js/admin-agenda.js?v=22"></script>
 <script defer src="assets/js/admin-supervision.js?v=29"></script></body>
 </html>
