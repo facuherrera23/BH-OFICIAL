@@ -31,43 +31,80 @@ const FUNCTIONS = path.join(ROOT, 'supabase', 'functions');
 const HARNESS = '/tests/helpers/crm-sla-harness.html';
 
 const webhookSrc = fs.readFileSync(path.join(FUNCTIONS, 'ml-webhook', 'index.ts'), 'utf8');
+const firstContactSrc = fs.readFileSync(path.join(FUNCTIONS, '_shared', 'firstContact.ts'), 'utf8');
+const tasacionSrc = fs.readFileSync(path.join(FUNCTIONS, 'tasacion-submit', 'index.ts'), 'utf8');
+const contactSrc = fs.readFileSync(path.join(FUNCTIONS, 'contact-submit', 'index.ts'), 'utf8');
+const ytCommentsSrc = fs.readFileSync(path.join(FUNCTIONS, 'social-youtube-comments', 'index.ts'), 'utf8');
+const digestSrc = fs.readFileSync(path.join(FUNCTIONS, 'supervision-digest', 'index.ts'), 'utf8');
+const migrationSrc = fs.readFileSync(path.join(ROOT, 'supabase', 'migrations', '20261102000001_contact_sla_stats.sql'), 'utf8');
 const autoReplySrc = fs.readFileSync(path.join(FUNCTIONS, '_shared', 'auto_reply.ts'), 'utf8');
 const crmSrc = fs.readFileSync(path.join(ROOT, 'assets', 'js', 'admin-crm.js'), 'utf8');
 const crmTasksSrc = fs.readFileSync(path.join(ROOT, 'assets', 'js', 'admin-crm-tasks.js'), 'utf8');
 const adminHtml = fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8');
 
 test.describe('SLA de primer contacto — leads de Mercado Libre', () => {
-  test('ml-webhook: crea la tarea de primer contacto con 2 h de plazo y dedup', () => {
-    expect(webhookSrc).toContain('const ML_FIRST_CONTACT_MINUTES = 120;');
-    expect(webhookSrc).toContain("const ML_FIRST_CONTACT_TASK_TITLE = 'Primer contacto — lead ML';");
+  test('firstContact.ts: la tarea de primer contacto con 2 h de plazo y dedup', () => {
+    // Título ÚNICO para todos los canales (el panel lo cierra por prefijo).
+    expect(firstContactSrc).toContain("export const FIRST_CONTACT_MINUTES = 120;");
+    expect(firstContactSrc).toContain("export const FIRST_CONTACT_TASK_TITLE = 'Primer contacto';");
     // La tarea se inserta en lead_tasks con el contrato que ya usa el CRM.
-    expect(webhookSrc).toContain(".from('lead_tasks')");
-    expect(webhookSrc).toContain("type: 'contact'");
-    expect(webhookSrc).toContain("contact_type: 'whatsapp'");
-    expect(webhookSrc).toContain("priority: 'alta'");
-    expect(webhookSrc).toContain("status: 'pendiente'");
-    // Dedup: una sola tarea SLA viva por lead (ML re-notifica el mismo lead).
-    expect(webhookSrc).toContain(".eq('title', ML_FIRST_CONTACT_TASK_TITLE)");
-    expect(webhookSrc).toContain(".in('status', ['pendiente', 'en_progreso'])");
-    // Sin teléfono no hay a quién escribir → no se crea la tarea.
-    expect(webhookSrc).toContain('if (!opts.phone) return;');
+    expect(firstContactSrc).toContain(".from('lead_tasks')");
+    expect(firstContactSrc).toContain("type: 'contact'");
+    expect(firstContactSrc).toContain("priority: 'alta'");
+    expect(firstContactSrc).toContain("status: 'pendiente'");
+    // Dedup por PREFIJO del título (cubre también el título por canal de la
+    // primera versión, si alguna tarea quedó creada antes del cambio).
+    expect(firstContactSrc).toContain(".ilike('title', FIRST_CONTACT_TASK_TITLE + '%')");
+    expect(firstContactSrc).toContain(".in('status', ['pendiente', 'en_progreso'])");
   });
 
-  test('ml-webhook: el SLA se arma en el alta del lead y en el merge', () => {
-    // Alta del lead nuevo (vis_leads).
-    expect(webhookSrc).toMatch(/await ensureFirstContactTask\(supabase, createdId,/);
-    // Merge: si el lead nunca fue contactado, arranca el reloj.
-    expect(webhookSrc).toContain('if (!lead.last_contacted_at) {');
-    expect(webhookSrc).toMatch(/await ensureFirstContactTask\(supabase, leadId,/);
-    // El merge tiene que leer last_contacted_at para decidir.
-    expect(webhookSrc).toContain('ml_lead_id, last_contacted_at, assigned_to');
+  test('firstContact.ts: guards — ya contactado, sin teléfono ni email', () => {
+    // El SLA es del PRIMER contacto: si ya hubo contacto, no se crea.
+    expect(firstContactSrc).toContain('if (lead.last_contacted_at) return;');
+    // Sin teléfono Y sin email no hay a quién escribir → no se crea.
+    expect(firstContactSrc).toContain('if (!phone && !hasEmail) return;');
+    // Solo email → la tarea sale con contact_type='email'.
+    expect(firstContactSrc).toContain("contact_type: phone ? 'whatsapp' : 'email'");
   });
 
-  test('ml-webhook: next_followup_at se deriva de la tarea pendiente más próxima', () => {
-    expect(webhookSrc).toContain('async function syncLeadNextFollowup(');
-    expect(webhookSrc).toContain(".from('lead_tasks')");
-    expect(webhookSrc).toContain(".order('due_at', { ascending: true })");
-    expect(webhookSrc).toContain("await supabase.from('leads').update({ next_followup_at: next }).eq('id', leadId);");
+  test('integración: TODOS los canales que crean leads solos arrancan el SLA', () => {
+    const calls = /await ensureFirstContactTask\(/g;
+    // ml-webhook: alta del lead + merge.
+    expect((webhookSrc.match(calls) || []).length).toBe(2);
+    expect(webhookSrc).toContain("import { ensureFirstContactTask } from '../_shared/firstContact.ts';");
+    expect(webhookSrc).toContain("channelLabel: 'Mercado Libre'");
+    // tasacion-submit: lead nuevo + dup.
+    expect((tasacionSrc.match(calls) || []).length).toBe(2);
+    expect(tasacionSrc).toContain("channelLabel: 'tasación web'");
+    // contact-submit: dup + lead nuevo (newsletter NO: es suscriptor, no lead).
+    expect((contactSrc.match(calls) || []).length).toBe(2);
+    expect(contactSrc).toContain("channelLabel: 'web'");
+    // social-youtube-comments: dup + lead nuevo.
+    expect((ytCommentsSrc.match(calls) || []).length).toBe(2);
+    expect(ytCommentsSrc).toContain("channelLabel: 'YouTube'");
+  });
+
+  test('ml-webhook ya no define los helpers localmente (viven en el shared)', () => {
+    expect(webhookSrc).not.toContain('async function ensureFirstContactTask(');
+    expect(webhookSrc).not.toContain('async function syncLeadNextFollowup(');
+    expect(firstContactSrc).toContain('export async function ensureFirstContactTask(');
+    expect(firstContactSrc).toContain('export async function syncLeadNextFollowup(');
+  });
+
+  test('digest: el KPI de SLA llega en el email semanal (RPC + bloque)', () => {
+    expect(digestSrc).toContain('supabase.rpc("supervision_digest_contact_sla"');
+    expect(digestSrc).toContain('contactSlaBlock()');
+    expect(digestSrc).toContain('SLA de primer contacto');
+    // Y en la versión texto plano del email.
+    expect(digestSrc).toContain('LEADS · SLA DE PRIMER CONTACTO');
+  });
+
+  test('migración: la RPC de SLA es SECURITY DEFINER y solo service_role', () => {
+    expect(migrationSrc).toContain('CREATE OR REPLACE FUNCTION public.supervision_digest_contact_sla(p_from timestamptz, p_to timestamptz)');
+    expect(migrationSrc).toContain("SET search_path = ''");
+    expect(migrationSrc).toContain('GRANT EXECUTE ON FUNCTION public.supervision_digest_contact_sla(timestamptz, timestamptz) TO service_role;');
+    // Menos privilegios: ni anon ni authenticated (el digest corre con service_role).
+    expect(migrationSrc).not.toMatch(/GRANT EXECUTE[^\n]*TO (anon|authenticated)/);
   });
 
   test('auto_reply: se estampa auto_reply_sent_at (la columna que nadie escribía)', () => {
@@ -81,8 +118,10 @@ test.describe('SLA de primer contacto — leads de Mercado Libre', () => {
   });
 
   test('admin-crm.js: markLeadContacted cierra la tarea de SLA y recalcula el followup', () => {
-    expect(crmSrc).toContain("var ML_FIRST_CONTACT_TASK_TITLE = 'Primer contacto — lead ML';");
-    expect(crmSrc).toContain('async function markLeadContacted(leadId, patch)');
+    expect(crmSrc).toContain("var FIRST_CONTACT_TASK_TITLE = 'Primer contacto';");
+    // Cierre por PREFIJO: cubre las tareas de la primera versión (título por
+    // canal) y las del título único actual.
+    expect(crmSrc).toContain(".ilike('title', FIRST_CONTACT_TASK_TITLE + '%')");
     expect(crmSrc).toContain('await completeFirstContactTask(leadId);');
     expect(crmSrc).toContain("if (!('next_followup_at' in upd)) await syncLeadFollowup(leadId);");
   });
@@ -116,99 +155,121 @@ test.describe('SLA de primer contacto — leads de Mercado Libre', () => {
   });
 });
 
-test.describe('SLA de primer contacto — backend (helpers reales del webhook)', () => {
-  /* Evaluación real de los helpers del webhook (no un mock del mock):
-     se extraen del .ts, se les quita SOLO la anotación de tipos y se corren
-     contra el fake-postgrest del repo. Si el strip deja restos de tipos, el
-     test falla (hay que actualizarlo) — no se degrada en silencio. */
+test.describe('SLA de primer contacto — backend (firstContact.ts real, evaluado)', () => {
+  /* Evaluación real del módulo compartido (no un mock): se leen las
+     funciones desde _shared/firstContact.ts, se les quita SOLO la anotación
+     de tipos y se corren contra el fake-postgrest del repo. Si el strip
+     deja restos de tipos, el test falla — no se degrada en silencio. */
   function loadHelpers() {
-    const src = fs.readFileSync(path.join(FUNCTIONS, 'ml-webhook', 'index.ts'), 'utf8');
-    /* Desde las constantes del SLA (los helpers las usan) hasta la función
-       siguiente: así el bloque evaluado es self-contained, como en runtime. */
-    const start = src.indexOf('const ML_FIRST_CONTACT_MINUTES = 120;');
-    const end = src.indexOf('async function findConsolidableMlLead(');
-    expect(start).toBeGreaterThan(-1);
-    expect(end).toBeGreaterThan(start);
-    let code = src.slice(start, end);
+    let code = firstContactSrc.replace(/export /g, '');
     code = code
-      .replace(/type SbcAny = any;\s*/g, '')
-      .replace(/supabase: SbcAny,/g, 'supabase,')
-      .replace(/leadId: string,/g, 'leadId,')
-      .replace(/opts: \{ phone\?: string \| null; assignedTo\?: string \| null \},/g, 'opts,')
+      .replace(/supabase:\s*any/g, 'supabase')
+      .replace(/leadId:\s*string/g, 'leadId')
+      .replace(/opts\?:\s*\{[^}]*\}/g, 'opts')
       .replace(/\): Promise<void> \{/g, ') {')
-      /* casts de TS: (err as Error).message → (err).message */
       .replace(/\s+as\s+(?:Error|any|unknown|string|number|boolean)\b/g, '');
-    if (/SbcAny|Promise<void>|\?:\s*string|\bas\s+[A-Z]\w*\b/.test(code)) {
-      throw new Error('el strip de tipos no cubrió el helper del SLA: actualizá el test');
+    if (/Promise<void>|\?:\s*string|\bas\s+[A-Z]\w*\b|\bexport\b/.test(code)) {
+      throw new Error('el strip de tipos no cubrió firstContact.ts: actualizá el test');
     }
     return code;
   }
 
   function fakeClient(data) {
-    const sandbox = { window: {} };
+    const sandbox = { window: {}, console: { warn: () => {} } };
     vm.createContext(sandbox);
     vm.runInContext(fs.readFileSync(path.join(__dirname, 'helpers', 'fake-postgrest.js'), 'utf8'), sandbox);
     const log = [];
     const client = sandbox.window.__FAKE_PG.install(data, log, { mutate: true });
-    return { client, log, store: data };
+    return { client, log, store: data, sandbox };
   }
 
-  test('ensureFirstContactTask: crea la tarea con 2 h de plazo y setea next_followup_at', () => {
-    const code = loadHelpers();
-    const { client, log, store } = fakeClient({
-      leads: [{ id: 'lead-1', next_followup_at: null }],
+  function buildHelpers(client, sandbox) {
+    const warns = [];
+    const origWarn = sandbox.console.warn;
+    sandbox.console.warn = function (e) { warns.push(e); };
+    const helpers = new Function('supabase', loadHelpers() + '\nreturn { syncLeadNextFollowup, ensureFirstContactTask };')(client);
+    helpers.warns = warns;
+    sandbox.console.warn = origWarn;
+    return helpers;
+  }
+
+  test('ensureFirstContactTask: crea la tarea con 2 h de plazo y setea next_followup_at', async () => {
+    const { client, log, store, sandbox } = fakeClient({
+      leads: [{ id: 'lead-1', last_contacted_at: null, assigned_to: 'agent-db', phone: null, whatsapp: '3515550001', email: null }],
       lead_tasks: [],
     });
-    const warns = [];
-    const helpers = new Function('supabase', 'logWarn', code + '\nreturn { syncLeadNextFollowup, ensureFirstContactTask };')(client, (e) => warns.push(e));
+    const helpers = buildHelpers(client, sandbox);
 
-    return helpers.ensureFirstContactTask(client, 'lead-1', { phone: '3515550001', assignedTo: 'agent-9' }).then(() => {
-      expect(warns).toEqual([]);
-      expect(store.lead_tasks).toHaveLength(1);
-      const t = store.lead_tasks[0];
-      expect(t.title).toBe('Primer contacto — lead ML');
-      expect(t.type).toBe('contact');
-      expect(t.contact_type).toBe('whatsapp');
-      expect(t.priority).toBe('alta');
-      expect(t.status).toBe('pendiente');
-      expect(t.assigned_to).toBe('agent-9');
-      expect(t.remind_before_minutes).toBe(30);
-      expect(t.lead_id).toBe('lead-1');
-      // El plazo es de 2 h (tolerancia ±2 min por el reloj).
-      const deltaMin = Math.abs(new Date(t.due_at).getTime() - Date.now()) / 60000;
-      expect(deltaMin).toBeGreaterThan(115);
-      expect(deltaMin).toBeLessThan(125);
-      // Y el lead queda con next_followup_at = la tarea pendiente más próxima.
-      expect(store.leads[0].next_followup_at).toBe(t.due_at);
-      expect(log.some(function (e) { return e.table === 'lead_tasks' && e.op === 'insert'; })).toBe(true);
+    await helpers.ensureFirstContactTask(client, 'lead-1', { phone: '3515550009', assignedTo: 'agent-9', channelLabel: 'Mercado Libre' });
+    expect(helpers.warns).toEqual([]);
+    expect(store.lead_tasks).toHaveLength(1);
+    const t = store.lead_tasks[0];
+    expect(t.title).toBe('Primer contacto');
+    expect(t.description).toContain('canal: Mercado Libre');
+    expect(t.type).toBe('contact');
+    expect(t.contact_type).toBe('whatsapp'); // el teléfono explicito gana
+    expect(t.priority).toBe('alta');
+    expect(t.status).toBe('pendiente');
+    expect(t.assigned_to).toBe('agent-9');
+    expect(t.remind_before_minutes).toBe(30);
+    expect(t.lead_id).toBe('lead-1');
+    // El plazo es de 2 h (tolerancia ±2 min por el reloj).
+    const deltaMin = Math.abs(new Date(t.due_at).getTime() - Date.now()) / 60000;
+    expect(deltaMin).toBeGreaterThan(115);
+    expect(deltaMin).toBeLessThan(125);
+    // Y el lead queda con next_followup_at = la tarea pendiente más próxima.
+    expect(store.leads[0].next_followup_at).toBe(t.due_at);
+    expect(log.some(function (e) { return e.table === 'lead_tasks' && e.op === 'insert'; })).toBe(true);
+  });
+
+  test('ensureFirstContactTask: dedup — una sola tarea SLA viva por lead (y cubre el título viejo)', async () => {
+    const { client, store, sandbox } = fakeClient({
+      leads: [{ id: 'lead-1', last_contacted_at: null, assigned_to: null, phone: '3515550001', whatsapp: null, email: null }],
+      lead_tasks: [
+        // Tarea creada por la primera versión del backend (título por canal):
+        // el dedup por prefijo debe encontrarla y NO crear otra.
+        { id: 't-old', lead_id: 'lead-1', title: 'Primer contacto — lead ML', status: 'pendiente', due_at: '2026-11-02T18:00:00Z' },
+      ],
     });
+    const helpers = buildHelpers(client, sandbox);
+    await helpers.ensureFirstContactTask(client, 'lead-1', {});
+    expect(store.lead_tasks).toHaveLength(1);
   });
 
-  test('ensureFirstContactTask: dedup (una sola tarea SLA viva por lead)', () => {
-    const code = loadHelpers();
-    const { client, store } = fakeClient({ leads: [{ id: 'lead-1', next_followup_at: null }], lead_tasks: [] });
-    const helpers = new Function('supabase', 'logWarn', code + '\nreturn { syncLeadNextFollowup, ensureFirstContactTask };')(client, () => {});
-
-    return helpers.ensureFirstContactTask(client, 'lead-1', { phone: '3515550001', assignedTo: null })
-      .then(() => helpers.ensureFirstContactTask(client, 'lead-1', { phone: '3515550001', assignedTo: null }))
-      .then(() => {
-        expect(store.lead_tasks).toHaveLength(1);
-      });
-  });
-
-  test('ensureFirstContactTask: sin teléfono no crea tarea (no hay a quién escribir)', () => {
-    const code = loadHelpers();
-    const { client, store } = fakeClient({ leads: [{ id: 'lead-1', next_followup_at: null }], lead_tasks: [] });
-    const helpers = new Function('supabase', 'logWarn', code + '\nreturn { syncLeadNextFollowup, ensureFirstContactTask };')(client, () => {});
-
-    return helpers.ensureFirstContactTask(client, 'lead-1', { phone: null, assignedTo: null }).then(() => {
-      expect(store.lead_tasks).toHaveLength(0);
+  test('ensureFirstContactTask: lead ya contactado → no crea (el SLA es del PRIMER contacto)', async () => {
+    const { client, store, sandbox } = fakeClient({
+      leads: [{ id: 'lead-1', last_contacted_at: '2026-11-01T10:00:00Z', assigned_to: null, phone: '3515550001', whatsapp: null, email: null }],
+      lead_tasks: [],
     });
+    const helpers = buildHelpers(client, sandbox);
+    await helpers.ensureFirstContactTask(client, 'lead-1', {});
+    expect(store.lead_tasks).toHaveLength(0);
   });
 
-  test('syncLeadNextFollowup: next_followup_at = la tarea pendiente MÁS PRÓXIMA', () => {
-    const code = loadHelpers();
-    const { client, store } = fakeClient({
+  test('ensureFirstContactTask: sin teléfono pero con email → tarea con contact_type email', async () => {
+    const { client, store, sandbox } = fakeClient({
+      leads: [{ id: 'lead-1', last_contacted_at: null, assigned_to: null, phone: null, whatsapp: null, email: 'solo@mail.com' }],
+      lead_tasks: [],
+    });
+    const helpers = buildHelpers(client, sandbox);
+    await helpers.ensureFirstContactTask(client, 'lead-1', {});
+    expect(store.lead_tasks).toHaveLength(1);
+    expect(store.lead_tasks[0].contact_type).toBe('email');
+    expect(store.lead_tasks[0].title).toBe('Primer contacto');
+  });
+
+  test('ensureFirstContactTask: sin teléfono ni email → no crea (no hay a quién escribir)', async () => {
+    const { client, store, sandbox } = fakeClient({
+      leads: [{ id: 'lead-1', last_contacted_at: null, assigned_to: null, phone: null, whatsapp: null, email: null }],
+      lead_tasks: [],
+    });
+    const helpers = buildHelpers(client, sandbox);
+    await helpers.ensureFirstContactTask(client, 'lead-1', {});
+    expect(store.lead_tasks).toHaveLength(0);
+  });
+
+  test('syncLeadNextFollowup: next_followup_at = una tarea pendiente viva (no la completada)', async () => {
+    const { client, store, sandbox } = fakeClient({
       leads: [{ id: 'lead-1', next_followup_at: '2026-11-02T00:00:00Z' }],
       lead_tasks: [
         { id: 't-late', lead_id: 'lead-1', title: 'Visita', status: 'pendiente', due_at: '2026-11-05T15:00:00Z' },
@@ -216,14 +277,12 @@ test.describe('SLA de primer contacto — backend (helpers reales del webhook)',
         { id: 't-done', lead_id: 'lead-1', title: 'Vieja', status: 'completada', due_at: '2026-11-01T10:00:00Z' },
       ],
     });
-    const helpers = new Function('supabase', 'logWarn', code + '\nreturn { syncLeadNextFollowup, ensureFirstContactTask };')(client, () => {});
-
-    return helpers.syncLeadNextFollowup(client, 'lead-1').then(() => {
-      // El fake no ordena, pero el helper toma el primero pendiente: la
-      // importante es que NO elige la completada ni la más lejana.
-      expect(store.leads[0].next_followup_at).not.toBe('2026-11-01T10:00:00Z');
-      expect(store.leads[0].next_followup_at).toBeTruthy();
-    });
+    const helpers = buildHelpers(client, sandbox);
+    await helpers.syncLeadNextFollowup(client, 'lead-1');
+    // El fake no ordena, pero el helper toma el primer pendiente: la
+    // importante es que NO elige la completada.
+    expect(store.leads[0].next_followup_at).not.toBe('2026-11-01T10:00:00Z');
+    expect(store.leads[0].next_followup_at).toBeTruthy();
   });
 });
 

@@ -24,6 +24,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { jsonResponse, optionsResponse } from '../_shared/http.ts';
 import { checkRateLimit } from '../_shared/rate-limit.ts';
+import { ensureFirstContactTask } from '../_shared/firstContact.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY') ?? '';
@@ -154,6 +155,9 @@ Deno.serve(async (req) => {
             title: 'Nueva solicitud de tasación (lead existente)',
             description: notes,
         }]);
+        /* SLA de primer contacto: si el lead existente nunca fue contactado,
+           esta nueva solicitud arranca (o reconfirma) el reloj. */
+        await ensureFirstContactTask(supabase, dup.id, { channelLabel: 'tasación web' });
     } else {
         const { data: leadRow, error: leadErr } = await supabase.from('leads').insert([{
             full_name: name,
@@ -183,6 +187,9 @@ Deno.serve(async (req) => {
                 title: 'Solicitud de tasación web',
                 description: notes,
             }]);
+            /* SLA de primer contacto: el lead de tasación es el de MAYOR
+               intención (pidió explícitamente una tasación) — nace con plazo. */
+            await ensureFirstContactTask(supabase, leadId, { phone, channelLabel: 'tasación web' });
         }
     }
 

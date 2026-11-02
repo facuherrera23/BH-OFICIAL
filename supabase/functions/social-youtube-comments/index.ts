@@ -27,6 +27,7 @@ import { jsonResponse, optionsResponse } from '../_shared/http.ts';
 import { requireAdmin } from '../_shared/auth.ts';
 import { rateLimitMiddleware } from '../_shared/rate-limit.ts';
 import { getSocialAccessToken } from '../_shared/social.ts';
+import { ensureFirstContactTask } from '../_shared/firstContact.ts';
 
 const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -334,6 +335,9 @@ Deno.serve(async (req) => {
                         description: notes,
                         created_by: adminId,
                     }]);
+                    /* SLA de primer contacto: si el lead existente nunca fue
+                       contactado, este comentario arranca (o reconfirma) el reloj. */
+                    await ensureFirstContactTask(supabase, dup.id, { channelLabel: 'YouTube' });
                     await supabase.from('audit_log').insert({
                         user_id: adminId,
                         action: 'yt_comment_lead',
@@ -375,6 +379,10 @@ Deno.serve(async (req) => {
                 description: notes,
                 created_by: adminId,
             }]);
+
+            /* SLA de primer contacto: el lead nace con plazo (el comentario
+               es una consulta pública — mismo criterio que ML y el landing). */
+            await ensureFirstContactTask(supabase, lead.id, { channelLabel: 'YouTube' });
 
             /* Marca de idempotencia + auditoría. */
             await supabase.from('audit_log').insert({

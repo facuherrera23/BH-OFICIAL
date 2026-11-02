@@ -11,6 +11,7 @@ import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { jsonResponse, optionsResponse } from '../_shared/http.ts';
 import { checkRateLimit } from '../_shared/rate-limit.ts';
+import { ensureFirstContactTask } from '../_shared/firstContact.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY') ?? '';
@@ -121,6 +122,9 @@ Deno.serve(async (req: Request) => {
           title: 'Nueva consulta desde la web (lead existente)',
           description: message,
         }]);
+        /* SLA de primer contacto: si el lead existente nunca fue contactado,
+           esta nueva consulta arranca (o reconfirma) el reloj. */
+        await ensureFirstContactTask(supabase, dup.id, { channelLabel: 'web' });
       }
       return jsonResponse(200, { ok: true, duplicate: true }, req);
     }
@@ -180,10 +184,17 @@ Deno.serve(async (req: Request) => {
     utm_campaign: clip(String(payload.utm_campaign ?? ''), 120) || null,
   };
 
-  const { error } = await supabase.from('leads').insert([record]);
-  if (error) {
+  const { data: newLead, error } = await supabase.from('leads').insert([record]).select('id').single();
+  if (error || !newLead) {
     console.error('[contact-submit] insert error:', error);
     return jsonResponse(500, { error: 'No pudimos registrar tu consulta. Probá de nuevo.' }, req);
+  }
+
+  /* SLA de primer contacto (2026-11-02): el lead del landing nace con plazo —
+     tarea "Primer contacto" en la Agenda + next_followup_at. Sin teléfono
+     pero con email, la tarea sale con contact_type='email'. */
+  if (newLead.id) {
+    await ensureFirstContactTask(supabase, newLead.id, { channelLabel: 'web' });
   }
 
   return jsonResponse(200, { ok: true }, req);

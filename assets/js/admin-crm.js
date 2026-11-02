@@ -3216,12 +3216,14 @@ async function syncLeadFollowup(leadId) {
 }
 
 /* ─── SLA de primer contacto (2026-11-02) ───
-   El webhook de Mercado Libre crea la tarea "Primer contacto — lead ML" con
-   2 h de plazo. Cuando el agente registra el contacto, la tarea se cierra
-   sola: si no, quedaría viva y el badge "tareas vencidas" del sidebar
-   mentaría. El título DEBE coincidir con ML_FIRST_CONTACT_TASK_TITLE en
-   supabase/functions/ml-webhook/index.ts (no hay bundle compartido). */
-var ML_FIRST_CONTACT_TASK_TITLE = 'Primer contacto — lead ML';
+   TODOS los canales que crean leads solos (ML, tasación web, landing,
+   comentarios de YouTube) crean esta tarea con 2 h de plazo desde
+   _shared/firstContact.ts. Cuando el agente registra el contacto, la tarea
+   se cierra sola: si no, quedaría viva y el badge "tareas vencidas" del
+   sidebar mentaría. El cierre es por PREFIJO del título: la primera versión
+   del backend usaba títulos por canal ("Primer contacto — lead ML") y así
+   se cierran también las ya creadas. */
+var FIRST_CONTACT_TASK_TITLE = 'Primer contacto';
 
 async function completeFirstContactTask(leadId) {
   try {
@@ -3232,7 +3234,7 @@ async function completeFirstContactTask(leadId) {
         completed_note: 'Primer contacto registrado'
       })
       .eq('lead_id', leadId)
-      .eq('title', ML_FIRST_CONTACT_TASK_TITLE)
+      .ilike('title', FIRST_CONTACT_TASK_TITLE + '%')
       .in('status', ['pendiente', 'en_progreso']);
     if (r.error) console.warn('[crm] close first-contact task:', r.error.message);
   } catch (e) { console.warn('[crm] close first-contact task:', e.message); }

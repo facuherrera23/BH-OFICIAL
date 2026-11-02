@@ -55,6 +55,13 @@
 
   function applyFilter(rows, f) {
     switch (f.t) {
+      case 'ilike': {
+        var needleLike = String(f.val === null || f.val === undefined ? '' : f.val).replace(/^%|%$/g, '').toLowerCase();
+        return rows.filter(function (r) {
+          var v = r[f.col];
+          return String(v === null || v === undefined ? '' : v).toLowerCase().indexOf(needleLike) !== -1;
+        });
+      }
       case 'is': {
         var want = f.val === undefined ? null : f.val;
         return rows.filter(function (r) {
@@ -114,6 +121,8 @@
       upsert: function (p) { op = 'upsert'; payload = p; return q; },
       is: function (col, val) { filters.push({ t: 'is', col: col, val: val }); return q; },
       not: function (col, op, val) { filters.push({ t: 'not', col: col, op: op, val: val }); return q; },
+      ilike: function (col, val) { filters.push({ t: 'ilike', col: col, val: val }); return q; },
+      like: function (col, val) { filters.push({ t: 'ilike', col: col, val: val }); return q; },
       eq: function (col, val) { filters.push({ t: 'eq', col: col, val: val }); return q; },
       neq: function (col, val) { filters.push({ t: 'neq', col: col, val: val }); return q; },
       or: function (cond) { filters.push({ t: 'or', cond: cond }); return q; },
