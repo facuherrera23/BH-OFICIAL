@@ -529,8 +529,13 @@ async function submitTasacionRequest(){
         },
       }),
     });
+    /* Status check ANTES de parsear (react-doctor): el cuerpo de error se lee
+       solo en el branch de fallo; el de éxito, recién después. */
+    if (!res.ok) {
+      const errOut = await res.json().catch(() => ({}));
+      throw new Error(errOut.error || ('HTTP ' + res.status));
+    }
     const out = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(out.error || ('HTTP ' + res.status));
     if (typeof window.bhTrack === 'function') window.bhTrack('tasacion_request_submit', { tipo: tipo || null, operacion: operacion || null });
     const escName = (window.BHUtils && typeof window.BHUtils.esc === 'function') ? window.BHUtils.esc(name) : '';
     if (card) {
