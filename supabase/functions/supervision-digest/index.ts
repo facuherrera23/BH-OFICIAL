@@ -112,7 +112,7 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
      por el sample oldest-first) y filtraba por a.severity — columna que
      audit_log no tiene (usa status: success|error + error_code), por eso
      Exitosas/Fallidas daban siempre 0. */
-  const [statsRes, usersRes, ytPublishedRes, ytFailedRes, ytPendingRes] = await Promise.all([
+  const [statsRes, usersRes, ytPublishedRes, ytFailedRes, ytPendingRes, slaRes] = await Promise.all([
     supabase.rpc("supervision_digest_stats", { p_from: weekAgo, p_to: now } as any),
     supabase.from("profiles").select("id, full_name, email, role").eq("is_active", true),
     /* Contenido / YouTube: el digest también mira el módulo de contenido.
@@ -123,6 +123,9 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
       .eq("platform", "youtube").eq("status", "failed").gte("created_at", weekAgo),
     supabase.from("social_posts").select("id", { count: "exact", head: true })
       .eq("platform", "youtube").eq("status", "publishing"),
+    /* SLA de primer contacto (migración 20261102000001): dónde muere el
+       funnel comercial — leads contactados en <2h / 2-24h / >24h / nunca. */
+    supabase.rpc("supervision_digest_contact_sla", { p_from: weekAgo, p_to: now } as any),
   ]);
 
   const stats = (statsRes.data || {}) as any;
@@ -208,6 +211,8 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
       youtubeFailed: ytFailedRes.count || 0,
       youtubePending: ytPendingRes.count || 0,
     },
+    /* SLA de primer contacto (RPC supervision_digest_contact_sla). */
+    contactSla: (slaRes.data || {}) as any,
     userNames,
     meta: {
       totalAuditEvents: stats.meta?.totalAuditEvents ?? k.actionsTotal ?? 0,
@@ -390,6 +395,67 @@ function buildEmailHTML(data: any, config: DigestConfig): string {
     `;
   };
 
+  /* SLA de primer contacto: dónde muere el funnel comercial (2026-11-02). */
+  const contactSlaBlock = () => {
+    const s = d.contactSla;
+    if (!s || s.total === undefined) return "";
+    const pct = (n: number) => (s.total > 0 ? Math.round((n / s.total) * 100) : 0);
+    const median = s.medianHours != null
+      ? (s.medianHours >= 48 ? (s.medianHours / 24).toFixed(1) + " días" : Number(s.medianHours).toFixed(1) + " h")
+      : "—";
+    const under2Color = pct(s.contactUnder2h) >= 50 ? "#1FC8C3" : (s.contactUnder2h > 0 ? severityColors.medium : severityColors.critical);
+    return `
+      <h3 style="margin:24px 0 12px;font-size:16px;color:#111;">Leads · SLA de primer contacto</h3>
+      <table role="presentation" style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#f4f4f4;">
+            <th style="padding:10px;text-align:left;border-bottom:2px solid #ddd;">Tiempo hasta el primer contacto</th>
+            <th style="padding:10px;text-align:right;border-bottom:2px solid #ddd;">Leads</th>
+            <th style="padding:10px;text-align:right;border-bottom:2px solid #ddd;">%</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;">Menos de 2 horas <span style="color:#888;">(objetivo)</span></td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;font-weight:600;color:${under2Color};">${formatNumber(s.contactUnder2h || 0)}</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;font-weight:600;color:${under2Color};">${pct(s.contactUnder2h || 0)}%</td>
+          </tr>
+          <tr style="background:#fafafa;">
+            <td style="padding:10px;border-bottom:1px solid #eee;">Entre 2 y 24 horas</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;">${formatNumber(s.contact2to24h || 0)}</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;">${pct(s.contact2to24h || 0)}%</td>
+          </tr>
+          <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;">Después de 24 horas <span style="color:#888;">(se enfrían)</span></td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;font-weight:600;color:${(s.contactOver24h || 0) > 0 ? severityColors.medium : "#111"};">${formatNumber(s.contactOver24h || 0)}</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;">${pct(s.contactOver24h || 0)}%</td>
+          </tr>
+          <tr style="background:#fafafa;">
+            <td style="padding:10px;border-bottom:1px solid #eee;">Nunca contactados</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;font-weight:600;color:${(s.neverContacted || 0) > 0 ? severityColors.critical : "#111"};">${formatNumber(s.neverContacted || 0)}</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;">${pct(s.neverContacted || 0)}%</td>
+          </tr>
+          <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;">Mediana al primer contacto</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;font-weight:600;">${median}</td>
+            <td style="padding:10px;border-bottom:1px solid #eee;"></td>
+          </tr>
+          <tr style="background:#fafafa;">
+            <td style="padding:10px;border-bottom:1px solid #eee;">Mercado Libre: contactados en <2 h</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;font-weight:600;">${formatNumber(s.mlUnder2h || 0)} de ${formatNumber(s.mlTotal || 0)}</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;">${s.mlTotal > 0 ? Math.round(((s.mlUnder2h || 0) / s.mlTotal) * 100) : 0}%</td>
+          </tr>
+          <tr>
+            <td style="padding:10px;">Backlog activo sin contacto >48 h <span style="color:#888;">(rescatable)</span></td>
+            <td style="padding:10px;text-align:right;font-weight:600;color:${(s.untouchedStale || 0) > 0 ? severityColors.medium : "#111"};">${formatNumber(s.untouchedStale || 0)}</td>
+            <td style="padding:10px;"></td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="margin-top:10px;color:#888;font-size:12px;">Todo lead que entra solo (ML, tasación web, landing, YouTube) nace con la tarea "Primer contacto" de 2 h en la Agenda. La línea de base de esta métrica era 0% en <2 h.</p>
+    `;
+  };
+
   const ctaButton = `<div style="text-align:center;margin-top:32px;"><a href="${dashboardUrl}#tab-supervision" style="display:inline-block;background:#1FC8C3;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Ver Centro de Supervisión Completo</a></div>`;
 
   return `
@@ -455,6 +521,8 @@ function buildEmailHTML(data: any, config: DigestConfig): string {
 
       ${trendChart()}
 
+      ${contactSlaBlock()}
+
       ${contenidoBlock()}
 
       ${ctaButton}
@@ -511,6 +579,17 @@ ALERTAS SIN ASIGNAR (Críticas/Alta): ${formatNumber(d.kpis.unassignedAlerts)}
 TENDENCIA SEMANAL
 ${"-".repeat(20)}
 ${Object.entries(d.trends?.dailyActivity || {}).map(([day, v]) => `${day}: ${formatNumber(v.total)} acciones, ${formatNumber(v.errors)} errores, ${formatNumber(v.alerts)} alertas`).join("\n")}
+
+LEADS · SLA DE PRIMER CONTACTO
+${"-".repeat(20)}
+Leads nuevos (semana): ${formatNumber(d.contactSla?.total || 0)}
+Contactados en <2 h: ${formatNumber(d.contactSla?.contactUnder2h || 0)}
+Entre 2 y 24 h: ${formatNumber(d.contactSla?.contact2to24h || 0)}
+Después de 24 h: ${formatNumber(d.contactSla?.contactOver24h || 0)}
+Nunca contactados: ${formatNumber(d.contactSla?.neverContacted || 0)}
+Mediana al primer contacto: ${d.contactSla?.medianHours != null ? Number(d.contactSla.medianHours).toFixed(1) + " h" : "—"}
+Mercado Libre: ${formatNumber(d.contactSla?.mlUnder2h || 0)} de ${formatNumber(d.contactSla?.mlTotal || 0)} en <2 h
+Backlog activo sin contacto >48 h: ${formatNumber(d.contactSla?.untouchedStale || 0)}
 
 CONTENIDO · YOUTUBE
 ${"-".repeat(20)}
