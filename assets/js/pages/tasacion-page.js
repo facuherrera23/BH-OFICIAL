@@ -59,6 +59,10 @@ const urlParams = new URLSearchParams(window.location.search);
 
 let TASACION_ID = urlParams.get('id');
 const _isPrintMode = urlParams.get('print') === '1';
+/* Prefill desde lead (2026-11-02): el botón "Iniciar tasación" del CRM abre
+   tasacion.html?lead=<uuid> en una tab. Solo aplica en modo agente (pasó el
+   gate de sesión) y sin ?id= — editar una tasación existente manda. */
+const LEAD_ID = urlParams.get('lead');
 
   /* Último valor final calculado por recalcAll(). La moneda depende de f_destino:
      Alquiler → $ (ARS mensual, persiste en valuation_ars), Venta → U$S (valuation_usd). */
@@ -559,6 +563,29 @@ async function submitTasacionRequest(){
 }
 
 
+/* ===== PREFILL DESDE LEAD (2026-11-02) =====
+   Precarga solicitante/teléfono del lead y la dirección del template fijo que
+   escribe tasacion-submit ("Solicitud de tasación web — <dirección> (...").
+   El `(...` puede traer tipo/operación/superficie: se parsea solo el destino
+   (Alquilar → f_destino). NO pisa campos ya completados. */
+function prefillTasacionFromLead(lead){
+  const notes = String(lead.notes || '');
+  const m = notes.match(/Solicitud de tasación web — ([^\n]+)/);
+  const dir = m ? m[1].replace(/\s*\([^)]*\)\s*$/, '').trim() : '';
+  const sol = document.getElementById('f_solicitante');
+  const tel = document.getElementById('f_telefono');
+  const dirEl = document.getElementById('f_direccion');
+  if (sol && !sol.value && lead.full_name) sol.value = lead.full_name;
+  if (tel && !tel.value && (lead.whatsapp || lead.phone)) tel.value = lead.whatsapp || lead.phone;
+  if (dirEl && !dirEl.value && dir) dirEl.value = dir;
+  if (/\bAlquilar\b/i.test(notes)) {
+    const d = document.getElementById('f_destino');
+    if (d) d.value = 'Alquiler';
+  }
+  _updateHeroAddr();
+  showToast('Datos del lead precargados — completá el análisis comparativo');
+}
+
 async function saveToSupabase(finalize){
   if(_saving) return false;
   /* CONVERSIÓN 2026-10-26: medir uso del tasacionero (intención de guardar).
@@ -585,6 +612,10 @@ async function saveToSupabase(finalize){
   try{
     recalcAll();
     const formData = collectFormData();
+    /* Vínculo lead→tasación: `tasaciones` NO tiene columna lead_id (verificado
+       contra information_schema 2026-11-02) — la referencia vive en el JSONB
+       `data.lead_id`, solo cuando el wizard abrió con ?lead= sin ?id=. */
+    if (LEAD_ID && !TASACION_ID) formData.lead_id = LEAD_ID;
     const title = formData.fields.f_direccion || formData.fields.f_barrio || 'Sin título';
     const status = finalize ? 'finalized' : 'draft';
     const isAlquiler = formData.fields.f_destino === 'Alquiler';
@@ -608,6 +639,18 @@ async function saveToSupabase(finalize){
         const url = new URL(window.location);
         url.searchParams.set('id', data.id);
         window.history.replaceState({}, '', url);
+        /* Trazas desde lead (2026-11-02): la tasación recién creada queda en
+           el historial del lead. Best-effort — el guardado no se bloquea. */
+        if (LEAD_ID) {
+          try {
+            await _supabase.from('lead_activities').insert([{
+              lead_id: LEAD_ID,
+              activity_type: 'note',
+              title: 'Tasación creada: ' + (title || 'sin título'),
+              description: 'Creada desde el panel con los datos precargados del lead (borrador hasta Finalizar).'
+            }]);
+          } catch (_) { /* traza best-effort */ }
+        }
       }
     }
     document.getElementById('lastSaved').textContent = 'Guardado ' + new Date().toLocaleTimeString('es-AR');
@@ -1127,6 +1170,28 @@ async function init(){
   } else {
     addComparable();
   }
+
+  /* Prefill desde lead (2026-11-02): botón "Iniciar tasación" del CRM.
+     Solo modo agente (pasó el gate de sesión) y sin ?id=. Falla suave:
+     sin acceso al lead (RLS/eliminado), el wizard arranca vacío. */
+  if (LEAD_ID && !TASACION_ID) {
+    try {
+      const { data: lrow, error: lerr } = await _supabase
+        .from('leads')
+        .select('full_name, phone, whatsapp, notes, source')
+        .eq('id', LEAD_ID)
+        .maybeSingle();
+      if (lerr) throw lerr;
+      if (lrow && lrow.source === 'tasacion') {
+        prefillTasacionFromLead(lrow);
+      } else {
+        showToast('El lead no está disponible — cargá los datos a mano');
+      }
+    } catch (e) {
+      console.warn('Prefill desde lead falló:', e);
+    }
+  }
+
   recalcAll();
   makeAccordions();
 }

@@ -1290,6 +1290,12 @@ function contactSectionHtml(lead, firstProp, props) {
   row += hasProps
     ? '<button class="crm-contact-btn" id="crmSurveyBtn" type="button" title="Enviar encuesta de visita por WhatsApp"><i class="fas fa-clipboard-list"></i> Encuesta</button>'
     : '<span class="crm-contact-btn is-disabled" title="Vinculá una propiedad para enviar la encuesta"><i class="fas fa-clipboard-list"></i> Encuesta</span>';
+  /* Solicitud de tasación (modelo "PIDE, no HACE", 2026-11-02): los leads
+     source='tasacion' esperan que un agente realice el análisis. El botón
+     abre el tasacionero en una tab con los datos precargados del lead. */
+  if (lead.source === 'tasacion') {
+    row += '<button class="crm-contact-btn" id="crmTasacionBtn" type="button" title="Abrir el tasacionero con los datos precargados de este lead"><i class="fas fa-file-signature"></i> Iniciar tasación</button>';
+  }
   if (!lead.assigned_to) {
     row += '<button class="crm-contact-btn crm-contact-btn--assign" id="crmAssignMe" type="button" title="Asignarme este lead"><i class="fas fa-user-check"></i> Asignarme</button>';
   }
@@ -1364,6 +1370,15 @@ function bindContactActions(panel, lead, firstProp, props) {
       } else {
         showSurveyPropertyPicker(lead, props, panel);
       }
+    });
+  }
+  /* Botón "Iniciar tasación" (leads source='tasacion'): tab nueva con los
+     datos del lead precargados en el tasacionero (?lead=<uuid>). Mismo origen:
+     la sesión del panel la hereda por localStorage del cliente default. */
+  var tasacionBtn = panel.querySelector('#crmTasacionBtn');
+  if (tasacionBtn) {
+    tasacionBtn.addEventListener('click', function () {
+      window.open('/tasacion.html?lead=' + encodeURIComponent(String(lead.id || '')), '_blank', 'noopener');
     });
   }
 }
