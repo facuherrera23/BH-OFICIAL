@@ -278,6 +278,68 @@ function buildItemPayload(property: PropertyRow, defaults: MlDefaults): MlItemPa
     return payload;
 }
 
+// Resumen legible de errores de la API de ML: del JSON de validacion extrae
+// SOLO las causas fatales (type error/invalid, con codigo y mensaje) porque
+// las respuestas de ML combinan warnings benignos que ahogan el dato real en
+// el toast del panel (max ~260 chars). Fallback: message/error del JSON o el
+// texto crudo truncado.
+interface MlErrorCause {
+    type?: string;
+    message?: string;
+    codes?: string[];
+    cause?: MlErrorCause[];
+}
+
+function collectFatalCauses(cause: unknown, out: string[]): void {
+    if (!Array.isArray(cause)) return;
+    for (const raw of cause) {
+        const c = raw as MlErrorCause;
+        if (c && (c.type === 'error' || c.type === 'invalid')) {
+            const label = [...(c.codes ?? []), ...(c.message ? [c.message] : [])].join(', ');
+            if (label && !out.includes(label)) out.push(label);
+        }
+        if (c && Array.isArray(c.cause)) collectFatalCauses(c.cause, out);
+    }
+}
+
+function summarizeMlError(prefix: string, status: number, text: string): string {
+    let detail = text;
+    try {
+        const parsed = JSON.parse(text) as {
+            message?: string;
+            error?: string;
+            cause?: MlErrorCause[];
+        };
+        const fatal: string[] = [];
+        collectFatalCauses(parsed.cause, fatal);
+        detail = fatal.length ? fatal.join('; ') : parsed.message || parsed.error || text;
+    } catch {
+        // texto no JSON (gateway o proxy): se usa tal cual
+    }
+    return `${prefix} (${status}): ${String(detail).slice(0, 260)}`;
+}
+
+// GET best-effort del estado REAL del item para errores accionables: la
+// leccion 2026-10-24 (DA-P0008) es que el estado guardado puede ser mentira.
+async function fetchItemStatus(accessToken: string, itemId: string): Promise<string> {
+    try {
+        const res = await fetchWithTimeout(`${ML_API}/items/${itemId}`, {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: 'application/json',
+            },
+        });
+        if (res.ok) {
+            const json = (await res.json()) as { status?: string };
+            if (json?.status) return String(json.status);
+        }
+    } catch {
+        // best-effort: sin internet o token vencido devolvemos desconocido
+    }
+    return 'desconocido';
+}
+
 async function createMlItem(
     accessToken: string,
     payload: MlItemPayload,
@@ -292,7 +354,7 @@ async function createMlItem(
         body: JSON.stringify(payload),
     });
     const text = await res.text();
-    if (!res.ok) throw new Error(`ML createItem failed (${res.status}): ${text.slice(0, 300)}`);
+    if (!res.ok) throw new Error(summarizeMlError('ML createItem failed', res.status, text));
     return parseMlResponse(MlItemSchema, JSON.parse(text), 'mlCreateItem');
 }
 
@@ -311,7 +373,7 @@ async function updateMlItem(
         body: JSON.stringify(payload),
     });
     const text = await res.text();
-    if (!res.ok) throw new Error(`ML updateItem failed (${res.status}): ${text.slice(0, 300)}`);
+    if (!res.ok) throw new Error(summarizeMlError('ML updateItem failed', res.status, text));
     return parseMlResponse(MlItemSchema, JSON.parse(text), 'mlUpdateItem');
 }
 
@@ -336,7 +398,7 @@ async function setDescription(
     });
     if (!res.ok) {
         const text = await res.text();
-        throw new Error(`ML setDescription failed (${res.status}): ${text.slice(0, 300)}`);
+        throw new Error(summarizeMlError('ML setDescription failed', res.status, text));
     }
 }
 
@@ -369,10 +431,24 @@ async function closeMlItem(accessToken: string, itemId: string): Promise<MlItem>
         if (delRes.ok) {
             return parseMlResponse(MlItemSchema, JSON.parse(delText), 'mlDeleteItem');
         }
-        throw new Error(`ML deleteItem failed (${delRes.status}): ${delText.slice(0, 300)}`);
+        // Nunca existio en ML o ya la borraron a mano: se conserva el status en
+        // el mensaje para que el remove path lo detecte (regex 404/not found) y
+        // cierre limpio en la DB como hasta hoy.
+        if (delRes.status === 404) {
+            throw new Error(summarizeMlError('ML deleteItem failed', delRes.status, delText));
+        }
+        // FIX 2026-11-01: un item not_yet_active rechaza PUT closed y el DELETE
+        // termina en 405 method_not_allowed -> antes salia 500 con el JSON crudo
+        // de ML que hasta mentia 'closed'. Se consulta el estado real y se
+        // entrega un mensaje accionable; el remove path reconoce el prefijo
+        // close_blocked_unactivated y responde 409 legible con ese estado.
+        const realStatus = await fetchItemStatus(accessToken, itemId);
+        const friendly =
+            `ML no permite cerrar la publicacion (estado en ML ${realStatus}). Cerrala manualmente desde tu cuenta de Mercado Libre.`;
+        throw new Error(`close_blocked_unactivated:${realStatus}:${friendly}`);
     }
 
-    throw new Error(`ML updateItem failed (${putRes.status}): ${putText.slice(0, 300)}`);
+    throw new Error(summarizeMlError('ML closeItem failed', putRes.status, putText));
 }
 
 async function getActiveConnection(): Promise<MlConnectionRow | null> {
@@ -421,11 +497,22 @@ async function upsertListing(args: {
         if (ins.error) throw new Error('ml_listings insert: ' + ins.error.message);
     }
 
+    // FIX 2026-11-01: el update path dejaba property_ml_meta minima (solo
+    // propiedad + item) — status, price y permalink solo los refrescaba el eco
+    // de ml-sync/webhook, que en silencio puede no llegar jamas (7 zombies del
+    // caso DA-P0008). Al terminar OK, ml-publish escribe el mismo set completo
+    // que el upsert de ml-sync.
+    const nowIso = new Date().toISOString();
     await supabase.from('property_ml_meta').upsert(
         {
             property_id: args.propertyId,
             ml_item_id: args.mlItemId,
-            updated_at: new Date().toISOString(),
+            status: args.mlStatus,
+            permalink: args.permalink,
+            price: args.price,
+            last_sync_at: nowIso,
+            last_sync_status: 'success',
+            updated_at: nowIso,
         },
         { onConflict: 'property_id' },
     );
@@ -594,6 +681,42 @@ Deno.serve(async (req) => {
                     closedStatus = item.status || 'closed';
                 } catch (err) {
                     const msg = (err as Error).message;
+                    if (msg.startsWith('close_blocked_unactivated:')) {
+                        // FIX 2026-11-01: item sin activar (o cerrado a mano en ML)
+                        // que rechaza PUT y DELETE. El estado aca es REAL: se
+                        // registra en ml_listings + property_ml_meta (antes solo
+                        // se mentia 'closed') y el panel recibe 409 accionable,
+                        // no un 500 con el JSON crudo de ML.
+                        const parts = msg.split(':');
+                        const realStatus = parts[1] || 'desconocido';
+                        const friendly = parts.slice(2).join(':') ||
+                            'No se pudo cerrar la publicación en Mercado Libre.';
+                        await supabase
+                            .from('ml_listings')
+                            .update({ ml_status: realStatus, last_sync: new Date().toISOString() })
+                            .eq('ml_item_id', mlItemId);
+                        await supabase
+                            .from('property_ml_meta')
+                            .update({
+                                status: realStatus,
+                                last_sync_status: 'error',
+                                last_sync_at: new Date().toISOString(),
+                            })
+                            .eq('ml_item_id', mlItemId);
+                        await auditLog({
+                            userId: adminId,
+                            action: 'ml_publish',
+                            propertyId,
+                            mlItemId,
+                            metadata: { event: 'publish_close_blocked', ml_status: realStatus },
+                        });
+                        return respond(409, {
+                            ok: false,
+                            code: 'ML_ITEM_NOT_ACTIVATED',
+                            error: friendly,
+                            ml_status: realStatus,
+                        });
+                    }
                     // Ya fue borrada en ML directamente o nunca existió: limpiar igual.
                     if (!/404|not found/i.test(msg)) throw err;
                 }
