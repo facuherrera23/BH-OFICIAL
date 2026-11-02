@@ -164,7 +164,18 @@ function showOutcome(cardEl, taskId, taskTitle, leadId) {
             title: '"' + taskTitle + '"',
             description: 'Resultado: ' + text
           }]);
-          await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', leadId);
+          /* Registrar el contacto pasa por markLeadContacted (admin-crm.js):
+             cierra la tarea de SLA del primer contacto y RECALCULA el próximo
+             followup — antes next_followup_at quedaba apuntando a la tarea
+             recién completada y el lead seguía figurando como vencido. */
+          var registrarContacto = (window.BH_CRM && typeof window.BH_CRM.markLeadContacted === 'function')
+            ? window.BH_CRM.markLeadContacted
+            : null;
+          if (registrarContacto) {
+            await registrarContacto(leadId);
+          } else {
+            await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', leadId);
+          }
         }
       } catch (e) { toast('Error: ' + e.message, 'error'); return; }
       cardEl.classList.add('crm-task-card--done', 'crm-tl-task--done');

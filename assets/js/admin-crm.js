@@ -34,6 +34,18 @@ var _leads = [];
 var _agents = [];
 var _selectedLeadId = null;
 var _hasFollowupFilter = false;
+/* Chip "ML sin responder (+48h)": leads de Mercado Libre sin contacto en 48 h.
+   Es la fuga comercial medida (43 leads ML en 60 días → 0 contactados en <2 h).
+   El filtro aplica el origen 'ml' él mismo (por eso el select de origen se
+   ignora mientras el chip está activo). */
+var _mlUntouchedFilter = false;
+
+/** Apaga el chip "ML sin responder" (flag + checkbox). */
+function _resetMlUntouchedFilter() {
+  _mlUntouchedFilter = false;
+  var chk = $id('crmMlUntouchedFilter');
+  if (chk) chk.checked = false;
+}
 var _searchTimer = null;
 var __initialized = false;
 var _viewMode = 'leads';
@@ -185,7 +197,10 @@ function applyBaseFilters(q) {
     q = q.or(ors);
   }
   var st = $id('crmStatusFilter'); if (st && st.value) q = q.eq('stage', st.value); else q = q.neq('stage', 'cerrado_perdido');
-  var or = $id('crmOriginFilter'); if (or && or.value) q = q.eq('source', or.value);
+  /* El chip "ML sin responder" es autoritativo sobre el origen: si está activo
+     fuerza source='ml' y el select de origen no aplica (si el usuario cambia el
+     origen a mano, el chip se apaga — ver el listener del select). */
+  var or = $id('crmOriginFilter'); if (or && or.value && !_mlUntouchedFilter) q = q.eq('source', or.value);
   var tp = $id('crmTipoOperacionFilter'); if (tp && tp.value) q = q.eq('operation_type', tp.value);
   var ag = $id('crmAgentFilter');
   if (ag && ag.value === '__none__') q = q.is('assigned_to', null);
@@ -211,6 +226,15 @@ function applyBaseFilters(q) {
        lead.property_id). Los ids se resolvieron en loadLeads. */
     if (_kpiPropIds && _kpiPropIds.length) q = q.in('id', _kpiPropIds);
     else q = q.eq('id', '00000000-0000-0000-0000-000000000000'); /* sin coincidencias */
+  }
+  if (_mlUntouchedFilter) {
+    /* Leads de Mercado Libre sin contacto en 48 h (mismo corte que el KPI
+       "Sin contacto +48h"). Es la fuga medida: 43 leads ML en 60 días → 0
+       contactados en menos de 2 h. */
+    var mlCut = new Date(Date.now() - 2 * 86400000).toISOString();
+    q = q.eq('source', 'ml')
+         .or('last_contacted_at.is.null,last_contacted_at.lt.' + mlCut)
+         .not('stage', 'in', '("cerrado_ganado","cerrado_perdido")');
   }
   if (_showTrash) return q.not('deleted_at', 'is', null);
   return q.is('deleted_at', null);
@@ -1903,8 +1927,8 @@ function bindOfferActions(panel, lead, offers) {
         /* Marcar la oferta como aceptada */
         var r = await db().from('lead_offers').update({ status: 'accepted' }).eq('id', offerId);
         if (r.error) throw new Error(r.error.message);
-        /* Actualizar el lead */
-        await db().from('leads').update({ estimated_value: amount, stage: 'cerrado_ganado', last_contacted_at: new Date().toISOString() }).eq('id', lead.id);
+        /* Actualizar el lead (cierra la tarea de SLA del primer contacto) */
+        await markLeadContacted(lead.id, { estimated_value: amount, stage: 'cerrado_ganado' });
         /* Nota en el historial */
         await db().from('lead_activities').insert([{ lead_id: lead.id, activity_type: 'status_change', title: 'Oferta aceptada: ' + fmt + ' — Lead GANADO' }]);
         toast('Oferta aceptada: ' + fmt + ' · Lead ganado 🎉', 'success');
@@ -2329,7 +2353,7 @@ function bindSideSave(lead, panel) {
           activity_type: 'status_change',
           title: 'Cambio de estado: ' + (STATUS_LABELS[normalizeStage(originalStage)] || originalStage) + ' -> ' + (STATUS_LABELS[normalizeStage(d.stage)] || d.stage)
         }]);
-        await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', lead.id);
+        await markLeadContacted(lead.id);
       }
       if (stageChanged && normalizeStage(d.stage) === 'cerrado_ganado' && !d.estimated_value && !lead.estimated_value) {
         var val = prompt('Valor final de la operación (USD, opcional):');
@@ -2588,7 +2612,13 @@ if (search) search.addEventListener('input', function () {
   });
   ['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmAgentFilter'].forEach(function (id) {
     var el = $id(id);
-    if (el) el.addEventListener('change', function () { _page = 1; loadLeads(); });
+    if (el) el.addEventListener('change', function () {
+      /* Si el usuario cambia el origen a mano, el chip "ML sin responder" se
+         apaga: el chip manda sobre el origen (si no, mostraría leads de otro
+         origen con el rótulo de Mercado Libre). */
+      if (id === 'crmOriginFilter') _resetMlUntouchedFilter();
+      _page = 1; loadLeads();
+    });
   });
   var orSel = $id('crmOriginFilter');
   if (orSel && !orSel.dataset.filled) {
@@ -2612,6 +2642,23 @@ if (search) search.addEventListener('input', function () {
   if (fup && !fup.dataset.bound) {
     fup.dataset.bound = '1';
     fup.addEventListener('change', function () { _hasFollowupFilter = !!this.checked; _page = 1; loadLeads(); });
+  }
+  /* Chip "ML sin responder (+48h)" (2026-11-02): la fuga comercial medida —
+     leads de Mercado Libre sin contacto en 48 h. Reusa la clase del chip de
+     followup (sin tocar admin.css). */
+  if (!$id('crmMlUntouchedFilter') && $id('crmMlUntouchedWrap')) {
+    $id('crmMlUntouchedWrap').innerHTML = '<label class="crm-followup-chip">' +
+      '<input type="checkbox" id="crmMlUntouchedFilter">' +
+      '<span>ML sin responder (+48h)</span></label>';
+  }
+  var mlUntouched = $id('crmMlUntouchedFilter');
+  if (mlUntouched && !mlUntouched.dataset.bound) {
+    mlUntouched.dataset.bound = '1';
+    mlUntouched.addEventListener('change', function () {
+      _mlUntouchedFilter = !!this.checked;
+      _page = 1;
+      loadLeads();
+    });
   }
   var oaSel = $id('crmOwnerAgentFilter');
   if (oaSel && !oaSel.dataset.bound) {
@@ -2660,6 +2707,7 @@ if (search) search.addEventListener('input', function () {
       }
       _showTrash = !_showTrash;
       _kpiFilter = '';
+      _resetMlUntouchedFilter();
       _page = 1;
       closeDetailPanel();
       _syncTrashBtn();
@@ -2761,7 +2809,7 @@ function _syncHeader() {
   var newOwnerCrm = $id('btnNewOwnerCrm');
   var titleEl = $id('crmTitle');
   var searchEl = $id('crmSearch');
-  var leadOnly = ['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmAgentFilter', 'crmFollowupWrap'];
+  var leadOnly = ['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmAgentFilter', 'crmFollowupWrap', 'crmMlUntouchedWrap'];
   var ownerOnly = ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter', 'crmOwnerStatusFilter'];
   if (btn) {
     /* Pedido del empleador: el botón del modo contrario avisa tareas vencidas
@@ -2805,7 +2853,7 @@ function _syncHeader() {
   if (window.__BH && window.__BH.setContext && !document.getElementById('crmSidePanel')?.classList.contains('open')) {
     window.__BH.setContext(ownersMode ? 'Propietarios' : null);
   }
-  if (ownersMode) { _kpiFilter = ''; }
+  if (ownersMode) { _kpiFilter = ''; _resetMlUntouchedFilter(); }
   syncKpiCards();
 }
 
@@ -2824,6 +2872,7 @@ function openOwners(ownerId) {
   if (sr) sr.value = '';
   _page = 1;
   _showTrash = false; _ownerTrash = false; _kpiFilter = '';
+  _resetMlUntouchedFilter();
   _syncTrashBtn();
   _syncHeader();
   loadOwners();
@@ -2839,7 +2888,10 @@ function handleSubView(tab, sub) {
   return false;
 }
 
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel };
+/* markLeadContacted se publica porque admin-crm-tasks.js (que carga ANTES
+   que este archivo) lo necesita al completar una tarea: es el punto único
+   que registra contacto, cierra la tarea de SLA y recalcula el followup. */
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted };
 
 /* --- Generación de token portal desde CRM (en modo propietarios) --- */
 (function () {
@@ -3163,6 +3215,44 @@ async function syncLeadFollowup(leadId) {
   } catch (e) { console.warn('[crm] sync followup:', e.message); }
 }
 
+/* ─── SLA de primer contacto (2026-11-02) ───
+   El webhook de Mercado Libre crea la tarea "Primer contacto — lead ML" con
+   2 h de plazo. Cuando el agente registra el contacto, la tarea se cierra
+   sola: si no, quedaría viva y el badge "tareas vencidas" del sidebar
+   mentaría. El título DEBE coincidir con ML_FIRST_CONTACT_TASK_TITLE en
+   supabase/functions/ml-webhook/index.ts (no hay bundle compartido). */
+var ML_FIRST_CONTACT_TASK_TITLE = 'Primer contacto — lead ML';
+
+async function completeFirstContactTask(leadId) {
+  try {
+    var r = await db().from('lead_tasks')
+      .update({
+        status: 'completada',
+        completed_at: new Date().toISOString(),
+        completed_note: 'Primer contacto registrado'
+      })
+      .eq('lead_id', leadId)
+      .eq('title', ML_FIRST_CONTACT_TASK_TITLE)
+      .in('status', ['pendiente', 'en_progreso']);
+    if (r.error) console.warn('[crm] close first-contact task:', r.error.message);
+  } catch (e) { console.warn('[crm] close first-contact task:', e.message); }
+}
+
+/** Punto único para registrar contacto: actualiza last_contacted_at, cierra la
+    tarea de SLA y recalcula el próximo followup. Antes cada path actualizaba
+    last_contacted_at por su cuenta y la tarea de SLA quedaba viva para siempre. */
+async function markLeadContacted(leadId, patch) {
+  var upd = Object.assign({}, patch || {});
+  upd.last_contacted_at = new Date().toISOString();
+  var r = await db().from('leads').update(upd).eq('id', leadId);
+  if (r.error) throw new Error(r.error.message);
+  await completeFirstContactTask(leadId);
+  /* Si el caller fijó next_followup_at (p.ej. agenda de visita), NO se recalcula:
+     syncLeadFollowup lo pisaría con la tarea pendiente más próxima. */
+  if (!('next_followup_at' in upd)) await syncLeadFollowup(leadId);
+  return r;
+}
+
 /* ============================================================
    RAZÓN DE PÉRDIDA — modal con opciones estructuradas
    Reemplaza el confirm simple: el agente DEBE elegir por qué
@@ -3436,7 +3526,7 @@ function bindLeadTaskForm(panel, lead) {
           notes: desc || null
         }]);
         if (vIns.error) throw new Error(vIns.error.message);
-        await db().from('leads').update({ last_contacted_at: new Date().toISOString(), next_followup_at: new Date(due).toISOString() }).eq('id', leadId);
+        await markLeadContacted(leadId, { next_followup_at: new Date(due).toISOString() });
         toast('Visita agendada.', 'success');
         refreshTimelineInPanel(leadId, panel);
       } else if (action === 'note') {
@@ -3448,7 +3538,7 @@ function bindLeadTaskForm(panel, lead) {
           description: desc
         }]);
         if (nIns.error) throw new Error(nIns.error.message);
-        await db().from('leads').update({ last_contacted_at: new Date().toISOString() }).eq('id', leadId);
+        await markLeadContacted(leadId);
         toast('Nota guardada.', 'success');
         refreshTimelineInPanel(leadId, panel);
       } else if (action === 'lost') {
@@ -3457,8 +3547,7 @@ function bindLeadTaskForm(panel, lead) {
            modal y ya no hay que escribir el motivo dos veces. */
         var lostResult = await showLostReasonModal(desc);
         if (!lostResult) return;
-        var lUp = await db().from('leads').update({ stage: 'cerrado_perdido', lost_reason: lostResult.reason, last_contacted_at: new Date().toISOString() }).eq('id', leadId);
-        if (lUp.error) throw new Error(lUp.error.message);
+        await markLeadContacted(leadId, { stage: 'cerrado_perdido', lost_reason: lostResult.reason });
         await db().from('lead_activities').insert([{ lead_id: leadId, activity_type: 'note', title: 'Motivo del rechazo: ' + lostResult.label, description: desc + (lostResult.detail && lostResult.detail !== desc ? ' — ' + lostResult.detail : '') }]);
         toast('Marcado como perdido: ' + lostResult.label, 'success');
         closeDetailPanel();
