@@ -126,6 +126,11 @@ async function logWebhookEvent(
         status,
         error: error ?? null,
         payload: JSON.stringify(payload),
+        /* FIX 2026-11-02: processed_at existía pero NADIE lo escribía (155k
+           filas con la columna en NULL). Se estampa en los estados terminales
+           (processed/failed/deduplicated) — 'received' queda sin él porque
+           todavía no terminó de manejarse. */
+        ...(status !== 'received' ? { processed_at: new Date().toISOString() } : {}),
     };
     if (existing?.id) {
         await supabase
@@ -135,6 +140,7 @@ async function logWebhookEvent(
                 error: error ?? null,
                 payload: JSON.stringify(payload),
                 attempts: payload.attempts,
+                ...(status !== 'received' ? { processed_at: new Date().toISOString() } : {}),
             })
             .eq('id', existing.id);
     } else {
@@ -174,6 +180,7 @@ async function logRejectedPayload(rawBody: string, errorMessage: string): Promis
             status: 'failed',
             error: errorMessage.slice(0, 500),
             payload: payloadJson,
+            processed_at: nowIso, // estado terminal: se estampa también acá
         });
     } catch (dbErr) {
         console.error('[ml-webhook] logRejectedPayload DB:', (dbErr as Error).message);

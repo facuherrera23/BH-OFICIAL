@@ -117,6 +117,14 @@ test.describe('SLA de primer contacto — leads de Mercado Libre', () => {
     expect(bloque).not.toContain('auto_reply_sent:');
   });
 
+  test('ml-webhook: processed_at se estampa en los estados terminales del evento', () => {
+    // FIX 2026-11-02: la columna existía pero NADIE la escribía (155k NULL).
+    // Update path e insert path de logWebhookEvent, y los rechazados de parse.
+    const spread = "status !== 'received' ? { processed_at: new Date().toISOString() } : {}";
+    expect((webhookSrc.match(new RegExp(spread.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length).toBe(2);
+    expect(webhookSrc).toContain('processed_at: nowIso'); // logRejectedPayload
+  });
+
   test('admin-crm.js: markLeadContacted cierra la tarea de SLA y recalcula el followup', () => {
     expect(crmSrc).toContain("var FIRST_CONTACT_TASK_TITLE = 'Primer contacto';");
     // Cierre por PREFIJO: cubre las tareas de la primera versión (título por
