@@ -342,6 +342,93 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
       "Evento ML vinculado: id" en las notas; nunca sobre leads terminales. */
 const ML_TERMINAL_STAGES_EXCL = '("cerrado_perdido","cerrado_vendido","vendido","descartado")';
 
+/* ─── SLA de primer contacto (2026-11-02) ───
+   Un lead de Mercado Libre entra con el contacto YA en la mano: si nadie lo
+   atiende en minutos se enfría y se pierde. Medido en producción (60 días):
+   43 leads ML → 0 contactados en <2 h, 26 después de 24 h, 24 perdidos.
+   Por eso el lead nace con un PLAZO, no con un email suelto:
+     · lead_tasks  → la Agenda lo muestra y el badge "tareas vencidas" se enciende
+     · next_followup_at → lo mira el cron crm_queue_followup_alerts (alerta de
+       supervisión cuando se vence)
+   Sin teléfono no hay a quién escribir → no se crea la tarea (el lead anónimo
+   arranca su reloj cuando la identidad llega por el merge). */
+const ML_FIRST_CONTACT_MINUTES = 120;
+const ML_FIRST_CONTACT_TASK_TITLE = 'Primer contacto — lead ML';
+
+/* El cliente de supabase-js sin tipos de DB devuelve `never` en los .select()
+   (este archivo, como el resto de las functions, no es type-clean y Deno lo
+   ejecuta sin type-check). Los helpers del SLA usan `any` para no sumar
+   errores de tipos nuevos a los 21 preexistentes. */
+type SbcAny = any;
+
+/** next_followup_at = la tarea pendiente más próxima. Mismo criterio que
+    syncLeadFollowup() del panel: TODAS las tareas pendientes, no solo las de
+    tipo 'contact' (si no, el plazo del SLA puede quedar pisado por otra tarea). */
+async function syncLeadNextFollowup(
+    supabase: SbcAny,
+    leadId: string,
+): Promise<void> {
+    const { data: pending } = await supabase
+        .from('lead_tasks')
+        .select('due_at')
+        .eq('lead_id', leadId)
+        .in('status', ['pendiente', 'en_progreso'])
+        .not('due_at', 'is', null)
+        .order('due_at', { ascending: true })
+        .limit(1);
+    const next = (pending && pending[0] && pending[0].due_at) || null;
+    await supabase.from('leads').update({ next_followup_at: next }).eq('id', leadId);
+}
+
+/** Crea (una sola vez) la tarea de primer contacto del lead. Best-effort:
+    si la cola de tareas falla, el lead sigue existiendo y el webhook no se
+    rompe (el error queda en el log, no en la respuesta a ML). */
+async function ensureFirstContactTask(
+    supabase: SbcAny,
+    leadId: string,
+    opts: { phone?: string | null; assignedTo?: string | null },
+): Promise<void> {
+    try {
+        if (!opts.phone) return; // sin teléfono no hay a quién escribir
+        const { data: existing } = await supabase
+            .from('lead_tasks')
+            .select('id')
+            .eq('lead_id', leadId)
+            .eq('title', ML_FIRST_CONTACT_TASK_TITLE)
+            .in('status', ['pendiente', 'en_progreso'])
+            .limit(1);
+        if (existing && existing.length) return; // ya hay un SLA vivo (dedup)
+        const due = new Date(Date.now() + ML_FIRST_CONTACT_MINUTES * 60_000).toISOString();
+        const { error } = await supabase.from('lead_tasks').insert({
+            lead_id: leadId,
+            title: ML_FIRST_CONTACT_TASK_TITLE,
+            description: 'Lead de Mercado Libre: contactar antes de que se enfríe.',
+            type: 'contact',
+            contact_type: 'whatsapp',
+            priority: 'alta',
+            status: 'pendiente',
+            due_at: due,
+            remind_before_minutes: 30,
+            assigned_to: opts.assignedTo || null,
+        });
+        if (error) {
+            logWarn({
+                function: 'ml-webhook',
+                topic: 'vis_leads',
+                error: 'sla_task: ' + error.message,
+            });
+            return;
+        }
+        await syncLeadNextFollowup(supabase, leadId);
+    } catch (err) {
+        logWarn({
+            function: 'ml-webhook',
+            topic: 'vis_leads',
+            error: 'sla_task: ' + (err as Error).message,
+        });
+    }
+}
+
 async function findConsolidableMlLead(
     supabase: ReturnType<typeof createClient>,
     buyerEmail: string | null,
@@ -382,11 +469,12 @@ async function mergeMlEventIntoLead(
         noteLabel: string; noteText: string; propertyContext: string;
     },
 ) {
-    const { data: lead } = await supabase
+    const { data } = await supabase
         .from('leads')
-        .select('id, full_name, email, phone, whatsapp, notes, property_id, ml_lead_id')
+        .select('id, full_name, email, phone, whatsapp, notes, property_id, ml_lead_id, last_contacted_at, assigned_to')
         .eq('id', leadId)
         .maybeSingle();
+    const lead = data as any; /* sin tipos de DB, supabase devuelve never */
     if (!lead) return false;
 
     const patch: Record<string, string> = {};
@@ -429,6 +517,17 @@ async function mergeMlEventIntoLead(
                 created_at: new Date().toISOString(),
             });
         }
+    }
+
+    /* SLA de primer contacto: si el lead NUNCA fue contactado, arranca el reloj
+       (tarea en la Agenda + next_followup_at → alerta si se vence). Si ya fue
+       contactado, la consulta nueva queda como nota en el timeline y no se
+       duplica la tarea (evita ruido: el SLA es del PRIMER contacto). */
+    if (!lead.last_contacted_at) {
+        await ensureFirstContactTask(supabase, leadId, {
+            phone: lead.whatsapp || lead.phone,
+            assignedTo: (lead.assigned_to as string) || null,
+        });
     }
     return true;
 }
@@ -690,7 +789,17 @@ async function handleVisLeads(payload: MlWebhookPayload): Promise<void> {
             throw new Error(`lead_create vis: ${leadErr.message}`);
         }
         if (!created.data?.id) throw new Error('lead_create vis: sin id devuelto');
-        newLead = created.data;
+        const createdId = created.data.id;
+        newLead = { id: createdId };
+        /* SLA de primer contacto (2026-11-02): el lead ML nace con PLAZO — una
+           tarea en la Agenda (vence en 2 h) + next_followup_at, que es lo que
+           enciende el badge "tareas vencidas" y el cron de alertas. Sin
+           teléfono no hay a quién escribir → la tarea se crea cuando la
+           identidad llegue por el merge. */
+        await ensureFirstContactTask(supabase, createdId, {
+            phone: buyerPhone,
+            assignedTo: propAgentId,
+        });
     }
 
     /* Preguntas de inmuebles: registro en ml_questions (ledger compartido con el

@@ -106,6 +106,13 @@ export async function sendQuestionAnswer(
             status: 'answered',
             answer_text: text,
             date_updated: new Date().toISOString(),
+            /* FIX 2026-11-02: la columna real es auto_reply_sent_at (NO
+               auto_reply_sent) y NO la escribía nadie → el tracking del
+               auto-reply quedaba siempre en NULL y no se podía auditar si el
+               comprador había recibido respuesta. Se estampa acá, en el
+               ÚNICO punto por donde sale toda respuesta a ML (auto-reply del
+               webhook y respuesta manual del panel). */
+            auto_reply_sent_at: new Date().toISOString(),
         })
         .eq('question_id', questionId);
 }
