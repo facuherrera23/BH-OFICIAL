@@ -1,25 +1,23 @@
 // ============================================================
-// tasacion-submit — Punto de entrada público del tasacionero web.
+// tasacion-submit — Solicitud pública de tasación (2026-11-02).
 //
-// El visitante anónimo completa el análisis comparativo y al
-// guardar/finalizar se le pide contacto (nombre + WhatsApp) para
-// recibir el informe. Este endpoint:
-//   1. Crea el lead en el CRM (source='tasacion') — un propietario
-//      tasando es el lead más caliente que existe.
-//   2. Persiste la tasación (created_by NULL, status 'draft') para
-//      que aparezca en el panel de tasaciones del admin.
+// Decisión del dueño: el tasacionero es herramienta interna de los
+// agentes. El visitante público NO hace la tasación — la PIDE desde
+// el formulario de tasacion.html (contacto + propiedad) y este
+// endpoint SOLO crea el lead (source='tasacion') con el detalle en
+// notes + actividad en su historial. NUNCA inserta en `tasaciones`:
+// la tasación la crea después el agente desde ese lead, con el
+// wizard interno.
 //
 // Defensas (patrón contact-submit): rate limit por IP (5/h),
 // honeypot, validación estricta, consentimiento obligatorio
-// (Ley 25.326), fotos de comparables removidas server-side
-// (payload acotado), dedup de lead por teléfono (60 días — agrega
-// actividad al lead existente en vez de duplicarlo; la tasación
-// se crea siempre porque cada análisis es un registro único).
+// (Ley 25.326), dedup de lead por teléfono (últimos 8 dígitos,
+// 60 días — el dup agrega actividad al lead existente).
 //
-// RLS de `tasaciones` es authenticated/service_role-only: el insert
-// público pasa por acá (service_role) igual que leads en
-// contact-submit. verify_jwt OFF (pre-login) — está en NO_VERIFY
-// del deploy.yml.
+// Tolerancia al payload legacy `tasacion` (JS cacheado del modelo
+// anterior): solo enriquece las notas del lead — jamás se persiste.
+//
+// verify_jwt OFF (pre-login) — está en NO_VERIFY del deploy.yml.
 // ============================================================
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
@@ -38,12 +36,19 @@ interface TasacionPayload {
     website?: string; // honeypot
     utm_source?: string;
     utm_campaign?: string;
+    /* Solicitud del form público (2026-11-02) */
+    solicitud?: {
+        direccion?: string;
+        tipo?: string;
+        operacion?: string;
+        superficie?: string;
+        mensaje?: string;
+    };
+    /* LEGACY (JS cacheado del modelo anterior que mandaba la tasación
+       completa): NUNCA se persiste — solo enriquece notas del lead. */
     tasacion?: {
         title?: string;
         data?: Record<string, unknown>;
-        type?: string;
-        valuation_usd?: number | null;
-        valuation_ars?: number | null;
     };
 }
 
@@ -57,25 +62,6 @@ function clientIp(req: Request): string {
     return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
         req.headers.get('x-real-ip') ??
         'unknown';
-}
-
-/* Higiene del data JSONB: las fotos base64 de los comparables pueden
-   sumar megas — se remueven (queda la fachada, acotada). */
-const MAX_FACHADA_CHARS = 900_000; // ~675 KB base64
-function sanitizeData(data: Record<string, unknown>): Record<string, unknown> {
-    const out: Record<string, unknown> = { ...data };
-    if (Array.isArray(out.comparables)) {
-        out.comparables = (out.comparables as Record<string, unknown>[]).map((c) => {
-            if (!c || typeof c !== 'object') return c;
-            const comp = { ...c };
-            delete comp.photo;
-            return comp;
-        });
-    }
-    if (typeof out.photo === 'string' && out.photo.length > MAX_FACHADA_CHARS) {
-        delete out.photo;
-    }
-    return out;
 }
 
 Deno.serve(async (req) => {
@@ -112,45 +98,42 @@ Deno.serve(async (req) => {
         return jsonResponse(400, { error: 'Falta aceptar la política de privacidad' }, req);
     }
 
-    const t = payload.tasacion ?? {};
-    const data = t.data && typeof t.data === 'object' ? sanitizeData(t.data) : {};
-    const fields = (data.fields ?? {}) as Record<string, string>;
-    const type = t.type === 'alquiler' ? 'alquiler' : 'venta';
-    const title = clip(String(t.title || fields.f_direccion || fields.f_barrio || 'Tasación web'), 200);
-    const valuationUsd = typeof t.valuation_usd === 'number' && isFinite(t.valuation_usd) && t.valuation_usd > 0
-        ? t.valuation_usd
-        : null;
-    const valuationArs = typeof t.valuation_ars === 'number' && isFinite(t.valuation_ars) && t.valuation_ars > 0
-        ? t.valuation_ars
-        : null;
-    const destino = clip(String(fields.f_destino ?? ''), 30);
+    /* Solicitud del form público (2026-11-02). El payload legacy `tasacion`
+       (JS cacheado del modelo anterior) solo aporta dirección/tipo — jamás
+       se persiste una tasación desde acá. */
+    const s = (payload.solicitud && typeof payload.solicitud === 'object' ? payload.solicitud : {}) as Partial<NonNullable<TasacionPayload['solicitud']>>;
+    const legacy = (payload.tasacion && typeof payload.tasacion === 'object' ? payload.tasacion : {}) as Partial<NonNullable<TasacionPayload['tasacion']>>;
+    const legacyData = (legacy.data && typeof legacy.data === 'object' ? legacy.data : {}) as Record<string, unknown>;
+    const legacyFields = (typeof legacyData.fields === 'object' && legacyData.fields !== null
+        ? legacyData.fields : {}) as Record<string, string>;
 
-    const valorTxt = type === 'alquiler'
-        ? (valuationArs ? `$ ${Math.round(valuationArs).toLocaleString('es-AR')} / mes` : 'a definir')
-        : (valuationUsd ? `U$S ${Math.round(valuationUsd).toLocaleString('es-AR')}` : 'a definir');
+    const sDireccion = clip(String(s.direccion ?? ''), 220);
+    const sTipo = clip(String(s.tipo ?? ''), 40);
+    const sOperacion = clip(String(s.operacion ?? ''), 40);
+    const superficie = clip(String(s.superficie ?? ''), 60);
+    const sMensaje = clip(String(s.mensaje ?? ''), 800);
+
+    // Fallback legacy: dirección desde title/fields, operación desde f_destino.
+    const direccion = sDireccion
+        || clip(String(legacy.title ?? legacyFields.f_direccion ?? legacyFields.f_barrio ?? ''), 220);
+    const operacion = sOperacion || clip(String(legacyFields.f_destino ?? ''), 40);
+    const opLower = operacion.toLowerCase();
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
-    // --- 1. La tasación SIEMPRE se crea (cada análisis es único) ---
-    const { data: tasacionRow, error: tasacionErr } = await supabase
-        .from('tasaciones')
-        .insert([{
-            title,
-            data,
-            status: 'draft',
-            type,
-            valuation_usd: valuationUsd,
-            valuation_ars: valuationArs,
-            created_by: null, // pública: la distingue de las internas
-        }])
-        .select('id')
-        .single();
-    if (tasacionErr || !tasacionRow) {
-        console.error('[tasacion-submit] insert error:', tasacionErr);
-        return jsonResponse(500, { error: 'No pudimos guardar tu tasación. Probá de nuevo.' }, req);
-    }
+    // Detalle de la solicitud para el historial del lead.
+    const detalle = [
+        sTipo,
+        operacion,
+        superficie ? `sup. aprox. ${superficie}` : '',
+    ].filter(Boolean).join(' · ');
+    const notes = `Solicitud de tasación web — ${direccion || 'dirección no indicada'}`
+        + (detalle ? ` (${detalle})` : '')
+        + '\nEl propietario pide que un agente realice la tasación'
+        + ' (análisis comparativo de mercado).'
+        + (sMensaje ? `\nMensaje del propietario: ${sMensaje}` : '');
 
-    // --- 2. Lead: dedup por teléfono 60 días (actividad si ya existe) ---
+    // Lead: dedup por teléfono, últimos 8 dígitos, 60 días.
     let leadId: string | null = null;
     let duplicate = false;
     const { data: dup } = await supabase
@@ -162,16 +145,14 @@ Deno.serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-    const notes = `Tasación web (${type}${destino ? ' · ' + destino : ''}) — ${title}\nValor estimado: ${valorTxt}\nEnviada desde el tasacionero de bienenhaus.com.ar`;
-
     if (dup) {
         duplicate = true;
         leadId = dup.id;
         await supabase.from('lead_activities').insert([{
             lead_id: dup.id,
             activity_type: 'note',
-            title: 'Nueva tasación web (lead existente)',
-            description: `${notes}\nTasación #${tasacionRow.id}`,
+            title: 'Nueva solicitud de tasación (lead existente)',
+            description: notes,
         }]);
     } else {
         const { data: leadRow, error: leadErr } = await supabase.from('leads').insert([{
@@ -182,19 +163,28 @@ Deno.serve(async (req) => {
             source: 'tasacion',
             stage: 'nuevo',
             tipo_cliente: 'propietario',
-            operation_type: type === 'alquiler' ? 'alquiler' : 'venta',
-            notes: `${notes}\nTasación #${tasacionRow.id}`,
+            // "Alquilar" → alquiler; el resto (vender / solo el valor) → venta
+            operation_type: opLower.startsWith('alquil') ? 'alquiler' : 'venta',
+            notes,
             consent_at: new Date().toISOString(),
             utm_source: clip(String(payload.utm_source ?? ''), 120) || null,
             utm_campaign: clip(String(payload.utm_campaign ?? ''), 120) || null,
         }]).select('id').single();
         if (leadErr) {
             console.error('[tasacion-submit] lead insert error:', leadErr);
-            // La tasación ya quedó guardada — el lead falló pero no perdemos el análisis
-            return jsonResponse(200, { ok: true, tasacion_id: tasacionRow.id, lead: false }, req);
+            return jsonResponse(500, { error: 'No pudimos registrar tu solicitud. Probá de nuevo.' }, req);
         }
         leadId = leadRow?.id ?? null;
+        // Actividad inicial del historial (la misma traza que lee el agente).
+        if (leadId) {
+            await supabase.from('lead_activities').insert([{
+                lead_id: leadId,
+                activity_type: 'note',
+                title: 'Solicitud de tasación web',
+                description: notes,
+            }]);
+        }
     }
 
-    return jsonResponse(200, { ok: true, tasacion_id: tasacionRow.id, lead: !!leadId, duplicate }, req);
+    return jsonResponse(200, { ok: true, lead: !!leadId, duplicate }, req);
 });

@@ -38,17 +38,9 @@ function _setSessionOk(){
   }
 }
 
-function _showNoSessionBanner(){
-  /* CONVERSIÓN 2026-10-26: para el visitante público (página indexable)
-     el banner rojo "Abrí desde el panel de administración" era una alarma
-     incomprensible. La barra de estado es chrome de herramienta interna —
-     se oculta; el guardado público ya fluye por savePublicTasacion. */
-  const statusBar = document.getElementById('statusBar');
-  if (statusBar) {
-    statusBar.style.background = '';
-    statusBar.style.display = 'none';
-  }
-}
+/* (bloque del banner de sin-sesión eliminado 2026-11-02 — decisión del dueño:
+   el público no hace tasaciones, las pide. Sin sesión la página muestra el
+   formulario de solicitud; el wizard no se renderiza y no hay banner.) */
 
 window.addEventListener('message', (e) => {
   // Validate origin
@@ -433,122 +425,134 @@ function setLocked(locked){
   }
 }
 
-let _publicSaved = false;
+/* ===== MODO PÚBLICO — SOLICITUD DE TASACIÓN (2026-11-02, decisión del dueño) =====
+   El tasacionero es herramienta interna de los agentes: el visitante público NO
+   hace la tasación — pide que un agente la realice. Sin sesión se muestra el
+   formulario de solicitud (marcado en tasacion.html) y el wizard NI se
+   renderiza. El submit crea un lead en el CRM (source='tasacion') vía
+   tasacion-submit; cero filas en 'tasaciones' (la tasación la crea el agente
+   desde el lead, con este mismo wizard). */
+let _publicStartTracked = false;
 
-/* VISITANTE PÚBLICO (2026-10-26): el tasacionero era calculadora sin captura —
-   el guardado exigía sesión (RLS authenticated) y el visitante topaba con
-   "Sesión no válida" tras llenar todo. Ahora el guardado público pide contacto
-   (nombre + WhatsApp) y lo manda a tasacion-submit, que crea el lead en el CRM
-   (source='tasacion', el lead más caliente: un propietario tasando su
-   propiedad) + persiste la tasación para el panel del admin. */
-function promptPublicContact() {
-  return new Promise((resolve) => {
-    const old = document.getElementById('publicContactOverlay');
-    if (old) old.remove();
-
-    const ov = document.createElement('div');
-    ov.id = 'publicContactOverlay';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.78);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px;';
-    const panel = document.createElement('div');
-    panel.style.cssText = 'background:var(--card,#121212);border:1px solid var(--line,#3f3f3f);border-radius:16px;max-width:420px;width:100%;padding:26px 24px;box-shadow:0 24px 60px rgba(0,0,0,.6);';
-    panel.innerHTML = [
-      '<h3 style="margin:0 0 6px;font-size:19px;color:var(--ink,#f5f5f4);font-family:Poppins,sans-serif;">Guardá tu tasación</h3>',
-      '<p style="margin:0 0 18px;font-size:13.5px;color:var(--muted,#b8b3aa);line-height:1.5;">Dejanos tu contacto y un asesor te envía el detalle del análisis y los próximos pasos.</p>',
-      '<label style="display:block;font-size:12px;color:var(--muted,#b8b3aa);margin:0 0 6px;">Nombre *</label>',
-      '<input id="pc_name" type="text" autocomplete="name" style="width:100%;box-sizing:border-box;background:#1c2321;border:1px solid var(--line,#3f3f3f);border-radius:10px;color:var(--ink,#f5f5f4);padding:11px 12px;font-size:14px;margin:0 0 14px;">',
-      '<label style="display:block;font-size:12px;color:var(--muted,#b8b3aa);margin:0 0 6px;">WhatsApp / Teléfono *</label>',
-      '<input id="pc_phone" type="tel" autocomplete="tel" placeholder="+54 9 351 ..." style="width:100%;box-sizing:border-box;background:#1c2321;border:1px solid var(--line,#3f3f3f);border-radius:10px;color:var(--ink,#f5f5f4);padding:11px 12px;font-size:14px;margin:0 0 14px;">',
-      '<label style="display:block;font-size:12px;color:var(--muted,#b8b3aa);margin:0 0 6px;">Email (opcional)</label>',
-      '<input id="pc_email" type="email" autocomplete="email" style="width:100%;box-sizing:border-box;background:#1c2321;border:1px solid var(--line,#3f3f3f);border-radius:10px;color:var(--ink,#f5f5f4);padding:11px 12px;font-size:14px;margin:0 0 14px;">',
-      '<div style="position:absolute;left:-9999px;top:-9999px;height:0;overflow:hidden;" aria-hidden="true"><label>Sitio web <input type="text" id="pc_website" tabindex="-1" autocomplete="off"></label></div>',
-      '<label style="display:flex;gap:10px;align-items:flex-start;font-size:12px;color:var(--muted,#b8b3aa);margin:0 0 18px;line-height:1.45;cursor:pointer;">',
-      '<input id="pc_consent" type="checkbox" style="margin-top:2px;accent-color:var(--teal,#14b8a6);">',
-      '<span>Acepto la <a href="/politica-de-privacidad.html" target="_blank" rel="noopener" style="color:var(--teal,#14b8a6);">política de privacidad</a> y el tratamiento de mis datos.</span></label>',
-      '<div style="display:flex;gap:10px;">',
-      '<button id="pc_cancel" type="button" style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--line,#3f3f3f);background:transparent;color:var(--muted,#b8b3aa);font-size:14px;cursor:pointer;font-family:Poppins,sans-serif;">Cancelar</button>',
-      '<button id="pc_send" type="button" style="flex:1.6;padding:12px;border-radius:10px;border:none;background:var(--teal,#14b8a6);color:#04110f;font-weight:700;font-size:14px;cursor:pointer;font-family:Poppins,sans-serif;">Enviar mi tasación</button>',
-      '</div>'
-    ].join('');
-    ov.appendChild(panel);
-    document.body.appendChild(ov);
-
-    const close = (val) => { ov.remove(); resolve(val); };
-    ov.addEventListener('click', (e) => { if (e.target === ov) close(null); });
-    panel.querySelector('#pc_cancel').addEventListener('click', () => close(null));
-    panel.querySelector('#pc_send').addEventListener('click', () => {
-      const name = panel.querySelector('#pc_name').value.trim();
-      const phone = panel.querySelector('#pc_phone').value.trim();
-      const email = panel.querySelector('#pc_email').value.trim();
-      const consent = panel.querySelector('#pc_consent').checked;
-      const website = panel.querySelector('#pc_website').value;
-      if (!name || phone.replace(/\D/g, '').length < 8 || !consent) {
-        panel.querySelector('#pc_send').textContent = !consent ? 'Falta aceptar la política' : (!name ? 'Falta el nombre' : 'Teléfono inválido');
-        setTimeout(() => { panel.querySelector('#pc_send').textContent = 'Enviar mi tasación'; }, 2200);
-        return;
-      }
-      close({ name, phone, email, website });
-    });
-  });
+function trackTasacionStart(){
+  if (_publicStartTracked) return;
+  _publicStartTracked = true;
+  if (typeof window.bhTrack === 'function') window.bhTrack('tasacion_start', { modo: 'solicitud_publica' });
 }
 
-async function savePublicTasacion(finalize) {
-  if (_publicSaved) {
-    showToast('Tu tasación ya está guardada — un asesor te va a contactar.');
-    return true;
-  }
-  const contact = await promptPublicContact();
-  if (!contact) return false;
+function _mergeTasacionUtm(){
+  const storedUtm = typeof window.bhGetUtm === 'function' ? window.bhGetUtm() : null;
+  const utm = new URLSearchParams(location.search);
+  return {
+    utm_source: utm.get('utm_source') || (storedUtm ? storedUtm.utm_source : '') || undefined,
+    utm_campaign: utm.get('utm_campaign') || (storedUtm ? storedUtm.utm_campaign : '') || undefined,
+  };
+}
 
-  const btn = document.getElementById('btnSave');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...'; }
+/* Muestra el formulario de solicitud y oculta el tasacionero completo. Se llama
+   desde init() cuando el boot NO encuentra sesión (y no es modo print). */
+function enterPublicRequestMode(){
+  document.body.classList.add('public-request-mode');
+  ['statusBar', 'formFieldset', 'toast'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  document.querySelectorAll('main section.card').forEach((sec) => {
+    if (sec.id !== 'publicRequestCard') sec.style.display = 'none';
+  });
+  const ab = document.querySelector('.action-bar');
+  if (ab) ab.style.display = 'none';
+  const card = document.getElementById('publicRequestCard');
+  if (!card) return;
+  card.hidden = false;
+  card.querySelectorAll('input, select').forEach((el) => {
+    if (el.type !== 'checkbox') {
+      el.addEventListener('focus', trackTasacionStart);
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitTasacionRequest(); });
+    }
+  });
+  const submitBtn = card.querySelector('#pr_submit');
+  if (submitBtn) submitBtn.addEventListener('click', submitTasacionRequest);
+}
+
+async function submitTasacionRequest(){
+  const card = document.getElementById('publicRequestCard');
+  const btn = card ? card.querySelector('#pr_submit') : null;
+  const errBox = card ? card.querySelector('#pr_error') : null;
+  const showError = (msg) => {
+    if (errBox) { errBox.textContent = msg; errBox.style.display = 'block'; }
+  };
+  const resetBtn = () => { if (btn) { btn.disabled = false; btn.innerHTML = 'Pedir mi tasación gratis'; } };
+  const val = (id) => { const el = card ? card.querySelector('#' + id) : null; return el ? String(el.value || '').trim() : ''; };
+
+  const name = val('pr_nombre');
+  const phone = val('pr_telefono');
+  const email = val('pr_email');
+  const direccion = val('pr_direccion');
+  const tipo = val('pr_tipo');
+  const operacion = val('pr_operacion');
+  const superficie = val('pr_superficie');
+  const mensaje = val('pr_mensaje');
+  const consentEl = card ? card.querySelector('#pr_consent') : null;
+  const consent = !!(consentEl && consentEl.checked);
+  const webEl = card ? card.querySelector('#pr_website') : null;
+  const website = webEl ? webEl.value : '';
+
+  if (!name) { showError('Ingresá tu nombre'); return false; }
+  if (phone.replace(/\D/g, '').length < 8) { showError('Ingresá un WhatsApp válido (al menos 8 dígitos)'); return false; }
+  if (!direccion) { showError('Ingresá la dirección de la propiedad'); return false; }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { showError('El email no parece válido'); return false; }
+  if (!consent) { showError('Falta aceptar la política de privacidad'); return false; }
+
+  trackTasacionStart();
+  if (btn) { btn.disabled = true; btn.innerHTML = 'Enviando...'; }
+  if (errBox) errBox.style.display = 'none';
   try {
-    recalcAll();
-    const formData = collectFormData();
-    /* Payload acotado: las fotos base64 de los comparables pueden sumar megas —
-       van afuera (la fachada queda, la del lead es la conversación). */
-    const data = JSON.parse(JSON.stringify(formData));
-    if (Array.isArray(data.comparables)) data.comparables.forEach(c => { if (c) delete c.photo; });
-    const isAlquiler = formData.fields.f_destino === 'Alquiler';
-    const storedUtm = typeof window.bhGetUtm === 'function' ? window.bhGetUtm() : null;
-    const utm = new URLSearchParams(location.search);
-
+    const utm = _mergeTasacionUtm();
     const res = await fetch(SUPABASE_URL + '/functions/v1/tasacion-submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: contact.name,
-        phone: contact.phone,
-        email: contact.email || undefined,
+        name: name,
+        phone: phone,
+        email: email || undefined,
         consent: true,
-        website: contact.website || '',
-        utm_source: utm.get('utm_source') || (storedUtm ? storedUtm.utm_source : '') || undefined,
-        utm_campaign: utm.get('utm_campaign') || (storedUtm ? storedUtm.utm_campaign : '') || undefined,
-        tasacion: {
-          title: formData.fields.f_direccion || formData.fields.f_barrio || 'Tasación web',
-          data,
-          type: isAlquiler ? 'alquiler' : 'venta',
-          valuation_usd: isAlquiler ? null : _lastValorFinal,
-          valuation_ars: isAlquiler ? _lastValorFinal : null,
+        website: website,
+        utm_source: utm.utm_source,
+        utm_campaign: utm.utm_campaign,
+        solicitud: {
+          direccion: direccion,
+          tipo: tipo,
+          operacion: operacion,
+          superficie: superficie,
+          mensaje: mensaje,
         },
       }),
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || ('HTTP ' + res.status));
     const out = await res.json().catch(() => ({}));
-    if (out.tasacion_id) TASACION_ID = out.tasacion_id;
-    _publicSaved = true;
-    if (typeof window.bhTrack === 'function') window.bhTrack('tasacion_lead_submit', { finalize: !!finalize });
-    const lastSaved = document.getElementById('lastSaved');
-    if (lastSaved) lastSaved.textContent = 'Guardado ' + new Date().toLocaleTimeString('es-AR');
-    showToast(finalize ? '¡Tasación enviada! Te contactamos a la brevedad.' : '¡Guardado! Un asesor te contacta con el detalle.');
-    if (finalize) window.parent?.postMessage({ type: 'tasaciones-finalized', id: TASACION_ID }, window.location.origin);
+    if (!res.ok) throw new Error(out.error || ('HTTP ' + res.status));
+    if (typeof window.bhTrack === 'function') window.bhTrack('tasacion_request_submit', { tipo: tipo || null, operacion: operacion || null });
+    const escName = (window.BHUtils && typeof window.BHUtils.esc === 'function') ? window.BHUtils.esc(name) : '';
+    if (card) {
+      card.innerHTML =
+        '<div style="text-align:center;padding:26px 8px;">' +
+        '<div style="font-size:44px;margin-bottom:10px;">✅</div>' +
+        '<h3 style="margin:0 0 12px;font-family:Poppins,sans-serif;font-size:20px;color:var(--ink,#f5f5f4);">¡Solicitud enviada!</h3>' +
+        '<p style="margin:0 auto;max-width:440px;font-size:14.5px;line-height:1.6;color:var(--muted,#b8b3aa);">' +
+        'Gracias, <b style="color:var(--ink,#f5f5f4);">' + escName + '</b>. ' +
+        'Un tasador de Bienenhaus te va a contactar por WhatsApp para coordinar la visita ' +
+        'y realizar el análisis comparativo de mercado de tu propiedad.' +
+        '</p>' +
+        '</div>';
+    }
     return true;
   } catch (e) {
-    showToast('Error al enviar: ' + (e.message || e));
+    showError('No pudimos enviar tu solicitud: ' + (e.message || e));
+    resetBtn();
     return false;
-  } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Guardar'; }
   }
 }
+
 
 async function saveToSupabase(finalize){
   if(_saving) return false;
@@ -562,10 +566,11 @@ async function saveToSupabase(finalize){
   /* _sessionOk = sesión real del propio cliente (localStorage mismo-origen), cubre
      también la pestaña suelta del PDF; _authToken = confirmación del admin vía iframe. */
   if(!_authToken && !_sessionOk){
-    /* FIX CONVERSIÓN 2026-10-26: antes era un callejón sin salida
-       ("Sesión no válida") para el visitante público — hoy captura
-       contacto y guarda vía tasacion-submit (lead + tasación). */
-    return await savePublicTasacion(finalize);
+    /* 2026-11-02: el wizard solo opera con sesión. El visitante público ve el
+       formulario de solicitud y NUNCA llega acá. Defensa: si la sesión muere
+       al vuelo, no se guarda nada — jamás por un endpoint público. */
+    showToast('Sesión no válida — abrí el tasacionero desde el panel');
+    return false;
   }
   _saving = true;
   const btn = document.getElementById('btnSave');
@@ -1077,17 +1082,26 @@ async function init(){
   document.querySelectorAll('.field label').forEach(l=>{ l.title = l.textContent; });
   renderServicios();
 
-  /* Sesión REAL desde el propio cliente: hereda la de localStorage (mismo origen que
-     el admin), cubre el iframe y la pestaña suelta del PDF. El banner solo se muestra
-     si de verdad no hay sesión (antes bastaba con que el postMessage tardara >2s y el
-     aviso quedaba para siempre). En modo print no se muestra: la barra ya está oculta
-     en el papel, el auto-print es efímero y el error de carga queda en consola. */
-  _supabase.auth.getSession().then(({ data: { session } }) => {
-    if (session) { _setSessionOk(); return; }
-    if (!_isPrintMode && !_sessionOk) _showNoSessionBanner();
-  }).catch(() => {
-    if (!_isPrintMode && !_sessionOk) _showNoSessionBanner();
-  });
+  /* Decisión de modo al boot (2026-11-02): SIN sesión el visitante público ve
+     SOLO el formulario de solicitud — el wizard no se renderiza y no se cargan
+     datos. La sesión real se lee del propio cliente (localStorage mismo origen:
+     cubre el iframe del panel y la pestaña suelta del PDF); el postMessage
+     'auth-session' del admin sigue activo como señal complementaria. */
+  let _bootSession = null;
+  try {
+    const boot = await _supabase.auth.getSession();
+    _bootSession = boot?.data?.session ?? null;
+  } catch {
+    _bootSession = null;
+  }
+  if (_bootSession) {
+    _setSessionOk();
+  } else if (!_isPrintMode) {
+    /* público: PIDE la tasación, no la hace */
+    enterPublicRequestMode();
+    return;
+  }
+  /* En modo print sin sesión se continúa (la barra ya va oculta en el papel). */
 
   if(TASACION_ID){
     try{

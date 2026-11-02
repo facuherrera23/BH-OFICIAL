@@ -6,6 +6,42 @@ const { trackConsoleErrors } = require('./helpers/console');
 
 const ALLOWED_406 = [/status of 406/i];
 
+/* Sesión falsa para el UMD vendido de supabase-js (formato @supabase/auth-js:
+   objeto session PLANO en sb-<ref>-auth-token) con un JWT cuyo exp está en
+   futuro lejano — el cliente parsea el JWT del access_token en getSession()
+   y intentaría refresh (con red) si estuviera vencido. La usa el test del
+   ACM en modo agente; sin ella la página cae en modo público (decisión del
+   dueño 2026-11-02: el visitante sin sesión PIDE la tasación, no la hace). */
+function seedFakeAgentSession(page) {
+  const exp = Math.floor(Date.now() / 1000) + 90 * 86400;
+  const payload = Buffer.from(JSON.stringify({
+    sub: '00000000-0000-0000-0000-000000000000',
+    role: 'authenticated',
+    aud: 'authenticated',
+    exp,
+  })).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const session = JSON.stringify({
+    access_token: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.${payload}.fake-signature`,
+    token_type: 'bearer',
+    expires_in: 7776000,
+    expires_at: exp,
+    refresh_token: 'fake-refresh-token',
+    user: {
+      id: '00000000-0000-0000-0000-000000000000',
+      aud: 'authenticated',
+      role: 'authenticated',
+      email: 'agente-test@bienenhaus.test',
+      app_metadata: {},
+      user_metadata: {},
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+    },
+  });
+  return page.addInitScript(([key, value]) => {
+    window.localStorage.setItem(key, value);
+  }, ['sb-rnldqiwwzhjnurkguihu-auth-token', session]);
+}
+
 test.describe('Smoke: páginas del sistema', () => {
   test('index.html — landing pública', async ({ page }) => {
     await page.goto('/index.html');
@@ -28,21 +64,27 @@ test.describe('Smoke: páginas del sistema', () => {
     expect(await page.evaluate(() => document.readyState)).toBe('complete');
   });
 
-  test('tasacion.html — ACM maneja id inexistente sin crash', async ({ page }) => {
+  // MODO PÚBLICO (decisión del dueño 2026-11-02): sin sesión el visitante solo
+  // PIDE la tasación. Este test usa ?id= a propósito: el boot sale temprano y
+  // ya no queda NINGUNA query a 'tasaciones' (el 406/PGRST116 esperado del ACM
+  // viejo desapareció de diseño — no hay nada que mockear).
+  test('tasacion.html — sin sesión: formulario de solicitud público, ACM oculto', async ({ page }) => {
     await page.goto('/tasacion.html?id=00000000-0000-0000-0000-000000000000');
-    // El 406/PGRST116 de la query con id inexistente es esperado y manejado (addComparable + no bloquear).
-    const console = trackConsoleErrors(page, [/status of 406/i, /PGRST116/i]);
-    await expect(page.locator('body')).toBeVisible();
-    await expect(page.locator('#formFieldset')).toBeVisible();
-    await expect(page).toHaveTitle(/Tasaci|Análisis/);
+    const console = trackConsoleErrors(page);
+    await expect(page.locator('#publicRequestCard')).toBeVisible();
+    await expect(page.locator('#formFieldset')).toBeHidden();
+    await expect(page.locator('#statusBar')).toBeHidden();
+    await expect(page).toHaveTitle(/Tasaci/);
     // pageerror = crash JS real, nunca permitido.
     expect(console.pageErrors).toEqual([]);
     console.assertClean();
   });
 
-  test('tasacion.html — moneda por destino: alquiler en $, venta en U$S', async ({ page }) => {
+  test('tasacion.html — moneda por destino (agente con sesión): alquiler en $, venta en U$S', async ({ page }) => {
+    seedFakeAgentSession(page);
     await page.goto('/tasacion.html');
     const console = trackConsoleErrors(page);
+    await expect(page.locator('#formFieldset')).toBeVisible();
     const comp = page.locator('.comp-block').first();
     await comp.locator('.c_precio').fill('100000');
     await comp.locator('.c_supCubierta').fill('100');
