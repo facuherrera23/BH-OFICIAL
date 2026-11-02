@@ -237,10 +237,14 @@ jobs:
             fi
             if in_list "$fn" "${NO_VERIFY[@]}"; then
               echo "Deploying $fn (--no-verify-jwt)..."
-              supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt || { echo "FAILED: $fn"; FAILED=1; }
+              # --yes: la CLI de Supabase (>= v2) pide confirmación interactiva
+              # al deploy y en CI (sin TTY) aborta con "Confirmation required",
+              # dejando TODAS las functions sin desplegar. Sin este flag el
+              # job entero falla (incidente 2026-11-02).
+              supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --no-verify-jwt --yes || { echo "FAILED: $fn"; FAILED=1; }
             else
               echo "Deploying $fn (verify_jwt)..."
-              supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" || { echo "FAILED: $fn"; FAILED=1; }
+              supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF" --yes || { echo "FAILED: $fn"; FAILED=1; }
             fi
           done
           exit $FAILED

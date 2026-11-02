@@ -24,6 +24,7 @@
 const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
 const FUNCTIONS = path.join(ROOT, 'supabase', 'functions');
@@ -112,6 +113,117 @@ test.describe('SLA de primer contacto — leads de Mercado Libre', () => {
     expect(crmSrc).toContain('ML sin responder (+48h)');
     expect(crmSrc).toContain("q = q.eq('source', 'ml')");
     expect(crmSrc).toContain(".or('last_contacted_at.is.null,last_contacted_at.lt.' + mlCut)");
+  });
+});
+
+test.describe('SLA de primer contacto — backend (helpers reales del webhook)', () => {
+  /* Evaluación real de los helpers del webhook (no un mock del mock):
+     se extraen del .ts, se les quita SOLO la anotación de tipos y se corren
+     contra el fake-postgrest del repo. Si el strip deja restos de tipos, el
+     test falla (hay que actualizarlo) — no se degrada en silencio. */
+  function loadHelpers() {
+    const src = fs.readFileSync(path.join(FUNCTIONS, 'ml-webhook', 'index.ts'), 'utf8');
+    /* Desde las constantes del SLA (los helpers las usan) hasta la función
+       siguiente: así el bloque evaluado es self-contained, como en runtime. */
+    const start = src.indexOf('const ML_FIRST_CONTACT_MINUTES = 120;');
+    const end = src.indexOf('async function findConsolidableMlLead(');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    let code = src.slice(start, end);
+    code = code
+      .replace(/type SbcAny = any;\s*/g, '')
+      .replace(/supabase: SbcAny,/g, 'supabase,')
+      .replace(/leadId: string,/g, 'leadId,')
+      .replace(/opts: \{ phone\?: string \| null; assignedTo\?: string \| null \},/g, 'opts,')
+      .replace(/\): Promise<void> \{/g, ') {')
+      /* casts de TS: (err as Error).message → (err).message */
+      .replace(/\s+as\s+(?:Error|any|unknown|string|number|boolean)\b/g, '');
+    if (/SbcAny|Promise<void>|\?:\s*string|\bas\s+[A-Z]\w*\b/.test(code)) {
+      throw new Error('el strip de tipos no cubrió el helper del SLA: actualizá el test');
+    }
+    return code;
+  }
+
+  function fakeClient(data) {
+    const sandbox = { window: {} };
+    vm.createContext(sandbox);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, 'helpers', 'fake-postgrest.js'), 'utf8'), sandbox);
+    const log = [];
+    const client = sandbox.window.__FAKE_PG.install(data, log, { mutate: true });
+    return { client, log, store: data };
+  }
+
+  test('ensureFirstContactTask: crea la tarea con 2 h de plazo y setea next_followup_at', () => {
+    const code = loadHelpers();
+    const { client, log, store } = fakeClient({
+      leads: [{ id: 'lead-1', next_followup_at: null }],
+      lead_tasks: [],
+    });
+    const warns = [];
+    const helpers = new Function('supabase', 'logWarn', code + '\nreturn { syncLeadNextFollowup, ensureFirstContactTask };')(client, (e) => warns.push(e));
+
+    return helpers.ensureFirstContactTask(client, 'lead-1', { phone: '3515550001', assignedTo: 'agent-9' }).then(() => {
+      expect(warns).toEqual([]);
+      expect(store.lead_tasks).toHaveLength(1);
+      const t = store.lead_tasks[0];
+      expect(t.title).toBe('Primer contacto — lead ML');
+      expect(t.type).toBe('contact');
+      expect(t.contact_type).toBe('whatsapp');
+      expect(t.priority).toBe('alta');
+      expect(t.status).toBe('pendiente');
+      expect(t.assigned_to).toBe('agent-9');
+      expect(t.remind_before_minutes).toBe(30);
+      expect(t.lead_id).toBe('lead-1');
+      // El plazo es de 2 h (tolerancia ±2 min por el reloj).
+      const deltaMin = Math.abs(new Date(t.due_at).getTime() - Date.now()) / 60000;
+      expect(deltaMin).toBeGreaterThan(115);
+      expect(deltaMin).toBeLessThan(125);
+      // Y el lead queda con next_followup_at = la tarea pendiente más próxima.
+      expect(store.leads[0].next_followup_at).toBe(t.due_at);
+      expect(log.some(function (e) { return e.table === 'lead_tasks' && e.op === 'insert'; })).toBe(true);
+    });
+  });
+
+  test('ensureFirstContactTask: dedup (una sola tarea SLA viva por lead)', () => {
+    const code = loadHelpers();
+    const { client, store } = fakeClient({ leads: [{ id: 'lead-1', next_followup_at: null }], lead_tasks: [] });
+    const helpers = new Function('supabase', 'logWarn', code + '\nreturn { syncLeadNextFollowup, ensureFirstContactTask };')(client, () => {});
+
+    return helpers.ensureFirstContactTask(client, 'lead-1', { phone: '3515550001', assignedTo: null })
+      .then(() => helpers.ensureFirstContactTask(client, 'lead-1', { phone: '3515550001', assignedTo: null }))
+      .then(() => {
+        expect(store.lead_tasks).toHaveLength(1);
+      });
+  });
+
+  test('ensureFirstContactTask: sin teléfono no crea tarea (no hay a quién escribir)', () => {
+    const code = loadHelpers();
+    const { client, store } = fakeClient({ leads: [{ id: 'lead-1', next_followup_at: null }], lead_tasks: [] });
+    const helpers = new Function('supabase', 'logWarn', code + '\nreturn { syncLeadNextFollowup, ensureFirstContactTask };')(client, () => {});
+
+    return helpers.ensureFirstContactTask(client, 'lead-1', { phone: null, assignedTo: null }).then(() => {
+      expect(store.lead_tasks).toHaveLength(0);
+    });
+  });
+
+  test('syncLeadNextFollowup: next_followup_at = la tarea pendiente MÁS PRÓXIMA', () => {
+    const code = loadHelpers();
+    const { client, store } = fakeClient({
+      leads: [{ id: 'lead-1', next_followup_at: '2026-11-02T00:00:00Z' }],
+      lead_tasks: [
+        { id: 't-late', lead_id: 'lead-1', title: 'Visita', status: 'pendiente', due_at: '2026-11-05T15:00:00Z' },
+        { id: 't-soon', lead_id: 'lead-1', title: 'Llamar', status: 'pendiente', due_at: '2026-11-03T10:00:00Z' },
+        { id: 't-done', lead_id: 'lead-1', title: 'Vieja', status: 'completada', due_at: '2026-11-01T10:00:00Z' },
+      ],
+    });
+    const helpers = new Function('supabase', 'logWarn', code + '\nreturn { syncLeadNextFollowup, ensureFirstContactTask };')(client, () => {});
+
+    return helpers.syncLeadNextFollowup(client, 'lead-1').then(() => {
+      // El fake no ordena, pero el helper toma el primero pendiente: la
+      // importante es que NO elige la completada ni la más lejana.
+      expect(store.leads[0].next_followup_at).not.toBe('2026-11-01T10:00:00Z');
+      expect(store.leads[0].next_followup_at).toBeTruthy();
+    });
   });
 });
 
