@@ -112,7 +112,7 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
      por el sample oldest-first) y filtraba por a.severity — columna que
      audit_log no tiene (usa status: success|error + error_code), por eso
      Exitosas/Fallidas daban siempre 0. */
-  const [statsRes, usersRes, ytPublishedRes, ytFailedRes, ytPendingRes, slaRes] = await Promise.all([
+  const [statsRes, usersRes, ytPublishedRes, ytFailedRes, ytPendingRes, slaRes, channelsRes] = await Promise.all([
     supabase.rpc("supervision_digest_stats", { p_from: weekAgo, p_to: now } as any),
     supabase.from("profiles").select("id, full_name, email, role").eq("is_active", true),
     /* Contenido / YouTube: el digest también mira el módulo de contenido.
@@ -126,6 +126,10 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
     /* SLA de primer contacto (migración 20261102000001): dónde muere el
        funnel comercial — leads contactados en <2h / 2-24h / >24h / nunca. */
     supabase.rpc("supervision_digest_contact_sla", { p_from: weekAgo, p_to: now } as any),
+    /* Canales de captación (migración 20261103000001): dónde NACIERON los
+       leads de la semana, por source y por UTM, con la semana previa
+       como delta. Es la medición del cartel QR y del post de Google Business. */
+    supabase.rpc("supervision_digest_lead_channels", { p_from: weekAgo, p_to: now } as any),
   ]);
 
   const stats = (statsRes.data || {}) as any;
@@ -213,6 +217,8 @@ async function fetchDigestData(supabase: ReturnType<typeof createClient>) {
     },
     /* SLA de primer contacto (RPC supervision_digest_contact_sla). */
     contactSla: (slaRes.data || {}) as any,
+    /* Canales de captación (RPC supervision_digest_lead_channels). */
+    leadChannels: (channelsRes.data || {}) as any,
     userNames,
     meta: {
       totalAuditEvents: stats.meta?.totalAuditEvents ?? k.actionsTotal ?? 0,
@@ -456,6 +462,78 @@ function buildEmailHTML(data: any, config: DigestConfig): string {
     `;
   };
 
+  /* Canales de captación: dónde nacieron los leads de la semana (2026-11-03).
+     El delta comparación contra la semana previa — si el canal es nuevo
+     (sin previa) no invento flecha: primera señal en silencio. */
+  const leadChannelsBlock = () => {
+    const c = d.leadChannels;
+    if (!c || (c.bySource || []).length === 0) return "";
+    const SRC_LABEL: Record<string, string> = {
+      ml: "Mercado Libre",
+      landing_page: "Landing web",
+      tasacion: "Tasación web",
+      manual: "Alta manual",
+      youtube: "YouTube",
+      newsletter: "Newsletter",
+      instagram: "Instagram",
+    };
+    const name = (s: any) => (s == null || s === "" ? "(sin origen)" : (SRC_LABEL[s] || s));
+    const prevOf = (list: any[], key: string, val: any) => {
+      const r = (list || []).find((x: any) => x[key] === val || ((x[key] == null || x[key] === "") && (val == null || val === "")));
+      return r ? Number(r.n) : 0;
+    };
+    const delta = (n: number, p: number) => {
+      if (!n && !p) return "";
+      if (!p) return '<span style="color:#3B82F6;font-weight:600;">nuevo</span>';
+      const dlt = n - p;
+      if (dlt === 0) return '<span style="color:#999;">=</span>';
+      return dlt > 0
+        ? `<span style="color:#1FC8C3;font-weight:600;">▲ +${dlt}</span>`
+        : `<span style="color:#EF4444;font-weight:600;">▼ ${dlt}</span>`;
+    };
+    const srcRows = (c.bySource || []).map((r: any) => {
+      const p = prevOf(c.prevBySource, "source", r.source);
+      return { label: name(r.source), n: Number(r.n), p };
+    });
+    const utmRows = (c.byUtm || []).slice(0, 8).map((r: any) => {
+      const val = r.utm_source + "/" + (r.utm_campaign || "(sin campaña)");
+      return { label: val, n: Number(r.n), p: prevOf(c.prevByUtm, "utm_source", r.utm_source) };
+    });
+    const row = (r: any) => `
+          <tr>
+            <td style="padding:10px;border-bottom:1px solid #eee;">${r.label}</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;font-weight:600;">${formatNumber(r.n)}</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;color:#777;">${r.p || "—"}</td>
+            <td style="padding:10px;text-align:right;border-bottom:1px solid #eee;">${delta(r.n, r.p)}</td>
+          </tr>`;
+    const tableHead = `
+        <thead>
+          <tr style="background:#f4f4f4;">
+            <th style="padding:10px;text-align:left;border-bottom:2px solid #ddd;">Canal</th>
+            <th style="padding:10px;text-align:right;border-bottom:2px solid #ddd;">Esta semana</th>
+            <th style="padding:10px;text-align:right;border-bottom:2px solid #ddd;">Semana previa</th>
+            <th style="padding:10px;text-align:right;border-bottom:2px solid #ddd;">Δ</th>
+          </tr>
+        </thead>`;
+    return `
+      <h3 style="margin:24px 0 12px;font-size:16px;color:#111;">Leads · Canales de captación</h3>
+      <table role="presentation" style="width:100%;border-collapse:collapse;font-size:13px;">
+        ${tableHead}
+        <tbody>
+          ${srcRows.map(row).join("")}
+        </tbody>
+      </table>
+      ${utmRows.length ? `
+      <table role="presentation" style="width:100%;border-collapse:collapse;font-size:13px;margin-top:14px;">
+        ${tableHead.replace("Canal", "Campaña (UTM)")}
+        <tbody>
+          ${utmRows.map(row).join("")}
+        </tbody>
+      </table>` : ""}
+      <p style="margin-top:10px;color:#888;font-size:12px;">La atribución fina viene de las UTMs que persisten los formularios (cartel QR por propiedad, Google Business, landing). Mercado Libre no lleva UTM: cuenta por source=ml.</p>
+    `;
+  };
+
   const ctaButton = `<div style="text-align:center;margin-top:32px;"><a href="${dashboardUrl}#tab-supervision" style="display:inline-block;background:#1FC8C3;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Ver Centro de Supervisión Completo</a></div>`;
 
   return `
@@ -522,6 +600,8 @@ function buildEmailHTML(data: any, config: DigestConfig): string {
       ${trendChart()}
 
       ${contactSlaBlock()}
+
+      ${leadChannelsBlock()}
 
       ${contenidoBlock()}
 
@@ -590,6 +670,27 @@ Nunca contactados: ${formatNumber(d.contactSla?.neverContacted || 0)}
 Mediana al primer contacto: ${d.contactSla?.medianHours != null ? Number(d.contactSla.medianHours).toFixed(1) + " h" : "—"}
 Mercado Libre: ${formatNumber(d.contactSla?.mlUnder2h || 0)} de ${formatNumber(d.contactSla?.mlTotal || 0)} en <2 h
 Backlog activo sin contacto >48 h: ${formatNumber(d.contactSla?.untouchedStale || 0)}
+
+LEADS · CANALES DE CAPTACIÓN
+${"-".repeat(20)}
+${(() => {
+  const SRC_LABEL: Record<string, string> = {
+    ml: "Mercado Libre", landing_page: "Landing web", tasacion: "Tasación web",
+    manual: "Alta manual", youtube: "YouTube", newsletter: "Newsletter", instagram: "Instagram",
+  };
+  const label = (s: any) => (s == null || s === "" ? "(sin origen)" : (SRC_LABEL[s] || s));
+  const prevOf = (list: any[], key: string, val: any) => {
+    const r = (list || []).find((x: any) => x[key] === val);
+    return r ? Number(r.n) : 0;
+  };
+  const src = (d.leadChannels?.bySource || []).map((r: any) =>
+    `${label(r.source)}: ${formatNumber(r.n)} (previa: ${formatNumber(prevOf(d.leadChannels?.prevBySource, "source", r.source))})`
+  ).join("\n") || "(sin leads esta semana)";
+  const utms = (d.leadChannels?.byUtm || []).map((r: any) =>
+    `${r.utm_source}/${r.utm_campaign || "(sin campaña)"}: ${formatNumber(r.n)} (previa: ${formatNumber(prevOf(d.leadChannels?.prevByUtm, "utm_source", r.utm_source))})`
+  ).join("\n") || "(sin leads con UTM declarado)";
+  return src + "\n\nAtribución fina (UTM):\n" + utms;
+})()}
 
 CONTENIDO · YOUTUBE
 ${"-".repeat(20)}
