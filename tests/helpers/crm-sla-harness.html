@@ -69,7 +69,11 @@
         id: '22222222-2222-2222-2222-222222222222',
         full_name: 'Lead ML Ya Contactado', email: 'ml-cont@test.com', phone: '3515550002',
         whatsapp: '3515550002', stage: 'contactado', source: 'ml', assigned_to: null,
-        last_contacted_at: '2026-11-01T12:00:00Z', next_followup_at: null,
+        /* RELATIVO a now() (-20 h): el chip "ML sin responder" excluye leads
+           contactados hace <48 h — con fecha fija este fixture cruzaba la
+           frontera de 48 h al día siguiente y el test se rompía solo
+           (pasó 2026-11-03 con '2026-11-01T12:00:00Z'). */
+        last_contacted_at: new Date(Date.now() - 20 * 3600000).toISOString(), next_followup_at: null,
         created_at: '2026-10-30T12:00:00Z', deleted_at: null, property_id: null,
         lead_score: 50, notes: 'Lead de Mercado Libre', ml_lead_id: 'ml-2'
       },
