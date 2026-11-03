@@ -284,6 +284,26 @@
     });
   }, true);
 
+  /* Datos del agente logueado para atribuir contactos (?de=&tel=): la ficha
+     y el cartel muestran ESE contacto (no el broker asignado) y el CTA de
+     WhatsApp apunta a su número. Implementación ÚNICA compartida por
+     sharePropertyWhatsApp y openPropertyQrCartel. */
+  window.adminApp.agentAttribution = async function () {
+    if (!currentUser?.id) return null;
+    try {
+      const { data: agente } = await window.supabaseClient
+        .from('agents')
+        .select('full_name, phone')
+        .eq('profile_id', currentUser.id)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (agente?.full_name) return { de: agente.full_name, tel: agente.phone || '' };
+    } catch (errAQ) {
+      logError && logError('agentAttribution: no se pudo leer el agente', errAQ);
+    }
+    return null;
+  };
+
   window.adminApp.sharePropertyWhatsApp = async function (propertyId, propertyCode) {
     if (!propertyCode) { showToast('La propiedad no tiene código; no se puede generar la ficha', 'error'); return; }
     try {
@@ -313,21 +333,11 @@
       let fichaUrl = 'https://bienenhaus.com.ar/fichas/' + encodeURIComponent(propertyCode) + '.html';
       /* Datos de quien comparte: la ficha muestra ese contacto (no el broker
          asignado de la propiedad), y el CTA de WhatsApp apunta a su número. */
-      if (currentUser?.id) {
-        try {
-          const { data: agente } = await window.supabaseClient
-            .from('agents')
-            .select('full_name, phone')
-            .eq('profile_id', currentUser.id)
-            .is('deleted_at', null)
-            .maybeSingle();
-          if (agente?.full_name) {
-            fichaUrl += '?de=' + encodeURIComponent(agente.full_name);
-            if (agente.phone) fichaUrl += '&tel=' + encodeURIComponent(agente.phone);
-          }
-        } catch (errAQ) {
-          logError && logError('sharePropertyWhatsApp: no se pudo leer el agente', errAQ);
-        }
+      /* Atribución del contacto: helper compartido con el cartel QR. */
+      const atr = await window.adminApp.agentAttribution();
+      if (atr) {
+        fichaUrl += '?de=' + encodeURIComponent(atr.de);
+        if (atr.tel) fichaUrl += '&tel=' + encodeURIComponent(atr.tel);
       }
       lines.push(fichaUrl);
       lines.push('');
@@ -337,6 +347,21 @@
     } catch (err) {
       showToast('Error al preparar el mensaje: ' + err.message, 'error');
     }
+  };
+
+  /* Cartel imprimible de la propiedad: QR a la ficha pública con UTMs
+     (utm_source=cartel + utm_campaign=CODE) — la captación offline de
+     compradores queda atribuida por cartel físico. El patrón de contacto
+     (?de=&tel=) es el mismo de sharePropertyWhatsApp vía agentAttribution. */
+  window.adminApp.openPropertyQrCartel = async function (propertyCode) {
+    if (!propertyCode) { showToast('La propiedad no tiene código; no se puede generar el cartel', 'error'); return; }
+    const atr = await window.adminApp.agentAttribution();
+    let url = 'qr-propiedad.html?code=' + encodeURIComponent(propertyCode);
+    if (atr) {
+      url += '&de=' + encodeURIComponent(atr.de);
+      if (atr.tel) url += '&tel=' + encodeURIComponent(atr.tel);
+    }
+    window.open(url, '_blank', 'noopener');
   };
 
   on($('#imagePreviewGrid'), 'click', (e) => {

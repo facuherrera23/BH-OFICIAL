@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Cartel físico: NO se indexa. El destino del QR es la ficha pública. -->
+  <meta name="robots" content="noindex, nofollow">
+  <title>Cartel de la propiedad | BIENENHAUS</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://api.qrserver.com; font-src 'self' https://fonts.gstatic.com;" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #fff; font-family: 'Inter', sans-serif; display: flex; justify-content: center; padding: 40px 20px; }
+    .card { max-width: 460px; width: 100%; text-align: center; border: 3px solid #1fc8c3; border-radius: 18px; padding: 34px 28px; }
+    .brand { font-family: 'Playfair Display', serif; font-size: 24px; color: #0a2e2c; letter-spacing: 2px; }
+    .brand span { color: #1fc8c3; }
+    .ask { font-family: 'Playfair Display', serif; font-size: 30px; font-weight: 700; color: #0a2e2c; margin: 22px 0 8px; line-height: 1.25; }
+    .sub { font-size: 15px; color: #333; margin-bottom: 22px; }
+    .sub strong { color: #1fc8c3; }
+    .qr { width: 240px; height: 240px; margin: 0 auto 16px; display: block; }
+    .cta { font-size: 14px; font-weight: 600; color: #0a2e2c; }
+    .cta small { display: block; font-weight: 400; color: #777; margin-top: 6px; font-size: 11.5px; }
+    .ref { margin-top: 14px; font-size: 10.5px; color: #aaa; letter-spacing: 0.5px; }
+    .print-btn { margin-top: 22px; background: #1fc8c3; color: #04211f; border: none; padding: 12px 26px; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 14px; }
+    @media print { .print-btn, .ref { display: none; } body { padding: 0; } .card { border-radius: 0; } }
+  </style>
+  <link rel="stylesheet" href="/assets/vendor/fonts/plus-jakarta-sans.css">
+</head>
+<body>
+  <div class="card">
+    <div class="brand">BIENENHAUS <span>PROPIEDADES</span></div>
+    <p class="ask" id="askEl">¿Te interesa esta<br>propiedad?</p>
+    <p class="sub">Escaneá para ver la <strong>ficha completa</strong>:<br>fotos, medidas, precio y tour en video.</p>
+    <img class="qr" id="qrImg" alt="QR: ficha de la propiedad" />
+    <p class="cta" id="ctaEl">Toda la información en tu celular<small>Coordiná tu visita directamente con el agente a cargo.</small></p>
+    <p class="ref" id="refCode" style="display:none;"></p>
+    <button class="print-btn" id="printBtn" type="button">Imprimir cartel</button>
+  </div>
+  <!-- Solo script externo (la CSP no permite inline). Sin supabase: la
+       página no consulta la DB — el código del cartel viaja por la URL. -->
+  <script src="assets/js/pages/qr-propiedad-page.js?v=1"></script>
+
+<!-- Footer legal — Ley 25.326 -->
+<footer style="margin-top:60px;padding:20px;text-align:center;border-top:1px solid rgba(255,255,255,0.06);font-size:11px;color:#8E9BAE;line-height:1.6;">
+  <a href="/politica-de-privacidad.html" style="color:rgba(31,200,195,0.7);text-decoration:none;">Política de Privacidad</a> ·
+  <a href="/terminos-y-condiciones.html" style="color:rgba(31,200,195,0.7);text-decoration:none;">Términos y Condiciones</a>
+  <br>Tus datos son tratados según la Ley 25.326. Consultas: bienenhaus.propiedades@gmail.com
+</footer>
+
+</body>
+</html>
