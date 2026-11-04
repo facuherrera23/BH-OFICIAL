@@ -1705,7 +1705,7 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
 .props-table col.col-op     { width: 92px; }
 .props-table col.col-owner  { width: 140px; }
 .props-table col.col-state  { width: 158px; }
-.props-table col.col-act    { width: 310px; }
+.props-table col.col-act    { width: 220px; }
 .props-table td { padding: 10px 12px; overflow: hidden; vertical-align: middle; }
 .props-table th { padding: 10px 12px; }
 
@@ -1758,6 +1758,21 @@ a.props-title--link:hover { color: var(--accent); text-decoration: underline; te
 
 .props-actions { display: flex; gap: 3px; align-items: center; flex-wrap: nowrap; }
 .props-actions .btn-action { padding: 4px 6px; font-size: 10px; flex-shrink: 0; }
+/* Acciones en 2 filas (2026-11-04): con 15 iconos en una sola línea la columna
+   medía 310px y la tabla sumaba 1126px fijos — el título de la propiedad
+   quedaba aplastado y había que scrollear en horizontal. Ahora:
+     · fila 1 = publicación/canales (ML, RELA, video, campaña)
+     · fila 2 = contacto/operación (WhatsApp, carteles, encuestas, duplicar,
+       ZIP, editar, eliminar)
+   La columna bajó a 210px: los ~100px liberados vuelven a la columna de la
+   propiedad. Los botones achican un toque (padding 3px 4px) para que la fila
+   más cargada (8 botones) entre SIN envolver. */
+.props-actions--split { flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; }
+.props-actions--split .props-actions-row { display: flex; gap: 2px; align-items: center; flex-wrap: wrap; max-width: 100%; }
+/* Los botones del split son 24x24 (el .btn-action base es 30x30): 7 por fila
+   entran en los 196px útiles de la columna de 210→220px y la fila de la
+   tabla crece solo 20px. Medido en el render real (tests/props-actions-layout). */
+.props-actions--split .btn-action { width: 24px; height: 24px; padding: 0; font-size: 10px; border-radius: 6px; flex-shrink: 0; }
 
 /* ============================================================
    HISTORIAL DE ENCUESTAS DE VISITAS (por propiedad)

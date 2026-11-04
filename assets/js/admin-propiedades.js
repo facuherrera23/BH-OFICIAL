@@ -277,19 +277,23 @@
               <button class="btn-action" style="color:var(--success);" title="Restaurar propiedad" data-prop-act="restore" data-prop-id="${esc(p.id)}"><i class="fas fa-trash-arrow-up"></i></button>
               <button class="btn-action danger" title="Eliminar definitivamente (solo Super Admin; borra fotos y documentos)" data-prop-act="destroy" data-prop-id="${esc(p.id)}"><i class="fas fa-ban"></i></button>
             </div>` : `
-            <div class="props-actions">
-              ${mlButtons}
-              ${relaButtons}
-              ${p.is_published ? `<button class="btn-action" style="color:#25D366;" title="Compartir ficha por WhatsApp" data-wa-share="${esc(p.id)}" data-wa-code="${esc(p.property_code || '')}"><i class="fab fa-whatsapp"></i></button>` : ''}
-              ${p.property_code ? `<button class="btn-action" style="color:#1fc8c3;" title="Cartel imprimible: pedí tu tasación (QR con atribución del código)" data-qr-tasacion="${esc(p.property_code)}"><i class="fas fa-sign-hanging"></i></button>` : ''}
-              ${p.property_code ? `<button class="btn-action" style="color:#0a6ebd;" title="Cartel imprimible: ficha de la propiedad (QR con UTMs y contacto del agente)" data-qr-propiedad="${esc(p.property_code)}"><i class="fas fa-house-circle-check"></i></button>` : ''}
-              ${_propVideoMap[p.id] ? `<button class="btn-action" style="color:#FF0000;" title="Ver el tour en video (YouTube)" data-prop-video="${esc(p.id)}"><i class="fab fa-youtube"></i></button>` : ''}
-              ${p.is_published ? `<button class="btn-action" style="color:#FFB800;" title="Campaña WhatsApp a leads que encajan" data-prop-act="campaign" data-prop-id="${esc(p.id)}" data-prop-code="${esc(p.property_code || '')}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-bullhorn"></i></button>` : ''}
-              <button class="btn-action" style="color:#8b5cf6;" title="Ver encuestas de visitas" data-prop-act="surveys" data-prop-id="${esc(p.id)}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-clipboard-list"></i></button>
-              <button class="btn-action" title="Duplicar propiedad" data-prop-act="duplicate" data-prop-id="${esc(p.id)}"><i class="fas fa-copy"></i></button>
-              ${zipBtn}
-              <button class="btn-action" title="Editar" data-prop-act="edit" data-prop-id="${esc(p.id)}"><i class="fas fa-pen"></i></button>
-              <button class="btn-action danger" title="Eliminar (va a la papelera)" data-prop-act="delete" data-prop-id="${esc(p.id)}"><i class="fas fa-trash"></i></button>
+            <div class="props-actions props-actions--split">
+              <div class="props-actions-row">
+                ${mlButtons}
+                ${relaButtons}
+                ${_propVideoMap[p.id] ? `<button class="btn-action" style="color:#FF0000;" title="Ver el tour en video (YouTube)" data-prop-video="${esc(p.id)}"><i class="fab fa-youtube"></i></button>` : ''}
+                ${p.is_published ? `<button class="btn-action" style="color:#FFB800;" title="Campaña WhatsApp a leads que encajan" data-prop-act="campaign" data-prop-id="${esc(p.id)}" data-prop-code="${esc(p.property_code || '')}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-bullhorn"></i></button>` : ''}
+                <button class="btn-action" style="color:#8b5cf6;" title="Ver encuestas de visitas" data-prop-act="surveys" data-prop-id="${esc(p.id)}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-clipboard-list"></i></button>
+              </div>
+              <div class="props-actions-row">
+                ${p.is_published ? `<button class="btn-action" style="color:#25D366;" title="Compartir ficha por WhatsApp" data-wa-share="${esc(p.id)}" data-wa-code="${esc(p.property_code || '')}"><i class="fab fa-whatsapp"></i></button>` : ''}
+                ${p.property_code ? `<button class="btn-action" style="color:#1fc8c3;" title="Cartel imprimible: pedí tu tasación (QR con atribución del código)" data-qr-tasacion="${esc(p.property_code)}"><i class="fas fa-sign-hanging"></i></button>` : ''}
+                ${p.property_code ? `<button class="btn-action" style="color:#0a6ebd;" title="Cartel imprimible: ficha de la propiedad (QR con UTMs y contacto del agente)" data-qr-propiedad="${esc(p.property_code)}"><i class="fas fa-house-circle-check"></i></button>` : ''}
+                <button class="btn-action" title="Duplicar propiedad" data-prop-act="duplicate" data-prop-id="${esc(p.id)}"><i class="fas fa-copy"></i></button>
+                ${zipBtn}
+                <button class="btn-action" title="Editar" data-prop-act="edit" data-prop-id="${esc(p.id)}"><i class="fas fa-pen"></i></button>
+                <button class="btn-action danger" title="Eliminar (va a la papelera)" data-prop-act="delete" data-prop-id="${esc(p.id)}"><i class="fas fa-trash"></i></button>
+              </div>
             </div>`}
           </td>
         </tr>`;
