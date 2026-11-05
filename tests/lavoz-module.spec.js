@@ -1,0 +1,153 @@
+// Clasificados La Voz — publicación asistida (2026-11-04).
+// Guards ESTÁTICOS del módulo: migración + edge function + UI + paquete de
+// fotos. No tocan la BD ni la red.
+//
+// POR QUÉ ASISTIDA: La Voz NO tiene API pública ni carga masiva (verificado
+// 2026-11-04 contra el portal: sin API en FAQ/Términos/sitemap/bundles; la
+// única ruta JSON del front es /api/auth/me; el portal está detrás de
+// Cloudflare Turnstile y su robots.txt bloquea AI crawlers). El CRM arma el
+// aviso completo y una persona lo carga en el panel de La Voz.
+//
+// El punto sensible del módulo: la foto PORTADA (la PRIMERA de image_urls,
+// la misma que usa la ficha pública) tiene que ser la primera que se sube.
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
+
+const ROOT = path.join(__dirname, '..');
+const MIG = path.join(ROOT, 'supabase', 'migrations', '20261104000001_lavoz_publicacion.sql');
+const FN = path.join(ROOT, 'supabase', 'functions', 'lavoz-proxy', 'index.ts');
+const MAPPER = path.join(ROOT, 'supabase', 'functions', '_shared', 'lavoz.mapper.ts');
+
+const migSrc = fs.readFileSync(MIG, 'utf8');
+const fnSrc = fs.readFileSync(FN, 'utf8');
+const mapperSrc = fs.readFileSync(MAPPER, 'utf8');
+const portalesSrc = fs.readFileSync(path.join(ROOT, 'assets', 'js', 'admin-portales.js'), 'utf8');
+const propsSrc = fs.readFileSync(path.join(ROOT, 'assets', 'js', 'admin-propiedades.js'), 'utf8');
+const htmlSrc = fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8');
+const deploySrc = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'deploy.yml'), 'utf8');
+
+test.describe('La Voz — módulo de publicación asistida', () => {
+  test('migración: tablas aditivas + RLS + RPC con grants', () => {
+    expect(migSrc).toContain('CREATE TABLE IF NOT EXISTS public.lavoz_config');
+    expect(migSrc).toContain('CREATE TABLE IF NOT EXISTS public.lavoz_listings');
+
+    // Aditiva: nunca borra datos (producción real).
+    expect(migSrc).not.toMatch(/DELETE\s+FROM/i);
+    expect(migSrc).not.toMatch(/TRUNCATE/i);
+    expect(migSrc).not.toMatch(/DROP\s+TABLE/i);
+
+    // RLS en las dos tablas.
+    expect(migSrc).toContain('ALTER TABLE public.lavoz_config ENABLE ROW LEVEL SECURITY;');
+    expect(migSrc).toContain('ALTER TABLE public.lavoz_listings ENABLE ROW LEVEL SECURITY;');
+
+    // Lectura autenticados; la config sólo la escribe super_admin.
+    expect(migSrc).toContain('CREATE POLICY lavoz_config_read ON public.lavoz_config');
+    expect(migSrc).toContain('CREATE POLICY lavoz_config_write ON public.lavoz_config');
+    expect(migSrc).toContain('public.is_super_admin(auth.uid())');
+    expect(migSrc).toContain('CREATE POLICY lavoz_listings_read ON public.lavoz_listings');
+
+    // Estados del aviso (incluye el vencimiento a 10/30 días).
+    expect(migSrc).toMatch(/CHECK\s*\(status IN \('draft','ready','published','expired','failed'\)\)/);
+    expect(migSrc).toContain('expires_at TIMESTAMPTZ');
+    expect(migSrc).toContain('CONSTRAINT lavoz_listings_property_key UNIQUE (property_id)');
+
+    // RPC del tab Portales: sin anon, con authenticated.
+    expect(migSrc).toContain('CREATE OR REPLACE FUNCTION public.lavoz_portal_status()');
+    expect(migSrc).toContain('REVOKE ALL ON FUNCTION public.lavoz_portal_status() FROM PUBLIC, anon;');
+    expect(migSrc).toContain('GRANT EXECUTE ON FUNCTION public.lavoz_portal_status() TO authenticated;');
+  });
+
+  test('migración: los mapeos de tipo y barrio son los medidos contra el portal', () => {
+    // 9 subrubros reales de La Voz (fuente: /inmuebles).
+    for (const sub of ['casas', 'departamentos', 'terrenos-y-lotes', 'locales', 'galpones-y-depositos', 'oficinas', 'cocheras']) {
+      expect(migSrc).toContain(`"subrubro":"${sub}"`);
+    }
+    // Barrios medidos (con su slug de La Voz).
+    for (const b of ['nueva-cordoba', 'centro', 'alberdi', 'alta-cordoba', 'san-vicente', 'poeta-lugones', 'urca', 'obrero', 'villa-allende-parque', 'la-reserva']) {
+      expect(migSrc).toContain(`"barrio":"${b}"`);
+    }
+    // Las ciudades con tilde (el slug no alcanza para mostrarlas).
+    expect(migSrc).toContain('"ciudad_label":"Córdoba"');
+    expect(migSrc).toContain('"ciudad_label":"Villa Carlos Paz"');
+  });
+
+  test('edge function: usa el mapper puro (sin lógica duplicada)', () => {
+    expect(fnSrc).toContain("from '../_shared/lavoz.mapper.ts'");
+    expect(fnSrc).toContain('buildLavozPayload');
+    expect(fnSrc).toContain('buildLavozFicha');
+    // Si alguien vuelve a copiar el armado del aviso adentro de la función,
+    // los tests unitarios dejan de cubrir la lógica real.
+    expect(fnSrc).not.toContain('function buildPayload(');
+    expect(fnSrc).not.toContain('function buildFicha(');
+    expect(fnSrc).not.toMatch(/function resizeFoto\(/);
+  });
+
+  test('edge function: permisos por rol y acciones del flujo', () => {
+    expect(fnSrc).toContain("const WRITE_ROLES = ['super_admin', 'broker'];");
+    expect(fnSrc).toContain("const CONFIG_ROLES = ['super_admin'];");
+    for (const action of ['status', 'config_get', 'config_set', 'list', 'prepare', 'prepare_all', 'confirm', 'unpublish', 'expire']) {
+      expect(fnSrc).toContain(`'${action}'`);
+    }
+    // Los avisos bloqueantes (sin operación / sin precio / sin subrubro)
+    // dejan la fila en 'failed' en vez de 'ready'.
+    expect(fnSrc).toContain('const BLOQUEANTES =');
+    expect(fnSrc).toContain("status: bloqueante.length ? 'failed' : 'ready'");
+    // Confirmar calcula el vencimiento (10 o 30 días).
+    expect(fnSrc).toContain('expires_at: expires.toISOString()');
+  });
+
+  test('CI: lavoz-proxy se deploya y CON verify_jwt', () => {
+    // Ni excluida (bug histórico de contact-submit) ni sin verify_jwt:
+    // es una función autenticada del panel.
+    expect(deploySrc).not.toMatch(/EXCLUDED_FUNCTIONS=\([^)]*lavoz-proxy/s);
+    expect(deploySrc).not.toMatch(/NO_VERIFY=\([^)]*lavoz-proxy/s);
+  });
+
+  test('UI: panel en Portales + modal + botón en la fila de Propiedades', () => {
+    expect(htmlSrc).toContain('id="lavozPortalPanel"');
+    expect(htmlSrc).toContain('id="lavozModal"');
+    expect(htmlSrc).toContain('id="lavozModalBody"');
+    expect(htmlSrc).toContain('id="lavozModalSub"');
+
+    expect(portalesSrc).toContain('functions/v1/lavoz-proxy');
+    expect(portalesSrc).toContain('loadLavozPanel()');
+    expect(portalesSrc).toContain('window.adminApp.lavozPrepare = async function (propertyId)');
+    expect(portalesSrc).toContain('data-lavoz-prepare-all');
+    expect(portalesSrc).toContain('data-lavoz-confirm');
+
+    // El botón de la fila (una sola acción para el empleador).
+    expect(propsSrc).toContain('data-lavoz-action="prepare"');
+    expect(propsSrc).toContain("closest('[data-lavoz-action]')");
+    // La CSP no tiene unsafe-inline: cero onclick inline en el módulo.
+    const lavozSection = portalesSrc.slice(portalesSrc.indexOf('13D. CLASIFICADOS LA VOZ'));
+    expect(lavozSection).not.toMatch(/onclick\s*=/i);
+  });
+
+  test('UI: la despublicación pide confirmación (nada de confirm() nativo)', () => {
+    const lavozSection = portalesSrc.slice(portalesSrc.indexOf('13D. CLASIFICADOS LA VOZ'));
+    expect(lavozSection).toContain('showConfirmDialog');
+    expect(lavozSection).not.toMatch(/\bconfirm\s*\(/);
+    expect(lavozSection).not.toMatch(/\bprompt\s*\(/);
+  });
+
+  test('el paquete de fotos arranca con la PORTADA (01-portada)', () => {
+    expect(propsSrc).toContain('window.adminApp.downloadLavozPackage = async function (payload, ficha)');
+    // 01-portada, 02-foto, 03-foto… (el payload ya viene en orden: portada primero).
+    expect(propsSrc).toContain("String(i + 1).padStart(2, '0') + (i === 0 ? '-portada' : '-foto')");
+    // El ZIP incluye la ficha de texto para copiar y pegar.
+    expect(propsSrc).toContain("aviso-lavoz.txt");
+  });
+
+  test('mapper: la portada es la primera de image_urls y NO se reordena', () => {
+    expect(mapperSrc).toContain('export const MAX_FOTOS = 25;');
+    // Si el mapper ordenara las fotos, la portada dejaría de ser la primera.
+    expect(mapperSrc).not.toMatch(/\.sort\(/);
+    // La foto se reescala a JPG (La Voz no acepta webp).
+    expect(mapperSrc).toContain('f_jpg');
+    expect(mapperSrc).toContain('w_1200');
+    // El aviso avisa cuando el barrio no existe en La Voz (medido 2026-11-04).
+    expect(mapperSrc).toContain('sin_equivalencia');
+    expect(mapperSrc).toContain('no tiene barrio equivalente en La Voz');
+  });
+});

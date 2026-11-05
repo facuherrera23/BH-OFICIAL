@@ -1705,7 +1705,7 @@ button.nav-badge.user-status-toggle:active { transform: translateY(0); }
 .props-table col.col-op     { width: 92px; }
 .props-table col.col-owner  { width: 140px; }
 .props-table col.col-state  { width: 158px; }
-.props-table col.col-act    { width: 220px; }
+.props-table col.col-act    { width: 240px; }
 .props-table td { padding: 10px 12px; overflow: hidden; vertical-align: middle; }
 .props-table th { padding: 10px 12px; }
 

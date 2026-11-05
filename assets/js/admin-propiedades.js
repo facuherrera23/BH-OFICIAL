@@ -281,6 +281,7 @@
               <div class="props-actions-row">
                 ${mlButtons}
                 ${relaButtons}
+                ${p.is_published ? `<button class="btn-action" style="color:#E4002B;" title="Preparar aviso para Clasificados La Voz" data-lavoz-action="prepare" data-lavoz-prop="${esc(p.id)}"><i class="fas fa-newspaper"></i></button>` : ''}
                 ${_propVideoMap[p.id] ? `<button class="btn-action" style="color:#FF0000;" title="Ver el tour en video (YouTube)" data-prop-video="${esc(p.id)}"><i class="fab fa-youtube"></i></button>` : ''}
                 ${p.is_published ? `<button class="btn-action" style="color:#FFB800;" title="Campaña WhatsApp a leads que encajan" data-prop-act="campaign" data-prop-id="${esc(p.id)}" data-prop-code="${esc(p.property_code || '')}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-bullhorn"></i></button>` : ''}
                 <button class="btn-action" style="color:#8b5cf6;" title="Ver encuestas de visitas" data-prop-act="surveys" data-prop-id="${esc(p.id)}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-clipboard-list"></i></button>
@@ -1319,6 +1320,14 @@
         if (mlPub) { window.adminApp.mlPublishProperty(mlPub.dataset.mlPublish); return; }
         const relaBtn = e.target.closest('[data-rela-action]');
         if (relaBtn) { window.adminApp.relaPropertyAction(relaBtn.dataset.relaProp, relaBtn.dataset.relaAction); return; }
+        /* Clasificados La Voz: arma el aviso (texto + fotos) para publicarlo
+           a mano en el panel de La Voz (no hay API: publicación asistida). */
+        const lavozBtn = e.target.closest('[data-lavoz-action]');
+        if (lavozBtn) {
+          if (typeof window.adminApp.lavozPrepare === 'function') window.adminApp.lavozPrepare(lavozBtn.dataset.lavozProp);
+          else showToast('El módulo de La Voz no está disponible.', 'error');
+          return;
+        }
         /* Tour en video: abre el video de YouTube de la propiedad */
         const vidBtn = e.target.closest('[data-prop-video]');
         if (vidBtn) {
@@ -1569,6 +1578,55 @@
       _zipDownloading = false;
     }
   }
+
+  /* Paquete de publicación para Clasificados La Voz.
+     La Voz NO tiene API (verificado 2026-11-04): la carga en su panel es
+     manual. Este ZIP le ahorra el trabajo real — los DATOS (que la edge
+     function ya resolvió) y las FOTOS reescaladas, con la PORTADA (la
+     primera del sistema) como 01-portada. La persona solo sube y pega. */
+  window.adminApp.downloadLavozPackage = async function (payload, ficha) {
+    const zipApi = window.BHZip;
+    if (!zipApi) {
+      showToast('El generador de ZIP no está disponible. Recargá la página.', 'error');
+      return;
+    }
+    const fotos = (payload && payload.fotos) || [];
+    if (!fotos.length) {
+      showToast('Esta propiedad no tiene fotos para La Voz.', 'error');
+      return;
+    }
+    if (_zipDownloading) {
+      showToast('Ya hay una descarga en curso. Esperá a que termine.', 'info');
+      return;
+    }
+    _zipDownloading = true;
+    const folder = 'LaVoz-' + ((payload && payload.property_code) || 'propiedad');
+    try {
+      showToast('Descargando ' + fotos.length + ' foto(s) para La Voz...', 'info');
+      const result = await fetchImagesForZip(fotos, function (hechas, total) {
+        showToast('Descargando fotos ' + hechas + '/' + total + '...', 'info');
+      });
+      if (!result.files.length) {
+        showToast('No se pudo descargar ninguna foto de esta propiedad.', 'error');
+        return;
+      }
+      const entries = result.files.map(function (f, i) {
+        return {
+          name: folder + '/' + String(i + 1).padStart(2, '0') + (i === 0 ? '-portada' : '-foto') + f.ext,
+          data: f.data,
+        };
+      });
+      if (ficha) entries.push({ name: folder + '/aviso-lavoz.txt', data: ficha });
+      const blob = zipApi.buildZipBlob(entries);
+      zipApi.downloadBlob(blob, folder + '.zip');
+      showToast('Paquete de La Voz listo: ' + result.files.length + ' foto(s).', 'success');
+    } catch (err) {
+      logError('La Voz: falló el paquete de publicación:', err);
+      showToast('Error al generar el paquete: ' + (err && err.message ? err.message : 'error desconocido'), 'error');
+    } finally {
+      _zipDownloading = false;
+    }
+  };
 
   /* ------------------------------------------------
      6. CLOUDINARY UPLOAD

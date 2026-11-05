@@ -14,8 +14,8 @@ const propsSrc = fs.readFileSync(path.join(ROOT, 'assets', 'js', 'admin-propieda
 const cssSrc = fs.readFileSync(path.join(ROOT, 'assets', 'css', 'admin.css'), 'utf8');
 
 /* Caso MÁXIMO: ML actualizar + quitar, RELA sincronizar + despublicar,
-   YouTube, campaña, WhatsApp, 2 carteles, encuestas, duplicar, ZIP, editar
-   y eliminar = 15 botones (12 en la fila 2 con la agrupación elegida). */
+   La Voz, YouTube, campaña, encuestas (fila 1 = 8) + WhatsApp, 2 carteles,
+   duplicar, ZIP, editar y eliminar (fila 2 = 7) = 15 botones. */
 const MAX_CASE = `
   <table class="luxury-table props-table" style="width:1200px">
     <colgroup>
@@ -37,6 +37,7 @@ const MAX_CASE = `
               <button class="btn-action danger"><i class="fas fa-link-slash"></i></button>
               <button class="btn-action"><i class="fas fa-arrows-rotate"></i></button>
               <button class="btn-action danger"><i class="fas fa-cloud-arrow-down"></i></button>
+              <button class="btn-action"><i class="fas fa-newspaper"></i></button>
               <button class="btn-action"><i class="fab fa-youtube"></i></button>
               <button class="btn-action"><i class="fas fa-bullhorn"></i></button>
               <button class="btn-action"><i class="fas fa-clipboard-list"></i></button>
@@ -60,13 +61,14 @@ test.describe('Propiedades: layout de la columna Acciones', () => {
   test('el markup agrupa las acciones en 2 filas semánticas', () => {
     expect(propsSrc).toContain('class="props-actions props-actions--split"');
     expect(propsSrc).toContain('class="props-actions-row"');
-    // Fila 1 = publicación/canales: ML, RELA, video, campaña.
+    // Fila 1 = publicación/canales: ML, RELA, La Voz, video, campaña, encuestas.
     const iSplit = propsSrc.indexOf('props-actions--split');
     const row1Start = propsSrc.indexOf('props-actions-row', iSplit);
     const row2Start = propsSrc.indexOf('props-actions-row', row1Start + 10);
     const row1 = propsSrc.slice(row1Start, row2Start);
     expect(row1).toContain('${mlButtons}');
     expect(row1).toContain('${relaButtons}');
+    expect(row1).toContain('data-lavoz-action="prepare"');
     expect(row1).toContain('data-prop-video');
     expect(row1).toContain('data-prop-act="campaign"');
     // Fila 2 = contacto/operación.
@@ -80,12 +82,12 @@ test.describe('Propiedades: layout de la columna Acciones', () => {
     expect(propsSrc).toMatch(/<div class="props-actions">\s*\$\{zipBtn\}/);
   });
 
-  test('el CSS: columna de 220px + reglas de las 2 filas', () => {
-    expect(cssSrc).toMatch(/\.props-table col\.col-act\s*\{\s*width:\s*220px;\s*\}/);
+  test('el CSS: columna de 240px + reglas de las 2 filas', () => {
+    expect(cssSrc).toMatch(/\.props-table col\.col-act\s*\{\s*width:\s*240px;\s*\}/);
     expect(cssSrc).toContain('.props-actions--split');
     expect(cssSrc).toContain('.props-actions--split .props-actions-row');
-    // Los botones del split son 24x24 (el base es 30x30): 7 por fila entran
-    // en los 196px útiles. Si esto se rompe, las filas envuelven a 3 líneas.
+    // Los botones del split son 24x24 (el base es 30x30): 8 por fila entran
+    // en los 216px útiles. Si esto se rompe, las filas envuelven a 3 líneas.
     expect(cssSrc).toMatch(/\.props-actions--split \.btn-action\s*\{[^}]*width:\s*24px;[^}]*height:\s*24px;/);
     // La columna NO puede volver a 310px (era lo que apretaba la tabla).
     expect(cssSrc).not.toMatch(/\.props-table col\.col-act\s*\{\s*width:\s*3\d\dpx/);
@@ -122,10 +124,10 @@ test.describe('Propiedades: layout de la columna Acciones', () => {
       };
     });
 
-    expect(m.buttons).toBe(14);
+    expect(m.buttons).toBe(15);
     expect(m.rowCount).toBe(2);
     // La columna mide lo que pedimos…
-    expect(m.colWidth).toBe(220);
+    expect(m.colWidth).toBe(240);
     // …y NADA se desborda (ni la celda ni las filas).
     expect(m.cellScroll).toBeLessThanOrEqual(m.cellClient + 1);
     for (const ratio of m.rowHeights) {
@@ -133,6 +135,6 @@ test.describe('Propiedades: layout de la columna Acciones', () => {
     }
     // El premio: el título de la propiedad vuelve a tener ancho usable
     // (con la columna de 310px quedaban ~74px en una tabla de 1200px).
-    expect(m.titleWidth).toBeGreaterThan(150);
+    expect(m.titleWidth).toBeGreaterThan(135);
   });
 });

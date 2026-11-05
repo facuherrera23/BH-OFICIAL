@@ -178,6 +178,7 @@
     }).join('');
 
     loadRelaPanel();
+    loadLavozPanel();
     loadSyncHistory();
     loadMlQuestionsPanel();
   }
@@ -1077,6 +1078,340 @@ try {
     }
   });
 
+
+  /* ------------------------------------------------
+     13D. CLASIFICADOS LA VOZ (publicación asistida)
+     ------------------------------------------------
+     La Voz NO tiene API ni carga masiva (verificado 2026-11-04: sin API en
+     FAQ/Términos/sitemap/bundles, la única ruta JSON del front es
+     /api/auth/me; el portal está detrás de Cloudflare Turnstile y su
+     robots.txt bloquea AI crawlers). Por eso el flujo es ASISTIDO:
+       1) "Preparar"  → el CRM arma el aviso (texto + fotos con la portada
+          primero + todos los campos del formulario de La Voz).
+       2) El usuario copia los campos y sube las fotos en su panel.
+       3) "Marcar publicado" → queda la URL y la fecha de vencimiento
+          (los avisos de La Voz duran 10 o 30 días).
+     La edge function lavoz-proxy es la que arma el aviso (service_role).
+     ------------------------------------------------ */
+  const LAVOZ_PORTAL = 'https://clasificados.lavoz.com.ar';
+
+  async function lavozApiCall(action, body = {}) {
+    const { data: { session } } = await window.supabaseClient.auth.getSession();
+    if (!session) throw new Error('No hay sesión activa');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ML_API_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/lavoz-proxy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action, ...body }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Error ${res.status}`);
+      }
+      return await res.json().catch(() => ({}));
+    } catch (err) {
+      if (err.name === 'AbortError') throw new Error('Tiempo de espera agotado al contactar La Voz');
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /* Último aviso preparado (para el modal y el ZIP). */
+  let _lavozPrepared = null;
+
+  const LAVOZ_STATUS = {
+    published: { label: 'Publicado', color: '#4ade80', bg: 'rgba(74,222,128,0.12)' },
+    ready: { label: 'Listo para subir', color: '#1fc8c3', bg: 'rgba(31,200,195,0.12)' },
+    failed: { label: 'Faltan datos', color: '#f87171', bg: 'rgba(248,113,113,0.12)' },
+    expired: { label: 'Vencido', color: '#FFB800', bg: 'rgba(255,184,0,0.12)' },
+    draft: { label: 'Sin preparar', color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
+  };
+
+  function lavozStatusBadge(status) {
+    const s = LAVOZ_STATUS[status] || LAVOZ_STATUS.draft;
+    return `<span class="nav-badge" style="background:${s.bg}; color:${s.color}; font-size:10px; white-space:nowrap;">${s.label}</span>`;
+  }
+
+  function lavozFecha(iso) {
+    if (!iso) return '—';
+    try { return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' }); }
+    catch { return '—'; }
+  }
+
+  /* URLs seguras (la del aviso y la miniatura). BHUtils vive en utils.js:
+     safeUrl sólo deja http/https/mailto/tel, safeImageUrl sólo http/https. */
+  function lavozSafeUrl(u) {
+    if (!u) return '';
+    const fn = window.BHUtils && window.BHUtils.safeUrl;
+    return typeof fn === 'function' ? fn(u) : '';
+  }
+
+  function lavozSafeImage(u) {
+    if (!u) return '';
+    const fn = window.BHUtils && window.BHUtils.safeImageUrl;
+    return typeof fn === 'function' ? fn(u) : '';
+  }
+
+  async function loadLavozPanel() {
+    const el = $('#lavozPortalPanel');
+    if (!el || !window.supabaseClient) return;
+    let status = null;
+    let listings = [];
+    try {
+      const res = await lavozApiCall('status');
+      status = res.status;
+    } catch (err) { logError('lavoz status', err); }
+    try {
+      const res = await lavozApiCall('list');
+      listings = res.listings || [];
+    } catch (err) { logError('lavoz list', err); }
+
+    const L = status?.listings || {};
+    const dias = status?.dias_publicacion || 30;
+    const fmt = (n) => Number(n || 0);
+
+    const rows = listings.map((row) => {
+      const p = row.properties || {};
+      const fotos = Array.isArray(p.image_urls) ? p.image_urls : [];
+      // La portada del sistema es la PRIMERA foto: es la que se muestra.
+      const thumb = lavozSafeImage(fotos[0] || '');
+      const adUrl = lavozSafeUrl(row.ad_url || '');
+      const vence = row.expires_at && new Date(row.expires_at) < new Date() ? ' style="color:#f87171;"' : '';
+      return `<tr>
+        <td>
+          <div style="display:flex; align-items:center; gap:10px; min-width:220px;">
+            ${thumb ? `<img src="${esc(thumb)}" alt="" style="width:42px;height:30px;object-fit:cover;border-radius:5px;flex-shrink:0;" />` : '<div style="width:42px;height:30px;border-radius:5px;background:rgba(255,255,255,0.05);flex-shrink:0;"></div>'}
+            <div style="min-width:0;">
+              <div style="font-size:12px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;">${esc(p.title || 'Sin título')}</div>
+              <div style="font-size:10.5px;color:var(--text-dim);">${esc(p.property_code || '')}</div>
+            </div>
+          </div>
+        </td>
+        <td>${lavozStatusBadge(row.status)}</td>
+        <td style="font-size:11.5px;color:var(--text-secondary);">${row.fotos_count || 0}</td>
+        <td style="font-size:11.5px;color:var(--text-secondary);">${esc((row.plan || '').replace('_', ' ') || '—')}</td>
+        <td style="font-size:11.5px;color:var(--text-secondary);">${lavozFecha(row.published_at)}</td>
+        <td style="font-size:11.5px;"${vence}>${lavozFecha(row.expires_at)}</td>
+        <td>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;">
+            <button class="btn-action" style="padding:5px 8px;font-size:10px;" title="Preparar / ver el aviso" data-lavoz-prep="${esc(row.property_id)}"><i class="fas fa-file-lines"></i></button>
+            ${adUrl ? `<a class="btn-action" style="padding:5px 8px;font-size:10px;color:#1fc8c3;" title="Ver el aviso publicado" href="${esc(adUrl)}" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i></a>` : ''}
+            ${row.status === 'published' ? `<button class="btn-action danger" style="padding:5px 8px;font-size:10px;" title="Marcar despublicado" data-lavoz-unpub="${esc(row.property_id)}"><i class="fas fa-link-slash"></i></button>` : ''}
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="glass-panel" style="padding:24px; margin-top:20px; text-align:left;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="width:44px;height:44px;border-radius:12px;background:rgba(228,0,43,0.15);display:flex;align-items:center;justify-content:center;">
+              <i class="fas fa-newspaper" style="color:#E4002B; font-size:18px;"></i>
+            </div>
+            <div>
+              <h3 style="color:#fff; font-size:16px; font-weight:700; margin:0;">Clasificados La Voz</h3>
+              <div style="font-size:12px; color:var(--text-dim);">Publicación asistida · avisos de ${dias} días · sin pack</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap;" data-lavoz-prepare-all><i class="fas fa-layer-group"></i> Preparar todas</button>
+            <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap;" data-lavoz-open-portal><i class="fas fa-external-link-alt"></i> Abrir La Voz</button>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; margin-top:16px;">
+          <div style="background:rgba(255,255,255,0.03); border-radius:10px; padding:12px;">
+            <div style="font-size:11px; color:var(--text-dim);">Publicados</div>
+            <div style="font-size:13px; color:#4ade80; margin-top:4px;">${fmt(L.published)}</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03); border-radius:10px; padding:12px;">
+            <div style="font-size:11px; color:var(--text-dim);">Vencen en 7 días</div>
+            <div style="font-size:13px; color:#FFB800; margin-top:4px;">${fmt(L.expiring_soon)}</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03); border-radius:10px; padding:12px;">
+            <div style="font-size:11px; color:var(--text-dim);">Listos para subir</div>
+            <div style="font-size:13px; color:#1fc8c3; margin-top:4px;">${fmt(L.ready)}</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03); border-radius:10px; padding:12px;">
+            <div style="font-size:11px; color:var(--text-dim);">Faltan datos</div>
+            <div style="font-size:13px; color:${fmt(L.failed) ? '#f87171' : '#fff'}; margin-top:4px;">${fmt(L.failed)}</div>
+          </div>
+        </div>
+
+        <p style="font-size:11.5px; color:var(--text-dim); margin:14px 0 0;">
+          <i class="fas fa-circle-info" style="color:#1fc8c3;"></i>
+          La Voz no tiene API: el CRM arma el aviso completo y vos lo subís al panel.
+          <a href="${LAVOZ_PORTAL}/publicar" target="_blank" rel="noopener" style="color:#1fc8c3;">Publicar en La Voz</a>
+          · <a href="${LAVOZ_PORTAL}/faq" target="_blank" rel="noopener" style="color:#1fc8c3;">Ayuda de La Voz</a>
+        </p>
+
+        <div style="margin-top:16px; overflow-x:auto;">
+          ${listings.length ? `<table class="luxury-table" style="width:100%;">
+            <thead><tr><th>Propiedad</th><th>Estado</th><th>Fotos</th><th>Plan</th><th>Publicado</th><th>Vence</th><th>Acciones</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>` : '<p style="font-size:12px; color:var(--text-dim); margin:8px 0;">Todavía no hay avisos preparados. Usá <b>Preparar todas</b> o el botón de La Voz en la fila de una propiedad.</p>'}
+        </div>
+      </div>`;
+  }
+
+  /* Abre el modal con el aviso armado de una propiedad. */
+  window.adminApp.lavozPrepare = async function (propertyId) {
+    try {
+      showToast('Preparando aviso para La Voz…', 'info');
+      const res = await lavozApiCall('prepare', { property_id: propertyId });
+      const r = (res.results || [])[0];
+      if (!r) throw new Error(res.error || 'No se pudo preparar el aviso');
+      _lavozPrepared = r;
+
+      const p = r.payload || {};
+      const avisos = (r.avisos || []).map((a) =>
+        `<li style="margin-bottom:4px;">${esc(a)}</li>`).join('');
+
+      const campos = [
+        ['Título', p.titulo],
+        ['Operación', p.operacion_label],
+        ['Tipo de inmueble', p.subrubro_label],
+        ['Ciudad', p.ciudad_label],
+        ['Barrio / Zona', p.ubicacion_label],
+        ['Dormitorios', p.bedrooms],
+        ['Baños', p.bathrooms],
+        ['Cocheras', p.cocheras],
+        ['Superficie total (m²)', p.superficie_total],
+        ['Superficie cubierta (m²)', p.superficie_cubierta],
+        ['Antigüedad (años)', p.antiguedad],
+        ['Expensas', p.expensas],
+        ['Precio', p.precio !== null && p.precio !== undefined ? `${p.precio} ${p.moneda || ''}`.trim() : null],
+        ['Fotos a subir', `${p.fotos_count} (la primera es la PORTADA)`],
+        ['Ficha propia', p.ficha_url],
+      ].filter(([, v]) => v !== null && v !== undefined && v !== '');
+
+      const filas = campos.map(([k, v]) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+          <div style="font-size:11px;color:var(--text-dim);min-width:150px;flex-shrink:0;">${esc(k)}</div>
+          <div style="font-size:12px;color:var(--text-secondary);flex:1;min-width:0;word-break:break-word;">${esc(String(v))}</div>
+          <button type="button" class="btn-action" style="padding:4px 7px;font-size:10px;flex-shrink:0;" data-lavoz-copy="${esc(String(v))}" title="Copiar"><i class="fas fa-copy"></i></button>
+        </div>`).join('');
+
+      const sub = document.querySelector('#lavozModalSub');
+      const body = document.querySelector('#lavozModalBody');
+      if (sub) sub.textContent = `${p.property_code || ''} · ${p.titulo || ''} — ${p.fotos_count || 0} foto(s), la portada primero.`;
+      if (body) {
+        body.innerHTML = `
+          ${avisos ? `<div style="background:rgba(255,184,0,0.08);border:1px solid rgba(255,184,0,0.25);border-radius:10px;padding:10px 12px;margin-bottom:14px;">
+            <div style="font-size:11.5px;color:#FFB800;margin-bottom:6px;"><i class="fas fa-triangle-exclamation"></i> Antes de publicar</div>
+            <ul style="margin:0;padding-left:18px;font-size:11.5px;color:var(--text-secondary);">${avisos}</ul>
+          </div>` : ''}
+          <div style="margin-bottom:14px;">${filas}</div>
+          <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:6px;">Ficha completa (copiá y pegá en el formulario)</label>
+          <textarea id="lavozFicha" rows="8" readonly style="width:100%;background:rgba(0,0,0,0.28);border:1px solid var(--border-subtle);border-radius:10px;color:var(--text-secondary);font-size:11.5px;padding:10px;font-family:ui-monospace,Menlo,Consolas,monospace;">${esc(r.ficha || '')}</textarea>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">
+            <button type="button" class="btn-action" style="padding:6px 11px;font-size:11px;" data-lavoz-copy-ficha><i class="fas fa-clipboard"></i> Copiar ficha</button>
+            <button type="button" class="btn-action" style="padding:6px 11px;font-size:11px;" data-lavoz-copy-desc><i class="fas fa-align-left"></i> Copiar descripción</button>
+            <button type="button" class="btn-action" style="padding:6px 11px;font-size:11px;" data-lavoz-zip><i class="fas fa-file-zipper"></i> Descargar fotos</button>
+          </div>
+          <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07);">
+            <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:6px;">Ya lo publicaste? Pegá la URL del aviso</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input type="url" id="lavozAdUrl" placeholder="https://clasificados.lavoz.com.ar/avisos/inmuebles/..." style="flex:1;min-width:220px;background:rgba(0,0,0,0.28);border:1px solid var(--border-subtle);border-radius:8px;color:var(--text-primary);padding:8px 10px;font-size:12px;" />
+              <button type="button" class="btn-luxury-action" data-lavoz-confirm style="padding:8px 14px;font-size:12px;">Marcar publicado</button>
+            </div>
+          </div>`;
+      }
+      openModal('lavozModal');
+      showToast('Aviso preparado para La Voz.', 'success');
+      loadLavozPanel();
+    } catch (err) {
+      logError('lavoz prepare', err);
+      showToast('Error preparando el aviso: ' + err.message, 'error');
+    }
+  };
+
+  /* --- wiring de la sección La Voz --- */
+  on($('#lavozPortalPanel'), 'click', async (e) => {
+    const prep = e.target.closest('[data-lavoz-prep]');
+    if (prep) { window.adminApp.lavozPrepare(prep.dataset.lavozPrep); return; }
+    const all = e.target.closest('[data-lavoz-prepare-all]');
+    if (all) {
+      try {
+        showToast('Preparando todos los avisos…', 'info');
+        const res = await lavozApiCall('prepare_all');
+        showToast(`Avisos preparados: ${res.count || 0}.`, 'success');
+        loadLavozPanel();
+      } catch (err) {
+        showToast('Error preparando avisos: ' + err.message, 'error');
+      }
+      return;
+    }
+    const open = e.target.closest('[data-lavoz-open-portal]');
+    if (open) { window.open(LAVOZ_PORTAL + '/publicar', '_blank', 'noopener'); return; }
+    const unpub = e.target.closest('[data-lavoz-unpub]');
+    if (unpub) {
+      const ok = await showConfirmDialog({
+        title: 'Despublicar de La Voz',
+        message: '¿Marcamos este aviso como no publicado en el CRM? (El aviso en el portal de La Voz hay que bajarlo a mano.)',
+        icon: 'fas fa-link-slash', confirmText: 'Sí, despublicar', danger: true,
+      });
+      if (!ok) return;
+      try {
+        await lavozApiCall('unpublish', { property_id: unpub.dataset.lavozUnpub });
+        showToast('Aviso marcado como despublicado.', 'success');
+        loadLavozPanel();
+      } catch (err) { showToast('Error: ' + err.message, 'error'); }
+    }
+  });
+
+  on($('#lavozModal'), 'click', async (e) => {
+    const copy = e.target.closest('[data-lavoz-copy]');
+    if (copy) {
+      await navigator.clipboard.writeText(copy.dataset.lavozCopy).catch(() => {});
+      showToast('Copiado.', 'success');
+      return;
+    }
+    const copyFicha = e.target.closest('[data-lavoz-copy-ficha]');
+    if (copyFicha) {
+      const ta = document.querySelector('#lavozFicha');
+      await navigator.clipboard.writeText(ta ? ta.value : '').catch(() => {});
+      showToast('Ficha copiada.', 'success');
+      return;
+    }
+    const copyDesc = e.target.closest('[data-lavoz-copy-desc]');
+    if (copyDesc) {
+      await navigator.clipboard.writeText((_lavozPrepared?.payload?.descripcion) || '').catch(() => {});
+      showToast('Descripción copiada.', 'success');
+      return;
+    }
+    const zip = e.target.closest('[data-lavoz-zip]');
+    if (zip) {
+      if (typeof window.adminApp.downloadLavozPackage === 'function') {
+        window.adminApp.downloadLavozPackage(_lavozPrepared?.payload, _lavozPrepared?.ficha);
+      } else {
+        showToast('El generador de ZIP no está disponible.', 'error');
+      }
+      return;
+    }
+    const confirm = e.target.closest('[data-lavoz-confirm]');
+    if (confirm) {
+      const input = document.querySelector('#lavozAdUrl');
+      const url = (input?.value || '').trim();
+      if (!url) { showToast('Pegá la URL del aviso publicado.', 'error'); return; }
+      try {
+        const res = await lavozApiCall('confirm', { property_id: _lavozPrepared?.property_id, ad_url: url });
+        showToast('Aviso publicado. Vence el ' + lavozFecha(res.expires_at) + '.', 'success');
+        closeModal('lavozModal');
+        loadLavozPanel();
+      } catch (err) { showToast('Error: ' + err.message, 'error'); }
+      return;
+    }
+    const close = e.target.closest('[data-lavoz-close]');
+    if (close) { closeModal('lavozModal'); return; }
+    const portal = e.target.closest('[data-lavoz-open]');
+    if (portal) { window.open(LAVOZ_PORTAL + '/publicar', '_blank', 'noopener'); return; }
+  });
 
   /* --- ML Config: get/save credentials from portal_settings --- */
   async function mlConfigGet() {

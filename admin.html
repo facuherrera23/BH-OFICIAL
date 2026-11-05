@@ -9,7 +9,7 @@
 <!-- Font Awesome -->
 <link rel="stylesheet" href="assets/vendor/fontawesome/css/all.min.css?v=1" />
 
-<link rel="stylesheet" href="assets/css/admin.css?v=458" />
+<link rel="stylesheet" href="assets/css/admin.css?v=459" />
 <!-- Módulo CONTENIDO (YouTube) — CSS propio del módulo (tokens del panel) -->
 <link rel="stylesheet" href="assets/css/admin-contenido.css?v=5" />
 </head>
@@ -1356,6 +1356,8 @@
 </i> Sincronizar Todo</button>
 </div>        <div class="portals-grid" id="portalsContainer">
 </div>        <div id="relaPortalPanel">
+</div>
+<div id="lavozPortalPanel">
 </div>
 <div class="glass-panel" id="mlQuestionsPanel" style="margin-top:16px;">
 <h3 class="panel-title" style="font-size:16px; margin-bottom:16px;">Preguntas de Mercado Libre</h3>
@@ -3260,6 +3262,23 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 </form>
 </div>
 </div>
+<!-- MODAL PUBLICACIÓN CLASIFICADOS LA VOZ (2026-11-04).
+     La Voz NO tiene API ni carga masiva: el CRM arma el aviso completo
+     (texto + fotos con la PORTADA primero) y el usuario lo sube a mano en
+     el panel de La Voz. Acá se copian los datos, se bajan las fotos y se
+     guarda la URL del aviso publicado (con su vencimiento). -->
+<div class="admin-modal" id="lavozModal">
+  <div class="modal-box confirm-box" role="dialog" aria-modal="true" aria-labelledby="lavozModalTitle" style="max-width:780px;width:94%;max-height:88vh;overflow-y:auto;text-align:left;">
+    <div class="confirm-icon"><i class="fas fa-newspaper"></i></div>
+    <h3 class="confirm-title" id="lavozModalTitle" style="text-align:left;">Publicar en Clasificados La Voz</h3>
+    <p class="confirm-msg" id="lavozModalSub" style="text-align:left;"></p>
+    <div id="lavozModalBody" style="text-align:left; font-size:12.5px; color:var(--text-secondary);"></div>
+    <div class="confirm-actions">
+      <button type="button" class="btn-ghost" data-lavoz-close>Cerrar</button>
+      <button type="button" class="btn-luxury-action" data-lavoz-open><i class="fas fa-external-link-alt"></i> Abrir La Voz</button>
+    </div>
+  </div>
+</div>
 <!-- MODAL CONFIG RELA -->
 <div class="admin-modal" id="relaConfigModal">
 <div class="modal-box" style="max-width:720px;">
@@ -3523,13 +3542,13 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 <script defer src="assets/js/yt-integrations.js?v=2"></script>
 <script defer src="assets/js/yt-seo-score.js?v=3"></script>
 <script defer src="assets/js/admin-contenido.js?v=20"></script>
-<script defer src="assets/js/admin-portales.js?v=21"></script>
+<script defer src="assets/js/admin-portales.js?v=22"></script>
 <script defer src="assets/js/admin-tasaciones.js?v=12"></script>
 <script defer src="assets/js/admin-supervision-panel.js?v=4"></script>
 <script defer src="assets/js/admin-ficha.js?v=2"></script>
 
 <script defer src="assets/js/zip.js?v=1"></script>
-<script defer src="assets/js/admin-propiedades.js?v=26"></script>
+<script defer src="assets/js/admin-propiedades.js?v=27"></script>
 <script defer src="assets/js/tasacion-calc.js?v=1"></script>
 <script defer src="assets/js/admin-agenda.js?v=22"></script>
 <script defer src="assets/js/admin-supervision.js?v=29"></script></body>
