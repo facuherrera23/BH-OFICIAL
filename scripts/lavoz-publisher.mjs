@@ -802,16 +802,19 @@ for (const item of cola) {
 
   if (publicado && item.property_id) {
     const url = await capturarUrlAviso(page, payload);
-    if (url) {
-      try {
-        await crmCall(token, 'confirm', { property_id: item.property_id, ad_url: url, plan: payload.plan_recomendado });
+    try {
+      // Si no se pudo capturar la URL, igual se confirma: dejarlo 'ready'
+      // haría que la próxima corrida publicara el aviso OTRA VEZ (duplicado).
+      await crmCall(token, 'confirm', { property_id: item.property_id, ad_url: url || undefined, plan: payload.plan_recomendado });
+      if (url) {
         log('  ✓ CRM actualizado:', url);
-        ok++;
-        continue;
-      } catch (err) { log('  ! no pude confirmar en el CRM:', err.message); }
-    } else {
-      log('  ! no pude capturar la URL del aviso (revisá la captura)');
-    }
+      } else {
+        log('  ✓ CRM actualizado (vencimiento). No pude capturar la URL del aviso:');
+        log('    revisá la captura y pegala en Portales → La Voz → "Marcar publicado".');
+      }
+      ok++;
+      continue;
+    } catch (err) { log('  ! no pude confirmar en el CRM:', err.message); }
   } else if (publicado) {
     ok++;
   } else {
