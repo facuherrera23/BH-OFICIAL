@@ -169,7 +169,9 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(scriptSrc).toContain("'--renew'");
     // headed + perfil persistente: el Turnstile de La Voz bloquea headless.
     expect(scriptSrc).toContain('launchPersistentContext');
-    expect(scriptSrc).toContain('headless: false');
+    expect(scriptSrc).toContain('headless: soloLectura');
+    // Sólo el modo de lectura va headless: publicar necesita ventana real.
+    expect(scriptSrc).toContain("const soloLectura = args.mode === 'estado'");
     expect(scriptSrc).toContain('.lavoz-publisher-profile');
   });
 
@@ -223,6 +225,15 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(pkg.scripts['lavoz:discover']).toContain('--discover');
   });
 
+  test('modo --estado: consulta la cola SIN abrir La Voz ni publicar', () => {
+    expect(pkg.scripts['lavoz:estado']).toContain('--estado');
+    expect(scriptSrc).toContain('modoEstado');
+    // No espera login: falla rápido con un mensaje claro.
+    expect(scriptSrc).toContain('esperar: false');
+    // Y el estado corre headless (sólo lee la sesión del CRM).
+    expect(scriptSrc).toContain('soloLectura');
+  });
+
   test('la edge function devuelve el payload y auto-venece los avisos', () => {
     // El asistente necesita el payload para llenar el formulario.
     expect(fnSrc).toContain('payload, properties!inner');
@@ -235,5 +246,31 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(portalesSrc).toContain('npm run lavoz');
     expect(portalesSrc).toContain('npm run lavoz:renovar');
     expect(portalesSrc).toContain('data-lavoz-copy="npm run lavoz"');
+  });
+
+  test('el asistente acepta los términos y condiciones antes de publicar', () => {
+    expect(scriptSrc).toContain('aceptarTerminos');
+    expect(mappingSrc).toContain('esTextoTerminos');
+    // El Turnstile NO se toca (vive en un iframe, no es un input nativo).
+    expect(scriptSrc).toContain('no soy un robot');
+  });
+
+  test('el mapeo completa los selects que La Voz exige y no tenemos dato', () => {
+    expect(mappingSrc).toContain('export const DEFAULTS');
+    expect(mappingSrc).toContain('export function planDefaults');
+    // Provincia, tipo de barrio, tipo de vendedor y duración.
+    expect(mappingSrc).toContain('tipo_barrio');
+    expect(mappingSrc).toContain('Inmobiliaria');
+    expect(mappingSrc).toContain('Abierto');
+    expect(mappingSrc).toContain('dias_publicacion');
+    // Y el motor los usa.
+    expect(scriptSrc).toContain('planDefaults');
+  });
+
+  test('los campos del aviso NO se comen los selects parecidos', () => {
+    // "Tipo" vs "Tipo de barrio", "Ciudad" vs "Provincia", "Barrio" vs "Tipo de barrio".
+    expect(mappingSrc).toContain('exclude');
+    expect(mappingSrc).toContain('tipo de barrio');
+    expect(mappingSrc).toContain('candidatosDeControl');
   });
 });

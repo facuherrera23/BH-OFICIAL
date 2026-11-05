@@ -46,6 +46,9 @@ import {
   elegirControl,
   indiceOpcion,
   planLlenado,
+  planDefaults,
+  idControl,
+  esTextoTerminos,
 } from './lavoz-mapping.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -70,6 +73,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === '--discover') args.mode = 'discover';
     else if (a === '--run') args.mode = 'run';
+    else if (a === '--estado') args.mode = 'estado';
     else if (a === '--publish') { args.mode = 'run'; args.payload = argv[++i]; }
     else if (a === '--submit') args.submit = true;
     else if (a === '--dry') { args.dry = true; args.submit = false; }
@@ -90,6 +94,7 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv.slice(2));
 if (args.help) {
   console.log('Uso: node scripts/lavoz-publisher.mjs --discover | --run [--only CODE] [--limit N] [--dry] [--renew]');
+  console.log('     node scripts/lavoz-publisher.mjs --estado   # cola de avisos (solo lectura)');
   process.exit(0);
 }
 
@@ -105,11 +110,15 @@ fs.mkdirSync(PROFILE_DIR, { recursive: true });
 fs.mkdirSync(SHOTS_DIR, { recursive: true });
 
 log('Perfil persistente:', PROFILE_DIR);
-log('Abriendo el navegador…');
+
+// El modo --estado es de SOLO LECTURA: no necesita la sesión de La Voz y
+// puede ir headless (sólo lee la sesión del CRM del perfil).
+const soloLectura = args.mode === 'estado';
+if (!soloLectura) log('Abriendo el navegador…');
 
 const ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
-  headless: false,
-  viewport: null,
+  headless: soloLectura,
+  viewport: soloLectura ? { width: 1280, height: 900 } : null,
   args: ['--disable-blink-features=AutomationControlled'],
 });
 
@@ -123,7 +132,7 @@ async function shot(nombre) {
 
 /* ---------------- Sesión del CRM ---------------- */
 
-async function crmToken() {
+async function crmToken({ esperar = true } = {}) {
   // 1) Token por variable de entorno (uso desatendido / otro equipo).
   if (process.env.BH_ACCESS_TOKEN) {
     log('✓ Token del CRM por variable de entorno');
@@ -147,6 +156,13 @@ async function crmToken() {
 
   let token = await leer();
   if (token) return token;
+
+  if (!esperar) {
+    throw new Error(
+      'No hay sesión del CRM en este perfil. Iniciá sesión en https://bienenhaus.com.ar/admin.html '
+      + 'con el navegador del asistente (o exportá BH_ACCESS_TOKEN).',
+    );
+  }
 
   log('Sin sesión del CRM en este perfil: iniciá sesión en el panel (pestaña del CRM).');
   log('(Una sola vez: el perfil persistente la guarda.)');
@@ -372,6 +388,34 @@ async function marcarRadio(page, palabra) {
   return ok;
 }
 
+/**
+ * Marca la casilla de "acepto los términos y condiciones" si existe y está
+ * sin marcar. El Turnstile va en un iframe (no es un input nativo), así que
+ * no se toca por accidente.
+ */
+async function aceptarTerminos(page) {
+  return await page.evaluate(() => {
+    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+    const esTerminos = (txt) => {
+      const t = norm(txt);
+      if (!t) return false;
+      if (/no soy un robot|captcha|turnstile/.test(t)) return false;
+      return /acepto|terminos|condiciones|politica/.test(t);
+    };
+    const cands = [...document.querySelectorAll('input[type=checkbox]')];
+    for (const el of cands) {
+      if (el.checked || el.disabled) continue;
+      const wrap = el.closest('label');
+      const near = el.parentElement?.textContent || '';
+      const txt = (wrap?.textContent || '') + ' ' + near + ' ' + (el.value || '');
+      if (!esTerminos(txt)) continue;
+      el.click();
+      return true;
+    }
+    return false;
+  });
+}
+
 /* ---------------- Fotos ---------------- */
 
 async function bajarFotos(fotos, destDir) {
@@ -442,7 +486,8 @@ async function publicarAviso(page, payload, files, { submit }) {
     }
 
     // 2) Campos de texto/select.
-    for (const { campo, control, valor } of planLlenado(controls, payload)) {
+    const plan = planLlenado(controls, payload);
+    for (const { campo, control, valor } of plan) {
       // No pisar un campo ya lleno (el wizard reutiliza los mismos ids).
       const loc = locatorDe(page, control);
       if (loc) {
@@ -454,6 +499,21 @@ async function publicarAviso(page, payload, files, { submit }) {
       else faltantes.push(`${campo.key}: ${r.motivo}`);
     }
 
+    // 2b) Defaults que La Voz exige y nosotros no tenemos dato (provincia,
+    //     tipo de barrio, tipo de vendedor, duración). No pisan un control
+    //     que ya usó un campo del aviso.
+    const defaults = planDefaults(controls, payload, plan.map((p) => idControl(p.control)));
+    for (const { campo, control, valor } of defaults) {
+      const loc = locatorDe(page, control);
+      if (loc) {
+        const actual = await loc.first().inputValue().catch(() => '');
+        if (actual && String(actual).trim() === String(valor).trim()) continue;
+      }
+      const r = await llenarCampo(page, campo, valor, control);
+      if (r.ok) hechos.push(`${r.texto} (default)`);
+      else faltantes.push(`${campo.key}: ${r.motivo}`);
+    }
+
     // 3) Radios/checkboxes (tipo de vendedor, operación, etc.).
     for (const op of OPCIONES) {
       const valor = op.valor(payload);
@@ -461,6 +521,9 @@ async function publicarAviso(page, payload, files, { submit }) {
       const elegido = await marcarRadio(page, valor);
       if (elegido) hechos.push(`opción "${valor}"`);
     }
+
+    // 3b) Casilla de "acepto los términos y condiciones" (si la hay).
+    if (await aceptarTerminos(page)) hechos.push('términos aceptados');
 
     // 4) ¿Estamos en el último paso?
     if (submit) {
@@ -535,7 +598,58 @@ async function renovarAviso(page, adUrl) {
   return { ok: true, texto: btn.texto };
 }
 
+/* ---------------- Modo estado (solo lectura) ---------------- */
+
+/**
+ * Muestra la cola de avisos de La Voz tal como está en el CRM.
+ * No abre la sesión de La Voz ni publica nada: sirve para ver qué falta
+ * antes de correr `npm run lavoz`.
+ */
+async function modoEstado() {
+  const token = await crmToken({ esperar: false });
+  const res = await crmCall(token, 'list');
+  const listings = res.listings || [];
+  if (!listings.length) {
+    log('Todavía no hay avisos de La Voz. Usá "Preparar todas" en Portales (o corré npm run lavoz).');
+    return;
+  }
+  const pad = (s, n) => String(s ?? '-').padEnd(n).slice(0, n);
+  console.log('');
+  console.log(pad('PROPIEDAD', 14) + pad('ESTADO', 12) + pad('PLAN', 14) + pad('PUBLICADO', 12) + pad('VENCE', 12) + 'URL');
+  console.log('-'.repeat(96));
+  for (const l of listings) {
+    console.log(
+      pad(l.properties?.property_code || (l.property_id || '').slice(0, 8), 14)
+      + pad(l.status, 12)
+      + pad(l.plan, 14)
+      + pad(l.published_at ? l.published_at.slice(0, 10) : '-', 12)
+      + pad(l.expires_at ? l.expires_at.slice(0, 10) : '-', 12)
+      + (l.ad_url || '-'),
+    );
+    if (l.last_error) console.log(pad('', 14) + '⚠ ' + l.last_error);
+  }
+  const cuenta = (st) => listings.filter((l) => l.status === st).length;
+  console.log('');
+  console.log(`Total ${listings.length} · por publicar ${cuenta('ready') + cuenta('draft')} · publicados ${cuenta('published')} · vencidos ${cuenta('expired')} · con error ${cuenta('failed')}`);
+  const pronto = listings.filter((l) => l.status === 'published' && l.expires_at && new Date(l.expires_at).getTime() - Date.now() < 7 * 86400000);
+  if (pronto.length) {
+    console.log(`⏰ Vencen en los próximos 7 días: ${pronto.map((l) => l.properties?.property_code).filter(Boolean).join(', ')} (npm run lavoz:renovar)`);
+  }
+}
+
 /* ---------------- Modo discover ---------------- */
+
+if (args.mode === 'estado') {
+  try {
+    await modoEstado();
+  } catch (err) {
+    log('✗', err.message);
+    await ctx.close();
+    process.exit(1);
+  }
+  await ctx.close();
+  process.exit(0);
+}
 
 if (args.mode === 'discover') {
   await asegurarSesionLaVoz();
@@ -551,8 +665,14 @@ if (args.mode === 'discover') {
 
 /* ---------------- Modo run (cola) ---------------- */
 
-const token = await crmToken();
+// Las DOS sesiones se abren a la vez: la pestaña del CRM (para el token) y
+// la de La Voz. Así el empleador ve los dos formularios de login y puede
+// resolverlos en cualquier orden (una sola vez: el perfil los recuerda).
+let tokenError = null;
+const tokenPromise = crmToken().catch((err) => { tokenError = err; return null; });
 await asegurarSesionLaVoz();
+const token = await tokenPromise;
+if (!token) throw tokenError || new Error('No se pudo obtener la sesión del CRM');
 
 // La cola sale del CRM: avisos preparados (o vencidos, si --renew).
 let cola = [];
@@ -599,7 +719,8 @@ for (const item of cola) {
   let payload = item.payload;
 
   // Payload fresco: lo arma la edge function (mapeos actualizados).
-  if (item.property_id) {
+  const refrescarPayload = async () => {
+    if (!item.property_id) return;
     try {
       const r = await crmCall(token, 'prepare', { property_id: item.property_id });
       const res = (r.results || [])[0];
@@ -607,7 +728,11 @@ for (const item of cola) {
     } catch (err) {
       log('  ! no pude preparar:', err.message);
     }
-  }
+  };
+  // En renovación NO se prepara antes: `prepare` resetea el estado a 'ready'
+  // y el aviso viejo todavía está publicado (vencido). Se refresca sólo si al
+  // final hay que republicar uno nuevo.
+  if (item.property_id && !args.renew) await refrescarPayload();
   if (!payload) { fallos++; continue; }
 
   const code = payload.property_code || (row?.properties?.property_code ?? '');
@@ -630,6 +755,8 @@ for (const item of cola) {
       } else { ok++; continue; }
     } else {
       log('  · sin renovación en el panel:', ren.motivo, '→ publico uno nuevo');
+      // Datos frescos para el aviso nuevo.
+      await refrescarPayload();
     }
   }
 

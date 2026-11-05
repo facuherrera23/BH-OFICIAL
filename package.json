@@ -18,7 +18,8 @@
     "lint": "node --check assets/js/admin-app.js && node --check assets/js/landing-app.js",
     "lavoz": "node scripts/lavoz-publisher.mjs --run",
     "lavoz:discover": "node scripts/lavoz-publisher.mjs --discover",
-    "lavoz:renovar": "node scripts/lavoz-publisher.mjs --run --renew"
+    "lavoz:renovar": "node scripts/lavoz-publisher.mjs --run --renew",
+    "lavoz:estado": "node scripts/lavoz-publisher.mjs --estado"
   },
   "repository": {
     "type": "git",

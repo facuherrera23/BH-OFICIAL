@@ -8,12 +8,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CAMPOS,
+  DEFAULTS,
   OPCIONES,
   RE_PUBLICAR,
   RE_SIGUIENTE,
   elegirControl,
+  esTextoTerminos,
+  idControl,
   indiceOpcion,
   normalizar,
+  planDefaults,
   planLlenado,
   textoDeControl,
 } from '../../scripts/lavoz-mapping.mjs';
@@ -152,4 +156,83 @@ test('los regex de botones distinguen "continuar" de "publicar"', () => {
   assert.ok(RE_PUBLICAR.test('Publicar aviso'));
   assert.ok(RE_PUBLICAR.test('Guardar'));
   assert.ok(!RE_PUBLICAR.test('Continuar'));
+});
+
+/* ================================================================
+   EXCLUSIONES Y DEFAULTS: los selects que La Voz exige y que el
+   formulario rotula con labels parecidos (Tipo vs Tipo de barrio,
+   Ciudad vs Provincia).
+   ================================================================ */
+
+const controlsPortal = [
+  { tag: 'select', type: 'select-one', id: 'tipo_inmueble', name: 'tipo', label: 'Tipo de inmueble', visible: true,
+    options: [{ value: '1', text: 'Casas' }] },
+  { tag: 'select', type: 'select-one', id: 'tipo_barrio', name: 'tipo_barrio', label: 'Tipo de barrio', visible: true,
+    options: [{ value: 'a', text: 'Abierto' }, { value: 's', text: 'Con Seguridad' }] },
+  { tag: 'select', type: 'select-one', id: 'provincia', name: 'provincia', label: 'Provincia', visible: true,
+    options: [{ value: 'c', text: 'Córdoba' }] },
+  { tag: 'select', type: 'select-one', id: 'ciudad', name: 'ciudad', label: 'Ciudad', visible: true,
+    options: [{ value: 'co', text: 'Córdoba' }] },
+  { tag: 'select', type: 'select-one', id: 'barrio', name: 'barrio', label: 'Barrio / Zona', visible: true,
+    options: [{ value: 'ob', text: 'Obrero' }] },
+  { tag: 'select', type: 'select-one', id: 'tipo_vendedor', name: 'tipo_vendedor', label: 'Tipo de vendedor', visible: true,
+    options: [{ value: 'i', text: 'Inmobiliaria' }, { value: 'p', text: 'Particular' }] },
+  { tag: 'select', type: 'select-one', id: 'duracion', name: 'duracion', label: 'Duración del aviso', visible: true,
+    options: [{ value: '10', text: '10 días' }, { value: '30', text: '30 días' }] },
+];
+
+test('elegirControl: "tipo" NO se come el select "Tipo de barrio"', () => {
+  const campo = CAMPOS.find((c) => c.key === 'tipo');
+  assert.equal(elegirControl(controlsPortal, campo)?.id, 'tipo_inmueble');
+});
+
+test('elegirControl: "barrio" NO se come el select "Tipo de barrio"', () => {
+  const campo = CAMPOS.find((c) => c.key === 'barrio');
+  assert.equal(elegirControl(controlsPortal, campo)?.id, 'barrio');
+});
+
+test('elegirControl: "ciudad" NO se come el select "Provincia"', () => {
+  const campo = CAMPOS.find((c) => c.key === 'ciudad');
+  assert.equal(elegirControl(controlsPortal, campo)?.id, 'ciudad');
+});
+
+test('planDefaults: completa provincia, tipo de barrio, vendedor y duración', () => {
+  const plan = planDefaults(controlsPortal, { ...payload, dias_publicacion: 30 }, []);
+  const byKey = Object.fromEntries(plan.map((p) => [p.key, p]));
+  assert.equal(byKey.provincia.control.id, 'provincia');
+  assert.equal(byKey.provincia.valor, 'Córdoba');
+  assert.equal(byKey.tipo_barrio.control.id, 'tipo_barrio');
+  assert.equal(byKey.tipo_barrio.valor, 'Abierto');
+  assert.equal(byKey.tipo_vendedor.control.id, 'tipo_vendedor');
+  assert.equal(byKey.tipo_vendedor.valor, 'Inmobiliaria');
+  assert.equal(byKey.duracion.control.id, 'duracion');
+  assert.equal(byKey.duracion.valor, 30);
+});
+
+test('planDefaults: NO pisa un control ya reclamado por un campo del aviso', () => {
+  const plan = planLlenado(controlsPortal, payload);
+  const claimed = plan.map((p) => idControl(p.control));
+  assert.ok(claimed.includes('ciudad'));
+  const defaults = planDefaults(controlsPortal, { ...payload, dias_publicacion: 30 }, claimed);
+  const ids = defaults.map((p) => idControl(p.control));
+  assert.ok(!ids.includes('ciudad'));
+  assert.ok(!ids.includes('tipo_inmueble'));
+});
+
+test('planDefaults: sin defaults aplicables devuelve un plan vacío', () => {
+  const plan = planDefaults([], payload, []);
+  assert.equal(plan.length, 0);
+});
+
+test('DEFAULTS: el tipo de vendedor por defecto es Inmobiliaria', () => {
+  const def = DEFAULTS.find((d) => d.key === 'tipo_vendedor');
+  assert.equal(def.valor(), 'Inmobiliaria');
+});
+
+test('esTextoTerminos: detecta la casilla de condiciones y NO el Turnstile', () => {
+  assert.ok(esTextoTerminos('Acepto los términos y condiciones'));
+  assert.ok(esTextoTerminos('He leído y acepto los Términos'));
+  assert.ok(!esTextoTerminos('No soy un robot'));
+  assert.ok(!esTextoTerminos(''));
+  assert.ok(!esTextoTerminos('Tipo de inmueble'));
 });
