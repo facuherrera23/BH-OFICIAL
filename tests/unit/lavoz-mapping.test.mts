@@ -20,6 +20,7 @@ import {
   planDefaults,
   planLlenado,
   textoDeControl,
+  tieneBloqueante,
 } from '../../scripts/lavoz-mapping.mjs';
 
 /* Forma de los controles (la misma que devuelve el script en runtime). */
@@ -235,4 +236,14 @@ test('esTextoTerminos: detecta la casilla de condiciones y NO el Turnstile', () 
   assert.ok(!esTextoTerminos('No soy un robot'));
   assert.ok(!esTextoTerminos(''));
   assert.ok(!esTextoTerminos('Tipo de inmueble'));
+});
+
+test('tieneBloqueante: detecta los 3 avisos que impiden publicar', () => {
+  assert.ok(tieneBloqueante({ avisos: ['Falta la operación (venta/alquiler): no se puede publicar sin ella.'] }));
+  assert.ok(tieneBloqueante({ avisos: ['Falta el precio'] }));
+  assert.ok(tieneBloqueante({ avisos: ['El tipo "quinta" no tiene subrubro mapeado en La Voz.'] }));
+  // Un aviso normal no bloquea.
+  assert.ok(!tieneBloqueante({ avisos: ['La zona "X" no tiene barrio equivalente en La Voz.'] }));
+  assert.ok(!tieneBloqueante({ avisos: [] }));
+  assert.ok(!tieneBloqueante(null));
 });

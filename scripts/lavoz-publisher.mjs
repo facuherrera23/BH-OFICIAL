@@ -49,6 +49,7 @@ import {
   planDefaults,
   idControl,
   esTextoTerminos,
+  tieneBloqueante,
 } from './lavoz-mapping.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -686,7 +687,9 @@ if (args.payload) {
     const limite = Date.now() + 7 * 86400000;
     listings = listings.filter((l) => l.status === 'expired' || (l.expires_at && new Date(l.expires_at).getTime() < limite));
   } else {
-    listings = listings.filter((l) => l.status === 'ready' || l.status === 'failed' || l.status === 'draft');
+    // Candidatos: lo preparado + lo que quedó con datos incompletos (se
+    // re-prepara y, si el dueño ya los completó, se publica).
+    listings = listings.filter((l) => l.status === 'ready' || l.status === 'draft' || l.status === 'failed');
     // Cola vacía → se prepara todo desde acá (no hace falta tocar el panel).
     if (!listings.length) {
       log('No hay avisos preparados: los preparo ahora desde el CRM…');
@@ -694,7 +697,7 @@ if (args.payload) {
         const prep = await crmCall(token, 'prepare_all');
         log(`  → ${prep.count || 0} aviso(s) preparados`);
         const res2 = await crmCall(token, 'list');
-        listings = (res2.listings || []).filter((l) => l.status === 'ready' || l.status === 'failed');
+        listings = (res2.listings || []).filter((l) => l.status === 'ready' || l.status === 'draft' || l.status === 'failed');
       } catch (err) {
         log('  ! no pude preparar:', err.message);
       }
@@ -736,6 +739,15 @@ for (const item of cola) {
   if (!payload) { fallos++; continue; }
 
   const code = payload.property_code || (row?.properties?.property_code ?? '');
+
+  // Avisos con datos bloqueantes (sin operación/precio/subrubro): NO se
+  // publican a ciegas. Quedan en 'failed' en el CRM con el motivo.
+  if (tieneBloqueante(payload)) {
+    const motivo = (payload.avisos || []).find((a) => /Falta la operación|Falta el precio|no tiene subrubro/i.test(String(a)));
+    log(`\n=== ${code} — OMITIDO (datos incompletos): ${motivo || 'faltan datos'}`);
+    continue;
+  }
+
   log(`\n=== ${code} — ${payload.titulo}`);
 
   // Renovación: primero se intenta el botón "renovar" del aviso viejo.

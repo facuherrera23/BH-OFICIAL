@@ -1047,6 +1047,7 @@ npm run lavoz:estado   # sólo lectura: la cola de avisos en la terminal
 ```
 
 - **La cola sale del CRM**: el asistente llama a `lavoz-proxy` (`list` → `prepare` → `confirm`); si no hay avisos preparados, él mismo hace `prepare_all`. No hay archivos sueltos ni pasos manuales en el panel.
+- **Es auto-sanable**: los avisos con datos incompletos se re-preparan en cada corrida; si el dueño completa el dato en el CRM, se publican solos. Si siguen incompletos, el asistente los omite con el motivo.
 - **Login humano, una sola vez**: la primera corrida pide iniciar sesión en La Voz y en el panel del CRM; el perfil persistente (`~/.lavoz-publisher-profile`) lo recuerda para siempre. El Turnstile de La Voz bloquea headless, por eso el navegador va headed. También se puede pasar `BH_ACCESS_TOKEN` para el CRM.
 - **Mapeo del formulario**: `scripts/lavoz-mapping.mjs` (puro, testeado) llena los controles por palabras clave (label/placeholder/name/id) y los `<select>` por texto de la opción. Se ajusta con `npm run lavoz:discover` si La Voz cambia los labels.
 - **Lo que La Voz exige y nosotros no tenemos**: se completa con defaults editables (provincia = Córdoba, tipo de barrio = "Abierto", tipo de vendedor = "Inmobiliaria", duración = la de `lavoz_config`).
@@ -1054,7 +1055,7 @@ npm run lavoz:estado   # sólo lectura: la cola de avisos en la terminal
 - **Verificación**: capturas de cada paso en `lavoz-shots/` (ignorado por git).
 
 - **La PORTADA es siempre la primera foto**: en el panel la estrella "usar como foto de portada" reordena `image_urls` y la ficha pública usa ese mismo orden; el mapper no reordena nada.
-- **Avisos bloqueantes**: sin operación (venta/alquiler), sin precio o sin tipo mapeado → el aviso queda en `failed` con el motivo, no se publica a ciegas.
+- **Avisos bloqueantes**: sin operación (venta/alquiler), sin precio o sin tipo mapeado → el aviso queda en `failed` con el motivo, no se publica a ciegas. La operación sale de `listing_type` y, si ese campo está vacío (datos viejos), del estado comercial `status` (`venta`/`alquiler`).
 - **Taxonomía**: 9 subrubros de La Voz; 10 de nuestras 22 zonas existen como barrio (las 6 restantes se publican en Córdoba con la zona real en el texto y el aviso `sin_equivalencia`).
 - **Costos**: sin pack, cada aviso muestra **1 sola foto** (básico). 12 fotos ⇒ Premium ($13.435/aviso) o la mejora "12 Fotos" ($3.183,51); 25 fotos ⇒ Súper Premium. El plan sugerido se calcula por cantidad de fotos.
 - **Mapeos y contacto** en `lavoz_config` (editables por `super_admin` sin deploy). La cuenta de La Voz se dio de alta como Particular/Comercio: el tipo **Inmobiliaria** (y el logo CPI del convenio) lo habilita La Voz a pedido.

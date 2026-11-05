@@ -30,6 +30,17 @@ export const OPERACION_LABEL: Record<string, string> = {
   compra: 'Compra',
 };
 
+/**
+ * La operación (venta/alquiler) sale de `listing_type`. En las propiedades
+ * más viejas ese campo quedó NULL, pero el estado comercial (`status`:
+ * venta|alquiler|vendido|alquilado|pausado) sí dice la operación → se usa
+ * como fallback. 'vendido'/'alquilado'/'pausado' NO son publicables.
+ */
+export const OPERACION_DESDE_STATUS: Record<string, string> = {
+  venta: 'venta',
+  alquiler: 'alquiler',
+};
+
 export const PLAN_LABEL: Record<string, string> = {
   basico: 'Básico (1 foto, sin destacar)',
   estandar: 'Estándar (6 fotos)',
@@ -177,7 +188,9 @@ export function buildLavozPayload(
   const subrubroLabel = tipoMap?.label || String(p.property_type || '');
 
   if (!tipoMap) avisos.push(`El tipo "${p.property_type || '—'}" no tiene subrubro mapeado en La Voz.`);
-  if (!p.listing_type) avisos.push('Falta la operación (venta/alquiler): no se puede publicar sin ella.');
+  // La operación: `listing_type` primero; si falta, el estado comercial.
+  const operacionKey = norm(p.listing_type) || OPERACION_DESDE_STATUS[norm(p.status)] || '';
+  if (!operacionKey) avisos.push('Falta la operación (venta/alquiler): no se puede publicar sin ella.');
   if (!subrubro) avisos.push('Falta el subrubro: revisá el tipo de propiedad.');
 
   // --- Ubicación: primero el barrio (zone), después la ciudad (locality) ---
@@ -234,7 +247,7 @@ export function buildLavozPayload(
   // --- Descripción ---
   let descripcion = String(p.description || '').trim();
   if (!descripcion) {
-    descripcion = `${subrubroLabel}${p.listing_type ? ' en ' + (OPERACION_LABEL[norm(p.listing_type)] || '') : ''}` +
+    descripcion = `${subrubroLabel}${operacionKey ? ' en ' + (OPERACION_LABEL[operacionKey] || '') : ''}` +
       ` en ${barrioLabel}.`;
     avisos.push('La propiedad no tiene descripción: se armó una mínima.');
   }
@@ -255,8 +268,8 @@ export function buildLavozPayload(
     property_code: code,
     titulo,
     descripcion,
-    operacion: norm(p.listing_type) || null,
-    operacion_label: OPERACION_LABEL[norm(p.listing_type)] || null,
+    operacion: operacionKey || null,
+    operacion_label: OPERACION_LABEL[operacionKey] || null,
     subrubro,
     subrubro_label: subrubroLabel,
     ciudad: ub.ciudad || null,

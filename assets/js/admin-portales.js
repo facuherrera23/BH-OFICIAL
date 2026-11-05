@@ -1095,6 +1095,30 @@ try {
      ------------------------------------------------ */
   const LAVOZ_PORTAL = 'https://clasificados.lavoz.com.ar';
 
+  /* Copia al portapapeles con fallback (la clipboard API exige contexto
+     seguro; el panel puede abrirse por http en algunos accesos). */
+  async function copiarTexto(texto) {
+    const val = String(texto || '');
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(val);
+        return true;
+      }
+    } catch (_) { /* fallback abajo */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = val;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch (_) { return false; }
+  }
+
   async function lavozApiCall(action, body = {}) {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (!session) throw new Error('No hay sesión activa');
@@ -1245,7 +1269,7 @@ try {
 
         <p style="font-size:11.5px; color:var(--text-dim); margin:14px 0 0;">
           <i class="fas fa-circle-info" style="color:#1fc8c3;"></i>
-          La Voz no tiene API: el CRM arma el aviso completo y vos lo subís al panel.
+          La Voz no tiene API: el CRM arma el aviso completo y el asistente lo publica en su panel.
           <a href="${LAVOZ_PORTAL}/publicar" target="_blank" rel="noopener" style="color:#1fc8c3;">Publicar en La Voz</a>
           · <a href="${LAVOZ_PORTAL}/faq" target="_blank" rel="noopener" style="color:#1fc8c3;">Ayuda de La Voz</a>
         </p>
@@ -1258,8 +1282,24 @@ try {
           </span>
           <code style="font-size:11px; background:rgba(0,0,0,0.3); border:1px solid var(--border-subtle); border-radius:6px; padding:3px 7px; color:#1fc8c3;">npm run lavoz</code>
           <button type="button" class="btn-action" style="padding:4px 8px; font-size:10px;" data-lavoz-copy="npm run lavoz" title="Copiar el comando"><i class="fas fa-copy"></i></button>
-          <span style="font-size:11px; color:var(--text-dim);">(renovar vencidos: <code>npm run lavoz:renovar</code>)</span>
         </div>
+
+        <ol style="margin:8px 0 0; padding-left:20px; font-size:11.5px; color:var(--text-dim); line-height:1.7;">
+          <li>
+            <b>La primera vez</b> (y sólo esa): <code style="font-size:11px;">npm run lavoz:discover</code>
+            <button type="button" class="btn-action" style="padding:2px 6px; font-size:10px;" data-lavoz-copy="npm run lavoz:discover" title="Copiar el comando"><i class="fas fa-copy"></i></button>
+            — se abre el navegador: iniciá sesión en La Voz y en este panel. El perfil las recuerda para siempre.
+          </li>
+          <li>
+            <b>Ver la cola</b> (sin publicar nada): <code style="font-size:11px;">npm run lavoz:estado</code>
+            <button type="button" class="btn-action" style="padding:2px 6px; font-size:10px;" data-lavoz-copy="npm run lavoz:estado" title="Copiar el comando"><i class="fas fa-copy"></i></button>
+          </li>
+          <li>
+            <b>Publicar todo</b>: <code style="font-size:11px;">npm run lavoz</code> · <b>renovar vencidos</b>:
+            <code style="font-size:11px;">npm run lavoz:renovar</code>
+            <button type="button" class="btn-action" style="padding:2px 6px; font-size:10px;" data-lavoz-copy="npm run lavoz:renovar" title="Copiar el comando"><i class="fas fa-copy"></i></button>
+          </li>
+        </ol>
 
         <div style="margin-top:16px; overflow-x:auto;">
           ${listings.length ? `<table class="luxury-table" style="width:100%;">
@@ -1346,8 +1386,8 @@ try {
   on($('#lavozPortalPanel'), 'click', async (e) => {
     const copyCmd = e.target.closest('[data-lavoz-copy]');
     if (copyCmd) {
-      await navigator.clipboard.writeText(copyCmd.dataset.lavozCopy).catch(() => {});
-      showToast('Copiado.', 'success');
+      const ok = await copiarTexto(copyCmd.dataset.lavozCopy);
+      showToast(ok ? `Copiado: ${copyCmd.dataset.lavozCopy}` : 'No pude copiar al portapapeles.', ok ? 'success' : 'error');
       return;
     }
     const prep = e.target.closest('[data-lavoz-prep]');
@@ -1385,21 +1425,21 @@ try {
   on($('#lavozModal'), 'click', async (e) => {
     const copy = e.target.closest('[data-lavoz-copy]');
     if (copy) {
-      await navigator.clipboard.writeText(copy.dataset.lavozCopy).catch(() => {});
-      showToast('Copiado.', 'success');
+      const ok = await copiarTexto(copy.dataset.lavozCopy);
+      showToast(ok ? 'Copiado.' : 'No pude copiar al portapapeles.', ok ? 'success' : 'error');
       return;
     }
     const copyFicha = e.target.closest('[data-lavoz-copy-ficha]');
     if (copyFicha) {
       const ta = document.querySelector('#lavozFicha');
-      await navigator.clipboard.writeText(ta ? ta.value : '').catch(() => {});
-      showToast('Ficha copiada.', 'success');
+      const ok = await copiarTexto(ta ? ta.value : '');
+      showToast(ok ? 'Ficha copiada.' : 'No pude copiar al portapapeles.', ok ? 'success' : 'error');
       return;
     }
     const copyDesc = e.target.closest('[data-lavoz-copy-desc]');
     if (copyDesc) {
-      await navigator.clipboard.writeText((_lavozPrepared?.payload?.descripcion) || '').catch(() => {});
-      showToast('Descripción copiada.', 'success');
+      const ok = await copiarTexto((_lavozPrepared?.payload?.descripcion) || '');
+      showToast(ok ? 'Descripción copiada.' : 'No pude copiar al portapapeles.', ok ? 'success' : 'error');
       return;
     }
     const zip = e.target.closest('[data-lavoz-zip]');

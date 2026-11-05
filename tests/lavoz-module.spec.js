@@ -193,6 +193,20 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(scriptSrc).toContain("crmCall(token, 'confirm'");
   });
 
+  test('el asistente NO publica avisos con datos bloqueantes', () => {
+    // Los 'failed' entran en la cola (se re-preparan), pero si el aviso
+    // sigue bloqueante se omiten con el motivo.
+    expect(scriptSrc).toContain('tieneBloqueante');
+    expect(scriptSrc).toContain('OMITIDO (datos incompletos)');
+    expect(mappingSrc).toContain('RE_BLOQUEANTE');
+  });
+
+  test('el mapper usa el estado comercial cuando falta listing_type', () => {
+    // 9 propiedades publicadas tienen listing_type NULL pero status venta/alquiler.
+    expect(mapperSrc).toContain('OPERACION_DESDE_STATUS');
+    expect(mapperSrc).toContain('OPERACION_DESDE_STATUS[norm(p.status)]');
+  });
+
   test('el asistente sube las fotos con la PORTADA de primera', () => {
     expect(scriptSrc).toContain('setInputFiles');
     expect(scriptSrc).toContain("i === 0 ? '-portada' : '-foto'");
@@ -245,7 +259,12 @@ test.describe('La Voz — automatización de la publicación', () => {
   test('el panel de Portales explica el comando de publicación en lote', () => {
     expect(portalesSrc).toContain('npm run lavoz');
     expect(portalesSrc).toContain('npm run lavoz:renovar');
+    expect(portalesSrc).toContain('npm run lavoz:discover');
+    expect(portalesSrc).toContain('npm run lavoz:estado');
     expect(portalesSrc).toContain('data-lavoz-copy="npm run lavoz"');
+    // Copia con fallback (la clipboard API exige contexto seguro).
+    expect(portalesSrc).toContain('copiarTexto');
+    expect(portalesSrc).toContain("execCommand('copy')");
   });
 
   test('el asistente acepta los términos y condiciones antes de publicar', () => {

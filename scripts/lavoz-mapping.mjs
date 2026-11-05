@@ -207,6 +207,19 @@ export const RE_PUBLICAR = /publicar|publica|guardar|enviar|finalizar|terminar|r
 /** Casillas de aceptación de términos y condiciones. */
 export const RE_TERMINOS = /acepto|terminos|términos|condiciones|politica|política/i;
 
+/**
+ * Avisos BLOQUEANTES del mapper (mismo criterio que la edge function
+ * `lavoz-proxy`): sin operación, sin precio o sin subrubro → el aviso no
+ * se publica a ciegas.
+ */
+export const RE_BLOQUEANTE = /Falta la operación|Falta el precio|no tiene subrubro/i;
+
+/** ¿El payload tiene un aviso bloqueante? */
+export function tieneBloqueante(payload) {
+  const avisos = (payload && payload.avisos) || [];
+  return avisos.some((a) => RE_BLOQUEANTE.test(String(a)));
+}
+
 /** ¿Este texto es el de una casilla de términos? */
 export function esTextoTerminos(texto) {
   const t = normalizar(texto);

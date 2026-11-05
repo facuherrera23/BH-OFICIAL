@@ -126,6 +126,33 @@ test('buildLavozPayload: los avisos bloqueantes (operación, precio, subrubro)',
   assert.equal(tipoDesconocido.subrubro, '');
 });
 
+test('buildLavozPayload: sin listing_type, la operación sale del estado comercial', () => {
+  // 9 propiedades publicadas tienen listing_type NULL pero status = venta/alquiler.
+  const venta = buildLavozPayload({ ...baseProperty, listing_type: null, status: 'venta' }, cfg);
+  assert.equal(venta.operacion, 'venta');
+  assert.equal(venta.operacion_label, 'Venta');
+  assert.ok(!venta.avisos.some((a) => /Falta la operación/.test(a)));
+
+  const alquiler = buildLavozPayload({ ...baseProperty, listing_type: null, status: 'alquiler' }, cfg);
+  assert.equal(alquiler.operacion, 'alquiler');
+  assert.equal(alquiler.operacion_label, 'Alquiler');
+  assert.ok(!alquiler.avisos.some((a) => /Falta la operación/.test(a)));
+});
+
+test('buildLavozPayload: estados no publicables NO cuentan como operación', () => {
+  for (const status of ['vendido', 'alquilado', 'pausado']) {
+    const p = buildLavozPayload({ ...baseProperty, listing_type: null, status }, cfg);
+    assert.equal(p.operacion, null, status);
+    assert.ok(p.avisos.some((a) => /Falta la operación/.test(a)), status);
+  }
+});
+
+test('buildLavozPayload: listing_type manda sobre el estado comercial', () => {
+  const p = buildLavozPayload({ ...baseProperty, listing_type: 'alquiler', status: 'venta' }, cfg);
+  assert.equal(p.operacion, 'alquiler');
+  assert.equal(p.operacion_label, 'Alquiler');
+});
+
 test('buildLavozPayload: medidas numéricas (strings y ceros = no aplica)', () => {
   const p = buildLavozPayload(baseProperty, cfg);
   assert.equal(p.superficie_total, 299);
