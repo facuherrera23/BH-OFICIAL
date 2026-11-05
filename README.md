@@ -1053,6 +1053,7 @@ npm run lavoz:estado   # sólo lectura: la cola de avisos en la terminal
 - **Lo que La Voz exige y nosotros no tenemos**: se completa con defaults editables (provincia = Córdoba, tipo de barrio = "Abierto", tipo de vendedor = "Inmobiliaria", duración = la de `lavoz_config`).
 - **La portada manda**: las fotos se numeran `01-portada`, `02-foto`… y se suben en ese orden.
 - **Verificación**: capturas de cada paso en `lavoz-shots/` (ignorado por git).
+- **¿Se puede programar?** Sí (Programador de tareas de Windows → `npm run lavoz:renovar` cada semana), pero queda a mano a propósito: renovar un aviso puede tener costo según el pack y el navegador necesita la sesión viva.
 
 - **La PORTADA es siempre la primera foto**: en el panel la estrella "usar como foto de portada" reordena `image_urls` y la ficha pública usa ese mismo orden; el mapper no reordena nada.
 - **Avisos bloqueantes**: sin operación (venta/alquiler), sin precio o sin tipo mapeado → el aviso queda en `failed` con el motivo, no se publica a ciegas. La operación sale de `listing_type` y, si ese campo está vacío (datos viejos), del estado comercial `status` (`venta`/`alquiler`).
