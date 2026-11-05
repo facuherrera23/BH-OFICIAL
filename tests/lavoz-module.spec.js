@@ -151,3 +151,89 @@ test.describe('La Voz — módulo de publicación asistida', () => {
     expect(mapperSrc).toContain('no tiene barrio equivalente en La Voz');
   });
 });
+
+/* ================================================================
+   AUTOMATIZACIÓN (2026-11-04): el asistente publica la cola sola.
+   ================================================================ */
+
+const SCRIPT = path.join(ROOT, 'scripts', 'lavoz-publisher.mjs');
+const MAPPING = path.join(ROOT, 'scripts', 'lavoz-mapping.mjs');
+const scriptSrc = fs.readFileSync(SCRIPT, 'utf8');
+const mappingSrc = fs.readFileSync(MAPPING, 'utf8');
+const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+
+test.describe('La Voz — automatización de la publicación', () => {
+  test('el asistente tiene los 3 modos y usa el perfil persistente', () => {
+    expect(scriptSrc).toContain("'--discover'");
+    expect(scriptSrc).toContain("'--run'");
+    expect(scriptSrc).toContain("'--renew'");
+    // headed + perfil persistente: el Turnstile de La Voz bloquea headless.
+    expect(scriptSrc).toContain('launchPersistentContext');
+    expect(scriptSrc).toContain('headless: false');
+    expect(scriptSrc).toContain('.lavoz-publisher-profile');
+  });
+
+  test('el asistente NO tiene credenciales escritas (el login es humano)', () => {
+    // Ni contraseñas, ni tokens, ni claves de La Voz hardcodeadas.
+    expect(scriptSrc).not.toMatch(/password\s*[:=]\s*['"][^'"]+['"]/i);
+    expect(scriptSrc).not.toMatch(/api[_-]?key\s*[:=]\s*['"][^'"]+['"]/i);
+    expect(scriptSrc).not.toMatch(/secret\s*[:=]\s*['"][^'"]+['"]/i);
+    // La sesión sale del perfil (o de BH_ACCESS_TOKEN por entorno).
+    expect(scriptSrc).toContain('BH_ACCESS_TOKEN');
+    expect(scriptSrc).toContain('sb-rnldqiwwzhjnurkguihu-auth-token');
+  });
+
+  test('el asistente lee la cola del CRM y confirma el resultado ahí', () => {
+    expect(scriptSrc).toContain('functions/v1/lavoz-proxy');
+    expect(scriptSrc).toContain("crmCall(token, 'list')");
+    expect(scriptSrc).toContain("crmCall(token, 'prepare'");
+    expect(scriptSrc).toContain("crmCall(token, 'prepare_all')");
+    expect(scriptSrc).toContain("crmCall(token, 'confirm'");
+  });
+
+  test('el asistente sube las fotos con la PORTADA de primera', () => {
+    expect(scriptSrc).toContain('setInputFiles');
+    expect(scriptSrc).toContain("i === 0 ? '-portada' : '-foto'");
+    expect(scriptSrc).toContain('bajarFotos');
+  });
+
+  test('el asistente maneja el wizard de varios pasos y captura la URL', () => {
+    expect(scriptSrc).toContain('RE_SIGUIENTE');
+    expect(scriptSrc).toContain('RE_PUBLICAR');
+    expect(scriptSrc).toContain('capturarUrlAviso');
+    // La URL capturada tiene que ser de La Voz (nunca una externa).
+    expect(scriptSrc).toContain('lavoz\\.com\\.ar');
+  });
+
+  test('el mapeo del formulario es un módulo PURO (testeable sin navegador)', () => {
+    expect(mappingSrc).toContain('export function elegirControl');
+    expect(mappingSrc).toContain('export function indiceOpcion');
+    expect(mappingSrc).toContain('export function planLlenado');
+    // Sin I/O ni navegador: se importa en node --test.
+    expect(mappingSrc).not.toContain('playwright');
+    expect(mappingSrc).not.toMatch(/require\(|from 'node:/);
+    expect(mappingSrc).not.toMatch(/readFileSync|writeFileSync/);
+    // Y el asistente lo usa (no duplica la lógica).
+    expect(scriptSrc).toContain("from './lavoz-mapping.mjs'");
+  });
+
+  test('npm scripts: publicar la cola y renovar vencidos', () => {
+    expect(pkg.scripts.lavoz).toContain('lavoz-publisher.mjs --run');
+    expect(pkg.scripts['lavoz:renovar']).toContain('--renew');
+    expect(pkg.scripts['lavoz:discover']).toContain('--discover');
+  });
+
+  test('la edge function devuelve el payload y auto-venece los avisos', () => {
+    // El asistente necesita el payload para llenar el formulario.
+    expect(fnSrc).toContain('payload, properties!inner');
+    // Vencimiento self-healing (avisos de 10 o 30 días).
+    expect(fnSrc).toContain('expireVencidos');
+    expect(fnSrc).toContain(".eq('status', 'published')");
+  });
+
+  test('el panel de Portales explica el comando de publicación en lote', () => {
+    expect(portalesSrc).toContain('npm run lavoz');
+    expect(portalesSrc).toContain('npm run lavoz:renovar');
+    expect(portalesSrc).toContain('data-lavoz-copy="npm run lavoz"');
+  });
+});

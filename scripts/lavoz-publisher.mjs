@@ -1,33 +1,34 @@
 // ============================================================
-// lavoz-publisher.mjs — asistente local de publicación en La Voz
+// lavoz-publisher.mjs — MOTOR DE PUBLICACIÓN en Clasificados La Voz
 // ============================================================
 // POR QUÉ EXISTE: Clasificados La Voz NO tiene API ni carga masiva
 // (verificado 2026-11-04: sin API en FAQ/Términos/sitemap/bundles, la única
-// ruta JSON del front es /api/auth/me; el portal está detrás de Cloudflare
-// Turnstile). Publicar es, sí o sí, una operación humana en su panel.
+// ruta JSON real del front es /api/auth/me; el portal está detrás de Cloudflare
+// Turnstile). Publicar es, sí o sí, una operación en su panel → se automatiza
+// con un navegador REAL (headed) + perfil persistente.
 //
-// QUÉ HACE: abre el navegador VISIBLE ( headed ) con un perfil persistente,
-// espera a que el(login) quede hecho a mano y después:
-//   --discover   vuelca el formulario real (ids, labels, opciones) a
-//                scripts/lavoz-form-schema.json → sirve para mapear el
-//                formulario y automatizar el llenado.
-//   --publish    llena el formulario con un aviso ya armado por el CRM
-//                (JSON del edge function lavoz-proxy) y sube las fotos
-//                (la PORTADA primero). NO publica: deja el botón de
-//                publicación para que el Humans lo apriete.
+// QUÉ HACE (todo lo automatizable):
+//   1. Reutiliza la sesión de La Voz del perfil persistente (login humano UNA
+//      vez; después no se vuelve a pedir).
+//   2. Lee la sesión del CRM del mismo perfil y llama a la edge function
+//      `lavoz-proxy` (list / prepare / confirm) → la cola de avisos sale del
+//      CRM, no de archivos sueltos.
+//   3. Descubre el formulario real (wizard multi-paso), lo llena campo por
+//      campo con los datos del aviso y sube las fotos (la PORTADA primero).
+//   4. Publica (o deja el botón si se pide) y captura la URL del aviso.
+//   5. Confirma en el CRM → la publicación queda con estado, plan y VENCIMIENTO
+//      (10 o 30 días) sin que nadie tenga que pegar la URL a mano.
 //
-// POR QUÉ HEADED Y CON PERFIL PERSISTENTE: el Turnstile de Cloudflare
-// bloquea los navegadores headless; con ventana visible + sesión guardada
-// el flujo funciona como el de una persona.
-//
-// USO:
-//   node scripts/lavoz-publisher.mjs --discover
-//   node scripts/lavoz-publisher.mjs --publish avisos/DA-P0018.json
-//   node scripts/lavoz-publisher.mjs --publish avisos/DA-P0018.json --submit
-//
-// El aviso JSON sale del CRM: tab Portales → Clasificados La Voz →
-// "Preparar" → "Descargar fotos"/copiar la ficha. También se puede pedir
-// directo a la edge function (ver assets/js/admin-portales.js).
+// MODO HUMANO: el login (La Voz y/o CRM) NO se automatiza — son credenciales
+// del empleador y Turnstile bloquea headless. Con el perfil persistente, la
+// segunda vez no hace falta intervenc.
+// ============================================================
+// USO
+//   node scripts/lavoz-publisher.mjs --discover      # vuelca el formulario
+//   node scripts/lavoz-publisher.mjs --run            # publica toda la cola
+//   node scripts/lavoz-publisher.mjs --run --only DA-P0018
+//   node scripts/lavoz-publisher.mjs --run --dry      # llena sin publicar
+//   node scripts/lavoz-publisher.mjs --run --renew    # re-publica vencidos
 // ============================================================
 
 import { chromium } from '@playwright/test';
@@ -35,39 +36,181 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import {
+  CAMPOS,
+  OPCIONES,
+  RE_SIGUIENTE,
+  RE_PUBLICAR,
+  normalizar,
+  textoDeControl,
+  elegirControl,
+  indiceOpcion,
+  planLlenado,
+} from './lavoz-mapping.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const PROFILE_DIR = path.join(os.homedir(), '.lavoz-publisher-profile');
 const SCHEMA_FILE = path.join(__dirname, 'lavoz-form-schema.json');
+const SHOTS_DIR = path.join(ROOT, 'lavoz-shots');
 const PORTAL = 'https://clasificados.lavoz.com.ar';
 const PUBLISH_URL = `${PORTAL}/publicar`;
+const CRM_URL = 'https://bienenhaus.com.ar/admin.html';
+const SUPABASE_FN = 'https://rnldqiwwzhjnurkguihu.supabase.co/functions/v1/lavoz-proxy';
+const SUPABASE_STORAGE_KEY = 'sb-rnldqiwwzhjnurkguihu-auth-token';
+
+/* ---------------- Args ---------------- */
 
 function parseArgs(argv) {
-  const args = { mode: 'discover', submit: false, url: PUBLISH_URL, payload: null };
+  const args = {
+    mode: 'discover', submit: false, dry: false, renew: false, url: PUBLISH_URL,
+    payload: null, only: null, limit: 99,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--discover') args.mode = 'discover';
-    else if (a === '--publish') { args.mode = 'publish'; args.payload = argv[++i]; }
+    else if (a === '--run') args.mode = 'run';
+    else if (a === '--publish') { args.mode = 'run'; args.payload = argv[++i]; }
     else if (a === '--submit') args.submit = true;
+    else if (a === '--dry') { args.dry = true; args.submit = false; }
+    else if (a === '--no-submit') args.submit = false;
+    else if (a === '--renew') args.renew = true;
     else if (a === '--url') args.url = argv[++i];
+    else if (a === '--only') args.only = argv[++i];
+    else if (a === '--limit') args.limit = Number(argv[++i]) || 99;
     else if (a === '--help' || a === '-h') args.help = true;
+  }
+  // En modo cola, publicar es lo esperado (el humano pidió automatizar).
+  if (args.mode === 'run' && !args.dry && argv.includes('--no-submit') === false && !argv.includes('--dry')) {
+    args.submit = true;
   }
   return args;
 }
 
-function log(...parts) { console.log('[lavoz]', ...parts); }
-
-/** Escapa un valor para usarlo como selector CSS (CSS.escape no existe en Node). */
-function cssEsc(s) {
-  return String(s == null ? '' : s).replace(/[^a-zA-Z0-9_-]/g, (ch) => '\\' + ch);
+const args = parseArgs(process.argv.slice(2));
+if (args.help) {
+  console.log('Uso: node scripts/lavoz-publisher.mjs --discover | --run [--only CODE] [--limit N] [--dry] [--renew]');
+  process.exit(0);
 }
 
-/* ---------------- Schema del formulario ---------------- */
+function log(...parts) { console.log('[lavoz]', ...parts); }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Vuelca todos los controles del formulario: sirve para mapearlo. */
-async function discoverForm(page) {
+/* Los campos y sus keywords viven en scripts/lavoz-mapping.mjs (puro, testeado
+   en tests/unit/lavoz-mapping.test.mts). Acá sólo se usa el runtime del DOM. */
+
+/* ---------------- Navegador ---------------- */
+
+fs.mkdirSync(PROFILE_DIR, { recursive: true });
+fs.mkdirSync(SHOTS_DIR, { recursive: true });
+
+log('Perfil persistente:', PROFILE_DIR);
+log('Abriendo el navegador…');
+
+const ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
+  headless: false,
+  viewport: null,
+  args: ['--disable-blink-features=AutomationControlled'],
+});
+
+const page = ctx.pages()[0] || await ctx.newPage();
+
+async function shot(nombre) {
+  const file = path.join(SHOTS_DIR, `${nombre}.png`);
+  await page.screenshot({ path: file, fullPage: true }).catch(() => {});
+  return file;
+}
+
+/* ---------------- Sesión del CRM ---------------- */
+
+async function crmToken() {
+  // 1) Token por variable de entorno (uso desatendido / otro equipo).
+  if (process.env.BH_ACCESS_TOKEN) {
+    log('✓ Token del CRM por variable de entorno');
+    return process.env.BH_ACCESS_TOKEN;
+  }
+  // 2) La sesión del admin vive en localStorage del origen del panel; el perfil
+  //    persistente la conserva entre corridas (el employer inicia sesión una vez).
+  let tab = ctx.pages().find((p) => p.url().includes('bienenhaus.com.ar'));
+  if (!tab) {
+    tab = await ctx.newPage();
+    await tab.goto(CRM_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  }
+  const leer = async () => await tab.evaluate((key) => {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed?.access_token || parsed?.currentSession?.access_token || null;
+    } catch { return null; }
+  }, SUPABASE_STORAGE_KEY);
+
+  let token = await leer();
+  if (token) return token;
+
+  log('Sin sesión del CRM en este perfil: iniciá sesión en el panel (pestaña del CRM).');
+  log('(Una sola vez: el perfil persistente la guarda.)');
+  let espera = 0;
+  while (!token && espera < 30 * 60 * 1000) {
+    await sleep(3000);
+    espera += 3000;
+    if (espera % 30000 === 0) log('  … esperando la sesión del CRM');
+    token = await leer();
+  }
+  if (!token) throw new Error('No se pudo obtener la sesión del CRM');
+  log('✓ Sesión del CRM lista');
+  return token;
+}
+
+async function crmCall(token, action, body = {}) {
+  const res = await fetch(SUPABASE_FN, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ action, ...body }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || `lavoz-proxy ${res.status}`);
+  return json;
+}
+
+/* ---------------- Sesión de La Voz ---------------- */
+
+async function asegurarSesionLaVoz() {
+  await page.goto(PUBLISH_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+  await page.waitForTimeout(3000);
+  if (!page.url().includes('/usuario/login')) {
+    log('✓ Sesión de La Voz lista');
+    return;
+  }
+  log('La Voz pide iniciar sesión (o contrasenia).');
+  log('Iniciá sesión en esta ventana — es la ÚNICA vez (el perfil lo recuerda).');
+  let espera = 0;
+  while (espera < 30 * 60 * 1000) {
+    if (page.isClosed()) throw new Error('Se cerró el navegador (la ventana de La Voz).');
+    const url = await page.url().catch(() => '');
+    if (!url.includes('/usuario/login')) break;
+    await sleep(3000);
+    espera += 3000;
+    if (espera % 30000 === 0) log('  … esperando el login de La Voz');
+  }
+  const urlFinal = await page.url().catch(() => '');
+  if (urlFinal.includes('/usuario/login')) throw new Error('Login de La Voz no completado');
+  if (!urlFinal.includes('/publicar')) {
+    await page.goto(PUBLISH_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForTimeout(3000);
+  }
+  log('✓ Sesión de La Voz lista');
+}
+
+/* ---------------- Descubrimiento del formulario ---------------- */
+
+async function descubrirFormulario() {
   return await page.evaluate(() => {
+    const visible = (el) => {
+      const r = el.getBoundingClientRect();
+      const st = window.getComputedStyle(el);
+      return st.display !== 'none' && st.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+    };
     const labelOf = (el) => {
       if (el.id) {
         const lb = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
@@ -77,7 +220,7 @@ async function discoverForm(page) {
       if (wrap) return wrap.textContent.trim();
       const parent = el.parentElement;
       if (parent) {
-        const t = parent.querySelector('label, .label, [class*="label"]');
+        const t = parent.querySelector('label, .label, [class*="label"], [class*="Label"]');
         if (t) return t.textContent.trim();
       }
       return '';
@@ -94,7 +237,8 @@ async function discoverForm(page) {
         required: !!el.required,
         multiple: !!el.multiple,
         accept: el.getAttribute('accept') || null,
-        maxLength: el.getAttribute('maxlength') || null,
+        maxLength: el.getAttribute('maxlength') ? Number(el.getAttribute('maxlength')) : null,
+        visible: visible(el),
       };
       if (el.tagName.toLowerCase() === 'select') {
         base.options = [...el.options].map((o) => ({ value: o.value, text: o.textContent.trim() }));
@@ -102,101 +246,135 @@ async function discoverForm(page) {
       if (el.type === 'radio' || el.type === 'checkbox') base.value = el.value;
       return base;
     });
-    const buttons = [...document.querySelectorAll('button, [role="button"], input[type="submit"]')]
-      .map((b) => ({ text: (b.textContent || b.value || '').trim().slice(0, 80), id: b.id || null, class: b.className || null }))
+    const botones = [...document.querySelectorAll('button, [role="button"], input[type="submit"]')]
+      .map((b) => ({
+        text: (b.textContent || b.value || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+        id: b.id || null,
+        type: b.getAttribute('type') || null,
+        visible: visible(b),
+      }))
       .filter((b) => b.text);
-    return { url: location.href, title: document.title, controls, buttons };
+    const pasos = [...document.querySelectorAll('[class*="step"], nav li, [role="tab"]')]
+      .map((s) => (s.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60))
+      .filter(Boolean)
+      .slice(0, 12);
+    return {
+      url: location.href,
+      title: document.title,
+      heading: (document.querySelector('h1, h2')?.textContent || '').trim(),
+      controls,
+      botones,
+      pasos,
+      bodyStart: (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 400),
+    };
   });
 }
 
-function summarizeSchema(schema) {
-  const lines = [`URL: ${schema.url}`, `Título: ${schema.title}`, '', 'CONTROLES:'];
+function resumirSchema(schema) {
+  const L = [`URL: ${schema.url}`, `Título: ${schema.title}`, `Paso: ${schema.heading || '(sin heading)'}`];
+  if (schema.pasos?.length) L.push(`Pasos: ${schema.pasos.join(' | ')}`);
+  L.push('', 'CONTROLES:');
   for (const c of schema.controls) {
     const label = c.label || c.placeholder || c.ariaLabel || '';
     let extra = '';
-    if (c.options && c.options.length) {
-      extra = ' → ' + c.options.slice(0, 12).map((o) => `${o.value}`).join(' | ') + (c.options.length > 12 ? ' …' : '');
-    }
-    lines.push(`  ${c.tag}${c.type ? '[' + c.type + ']' : ''} id=${c.id || '-'} name=${c.name || '-'} ${c.required ? '(req)' : ''} :: ${label}${extra}`);
+    if (c.options?.length) extra = ' → ' + c.options.map((o) => o.text).slice(0, 14).join(' | ');
+    L.push(`  ${c.tag}${c.type ? '[' + c.type + ']' : ''} ${c.visible ? '' : '(oculto) '}id=${c.id || '-'} name=${c.name || '-'} :: ${label}${extra}`);
   }
-  lines.push('', 'BOTONES:', ...schema.buttons.map((b) => `  ${b.text}`));
-  return lines.join('\n');
+  L.push('', 'BOTONES:', ...schema.buttons?.map((b) => `  ${b.visible ? '' : '(oculto) '}${b.text}`) || []);
+  return L.join('\n');
 }
 
 /* ---------------- Llenado ---------------- */
 
-/** Busca el control que mejor matchea una lista de palabras clave. */
-function pickControl(controls, keywords, tagFilter) {
-  const list = controls.filter((c) => (tagFilter ? c.tag === tagFilter : true));
-  for (const kw of keywords) {
-    const hit = list.find((c) => {
-      const hay = `${c.label} ${c.placeholder || ''} ${c.ariaLabel || ''} ${c.name || ''} ${c.id || ''}`.toLowerCase();
-      return hay.includes(kw);
-    });
-    if (hit) return hit;
-  }
+function locatorDe(page, c) {
+  if (c.id) return page.locator(`#${cssEsc(c.id)}`);
+  if (c.name) return page.locator(`[name="${c.name}"]`);
   return null;
 }
 
-async function setSelect(page, control, value) {
-  const sel = control.id
-    ? page.locator(`#${cssEsc(control.id)}`)
-    : page.locator(`[name="${control.name}"]`);
-  const wanted = String(value).toLowerCase();
-  const options = await sel.locator('option').allTextContents();
-  const exact = options.findIndex((t) => t.trim().toLowerCase() === wanted);
-  if (exact >= 0) { await sel.selectOption({ index: exact }); return true; }
-  const partial = options.findIndex((t) => {
-    const lt = t.trim().toLowerCase();
-    return lt.includes(wanted) || wanted.includes(lt);
-  });
-  if (partial >= 0) { await sel.selectOption({ index: partial }); return true; }
-  return false;
+function cssEsc(s) {
+  return String(s == null ? '' : s).replace(/[^a-zA-Z0-9_-]/g, (ch) => '\\' + ch);
 }
 
-async function fillForm(page, payload, schema) {
-  const controls = schema.controls;
-  const done = [];
-  const missed = [];
+async function llenarCampo(page, campo, valor, control) {
+  const c = control || elegirControl(await controlsVisibles(page), campo);
+  if (!c) return { ok: false, motivo: 'sin control' };
+  const loc = locatorDe(page, c);
+  if (!loc) return { ok: false, motivo: 'sin locator' };
+  const n = await loc.count();
+  if (!n) return { ok: false, motivo: 'control invisible' };
+  const target = loc.first();
+  if (c.tag === 'select') {
+    const opciones = await target.locator('option').allTextContents();
+    const idx = indiceOpcion(opciones, valor);
+    if (idx < 0) return { ok: false, motivo: `sin opción "${valor}"` };
+    await target.selectOption({ index: idx });
+    return { ok: true, texto: `${c.label || c.id} = ${valor}` };
+  }
+  await target.fill(String(valor));
+  return { ok: true, texto: `${c.label || c.id || c.name} = ${String(valor).slice(0, 30)}` };
+}
 
-  const fillText = async (keywords, value, tag = 'input') => {
-    if (value === null || value === undefined || value === '') return;
-    const c = pickControl(controls, keywords, tag);
-    if (!c) { missed.push(keywords[0]); return; }
-    const loc = c.id ? page.locator(`#${cssEsc(c.id)}`) : page.locator(`[name="${c.name}"]`);
-    await loc.first().fill(String(value));
-    done.push(`${c.label || c.id || c.name} = ${String(value).slice(0, 40)}`);
-  };
+async function controlsVisibles(page) {
+  return await page.evaluate(() => {
+    const visible = (el) => {
+      const r = el.getBoundingClientRect();
+      const st = window.getComputedStyle(el);
+      return st.display !== 'none' && st.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+    };
+    const labelOf = (el) => {
+      if (el.id) {
+        const lb = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+        if (lb) return lb.textContent.trim();
+      }
+      const wrap = el.closest('label');
+      if (wrap) return wrap.textContent.trim();
+      const parent = el.parentElement;
+      if (parent) {
+        const t = parent.querySelector('label, .label, [class*="label"], [class*="Label"]');
+        if (t) return t.textContent.trim();
+      }
+      return '';
+    };
+    return [...document.querySelectorAll('input, select, textarea')].map((el) => ({
+      tag: el.tagName.toLowerCase(),
+      type: (el.type || '').toLowerCase(),
+      id: el.id || null,
+      name: el.name || null,
+      placeholder: el.getAttribute('placeholder') || null,
+      ariaLabel: el.getAttribute('aria-label') || null,
+      label: labelOf(el),
+      visible: visible(el),
+      options: el.tagName.toLowerCase() === 'select'
+        ? [...el.options].map((o) => ({ value: o.value, text: o.textContent.trim() }))
+        : undefined,
+    }));
+  });
+}
 
-  const fillSelect = async (keywords, value) => {
-    if (value === null || value === undefined || value === '') return;
-    const c = pickControl(controls, keywords, 'select');
-    if (!c) { missed.push(keywords[0]); return; }
-    const ok = await setSelect(page, c, value);
-    if (ok) done.push(`${c.label || c.id || c.name} = ${value}`);
-    else missed.push(`${c.label || c.id} (sin opción "${value}")`);
-  };
-
-  await fillText(['titulo', 'título', 'titulo del aviso', 'encabezado'], payload.titulo);
-  await fillText(['descripcion', 'descripción', 'detalle', 'texto del aviso'], payload.descripcion, 'textarea');
-  await fillSelect(['tipo de inmueble', 'subrubro', 'tipo'], payload.subrubro_label || payload.subrubro);
-  await fillSelect(['operacion', 'operación', 'venta o alquiler', 'modalidad'], payload.operacion_label || payload.operacion);
-  await fillSelect(['ciudad'], payload.ciudad_label || payload.ciudad);
-  await fillSelect(['barrio', 'zona'], payload.barrio_label);
-  await fillText(['precio'], payload.precio);
-  await fillText(['superficie total', 'superficie', 'metros', 'm2', 'm²'], payload.superficie_total);
-  await fillText(['dormitorio', 'dormitorios'], payload.bedrooms);
-  await fillText(['baño', 'baños', 'banos'], payload.bathrooms);
-  await fillText(['cochera', 'garaje'], payload.cocheras);
-  await fillText(['antiguedad', 'antigüedad', 'años'], payload.antiguedad);
-  await fillText(['expensa'], payload.expensas);
-
-  return { done, missed };
+async function marcarRadio(page, palabra) {
+  // Busca un radio/checkbox cuya etiqueta (o el texto cercano) coincida.
+  const ok = await page.evaluate((want) => {
+    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const w = norm(want);
+    const cands = [...document.querySelectorAll('input[type=radio], input[type=checkbox]')];
+    for (const el of cands) {
+      const wrap = el.closest('label');
+      const near = el.parentElement?.textContent || '';
+      const txt = norm((wrap?.textContent || '') + ' ' + near + ' ' + (el.value || ''));
+      if (txt.includes(w) || w.includes(txt.slice(0, 40))) {
+        el.click();
+        return true;
+      }
+    }
+    return false;
+  }, palabra);
+  return ok;
 }
 
 /* ---------------- Fotos ---------------- */
 
-async function downloadFotos(fotos, destDir) {
+async function bajarFotos(fotos, destDir) {
   fs.mkdirSync(destDir, { recursive: true });
   const out = [];
   for (let i = 0; i < fotos.length; i++) {
@@ -215,102 +393,278 @@ async function downloadFotos(fotos, destDir) {
   return out;
 }
 
-/* ---------------- Main ---------------- */
-
-const args = parseArgs(process.argv.slice(2));
-if (args.help) {
-  log('Uso: node scripts/lavoz-publisher.mjs --discover | --publish <aviso.json> [--submit]');
-  process.exit(0);
+async function subirFotos(page, files) {
+  const inputs = page.locator('input[type="file"]');
+  const n = await inputs.count();
+  if (!n) return { ok: false, motivo: 'no hay input de fotos en esta pantalla' };
+  for (let i = 0; i < n; i++) {
+    const inp = inputs.nth(i);
+    const visible = await inp.isVisible().catch(() => false);
+    const multiple = await inp.getAttribute('multiple').catch(() => null);
+    if (!visible && !multiple) continue;
+    await inp.setInputFiles(files).catch(() => {});
+    return { ok: true, count: files.length };
+  }
+  // Último recurso: el primer input (aunque esté oculto).
+  await inputs.first().setInputFiles(files).catch(() => {});
+  return { ok: true, count: files.length };
 }
 
-fs.mkdirSync(PROFILE_DIR, { recursive: true });
-log('Perfil persistente:', PROFILE_DIR);
-log('Abriendo el navegador… (hacé login en La Voz si hace falta)');
+/* ---------------- Wizard: llenar, avanzar, publicar ---------------- */
 
-const ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
-  headless: false,
-  viewport: null,
-  args: ['--disable-blink-features=AutomationControlled'],
-});
-
-const page = ctx.pages()[0] || await ctx.newPage();
-await page.goto(args.url, { waitUntil: 'domcontentloaded' }).catch(() => {});
-
-log('Si ves el login, iniciá sesión ahora. Después volvé a esta ventana.');
-log('Esperando el formulario de publicación…');
-
-/* Espera activa: hasta que aparezca un control de texto/select del formulario
-   de aviso (o hasta que el usuario lo indique con Enter). */
-const appeared = await page.waitForFunction(() => {
-  const c = document.querySelectorAll('input[type="text"], input:not([type]), textarea, select');
-  return c.length >= 3;
-}, null, { timeout: 0 }).then(() => true).catch(() => false);
-
-if (!appeared) {
-  log('No se detectó el formulario. Abortando.');
-  await ctx.close();
-  process.exit(1);
+async function clickTexto(page, re, soloVisibles = true) {
+  const els = page.locator('button, [role="button"], input[type="submit"], a.btn, a[class*="button"]');
+  const total = await els.count();
+  for (let i = 0; i < total; i++) {
+    const el = els.nth(i);
+    const txt = ((await el.textContent().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    if (!txt || !re.test(txt)) continue;
+    if (soloVisibles && !(await el.isVisible().catch(() => false))) continue;
+    await el.click({ timeout: 8000 }).catch(() => {});
+    return { clicked: true, texto: txt };
+  }
+  return { clicked: false };
 }
 
-log('Formulario detectado.');
+async function publicarAviso(page, payload, files, { submit }) {
+  const hechos = [];
+  const faltantes = [];
+  let fotosSubidas = false;
+
+  for (let paso = 1; paso <= 10; paso++) {
+    const urlAntes = page.url();
+    const controls = await controlsVisibles(page);
+
+    // 1) Fotos (si este paso las tiene).
+    if (!fotosSubidas && files.length) {
+      const r = await subirFotos(page, files);
+      if (r.ok) { fotosSubidas = true; hechos.push(`fotos subidas (${r.count})`); await page.waitForTimeout(2500); }
+    }
+
+    // 2) Campos de texto/select.
+    for (const { campo, control, valor } of planLlenado(controls, payload)) {
+      // No pisar un campo ya lleno (el wizard reutiliza los mismos ids).
+      const loc = locatorDe(page, control);
+      if (loc) {
+        const actual = await loc.first().inputValue().catch(() => '');
+        if (actual && String(actual).trim() === String(valor).trim()) continue;
+      }
+      const r = await llenarCampo(page, campo, valor, control);
+      if (r.ok) hechos.push(r.texto);
+      else faltantes.push(`${campo.key}: ${r.motivo}`);
+    }
+
+    // 3) Radios/checkboxes (tipo de vendedor, operación, etc.).
+    for (const op of OPCIONES) {
+      const valor = op.valor(payload);
+      if (!valor) continue;
+      const elegido = await marcarRadio(page, valor);
+      if (elegido) hechos.push(`opción "${valor}"`);
+    }
+
+    // 4) ¿Estamos en el último paso?
+    if (submit) {
+      const pub = await clickTexto(page, RE_PUBLICAR);
+      if (pub.clicked) {
+        hechos.push(`publicado ("${pub.texto}")`);
+        await page.waitForTimeout(4000);
+        return { hechos, faltantes, publicado: true, fotosSubidas };
+      }
+    }
+
+    // 5) Si no, avanzar.
+    const sig = await clickTexto(page, RE_SIGUIENTE);
+    if (sig.clicked) {
+      hechos.push(`avanzó ("${sig.texto}")`);
+      await page.waitForTimeout(2500);
+      continue;
+    }
+
+    if (page.url() !== urlAntes) { await page.waitForTimeout(2000); continue; }
+    // Sin botón y sin cambio: puede que ya esté todo (o que falte algo).
+    break;
+  }
+  return { hechos, faltantes, publicado: false, fotosSubidas };
+}
+
+/* ---------------- URL del aviso publicado ---------------- */
+
+async function capturarUrlAviso(page, payload) {
+  await page.waitForTimeout(3000);
+  const url = page.url();
+  // Si la página es un listado, buscamos el link del aviso por el título.
+  const link = await page.evaluate((titulo) => {
+    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+    const t = norm(titulo).slice(0, 28);
+    const anchors = [...document.querySelectorAll('a[href]')];
+    let best = null;
+    for (const a of anchors) {
+      const txt = norm(a.textContent);
+      const href = a.getAttribute('href') || '';
+      if (!href || href.startsWith('#') || href.startsWith('javascript')) continue;
+      if (t && txt.includes(t)) { best = a.href; break; }
+      if (!best && /\/(avisos?|noticias?|inmuebles)\/[a-z0-9-]+/i.test(href)) best = a.href;
+    }
+    return best;
+  }, payload.titulo || '');
+  const final = link || url;
+  // Sólo aceptamos URLs de La Voz.
+  if (!/lavoz\.com\.ar/.test(final)) return null;
+  return final;
+}
+
+const RE_RENOVAR = /renovar|reactivar|republicar|volver a publicar|ampliar|dar de alta de nuevo/i;
+
+/* ---------------- Renovación (aviso vencido) ---------------- */
+
+/**
+ * Intenta RENOVAR un aviso ya publicado: abre la URL del aviso viejo y
+ * busca el botón de renovación. Si no existe, devuelve false y el flujo
+ * publica uno nuevo desde cero (mismo resultado para el lector).
+ */
+async function renovarAviso(page, adUrl) {
+  if (!adUrl) return { ok: false, motivo: 'sin URL del aviso anterior' };
+  await page.goto(adUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+  await page.waitForTimeout(3500);
+  const btn = await clickTexto(page, RE_RENOVAR);
+  if (!btn.clicked) return { ok: false, motivo: 'el aviso no tiene botón de renovación' };
+  await page.waitForTimeout(3000);
+  // Puede haber un paso de confirmación ("¿Renovar?").
+  const conf = await clickTexto(page, /confirmar|aceptar|s[ií]|renovar/i);
+  if (conf.clicked) await page.waitForTimeout(2500);
+  return { ok: true, texto: btn.texto };
+}
+
+/* ---------------- Modo discover ---------------- */
 
 if (args.mode === 'discover') {
-  const schema = await discoverForm(page);
+  await asegurarSesionLaVoz();
+  await page.waitForTimeout(2000);
+  const schema = await descubrirFormulario();
   fs.writeFileSync(SCHEMA_FILE, JSON.stringify(schema, null, 2), 'utf8');
-  log(summarizeSchema(schema));
+  log(resumirSchema(schema));
   log('Schema guardado en', SCHEMA_FILE);
-  log('Revisalo, ajustá el mapeo y después usá --publish.');
+  await shot('discover');
   await ctx.close();
   process.exit(0);
 }
 
-/* ---------------- publish ---------------- */
-if (!args.payload) {
-  log('Falta el archivo JSON del aviso (--publish <archivo.json>).');
-  await ctx.close();
-  process.exit(1);
-}
-const payload = JSON.parse(fs.readFileSync(path.resolve(args.payload), 'utf8'));
+/* ---------------- Modo run (cola) ---------------- */
 
-let schema;
-if (fs.existsSync(SCHEMA_FILE)) {
-  schema = JSON.parse(fs.readFileSync(SCHEMA_FILE, 'utf8'));
-  log('Schema:', SCHEMA_FILE);
+const token = await crmToken();
+await asegurarSesionLaVoz();
+
+// La cola sale del CRM: avisos preparados (o vencidos, si --renew).
+let cola = [];
+if (args.payload) {
+  // Modo archivo: payload local (compatibilidad).
+  cola = [{ payload: JSON.parse(fs.readFileSync(path.resolve(args.payload), 'utf8')), property_id: null }];
 } else {
-  log('No hay schema guardado: se descubre el formulario ahora.');
-  schema = await discoverForm(page);
-  fs.writeFileSync(SCHEMA_FILE, JSON.stringify(schema, null, 2), 'utf8');
+  const res = await crmCall(token, 'list');
+  let listings = res.listings || [];
+  if (args.renew) {
+    const limite = Date.now() + 7 * 86400000;
+    listings = listings.filter((l) => l.status === 'expired' || (l.expires_at && new Date(l.expires_at).getTime() < limite));
+  } else {
+    listings = listings.filter((l) => l.status === 'ready' || l.status === 'failed' || l.status === 'draft');
+    // Cola vacía → se prepara todo desde acá (no hace falta tocar el panel).
+    if (!listings.length) {
+      log('No hay avisos preparados: los preparo ahora desde el CRM…');
+      try {
+        const prep = await crmCall(token, 'prepare_all');
+        log(`  → ${prep.count || 0} aviso(s) preparados`);
+        const res2 = await crmCall(token, 'list');
+        listings = (res2.listings || []).filter((l) => l.status === 'ready' || l.status === 'failed');
+      } catch (err) {
+        log('  ! no pude preparar:', err.message);
+      }
+    }
+  }
+  if (args.only) listings = listings.filter((l) => l.properties?.property_code === args.only);
+  cola = listings.slice(0, args.limit).map((l) => ({ row: l, property_id: l.property_id, payload: l.payload }));
+  log(`Cola: ${cola.length} aviso(s)${args.renew ? ' (renovación)' : ''}`);
 }
 
-const { done, missed } = await fillForm(page, payload, schema);
-for (const d of done) log('  ✓', d);
-for (const m of missed) log('  ! sin match:', m);
+if (!cola.length) {
+  log('No hay avisos en la cola. Preparalos desde el panel (Portales → La Voz → Preparar todas).');
+  await ctx.close();
+  process.exit(0);
+}
 
-// Fotos: la PORTADA primero (el payload ya viene en ese orden).
-const fotos = Array.isArray(payload.fotos) ? payload.fotos : [];
-if (fotos.length) {
-  const tmp = path.join(os.tmpdir(), 'lavoz-publisher-fotos');
-  const files = await downloadFotos(fotos, tmp);
-  const fileInput = page.locator('input[type="file"]').first();
-  if (await fileInput.count()) {
-    await fileInput.setInputFiles(files);
-    log(`  ✓ ${files.length} foto(s) subidas (la 1ª es la PORTADA)`);
+let ok = 0;
+let fallos = 0;
+
+for (const item of cola) {
+  const row = item.row;
+  let payload = item.payload;
+
+  // Payload fresco: lo arma la edge function (mapeos actualizados).
+  if (item.property_id) {
+    try {
+      const r = await crmCall(token, 'prepare', { property_id: item.property_id });
+      const res = (r.results || [])[0];
+      if (res) payload = res.payload;
+    } catch (err) {
+      log('  ! no pude preparar:', err.message);
+    }
+  }
+  if (!payload) { fallos++; continue; }
+
+  const code = payload.property_code || (row?.properties?.property_code ?? '');
+  log(`\n=== ${code} — ${payload.titulo}`);
+
+  // Renovación: primero se intenta el botón "renovar" del aviso viejo.
+  let publicado = false;
+  if (args.renew && row?.ad_url) {
+    const ren = await renovarAviso(page, row.ad_url);
+    if (ren.ok) {
+      log('  ✓ renovado en el panel:', ren.texto);
+      publicado = true;
+      if (item.property_id) {
+        try {
+          await crmCall(token, 'confirm', { property_id: item.property_id, ad_url: row.ad_url, plan: row.plan || payload.plan_recomendado });
+          log('  ✓ CRM actualizado (vencimiento renovado):', row.ad_url);
+          ok++;
+          continue;
+        } catch (err) { log('  ! no pude confirmar en el CRM:', err.message); }
+      } else { ok++; continue; }
+    } else {
+      log('  · sin renovación en el panel:', ren.motivo, '→ publico uno nuevo');
+    }
+  }
+
+  // Vuelvo al formulario limpio.
+  await page.goto(PUBLISH_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await page.waitForTimeout(2500);
+
+  const files = await bajarFotos(payload.fotos || [], path.join(os.tmpdir(), 'lavoz-publisher-fotos', code || 'prop'));
+  const r = await publicarAviso(page, payload, files, { submit: args.submit && !args.dry });
+  publicado = publicado || r.publicado;
+
+  for (const h of r.hechos) log('  ✓', h);
+  for (const f of r.faltantes) log('  !', f);
+  log('  → captura:', await shot('aviso-' + (code || 'sin-codigo')));
+
+  if (publicado && item.property_id) {
+    const url = await capturarUrlAviso(page, payload);
+    if (url) {
+      try {
+        await crmCall(token, 'confirm', { property_id: item.property_id, ad_url: url, plan: payload.plan_recomendado });
+        log('  ✓ CRM actualizado:', url);
+        ok++;
+        continue;
+      } catch (err) { log('  ! no pude confirmar en el CRM:', err.message); }
+    } else {
+      log('  ! no pude capturar la URL del aviso (revisá la captura)');
+    }
+  } else if (publicado) {
+    ok++;
   } else {
-    log('  ! no encontré el input de fotos: subilas a mano desde', tmp);
+    fallos++;
+    log('  ! no se publicó (faltó el botón o quedó un paso sin completar)');
   }
 }
 
-await page.screenshot({ path: path.join(ROOT, 'lavoz-publisher-preview.png'), fullPage: true }).catch(() => {});
-log('Captura: lavoz-publisher-preview.png');
-
-if (args.submit) {
-  log('PUBLICANDO…');
-  const btn = page.getByRole('button', { name: /publicar|guardar|continuar/i }).first();
-  await btn.click().catch((err) => log('  ! no pude clickear el botón:', err.message));
-} else {
-  log('Listo. Revisá la pantalla y apretá "Publicar" vos mismo.');
-}
-
-log('Cerrando en 15 segundos (Ctrl+C para salir antes)…');
-await new Promise((r) => setTimeout(r, 15000));
+log(`\nTerminado: ${ok} publicado(s), ${fallos} sin publicar.`);
 await ctx.close();
+process.exit(fallos ? 1 : 0);

@@ -104,6 +104,20 @@ const PROP_SELECT = [
 /** Avisos que impiden publicar: sin operación, sin precio o sin subrubro. */
 const BLOQUEANTES = /Falta la operación|Falta el precio|no tiene subrubro/i;
 
+/**
+ * Vence los avisos cuyo expires_at ya pasó (10 o 30 días, según el plan).
+ * Es self-healing: el estado se corrige solo la primera vez que alguien
+ * mira el panel (no hace falta un cron para un aviso que nadie consulta).
+ */
+async function expireVencidos(supabase: ReturnType<typeof createClient>) {
+  const { error } = await supabase
+    .from('lavoz_listings')
+    .update({ status: 'expired' })
+    .eq('status', 'published')
+    .lt('expires_at', new Date().toISOString());
+  if (error) console.error('[lavoz] expireVencidos:', error.message);
+}
+
 // ---------------- Handlers ----------------
 
 async function handleRequest(req: Request): Promise<Response> {
@@ -122,6 +136,7 @@ async function handleRequest(req: Request): Promise<Response> {
 
   try {
     if (action === 'status') {
+      await expireVencidos(supabase);
       const { data } = await supabase.rpc('lavoz_portal_status');
       return jsonResponse(200, { ok: true, status: data, config: cfg, role: actor.role }, req);
     }
@@ -147,9 +162,10 @@ async function handleRequest(req: Request): Promise<Response> {
     }
 
     if (action === 'list') {
+      await expireVencidos(supabase);
       const { data, error } = await supabase
         .from('lavoz_listings')
-        .select('id, property_id, status, ad_url, remote_id, plan, fotos_count, published_at, expires_at, last_error, updated_at, properties!inner(property_code, title, image_urls, zone, locality, is_published)')
+        .select('id, property_id, status, ad_url, remote_id, plan, fotos_count, published_at, expires_at, last_error, updated_at, payload, properties!inner(property_code, title, image_urls, zone, locality, is_published)')
         .order('updated_at', { ascending: false });
       if (error) throw error;
       return jsonResponse(200, { ok: true, listings: data || [] }, req);

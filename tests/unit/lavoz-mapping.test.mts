@@ -1,0 +1,155 @@
+// Tests unitarios del mapeo del formulario de La Voz (scripts/lavoz-mapping.mjs).
+// Corre con: npm run test:unit
+//
+// El formulario real de La Voz se descubrió con el navegador (login humano),
+// pero el mapeo se mantiene por PALABRAS CLAVE porque el wizard cambia
+// (labels, ids y pasos). Estos tests fijan ese contrato.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  CAMPOS,
+  OPCIONES,
+  RE_PUBLICAR,
+  RE_SIGUIENTE,
+  elegirControl,
+  indiceOpcion,
+  normalizar,
+  planLlenado,
+  textoDeControl,
+} from '../../scripts/lavoz-mapping.mjs';
+
+/* Forma de los controles (la misma que devuelve el script en runtime). */
+const controls = [
+  { tag: 'input', type: 'text', id: 'titulo', name: 'titulo', label: 'Título del aviso', placeholder: 'Ej: casa en el centro', visible: true },
+  { tag: 'textarea', type: '', id: 'descripcion', name: 'descripcion', label: 'Descripción', placeholder: 'Contá de la propiedad', visible: true },
+  { tag: 'select', type: 'select-one', id: 'tipo_inmueble', name: 'tipo', label: 'Tipo de inmueble', visible: true,
+    options: [{ value: '1', text: 'Casas' }, { value: '2', text: 'Departamentos' }, { value: '3', text: 'Terrenos y Lotes' }] },
+  { tag: 'select', type: 'select-one', id: 'operacion', name: 'operacion', label: 'Operación', visible: true,
+    options: [{ value: 'v', text: 'Venta' }, { value: 'a', text: 'Alquiler' }] },
+  { tag: 'select', type: 'select-one', id: 'ciudad', name: 'ciudad', label: 'Ciudad', visible: true,
+    options: [{ value: 'co', text: 'Córdoba' }, { value: 'vcp', text: 'Villa Carlos Paz' }] },
+  { tag: 'select', type: 'select-one', id: 'barrio', name: 'barrio', label: 'Barrio / Zona', visible: true,
+    options: [{ value: 'ob', text: 'Obrero' }] },
+  { tag: 'input', type: 'text', id: 'precio', name: 'precio', label: 'Precio', visible: true },
+  { tag: 'input', type: 'text', id: 'superficie', name: 'superficie', label: 'Superficie total (m²)', visible: true },
+  { tag: 'input', type: 'number', id: 'dormitorios', name: 'dormitorios', label: 'Dormitorios', visible: true },
+  { tag: 'input', type: 'number', id: 'banos', name: 'banos', label: 'Baños', visible: true },
+  { tag: 'input', type: 'number', id: 'cocheras', name: 'cocheras', label: 'Cocheras', visible: true },
+  { tag: 'input', type: 'file', id: 'fotos', name: 'fotos', label: 'Fotos', visible: true },
+  // Un campo oculto (el wizard lo reutiliza en otro paso): NO debe elegido.
+  { tag: 'input', type: 'text', id: 'precio_oculto', name: 'precio_oculto', label: 'Precio (oculto)', visible: false },
+];
+
+const payload = {
+  titulo: 'Casa 4 Dormitorios en Obrero',
+  descripcion: 'Casa luminosa con patio.',
+  subrubro_label: 'Casas',
+  operacion_label: 'Venta',
+  ciudad_label: 'Córdoba',
+  barrio_label: 'Obrero',
+  precio: 115000,
+  superficie_total: 299,
+  superficie_cubierta: 259,
+  bedrooms: 4,
+  bathrooms: null,
+  cocheras: 1,
+  antiguedad: null,
+  expensas: null,
+};
+
+test('normalizar: minúsculas, sin tildes, espacios colapsados', () => {
+  assert.equal(normalizar('  Título   del AVISO '), 'titulo del aviso');
+  assert.equal(normalizar('Superficie (m²)'), 'superficie (m2)');
+  assert.equal(normalizar(null), '');
+});
+
+test('textoDeControl: junta label, placeholder, name e id', () => {
+  assert.match(textoDeControl(controls[0]), /título del aviso/);
+  assert.match(textoDeControl(controls[0]), /titulo/);
+});
+
+test('elegirControl: encuentra el control por el label del formulario', () => {
+  const campo = (key) => CAMPOS.find((c) => c.key === key);
+  assert.equal(elegirControl(controls, campo('titulo'))?.id, 'titulo');
+  assert.equal(elegirControl(controls, campo('descripcion'))?.id, 'descripcion');
+  assert.equal(elegirControl(controls, campo('tipo'))?.id, 'tipo_inmueble');
+  assert.equal(elegirControl(controls, campo('operacion'))?.id, 'operacion');
+  assert.equal(elegirControl(controls, campo('ciudad'))?.id, 'ciudad');
+  assert.equal(elegirControl(controls, campo('barrio'))?.id, 'barrio');
+  assert.equal(elegirControl(controls, campo('precio'))?.id, 'precio');
+  assert.equal(elegirControl(controls, campo('bedrooms'))?.id, 'dormitorios');
+  assert.equal(elegirControl(controls, campo('bathrooms'))?.id, 'banos');
+  assert.equal(elegirControl(controls, campo('cocheras'))?.id, 'cocheras');
+});
+
+test('elegirControl: NUNCA elige un control oculto (el wizard reutiliza ids)', () => {
+  const campo = CAMPOS.find((c) => c.key === 'precio');
+  const hit = elegirControl(controls, campo);
+  assert.equal(hit.id, 'precio');
+  assert.notEqual(hit.id, 'precio_oculto');
+});
+
+test('elegirControl: cae al placeholder cuando no hay label', () => {
+  const sinLabel = [{ tag: 'input', type: 'text', id: 'x1', name: 'x1', label: '', placeholder: 'Precio en pesos', visible: true }];
+  const campo = CAMPOS.find((c) => c.key === 'precio');
+  assert.equal(elegirControl(sinLabel, campo)?.id, 'x1');
+});
+
+test('elegirControl: si no hay nada que coincida, devuelve null (no inventa)', () => {
+  const vacios = [];
+  const campo = CAMPOS.find((c) => c.key === 'titulo');
+  assert.equal(elegirControl(vacios, campo), null);
+});
+
+test('indiceOpcion: exacto, parcial y sin opción', () => {
+  const opts = ['Casas', 'Departamentos', 'Terrenos y Lotes'];
+  assert.equal(indiceOpcion(opts, 'Casas'), 0);
+  assert.equal(indiceOpcion(opts, 'departamentos'), 1);
+  assert.equal(indiceOpcion(opts, 'Terrenos'), 2);
+  assert.equal(indiceOpcion(opts, 'Galpon'), -1);
+  assert.equal(indiceOpcion(opts, ''), -1);
+});
+
+test('indiceOpcion: acepta objetos {text}', () => {
+  const opts = [{ value: '1', text: 'Casas' }, { value: '2', text: 'Departamentos' }];
+  assert.equal(indiceOpcion(opts, 'Departamentos'), 1);
+});
+
+test('planLlenado: saltea los campos sin valor (null) y los que no matchean', () => {
+  const plan = planLlenado(controls, payload);
+  const keys = plan.map((p) => p.key);
+  // Baños/antigüedad/expensas son null en este aviso → no se llenan.
+  assert.ok(!keys.includes('bathrooms'));
+  assert.ok(!keys.includes('antiguedad'));
+  assert.ok(!keys.includes('expensas'));
+  // Los que tienen valor Y control matchean.
+  for (const k of ['titulo', 'descripcion', 'tipo', 'operacion', 'ciudad', 'barrio', 'precio', 'bedrooms', 'cocheras']) {
+    assert.ok(keys.includes(k), 'falta ' + k);
+  }
+  // El plan trae el control elegido y el valor a cargar.
+  const titulo = plan.find((p) => p.key === 'titulo');
+  assert.equal(titulo.control.id, 'titulo');
+  assert.equal(titulo.valor, payload.titulo);
+  assert.equal(titulo.campo.key, 'titulo');
+});
+
+test('planLlenado: un formulario sin ese campo no rompe el plan', () => {
+  const soloTitulo = controls.filter((c) => c.id === 'titulo');
+  const plan = planLlenado(soloTitulo, payload);
+  assert.equal(plan.length, 1);
+  assert.equal(plan[0].key, 'titulo');
+});
+
+test('OPCIONES: el tipo de vendedor se elige como "Inmobiliaria"', () => {
+  const op = OPCIONES.find((o) => o.key === 'tipo_vendedor');
+  assert.equal(op.valor(), 'Inmobiliaria');
+});
+
+test('los regex de botones distinguen "continuar" de "publicar"', () => {
+  assert.ok(RE_SIGUIENTE.test('Continuar'));
+  assert.ok(RE_SIGUIENTE.test('Siguiente'));
+  assert.ok(!RE_SIGUIENTE.test('Publicar aviso'));
+  assert.ok(RE_PUBLICAR.test('Publicar aviso'));
+  assert.ok(RE_PUBLICAR.test('Guardar'));
+  assert.ok(!RE_PUBLICAR.test('Continuar'));
+});

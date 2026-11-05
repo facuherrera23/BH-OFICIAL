@@ -25,5 +25,9 @@ chat-attach-final.png
 # Capturas de verificación locales en la raíz
 /*.png
 
-# Backups locales (datos reales de clientes � jamas al repo)
+# Asistente de La Voz (artefactos locales: esquema del formulario y capturas)
+/lavoz-shots/
+/scripts/lavoz-form-schema.json
+
+# Backups locales (datos reales de clientes � jamas al repo)
 backups/

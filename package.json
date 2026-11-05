@@ -15,7 +15,10 @@
     "test:headed": "npx playwright test --headed",
     "test:ui": "npx playwright test --ui",
     "bump": "node scripts/bump-busters.mjs",
-    "lint": "node --check assets/js/admin-app.js && node --check assets/js/landing-app.js"
+    "lint": "node --check assets/js/admin-app.js && node --check assets/js/landing-app.js",
+    "lavoz": "node scripts/lavoz-publisher.mjs --run",
+    "lavoz:discover": "node scripts/lavoz-publisher.mjs --discover",
+    "lavoz:renovar": "node scripts/lavoz-publisher.mjs --run --renew"
   },
   "repository": {
     "type": "git",

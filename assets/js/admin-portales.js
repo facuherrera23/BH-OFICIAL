@@ -1250,6 +1250,17 @@ try {
           · <a href="${LAVOZ_PORTAL}/faq" target="_blank" rel="noopener" style="color:#1fc8c3;">Ayuda de La Voz</a>
         </p>
 
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:10px; padding:10px 12px; border:1px solid rgba(31,200,195,0.22); border-radius:10px; background:rgba(31,200,195,0.06);">
+          <i class="fas fa-robot" style="color:#1fc8c3;"></i>
+          <span style="font-size:11.5px; color:var(--text-secondary);">
+            <b>Publicación automática en lote:</b> el asistente abre tu navegador con la sesión de La Voz, llena cada aviso
+            (con la <b>portada</b> de primera), lo publica y deja la URL y el vencimiento acá. Corré:
+          </span>
+          <code style="font-size:11px; background:rgba(0,0,0,0.3); border:1px solid var(--border-subtle); border-radius:6px; padding:3px 7px; color:#1fc8c3;">npm run lavoz</code>
+          <button type="button" class="btn-action" style="padding:4px 8px; font-size:10px;" data-lavoz-copy="npm run lavoz" title="Copiar el comando"><i class="fas fa-copy"></i></button>
+          <span style="font-size:11px; color:var(--text-dim);">(renovar vencidos: <code>npm run lavoz:renovar</code>)</span>
+        </div>
+
         <div style="margin-top:16px; overflow-x:auto;">
           ${listings.length ? `<table class="luxury-table" style="width:100%;">
             <thead><tr><th>Propiedad</th><th>Estado</th><th>Fotos</th><th>Plan</th><th>Publicado</th><th>Vence</th><th>Acciones</th></tr></thead>
@@ -1333,6 +1344,12 @@ try {
 
   /* --- wiring de la sección La Voz --- */
   on($('#lavozPortalPanel'), 'click', async (e) => {
+    const copyCmd = e.target.closest('[data-lavoz-copy]');
+    if (copyCmd) {
+      await navigator.clipboard.writeText(copyCmd.dataset.lavozCopy).catch(() => {});
+      showToast('Copiado.', 'success');
+      return;
+    }
     const prep = e.target.closest('[data-lavoz-prep]');
     if (prep) { window.adminApp.lavozPrepare(prep.dataset.lavozPrep); return; }
     const all = e.target.closest('[data-lavoz-prepare-all]');
