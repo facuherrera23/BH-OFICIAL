@@ -442,17 +442,32 @@ async function subirFotos(page, files) {
   const inputs = page.locator('input[type="file"]');
   const n = await inputs.count();
   if (!n) return { ok: false, motivo: 'no hay input de fotos en esta pantalla' };
+  let ultimoError = null;
   for (let i = 0; i < n; i++) {
     const inp = inputs.nth(i);
     const visible = await inp.isVisible().catch(() => false);
-    const multiple = await inp.getAttribute('multiple').catch(() => null);
+    const multiple = (await inp.getAttribute('multiple').catch(() => null)) !== null;
     if (!visible && !multiple) continue;
-    await inp.setInputFiles(files).catch(() => {});
-    return { ok: true, count: files.length };
+    // Sin `multiple` sólo se puede subir UNA foto: la PORTADA (la 1ª).
+    const lista = multiple ? files : files.slice(0, 1);
+    try {
+      await inp.setInputFiles(lista);
+      return { ok: true, count: lista.length };
+    } catch (err) {
+      ultimoError = err;
+    }
   }
   // Último recurso: el primer input (aunque esté oculto).
-  await inputs.first().setInputFiles(files).catch(() => {});
-  return { ok: true, count: files.length };
+  const first = inputs.first();
+  const multiple0 = (await first.getAttribute('multiple').catch(() => null)) !== null;
+  const lista = multiple0 ? files : files.slice(0, 1);
+  try {
+    await first.setInputFiles(lista);
+    return { ok: true, count: lista.length };
+  } catch (err) {
+    ultimoError = err;
+    return { ok: false, motivo: ultimoError.message.slice(0, 120) };
+  }
 }
 
 /* ---------------- Wizard: llenar, avanzar, publicar ---------------- */
@@ -484,6 +499,7 @@ async function publicarAviso(page, payload, files, { submit }) {
     if (!fotosSubidas && files.length) {
       const r = await subirFotos(page, files);
       if (r.ok) { fotosSubidas = true; hechos.push(`fotos subidas (${r.count})`); await page.waitForTimeout(2500); }
+      else faltantes.push(`fotos: ${r.motivo}`);
     }
 
     // 2) Campos de texto/select.
