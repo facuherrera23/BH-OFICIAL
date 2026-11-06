@@ -16,8 +16,28 @@ var STATUS_LABELS = {
   visita: 'Visita agendada', oferta: 'Negociación', cerrado: 'Ganado', perdido: 'Perdido'
 };
 var LEGACY_STAGE_MAP = { visita: 'visita_agendada', oferta: 'negociacion', cerrado: 'cerrado_ganado', perdido: 'cerrado_perdido' };
-var ORIGINS = ['landing_page','newsletter','manual','landing','ml','chat','referido','tasacion','walkin','contacto','propiedad','whatsapp','web'];
-var ORIGIN_LABELS = { manual:'Manual', landing:'Landing', landing_page:'Landing', newsletter:'Newsletter', ml:'Mercado Libre', chat:'Chat', referido:'Referido', tasacion:'Tasación', walkin:'Walk-in', contacto:'Contacto', propiedad:'Propiedad', whatsapp:'WhatsApp', web:'Web' };
+/* ── LISTA CANÓNICA DE ORÍGENES DE LEAD ────────────────────────────────
+   `leads.source` es TEXT libre (sin enum ni CHECK) → agregar un origen NO
+   requiere migración ni tocar RLS.
+
+   Las 4 listas del admin TIENEN que tener los MISMOS valores:
+     1) ORIGINS / ORIGIN_LABELS  (este archivo — panel lateral + filtro)
+     2) <select name="source">    (admin.html — alta de lead)
+     3) z.enum de LeadSchema      (admin-app.js — valida el alta)
+     4) SOURCE_LBL                (admin-app.js — dashboard por fuente)
+   Si el select ofrece un valor que el enum no acepta, el alta falla con
+   "Origen inválido". Guard: tests/lead-origins.spec.js
+
+   - 'landing' es el valor legacy del formulario viejo (hay filas: NO borrar).
+   - 'rela_zonaprop' = ZonaProp (RELA / QuintoAndar) — el callback de RELA
+     crea los leads con este source (docs/integrations/RELA.md).
+   - 'lavoz' = Clasificados La Voz (publicación asistida; las consultas
+     llegan por WhatsApp/email → se cargan a mano con este origen).
+   - 'walkin' NO es un portal: es "Visita en persona" (alguien que se
+     acercan a la oficina). Cada portal va con su propio origen para poder
+     medir su performance. */
+var ORIGINS = ['landing_page','newsletter','manual','landing','ml','rela_zonaprop','lavoz','chat','referido','tasacion','walkin','contacto','propiedad','whatsapp','web'];
+var ORIGIN_LABELS = { manual:'Manual', landing_page:'Landing web', landing:'Landing (legado)', newsletter:'Newsletter', ml:'Mercado Libre', rela_zonaprop:'ZonaProp (RELA)', lavoz:'Clasificados La Voz', chat:'Chat', referido:'Referido', tasacion:'Tasación', walkin:'Visita en persona', contacto:'Contacto', propiedad:'Propiedad', whatsapp:'WhatsApp', web:'Web' };
 var TIPO_CLIENTE_OPTS = ['propietario','comprador','inversor','inquilino'];
 var OPERATION_OPTS = ['compra','venta','alquiler'];
 

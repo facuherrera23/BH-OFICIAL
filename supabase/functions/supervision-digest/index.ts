@@ -476,6 +476,8 @@ function buildEmailHTML(data: any, config: DigestConfig): string {
       youtube: "YouTube",
       newsletter: "Newsletter",
       instagram: "Instagram",
+      rela_zonaprop: "ZonaProp (RELA)",
+      lavoz: "Clasificados La Voz",
     };
     const name = (s: any) => (s == null || s === "" ? "(sin origen)" : (SRC_LABEL[s] || s));
     const prevOf = (list: any[], key: string, val: any) => {
@@ -677,6 +679,7 @@ ${(() => {
   const SRC_LABEL: Record<string, string> = {
     ml: "Mercado Libre", landing_page: "Landing web", tasacion: "Tasación web",
     manual: "Alta manual", youtube: "YouTube", newsletter: "Newsletter", instagram: "Instagram",
+    rela_zonaprop: "ZonaProp (RELA)", lavoz: "Clasificados La Voz",
   };
   const label = (s: any) => (s == null || s === "" ? "(sin origen)" : (SRC_LABEL[s] || s));
   const prevOf = (list: any[], key: string, val: any) => {

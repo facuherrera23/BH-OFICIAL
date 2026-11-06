@@ -476,7 +476,7 @@ erDiagram
     }
     LEADS {
         uuid id PK
-        text source "landing_page|newsletter|ml|chat|..."
+        text source "landing_page|newsletter|ml|rela_zonaprop|lavoz|chat|referido|tasacion|walkin|manual|..."
         text stage "nuevo|contactado|visita|oferta|..."
         text_array tags
         int score
