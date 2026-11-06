@@ -192,10 +192,20 @@ async function crmCall(token, action, body = {}) {
 
 /* ---------------- Sesión de La Voz ---------------- */
 
+/**
+ * `page.url()` es SINCRÓNO en Playwright (devuelve un string, no una
+ * promesa). Escribirló como `await page.url().catch(...)` revienta con
+ * "page.url(...).catch is not a function" — y sólo se rompe en el camino
+ * del login humano (el único que no se había probado en seco).
+ */
+function urlActual(p) {
+  try { return p.url() || ''; } catch { return ''; }
+}
+
 async function asegurarSesionLaVoz() {
   await page.goto(PUBLISH_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(3000);
-  if (!page.url().includes('/usuario/login')) {
+  if (!urlActual(page).includes('/usuario/login')) {
     log('✓ Sesión de La Voz lista');
     return;
   }
@@ -204,13 +214,13 @@ async function asegurarSesionLaVoz() {
   let espera = 0;
   while (espera < 30 * 60 * 1000) {
     if (page.isClosed()) throw new Error('Se cerró el navegador (la ventana de La Voz).');
-    const url = await page.url().catch(() => '');
+    const url = urlActual(page);
     if (!url.includes('/usuario/login')) break;
     await sleep(3000);
     espera += 3000;
     if (espera % 30000 === 0) log('  … esperando el login de La Voz');
   }
-  const urlFinal = await page.url().catch(() => '');
+  const urlFinal = urlActual(page);
   if (urlFinal.includes('/usuario/login')) throw new Error('Login de La Voz no completado');
   if (!urlFinal.includes('/publicar')) {
     await page.goto(PUBLISH_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});

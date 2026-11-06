@@ -193,6 +193,25 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(scriptSrc).toContain("crmCall(token, 'confirm'");
   });
 
+  test('no rompe con las APIs SINCRÓNAS de Playwright (bug del login)', () => {
+    // BUG REAL 2026-11-06: `page.url()` es SÍNCRONO en Playwright (devuelve
+    // un string). El motor lo usaba como `await page.url().catch(...)` →
+    // "page.url(...).catch is not a function" → el piloto moría justo en el
+    // camino del login humano (el único que no se probaba en seco).
+    // Mismo error con page.title() / page.content().
+    // (Se chequea el CÓDIGO, sin comentarios: el comentario que explica el
+    // bug menciona el patrón roto.)
+    const codigo = scriptSrc
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+    expect(codigo).not.toMatch(/\.url\(\)\s*\.catch/);
+    expect(codigo).not.toMatch(/\.title\(\)\s*\.catch/);
+    expect(codigo).not.toMatch(/\.content\(\)\s*\.catch/);
+    // Y el helper seguro existe (try/catch, sin promesa).
+    expect(scriptSrc).toContain('function urlActual(');
+    expect(scriptSrc).toContain('try { return p.url() || ');
+  });
+
   test('el asistente NO publica avisos con datos bloqueantes', () => {
     // Los 'failed' entran en la cola (se re-preparan), pero si el aviso
     // sigue bloqueante se omiten con el motivo.
