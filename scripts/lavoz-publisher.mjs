@@ -202,6 +202,36 @@ function urlActual(p) {
   try { return p.url() || ''; } catch { return ''; }
 }
 
+/**
+ * Login automático de La Voz con las variables de entorno
+ * LAVOZ_EMAIL y LAVOZ_PASSWORD (fuera del repo — nunca se commitean).
+ * Si el portal exige Turnstile, el captcha queda para el humano: el script
+ * espera a que la sesión quede lista.
+ */
+async function loginAutomaticoLaVoz() {
+  const email = process.env.LAVOZ_EMAIL;
+  const password = process.env.LAVOZ_PASSWORD;
+  if (!email || !password) return false;
+
+  const inEmail = page.locator('input[name="email"], input[type="email"], #email').first();
+  const inPass = page.locator('input[name="password"], input[type="password"], #password').first();
+  if (!(await inEmail.count()) || !(await inPass.count())) return false;
+
+  log('· login automático con LAVOZ_EMAIL…');
+  await inEmail.fill(email).catch(() => {});
+  await inPass.fill(password).catch(() => {});
+  await page.waitForTimeout(500);
+
+  const btn = page.locator('button, a').filter({ hasText: /^(ingresar|entrar|sign in)$/i }).first();
+  if (await btn.count()) {
+    await btn.click({ timeout: 8000 }).catch(() => {});
+  } else {
+    await inPass.press('Enter').catch(() => {});
+  }
+  await page.waitForTimeout(4000);
+  return !urlActual(page).includes('/usuario/login');
+}
+
 async function asegurarSesionLaVoz() {
   await page.goto(PUBLISH_URL, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(3000);
@@ -209,6 +239,13 @@ async function asegurarSesionLaVoz() {
     log('✓ Sesión de La Voz lista');
     return;
   }
+
+  // 1) Automático si hay credenciales en el entorno.
+  if (await loginAutomaticoLaVoz()) {
+    log('✓ Sesión de La Voz lista (login automático)');
+    return;
+  }
+
   log('La Voz pide iniciar sesión (o contrasenia).');
   log('Iniciá sesión en esta ventana — es la ÚNICA vez (el perfil lo recuerda).');
   let espera = 0;
@@ -229,72 +266,81 @@ async function asegurarSesionLaVoz() {
   log('✓ Sesión de La Voz lista');
 }
 
+/* ---------------- Wizard de La Voz ---------------- */
+
+/**
+ * Estructura REAL del formulario (verificada 2026-11-06 contra el portal):
+ *   /publicar → elegir sección → /publicar/inmuebles → wizard de 6 pasos
+ *   1 Tipo de inmueble · 2 Ubicación · 3 Contacto · 4 Precio
+ *   5 Datos del aviso · 6 Multimedia
+ * Los botones "PASO N" navegan entre pasos (no hay que avanzar a ciegas).
+ */
+export const PASOS_LAVOZ = [
+  { n: 1, nombre: 'Tipo de inmueble' },
+  { n: 2, nombre: 'Ubicación' },
+  { n: 3, nombre: 'Contacto' },
+  { n: 4, nombre: 'Precio' },
+  { n: 5, nombre: 'Datos del aviso' },
+  { n: 6, nombre: 'Multimedia' },
+];
+
+const INMUEBLES_URL = `${PORTAL}/publicar/inmuebles`;
+
+/** Cierra el modal "Tenés borradores sin publicar" (tapa el formulario). */
+async function cerrarModalBorradores(page) {
+  const btn = page.locator('button', { hasText: /empezar un aviso nuevo/i }).first();
+  if (!(await btn.count())) return false;
+  if (!(await btn.isVisible().catch(() => false))) return false;
+  await btn.click({ timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(2000);
+  return true;
+}
+
+/** Va al paso N del wizard con su botón ("PASO 2Ubicación"). */
+async function irAPaso(page, n) {
+  const re = new RegExp(`PASO\\s*${n}\\b`, 'i');
+  const btn = page.locator('button').filter({ hasText: re }).first();
+  if (!(await btn.count())) return false;
+  if (!(await btn.isVisible().catch(() => false))) return false;
+  await btn.click({ timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(1800);
+  return true;
+}
+
 /* ---------------- Descubrimiento del formulario ---------------- */
 
 async function descubrirFormulario() {
-  return await page.evaluate(() => {
+  const controls = await controlsVisibles(page);
+  const extra = await page.evaluate(() => {
     const visible = (el) => {
+      if (!el) return false;
       const r = el.getBoundingClientRect();
       const st = window.getComputedStyle(el);
       return st.display !== 'none' && st.visibility !== 'hidden' && r.width > 0 && r.height > 0;
     };
-    const labelOf = (el) => {
-      if (el.id) {
-        const lb = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-        if (lb) return lb.textContent.trim();
-      }
-      const wrap = el.closest('label');
-      if (wrap) return wrap.textContent.trim();
-      const parent = el.parentElement;
-      if (parent) {
-        const t = parent.querySelector('label, .label, [class*="label"], [class*="Label"]');
-        if (t) return t.textContent.trim();
-      }
-      return '';
-    };
-    const controls = [...document.querySelectorAll('input, select, textarea')].map((el) => {
-      const base = {
-        tag: el.tagName.toLowerCase(),
-        type: (el.type || '').toLowerCase(),
-        id: el.id || null,
-        name: el.name || null,
-        placeholder: el.getAttribute('placeholder') || null,
-        ariaLabel: el.getAttribute('aria-label') || null,
-        label: labelOf(el),
-        required: !!el.required,
-        multiple: !!el.multiple,
-        accept: el.getAttribute('accept') || null,
-        maxLength: el.getAttribute('maxlength') ? Number(el.getAttribute('maxlength')) : null,
-        visible: visible(el),
-      };
-      if (el.tagName.toLowerCase() === 'select') {
-        base.options = [...el.options].map((o) => ({ value: o.value, text: o.textContent.trim() }));
-      }
-      if (el.type === 'radio' || el.type === 'checkbox') base.value = el.value;
-      return base;
-    });
+    const txt = (el) => ((el && el.textContent) || '').replace(/\s+/g, ' ').trim();
     const botones = [...document.querySelectorAll('button, [role="button"], input[type="submit"]')]
       .map((b) => ({
-        text: (b.textContent || b.value || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+        text: txt(b).slice(0, 80),
         id: b.id || null,
         type: b.getAttribute('type') || null,
         visible: visible(b),
       }))
       .filter((b) => b.text);
-    const pasos = [...document.querySelectorAll('[class*="step"], nav li, [role="tab"]')]
-      .map((s) => (s.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60))
-      .filter(Boolean)
+    const pasos = [...document.querySelectorAll('button')]
+      .map((b) => txt(b))
+      .filter((t) => /^PASO\s*\d+/i.test(t))
       .slice(0, 12);
     return {
       url: location.href,
       title: document.title,
-      heading: (document.querySelector('h1, h2')?.textContent || '').trim(),
-      controls,
+      heading: txt(document.querySelector('main h1, main h2, h1, h2')),
       botones,
       pasos,
-      bodyStart: (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 400),
+      bodyStart: txt(document.body).slice(0, 400),
     };
   });
+  return { ...extra, controls };
 }
 
 function resumirSchema(schema) {
@@ -326,6 +372,7 @@ function cssEsc(s) {
 async function llenarCampo(page, campo, valor, control) {
   const c = control || elegirControl(await controlsVisibles(page), campo);
   if (!c) return { ok: false, motivo: 'sin control' };
+  if (c.tag === 'combo') return elegirEnCombo(page, c, valor);
   const loc = locatorDe(page, c);
   if (!loc) return { ok: false, motivo: 'sin locator' };
   const n = await loc.count();
@@ -345,25 +392,50 @@ async function llenarCampo(page, campo, valor, control) {
 async function controlsVisibles(page) {
   return await page.evaluate(() => {
     const visible = (el) => {
+      if (!el) return false;
       const r = el.getBoundingClientRect();
       const st = window.getComputedStyle(el);
       return st.display !== 'none' && st.visibility !== 'hidden' && r.width > 0 && r.height > 0;
     };
+    const txt = (el) => ((el && el.textContent) || '').replace(/\s+/g, ' ').trim();
     const labelOf = (el) => {
       if (el.id) {
         const lb = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-        if (lb) return lb.textContent.trim();
+        if (lb) return txt(lb);
       }
       const wrap = el.closest('label');
-      if (wrap) return wrap.textContent.trim();
+      if (wrap) return txt(wrap).slice(0, 80);
       const parent = el.parentElement;
       if (parent) {
         const t = parent.querySelector('label, .label, [class*="label"], [class*="Label"]');
-        if (t) return t.textContent.trim();
+        if (t) return txt(t).slice(0, 80);
       }
       return '';
     };
-    return [...document.querySelectorAll('input, select, textarea')].map((el) => ({
+    /**
+     * Candidatos de label: el propio del campo + los textos hermanos
+     * previos (Base UI renderiza el label como texto, no como <label for>).
+     */
+    const labelsCandidatos = (el) => {
+      const out = [];
+      const l = labelOf(el);
+      if (l) out.push(l);
+      let n = el;
+      for (let d = 0; d < 4 && n; d++) {
+        const p = n.parentElement;
+        if (!p) break;
+        const kids = [...p.children];
+        const idx = kids.indexOf(n);
+        for (let i = idx - 1; i >= 0; i--) {
+          const t = txt(kids[i]);
+          if (t && t.length < 70 && !out.includes(t)) out.push(t);
+        }
+        n = p;
+      }
+      return out;
+    };
+
+    const campos = [...document.querySelectorAll('input, select, textarea')].map((el) => ({
       tag: el.tagName.toLowerCase(),
       type: (el.type || '').toLowerCase(),
       id: el.id || null,
@@ -371,13 +443,67 @@ async function controlsVisibles(page) {
       placeholder: el.getAttribute('placeholder') || null,
       ariaLabel: el.getAttribute('aria-label') || null,
       label: labelOf(el),
+      labels: labelsCandidatos(el),
+      required: !!el.required || el.getAttribute('aria-required') === 'true',
+      multiple: !!el.multiple,
+      accept: el.getAttribute('accept') || null,
       visible: visible(el),
+      value: el.type === 'password' ? '***' : (el.value || ''),
       options: el.tagName.toLowerCase() === 'select'
-        ? [...el.options].map((o) => ({ value: o.value, text: o.textContent.trim() }))
+        ? [...el.options].map((o) => ({ value: o.value, text: txt(o) }))
         : undefined,
     }));
+
+    // Comboboxes de Base UI (no son <select>): el valor vive en un input
+    // oculto y las opciones se abren en un popup con [role="option"].
+    const combos = [...document.querySelectorAll('[role="combobox"]')].filter(visible).map((el) => {
+      const labels = labelsCandidatos(el);
+      return {
+        tag: 'combo',
+        type: 'combobox',
+        id: el.id || null,
+        name: el.getAttribute('name') || null,
+        placeholder: null,
+        ariaLabel: el.getAttribute('aria-label') || null,
+        label: labels[0] || '',
+        labels,
+        required: el.getAttribute('aria-required') === 'true' || /\*/.test(labels.join(' ')),
+        visible: true,
+        value: txt(el).slice(0, 80),
+      };
+    });
+
+    return [...campos, ...combos];
   });
 }
+
+/** Abre un combobox de Base UI y hace clic en la opción que coincide. */
+async function elegirEnCombo(page, control, valor) {
+  const loc = locatorDe(page, control);
+  if (!loc) return { ok: false, motivo: 'sin locator' };
+  const target = loc.first();
+  if (!(await target.count())) return { ok: false, motivo: 'combobox invisible' };
+  await target.click({ timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(1000);
+  const ok = await page.evaluate((want) => {
+    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+    const w = norm(want);
+    const opts = [...document.querySelectorAll('[role="option"]')].filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    });
+    const hit = opts.find((o) => norm(o.textContent) === w)
+      || opts.find((o) => norm(o.textContent).includes(w))
+      || opts.find((o) => w.includes(norm(o.textContent)));
+    if (hit) { hit.click(); return true; }
+    return false;
+  }, valor);
+  await page.waitForTimeout(1200);
+  return ok
+    ? { ok: true, texto: `${control.label || control.id} = ${valor}` }
+    : { ok: false, motivo: `sin opción "${valor}"` };
+}
+
 
 async function marcarRadio(page, palabra) {
   // Busca un radio/checkbox cuya etiqueta (o el texto cercano) coincida.
@@ -482,8 +608,20 @@ async function subirFotos(page, files) {
 
 /* ---------------- Wizard: llenar, avanzar, publicar ---------------- */
 
-async function clickTexto(page, re, soloVisibles = true) {
-  const els = page.locator('button, [role="button"], input[type="submit"], a.btn, a[class*="button"]');
+/**
+ * Busca un botón/anchor por texto.
+ * `scope` acota la búsqueda al cuerpo del wizard: el HEADER tiene un
+ * "Publicá" y el FOOTER un "Publicar" que NO son el botón del aviso —
+ * sin acotar, el clic se iba al menú y se perdía el formulario.
+ */
+async function clickTexto(page, re, { soloVisibles = true, scope = 'main' } = {}) {
+  let raiz = null;
+  if (scope) {
+    const cand = page.locator(scope).first();
+    if (await cand.count()) raiz = cand;
+  }
+  const els = raiz ? raiz.locator('button, [role="button"], input[type="submit"], a.btn, a[class*="button"]')
+    : page.locator('button, [role="button"], input[type="submit"], a.btn, a[class*="button"]');
   const total = await els.count();
   for (let i = 0; i < total; i++) {
     const el = els.nth(i);
@@ -496,30 +634,59 @@ async function clickTexto(page, re, soloVisibles = true) {
   return { clicked: false };
 }
 
+/** Botón de avance del wizard ("Siguiente"), anclado al cuerpo. */
+const RE_AVANZAR = /^(siguiente|continuar|avanzar|next|ir al paso siguiente)$/i;
+
+/** Errores de validación que muestra el wizard ("Este campo es obligatorio"). */
+async function erroresDeValidacion(page) {
+  return await page.evaluate(() => {
+    const txt = (document.body.innerText || '').replace(/\s+/g, ' ');
+    const out = [];
+    const re = /Este campo es obligatorio/gi;
+    let m;
+    while ((m = re.exec(txt))) {
+      out.push(txt.slice(Math.max(0, m.index - 60), m.index + 40).trim());
+      if (out.length >= 8) break;
+    }
+    return [...new Set(out)];
+  });
+}
+
 async function publicarAviso(page, payload, files, { submit }) {
   const hechos = [];
   const faltantes = [];
   let fotosSubidas = false;
 
-  for (let paso = 1; paso <= 10; paso++) {
-    const urlAntes = page.url();
+  // 1) El formulario real vive en /publicar/inmuebles (wizard de 6 pasos).
+  if (!urlActual(page).includes('/publicar/inmuebles')) {
+    await page.goto(INMUEBLES_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForTimeout(2500);
+  }
+  if (await cerrarModalBorradores(page)) {
+    hechos.push('descartó el borrador previo (empezar aviso nuevo)');
+    await page.waitForTimeout(1500);
+  }
+
+  for (let paso = 1; paso <= PASOS_LAVOZ.length; paso++) {
+    const urlAntes = urlActual(page);
     const controls = await controlsVisibles(page);
 
-    // 1) Fotos (si este paso las tiene).
+    // 1) Fotos (el paso 6 —Multimedia— es el que tiene el input).
     if (!fotosSubidas && files.length) {
       const r = await subirFotos(page, files);
-      if (r.ok) { fotosSubidas = true; hechos.push(`fotos subidas (${r.count})`); await page.waitForTimeout(2500); }
-      else faltantes.push(`fotos: ${r.motivo}`);
+      if (r.ok) { fotosSubidas = true; hechos.push(`fotos subidas (${r.count})`); await page.waitForTimeout(3000); }
+      else if (paso === PASOS_LAVOZ.length) faltantes.push(`fotos: ${r.motivo}`);
     }
 
-    // 2) Campos de texto/select.
+    // 2) Campos de texto/select/combo.
     const plan = planLlenado(controls, payload);
     for (const { campo, control, valor } of plan) {
-      // No pisar un campo ya lleno (el wizard reutiliza los mismos ids).
       const loc = locatorDe(page, control);
       if (loc) {
         const actual = await loc.first().inputValue().catch(() => '');
-        if (actual && String(actual).trim() === String(valor).trim()) continue;
+        const yaEsta = (actual && String(actual).trim() === String(valor).trim())
+          || (control.tag === 'combo' && String(control.value || '').trim().toLowerCase() === String(valor).trim().toLowerCase());
+        if (yaEsta) continue;
       }
       const r = await llenarCampo(page, campo, valor, control);
       if (r.ok) hechos.push(r.texto);
@@ -534,7 +701,9 @@ async function publicarAviso(page, payload, files, { submit }) {
       const loc = locatorDe(page, control);
       if (loc) {
         const actual = await loc.first().inputValue().catch(() => '');
-        if (actual && String(actual).trim() === String(valor).trim()) continue;
+        const yaEsta = (actual && String(actual).trim() === String(valor).trim())
+          || (control.tag === 'combo' && String(control.value || '').trim().toLowerCase() === String(valor).trim().toLowerCase());
+        if (yaEsta) continue;
       }
       const r = await llenarCampo(page, campo, valor, control);
       if (r.ok) hechos.push(`${r.texto} (default)`);
@@ -549,32 +718,77 @@ async function publicarAviso(page, payload, files, { submit }) {
       if (elegido) hechos.push(`opción "${valor}"`);
     }
 
-    // 3b) Casilla de "acepto los términos y condiciones" (si la hay).
+    // 3b) Botones que son opciones (La Voz usa botones, no radios, para
+    //     "Operación": Venta / Alquileres / Alquileres Temporarios / ...).
+    const op = await marcarBoton(page, payload.operacion_boton || payload.operacion_label || payload.operacion);
+    if (op) hechos.push(`operación "${op}"`);
+
+    // 3c) Casilla de "acepto los términos y condiciones" (si la hay).
     if (await aceptarTerminos(page)) hechos.push('términos aceptados');
 
-    // 4) ¿Estamos en el último paso?
-    if (submit) {
-      const pub = await clickTexto(page, RE_PUBLICAR);
-      if (pub.clicked) {
-        hechos.push(`publicado ("${pub.texto}")`);
-        await page.waitForTimeout(4000);
-        return { hechos, faltantes, publicado: true, fotosSubidas };
+    // 4) ¿Estamos en el último paso? (el botón final vive en el cuerpo)
+    if (paso === PASOS_LAVOZ.length) {
+      if (submit) {
+        // Puede haber un paso extra (elegir plan de publicación) antes del
+        // botón final: avanzamos mientras haya "Siguiente"/"Continuar".
+        for (let intento = 0; intento < 4; intento++) {
+          const pub = await clickTexto(page, RE_PUBLICAR, { scope: 'main' });
+          if (pub.clicked) {
+            hechos.push(`publicado ("${pub.texto}")`);
+            await page.waitForTimeout(4000);
+            return { hechos, faltantes, publicado: true, fotosSubidas };
+          }
+          const cont = await clickTexto(page, RE_AVANZAR, { scope: 'main' });
+          if (!cont.clicked) break;
+          hechos.push(`avanzó ("${cont.texto}")`);
+          await page.waitForTimeout(2500);
+        }
       }
+      break;
     }
 
-    // 5) Si no, avanzar.
-    const sig = await clickTexto(page, RE_SIGUIENTE);
+    // 5) Avanzar al siguiente paso.
+    const sig = await clickTexto(page, RE_AVANZAR, { scope: 'main' });
     if (sig.clicked) {
       hechos.push(`avanzó ("${sig.texto}")`);
       await page.waitForTimeout(2500);
       continue;
     }
 
-    if (page.url() !== urlAntes) { await page.waitForTimeout(2000); continue; }
-    // Sin botón y sin cambio: puede que ya esté todo (o que falte algo).
+    // Sin botón de avance: puede que el paso no haya cambiado (validación)
+    // o que el wizard ya haya terminado.
+    if (urlActual(page) !== urlAntes) { await page.waitForTimeout(2000); continue; }
+    const errs = await erroresDeValidacion(page);
+    if (errs.length) {
+      for (const e of errs) faltantes.push(`validación: ${e}`);
+      break;
+    }
     break;
   }
   return { hechos, faltantes, publicado: false, fotosSubidas };
+}
+
+/**
+ * Marca un BOTÓN que actúa como opción (La Voz no usa <select> ni radios
+ * para "Operación": son botones con el texto de la opción).
+ */
+async function marcarBoton(page, palabra) {
+  if (!palabra) return null;
+  return await page.evaluate((want) => {
+    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const w = norm(want);
+    const raiz = document.querySelector('main') || document.body;
+    const botones = [...raiz.querySelectorAll('button')].filter((b) => {
+      const r = b.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    });
+    const hit = botones.find((b) => norm(b.textContent) === w)
+      || botones.find((b) => norm(b.textContent).includes(w));
+    if (!hit) return null;
+    const txt = (hit.textContent || '').replace(/\s+/g, ' ').trim();
+    hit.click();
+    return txt;
+  }, palabra);
 }
 
 /* ---------------- URL del aviso publicado ---------------- */

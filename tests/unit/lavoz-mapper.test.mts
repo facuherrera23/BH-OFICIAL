@@ -8,6 +8,8 @@ import {
   resizeFoto,
   norm,
   numPos,
+  parseManzanaLote,
+  OPERACION_BOTON,
   MAX_FOTOS,
   type LavozConfig,
 } from '../../supabase/functions/_shared/lavoz.mapper.ts';
@@ -215,4 +217,31 @@ test('norm y numPos: helpers de normalización', () => {
   assert.equal(numPos('259.00'), 259);
   assert.equal(numPos(0), null);
   assert.equal(numPos(''), null);
+});
+
+test('OPERACION_BOTON: el texto EXACTO del botón de operación del portal', () => {
+  // El formulario real usa botones, no <select>: "Alquileres" (plural).
+  assert.equal(OPERACION_BOTON.venta, 'Venta');
+  assert.equal(OPERACION_BOTON.alquiler, 'Alquileres');
+  assert.equal(OPERACION_BOTON.alquileres_temporarios, 'Alquileres Temporarios');
+  assert.equal(OPERACION_BOTON.compra, 'Compra');
+  const p = buildLavozPayload({ ...baseProperty, listing_type: 'alquiler' }, cfg);
+  assert.equal(p.operacion_boton, 'Alquileres');
+});
+
+test('parseManzanaLote: saca manzana y lote de la dirección', () => {
+  assert.deepEqual(parseManzanaLote('Manzana 53 Lote 6'), { manzana: '53', lote: '6' });
+  assert.deepEqual(parseManzanaLote('manzana 12, lote 4'), { manzana: '12', lote: '4' });
+  assert.deepEqual(parseManzanaLote('Manzana N° 7'), { manzana: '7', lote: null });
+  assert.deepEqual(parseManzanaLote('Ocaña 319'), { manzana: null, lote: null });
+  assert.deepEqual(parseManzanaLote(null), { manzana: null, lote: null });
+});
+
+test('buildLavozPayload: la manzana y el lote van al payload (los pide La Voz)', () => {
+  const p = buildLavozPayload(
+    { ...baseProperty, property_type: 'terreno', address: 'Manzana 53 Lote 6' },
+    cfg,
+  );
+  assert.equal(p.num_manzana, '53');
+  assert.equal(p.num_lote, '6');
 });

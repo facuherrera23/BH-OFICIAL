@@ -31,6 +31,32 @@ export const OPERACION_LABEL: Record<string, string> = {
 };
 
 /**
+ * Texto EXACTO del botón de operación en el formulario de La Voz
+ * (verificado 2026-11-06). No es un <select>: son botones
+ * "Venta · Alquileres · Alquileres Temporarios · Tiempo Compartido · Compra".
+ * "Alquiler" (nuestro label) NO sirve: el botón dice "Alquileres".
+ */
+export const OPERACION_BOTON: Record<string, string> = {
+  venta: 'Venta',
+  alquiler: 'Alquileres',
+  alquileres: 'Alquileres',
+  alquileres_temporarios: 'Alquileres Temporarios',
+  compra: 'Compra',
+};
+
+/**
+ * Saca manzana y lote de la dirección (La Voz los pide aparte para
+ * terrenos): "Manzana 53 Lote 6" → { manzana: '53', lote: '6' }.
+ */
+export function parseManzanaLote(address: unknown): { manzana: string | null; lote: string | null } {
+  const s = String(address || '');
+  const m = s.match(/man[zç]ana\s*(?:n[°ºo]?\s*)?([a-z0-9-]+)/i);
+  const l = s.match(/\blote\s*(?:n[°ºo]?\s*)?([a-z0-9-]+)/i);
+  const clean = (x: RegExpMatchArray | null) => (x ? (x[1] || '').replace(/[^\w-]/g, '').slice(0, 12) || null : null);
+  return { manzana: clean(m), lote: clean(l) };
+}
+
+/**
  * La operación (venta/alquiler) sale de `listing_type`. En las propiedades
  * más viejas ese campo quedó NULL, pero el estado comercial (`status`:
  * venta|alquiler|vendido|alquilado|pausado) sí dice la operación → se usa
@@ -96,6 +122,7 @@ export interface LavozPayload {
   descripcion: string;
   operacion: string | null;
   operacion_label: string | null;
+  operacion_boton: string | null;
   subrubro: string;
   subrubro_label: string;
   ciudad: string | null;
@@ -110,6 +137,9 @@ export interface LavozPayload {
   cocheras: number | null;
   superficie_total: number | null;
   superficie_cubierta: number | null;
+  superficie_construible: number | null;
+  num_manzana: string | null;
+  num_lote: string | null;
   antiguedad: number | null;
   expensas: number | null;
   precio: number | null;
@@ -270,6 +300,7 @@ export function buildLavozPayload(
     descripcion,
     operacion: operacionKey || null,
     operacion_label: OPERACION_LABEL[operacionKey] || null,
+    operacion_boton: OPERACION_BOTON[operacionKey] || null,
     subrubro,
     subrubro_label: subrubroLabel,
     ciudad: ub.ciudad || null,
@@ -284,6 +315,11 @@ export function buildLavozPayload(
     cocheras,
     superficie_total: superficieTotal,
     superficie_cubierta: superficieCubierta,
+    // "Superficie construible" no existe en properties (columnas reales:
+    // area_m2 / area_total / surface_total / surface_covered) → queda null.
+    superficie_construible: numPos(p.surface_built) ?? numPos(p.construible),
+    num_manzana: parseManzanaLote(p.address).manzana,
+    num_lote: parseManzanaLote(p.address).lote,
     antiguedad: anios,
     expensas,
     precio,

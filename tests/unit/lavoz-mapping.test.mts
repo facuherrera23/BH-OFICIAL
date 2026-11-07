@@ -60,6 +60,8 @@ const payload = {
   cocheras: 1,
   antiguedad: null,
   expensas: null,
+  num_manzana: '53',
+  num_lote: '6',
 };
 
 test('normalizar: minúsculas, sin tildes, espacios colapsados', () => {
@@ -127,8 +129,11 @@ test('planLlenado: saltea los campos sin valor (null) y los que no matchean', ()
   assert.ok(!keys.includes('bathrooms'));
   assert.ok(!keys.includes('antiguedad'));
   assert.ok(!keys.includes('expensas'));
+  // La operación NO va en el plan: en el formulario real son botones
+  // ("Venta · Alquileres · ..."), no un <select>. La marca `solo_boton`.
+  assert.ok(!keys.includes('operacion'));
   // Los que tienen valor Y control matchean.
-  for (const k of ['titulo', 'descripcion', 'tipo', 'operacion', 'ciudad', 'barrio', 'precio', 'bedrooms', 'cocheras']) {
+  for (const k of ['titulo', 'descripcion', 'tipo', 'ciudad', 'barrio', 'precio', 'bedrooms', 'cocheras']) {
     assert.ok(keys.includes(k), 'falta ' + k);
   }
   // El plan trae el control elegido y el valor a cargar.
@@ -136,6 +141,37 @@ test('planLlenado: saltea los campos sin valor (null) y los que no matchean', ()
   assert.equal(titulo.control.id, 'titulo');
   assert.equal(titulo.valor, payload.titulo);
   assert.equal(titulo.campo.key, 'titulo');
+});
+
+test('planLlenado: matchea por el `name` EXACTO de La Voz (field_aviso_*)', () => {
+  // El formulario real usa ids semánticos: es la vía más confiable.
+  const reales = [
+    { tag: 'input', type: 'number', id: 'field_aviso_superficie_total', name: 'field_aviso_superficie_total', label: 'Superficie total m2 *', visible: true },
+    { tag: 'input', type: 'number', id: 'field_aviso_superficie_cubierta', name: 'field_aviso_superficie_cubierta', label: 'Superficie cubierta m2', visible: true },
+    { tag: 'input', type: 'text', id: 'field_aviso_num_lote', name: 'field_aviso_num_lote', label: 'Número de lote', visible: true },
+    { tag: 'input', type: 'text', id: 'field_aviso_titulo', name: 'field_aviso_titulo', label: 'Título', visible: true },
+  ];
+  const plan = planLlenado(reales, payload);
+  const sup = plan.find((p) => p.key === 'superficie_total');
+  assert.ok(sup, 'no matcheó la superficie total');
+  assert.equal(sup.control.name, 'field_aviso_superficie_total');
+  assert.equal(sup.valor, payload.superficie_total);
+  const lote = plan.find((p) => p.key === 'num_lote');
+  assert.ok(lote, 'no matcheó el número de lote');
+  assert.equal(lote.control.name, 'field_aviso_num_lote');
+});
+
+test('elegirControl: los combos de Base UI cuentan como select', () => {
+  // La Voz NO usa <select>: usa comboboxes (role=combobox) con popup.
+  const combos = [
+    { tag: 'combo', type: 'combobox', id: 'base-ui-_r_9_', name: null, label: 'Categoría *', labels: ['Categoría *'], visible: true, value: 'Seleccionar...' },
+    { tag: 'combo', type: 'combobox', id: 'base-ui-_r_a_', name: null, label: 'Ciudad *', labels: ['Ciudad *'], visible: true, value: 'Seleccionar...' },
+  ];
+  const tipo = elegirControl(combos, CAMPOS.find((c) => c.key === 'tipo'));
+  assert.ok(tipo, 'no eligió el combo de categoría');
+  assert.equal(tipo.id, 'base-ui-_r_9_');
+  const ciudad = elegirControl(combos, CAMPOS.find((c) => c.key === 'ciudad'));
+  assert.equal(ciudad?.id, 'base-ui-_r_a_');
 });
 
 test('planLlenado: un formulario sin ese campo no rompe el plan', () => {

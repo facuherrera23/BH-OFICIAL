@@ -14,21 +14,35 @@
 // "Provincia", etc.
 // ============================================================
 
-/** Campos del aviso → keywords del formulario + valor a cargar. */
+/**
+ * Campos del aviso → keywords del formulario + valor a cargar.
+ *
+ * `names` = los `name` EXACTOS que usa La Voz (verificados contra el
+ * formulario real el 2026-11-06). Son SEMÁNTICOS (`field_aviso_*`), así
+ * que son la vía más confiable: se matchean antes que los keywords.
+ * `keywords` = fallback por texto del label (el wizard cambia sus labels).
+ */
 export const CAMPOS = [
-  { key: 'titulo', valor: (p) => p.titulo, keywords: ['titulo', 'título', 'titular', 'encabezado', 'nombre del aviso', 'subject'], tag: 'input' },
-  { key: 'descripcion', valor: (p) => p.descripcion, keywords: ['descripcion', 'descripción', 'detalle', 'texto del aviso', 'body', 'comentarios'], tag: 'textarea' },
-  { key: 'precio', valor: (p) => (p.precio ?? null), keywords: ['precio', 'valor', 'importe', 'price'], tag: 'input' },
-  { key: 'superficie_total', valor: (p) => p.superficie_total, keywords: ['superficie total', 'superficie', 'metros', 'm2', 'm²', 'superficie del terreno', 'dimensions'], tag: 'input' },
-  { key: 'superficie_cubierta', valor: (p) => p.superficie_cubierta, keywords: ['superficie cubierta', 'cubierta', 'superficie construida'], tag: 'input' },
-  { key: 'bedrooms', valor: (p) => p.bedrooms, keywords: ['dormitorio', 'dormitorios', 'dorm'], tag: 'input' },
-  { key: 'bathrooms', valor: (p) => p.bathrooms, keywords: ['baño', 'bano', 'baños', 'bath'], tag: 'input' },
-  { key: 'cocheras', valor: (p) => p.cocheras, keywords: ['cochera', 'cocheras', 'garaje', 'estacionamiento'], tag: 'input' },
-  { key: 'antiguedad', valor: (p) => p.antiguedad, keywords: ['antiguedad', 'antigüedad', 'años de antiguedad', 'fecha de construccion', 'fecha de construcción'], tag: 'input' },
-  { key: 'expensas', valor: (p) => p.expensas, keywords: ['expensa', 'expensas', 'cuota de administracion', 'administración'], tag: 'input' },
+  { key: 'titulo', names: ['field_aviso_titulo'], valor: (p) => p.titulo, keywords: ['titulo', 'título', 'titular', 'encabezado', 'nombre del aviso', 'subject'], tag: 'input' },
+  { key: 'descripcion', names: ['field_aviso_descripcion'], valor: (p) => p.descripcion, keywords: ['descripcion', 'descripción', 'detalle', 'texto del aviso', 'body', 'comentarios'], tag: 'textarea' },
+  { key: 'precio', names: ['field_aviso_precio'], valor: (p) => (p.precio ?? null), keywords: ['precio', 'valor', 'importe', 'price'], tag: 'input' },
+  { key: 'superficie_total', names: ['field_aviso_superficie_total'], valor: (p) => p.superficie_total, keywords: ['superficie total', 'superficie', 'metros', 'm2', 'm²', 'superficie del terreno', 'dimensions'], tag: 'input' },
+  { key: 'superficie_cubierta', names: ['field_aviso_superficie_cubierta'], valor: (p) => p.superficie_cubierta, keywords: ['superficie cubierta', 'cubierta', 'superficie construida'], tag: 'input' },
+  { key: 'superficie_construible', names: ['field_aviso_superficie_construib'], valor: (p) => p.superficie_construible, keywords: ['superficie construible', 'construible'], tag: 'input' },
+  { key: 'bedrooms', names: ['field_aviso_dormitorios'], valor: (p) => p.bedrooms, keywords: ['dormitorio', 'dormitorios', 'dorm'], tag: 'input' },
+  { key: 'bathrooms', names: ['field_aviso_banos'], valor: (p) => p.bathrooms, keywords: ['baño', 'bano', 'baños', 'bath'], tag: 'input' },
+  { key: 'cocheras', names: ['field_aviso_cocheras'], valor: (p) => p.cocheras, keywords: ['cochera', 'cocheras', 'garaje', 'estacionamiento'], tag: 'input' },
+  { key: 'antiguedad', names: ['field_aviso_antiguedad'], valor: (p) => p.antiguedad, keywords: ['antiguedad', 'antigüedad', 'años de antiguedad', 'fecha de construccion', 'fecha de construcción'], tag: 'input' },
+  { key: 'expensas', names: ['field_aviso_expensas'], valor: (p) => p.expensas, keywords: ['expensa', 'expensas', 'cuota de administracion', 'administración'], tag: 'input' },
+  { key: 'num_manzana', names: ['field_aviso_num_manzana'], valor: (p) => p.num_manzana, keywords: ['manzana'], tag: 'input' },
+  { key: 'num_lote', names: ['field_aviso_num_lote'], valor: (p) => p.num_lote, keywords: ['lote'], tag: 'input' },
   {
-    key: 'operacion', valor: (p) => p.operacion_label || p.operacion,
-    keywords: ['operacion', 'operación', 'modalidad', 'transaccion', 'transacción'], tag: 'select',
+    // La operación NO es un <select>: en el formulario real son botones
+    // ("Venta · Alquileres · Alquileres Temporarios · ..."). Se marca con
+    // `solo_boton` para que el plan de llenado no la busque como select.
+    key: 'operacion', valor: (p) => p.operacion_boton || p.operacion_label || p.operacion,
+    keywords: ['operacion', 'operación', 'modalidad', 'transaccion', 'transacción'],
+    tag: 'select', solo_boton: true,
     exclude: ['duracion', 'duración', 'publicacion', 'publicación'],
   },
   {
@@ -101,6 +115,7 @@ export function textoDeControl(c) {
  */
 export function candidatosDeControl(c) {
   return [c.label, c.placeholder, c.ariaLabel, c.name, c.id]
+    .concat(Array.isArray(c.labels) ? c.labels : [])
     .map((x) => normalizar(x))
     .filter(Boolean);
 }
@@ -122,8 +137,18 @@ function excluido(c, campo) {
  */
 export function elegirControl(controls, campo) {
   const visibles = controls.filter((c) => c.visible !== false);
-  const base = campo.tag ? visibles.filter((c) => c.tag === campo.tag) : visibles;
+  // Los combos de Base UI son "select" lógicos aunque no sean <select>.
+  const base = campo.tag === 'select'
+    ? visibles.filter((c) => c.tag === 'select' || c.tag === 'combo')
+    : (campo.tag ? visibles.filter((c) => c.tag === campo.tag) : visibles);
   const pool = base.filter((c) => !excluido(c, campo));
+
+  // 0) `name` EXACTO: La Voz usa `field_aviso_*` (lo más confiable).
+  for (const nm of campo.names || []) {
+    const hit = pool.find((c) => c.name === nm);
+    if (hit) return hit;
+  }
+
   for (const kw of campo.keywords) {
     const k = normalizar(kw);
     const hit = pool.find((c) => candidatosDeControl(c).some((t) => t === k));
@@ -165,6 +190,7 @@ export function indiceOpcion(options, valor) {
 export function planLlenado(controls, payload) {
   const plan = [];
   for (const campo of CAMPOS) {
+    if (campo.solo_boton) continue;   // lo maneja el motor como botón
     const valor = campo.valor(payload);
     if (valor === null || valor === undefined || valor === '') continue;
     const control = elegirControl(controls, campo);

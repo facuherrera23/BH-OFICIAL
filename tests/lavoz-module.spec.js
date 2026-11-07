@@ -240,6 +240,47 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(scriptSrc).toContain('lavoz\\.com\\.ar');
   });
 
+  test('el wizard real de La Voz: 6 pasos, /publicar/inmuebles y modal de borradores', () => {
+    // ESTRUCTURA REAL (verificada 2026-11-06 con login humano):
+    // /publicar → sección → /publicar/inmuebles → 6 pasos.
+    expect(scriptSrc).toContain('/publicar/inmuebles');
+    expect(scriptSrc).toContain('PASOS_LAVOZ');
+    for (const nombre of ['Tipo de inmueble', 'Ubicación', 'Contacto', 'Precio', 'Datos del aviso', 'Multimedia']) {
+      expect(scriptSrc).toContain(nombre);
+    }
+    // Al entrar hay un modal "Tenés borradores sin publicar" que TAPA el
+    // formulario: si no se cierra, el motor no avanza nunca.
+    expect(scriptSrc).toContain('cerrarModalBorradores');
+    expect(scriptSrc).toContain('empezar un aviso nuevo');
+  });
+
+  test('el clic de publicar/acceder está ACOTADO al cuerpo del wizard', () => {
+    // TRAMPA REAL: el HEADER tiene un botón "Publicá" y el FOOTER un link
+    // "Publicar". Sin acotar la búsqueda a <main>, el motor hace clic en
+    // el menú y pierde el formulario.
+    expect(scriptSrc).toContain("scope: 'main'");
+    expect(scriptSrc).toMatch(/clickTexto\(page, RE_PUBLICAR, \{ scope: 'main' \}\)/);
+    // Y el avance usa un botón EXACTO ("Siguiente"), no cualquier verbo.
+    expect(scriptSrc).toContain('RE_AVANZAR');
+  });
+
+  test('los comboboxes de La Voz (Base UI) se llenan por opción', () => {
+    // La Voz NO usa <select>: usa role="combobox" con popup de opciones.
+    expect(scriptSrc).toContain("[role=\"combobox\"]");
+    expect(scriptSrc).toContain('[role="option"]');
+    expect(scriptSrc).toContain('elegirEnCombo');
+    expect(mappingSrc).toContain("c.tag === 'combo'");
+  });
+
+  test('el login de La Voz puede ser automático (LAVOZ_EMAIL/LAVOZ_PASSWORD)', () => {
+    // Las credenciales viven FUERA del repo (variables de entorno).
+    expect(scriptSrc).toContain('process.env.LAVOZ_EMAIL');
+    expect(scriptSrc).toContain('process.env.LAVOZ_PASSWORD');
+    expect(scriptSrc).toContain('loginAutomaticoLaVoz');
+    // Nunca se guardan en un archivo del repo.
+    expect(scriptSrc).not.toMatch(/writeFileSync\([^)]*LAVOZ_PASSWORD/);
+  });
+
   test('el mapeo del formulario es un módulo PURO (testeable sin navegador)', () => {
     expect(mappingSrc).toContain('export function elegirControl');
     expect(mappingSrc).toContain('export function indiceOpcion');
