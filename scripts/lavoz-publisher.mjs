@@ -61,6 +61,9 @@ const PORTAL = 'https://clasificados.lavoz.com.ar';
 const PUBLISH_URL = `${PORTAL}/publicar`;
 const CRM_URL = 'https://bienenhaus.com.ar/admin.html';
 const SUPABASE_FN = 'https://rnldqiwwzhjnurkguihu.supabase.co/functions/v1/lavoz-proxy';
+const SUPABASE_AUTH = 'https://rnldqiwwzhjnurkguihu.supabase.co';
+// Clave ANON pública (la misma que usa el panel: assets/js/config.js).
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJubGRxaXd3emhqbnVya2d1aWh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5NDA4MzMsImV4cCI6MjEwMDUxNjgzM30.tzqe0Z1vS9R5GiCTxIe3m6uY4kkggF3kewPrRUY8BwE';
 const SUPABASE_STORAGE_KEY = 'sb-rnldqiwwzhjnurkguihu-auth-token';
 
 /* ---------------- Args ---------------- */
@@ -133,13 +136,45 @@ async function shot(nombre) {
 
 /* ---------------- Sesión del CRM ---------------- */
 
+/**
+ * Token del CRM por API (sin navegador): las credenciales del panel van en
+ * variables de entorno (BH_ADMIN_EMAIL / BH_ADMIN_PASSWORD — o las del
+ * suite de tests, BH_TEST_ADMIN_EMAIL / BH_TEST_ADMIN_PASSWORD).
+ * La clave anon es pública (assets/js/config.js).
+ */
+async function tokenCrmPorCredenciales() {
+  const email = process.env.BH_ADMIN_EMAIL || process.env.BH_TEST_ADMIN_EMAIL;
+  const password = process.env.BH_ADMIN_PASSWORD || process.env.BH_TEST_ADMIN_PASSWORD;
+  if (!email || !password) return null;
+  try {
+    const res = await fetch(`${SUPABASE_AUTH}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.access_token) {
+      log('  ! login del CRM por API falló:', json.error_description || json.msg || `HTTP ${res.status}`);
+      return null;
+    }
+    log('✓ Token del CRM por API (sin navegador)');
+    return json.access_token;
+  } catch (err) {
+    log('  ! login del CRM por API falló:', err.message);
+    return null;
+  }
+}
+
 async function crmToken({ esperar = true } = {}) {
   // 1) Token por variable de entorno (uso desatendido / otro equipo).
   if (process.env.BH_ACCESS_TOKEN) {
     log('✓ Token del CRM por variable de entorno');
     return process.env.BH_ACCESS_TOKEN;
   }
-  // 2) La sesión del admin vive en localStorage del origen del panel; el perfil
+  // 2) Login por API con email + contraseña (sin tocar el navegador).
+  const porApi = await tokenCrmPorCredenciales();
+  if (porApi) return porApi;
+  // 3) La sesión del admin vive en localStorage del origen del panel; el perfil
   //    persistente la conserva entre corridas (el employer inicia sesión una vez).
   let tab = ctx.pages().find((p) => p.url().includes('bienenhaus.com.ar'));
   if (!tab) {

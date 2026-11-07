@@ -281,6 +281,17 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(scriptSrc).not.toMatch(/writeFileSync\([^)]*LAVOZ_PASSWORD/);
   });
 
+  test('el token del CRM se puede pedir por API (sin navegador)', () => {
+    // Si el navegador queda con la sesión del panel perdida (o se cierra con
+    // kill), el token se pide directo a Supabase con email + contraseña.
+    expect(scriptSrc).toContain('tokenCrmPorCredenciales');
+    expect(scriptSrc).toContain('/auth/v1/token?grant_type=password');
+    expect(scriptSrc).toContain('process.env.BH_ADMIN_EMAIL');
+    expect(scriptSrc).toContain('process.env.BH_ADMIN_PASSWORD');
+    // La clave anon es pública (está en assets/js/config.js).
+    expect(scriptSrc).toContain('SUPABASE_ANON_KEY');
+  });
+
   test('el mapeo del formulario es un módulo PURO (testeable sin navegador)', () => {
     expect(mappingSrc).toContain('export function elegirControl');
     expect(mappingSrc).toContain('export function indiceOpcion');
