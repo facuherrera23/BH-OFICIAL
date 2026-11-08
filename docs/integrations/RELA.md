@@ -337,7 +337,7 @@ Además agrupa las **zonas sin mapear** con los avisos que dependen de cada una
 Las **5 bloqueadas** son todas por **3 zonas sin `idUbicacion` en RELA**
 (los datos de la propiedad están completos; lo que falta es el código de zona):
 
-| Zona (clave de `ubicacion_map`) | Avisos | thorn |
+| Zona (clave de `ubicacion_map`) | Avisos | Nombre visible en propiedades |
 |---|---|---|
 | `loma del tigre` | DA-P0001, DA-P0013 | Loma Del Tigre |
 | `la alfonsina` | DA-P0015, DA-P0016 | La Alfonsina |
@@ -367,10 +367,36 @@ Las **5 bloqueadas** son todas por **3 zonas sin `idUbicacion` en RELA**
    y el `role` (`zp`).
 3. **Pedir permiso de administración de la integración** para
    `GET/PUT /v1/configuracion/callbacks` (hoy responde 500 "Access is denied").
-4. **Mapear las 3 zonas** que faltan: cuando la API vuelva, botón **Catálogos**
-   → `ubicacion_map` con los `idUbicacion` reales. Alternativa: pedirle a
-   QuintoAndar el `idUbicacion` de esas 3 zonas por email (son 5 avisos = 5/32
-   = 16 % de la cola).
+4. **Mapear las 3 zonas** que faltan (5 avisos = 5/32 = 16 % de la cola).
+   **Receta cuando la API vuelva** — la estructura del árbol ya es conocida por
+   los 17 mapeados: provincia `V1-B-7` (Córdoba) → ciudad `V1-C-…` → barrio/zona
+   `V1-D-…`. Las 3 zonas son de **Villa Carlos Paz** (su `V1-C-…` todavía no
+   está en el mapa, se descubre caminando el árbol):
+   1. Chequear que la API volvió: `curl --max-time 15 https://api-zp-sandbox-open.navent.com/v1/ubicaciones`
+      → 200 (si sigue 521, nada que hacer).
+   2. Desde la BASE (el token de `rela_tokens` nunca sale al cliente), pedir el
+      nivel ciudad de Córdoba y leer el id de **Villa Carlos Paz**:
+      `net.http_get`(url = `…/v1/ubicaciones/V1-B-7`, headers = Authorization
+      con el access_token de `rela_tokens`) → leer `net._http_response`
+      (pide/lee por polling, patrón ya usado en este proyecto) y matchear
+      el nombre.
+   3. Pedir sus hijos (`…/v1/ubicaciones/<V1-C de VC Paz>`) y matchear,
+      normalizado (minúsculas, sin tildes, espacios simples — es el efecto de
+      `normalizeZone` del mapper): `loma del tigre`, `la alfonsina`,
+      `san javier del lago` → ids `V1-D-…` reales. Si un nombre no existe como
+      zona de RELA, se mapea a la ciudad (id `V1-C` de VC Paz) y el nombre real
+      queda en la descripción del aviso (patrón `sin_equivalencia`).
+   4. Insertar — cambio ADITIVO, sin borrar lo existente:
+      ```sql
+      update rela_config set ubicacion_map = ubicacion_map ||
+        '{"loma del tigre": "V1-D-…", "la alfonsina": "V1-D-…", "san javier del lago": "V1-D-…"}'::jsonb
+      where id = true;
+      ```
+   5. Verificar: `select rela_portal_status();` → `blocked: 0`, `ready: 32`,
+      `not_publishable: 13` (los 13 vendidos quedan fuera de la cola, no son
+      bloqueados). Y probar con el botón **Validar todos** del panel.
+   Alternativa sin API: pedirle a QuintoAndar los `idUbicacion` de las 3 zonas
+   por email y saltar directo al paso 4.
 5. **Completar `contacto_telefono`** en la config (hoy `null`) — RELA lo exige
    para publicar.
 6. **Apagar DRY-RUN** recién con los 27 listos confirmados y 1 aviso de prueba
