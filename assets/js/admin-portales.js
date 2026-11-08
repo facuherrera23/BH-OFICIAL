@@ -880,6 +880,19 @@ try {
   /* ------------------------------------------------
      13C. OPEN RELA ARGENTINA (ZonaProp / QuintoAndar)
      ------------------------------------------------ */
+  /* Traduce los errores crudos del proxy RELA a algo que se entienda.
+     Cloudflare responde "error code: 521" cuando el servidor de origen de
+     ZonaProp está caído (nos pasó todo el 7/11): el dueño no debía ver
+     "RELA GET /v1/ubicaciones → 521" sin explicación. */
+  function relaFriendlyError(msg) {
+    const raw = String(msg || '');
+    if (/(→\s*521\b|error code:\s*521)/i.test(raw)) return 'La API de ZonaProp está caída (error 521). Es un problema de ZonaProp, no nuestro: probá de nuevo en un rato.';
+    if (/RELA red:/.test(raw)) return 'No se pudo conectar con la API de ZonaProp. Probá de nuevo en un rato.';
+    if (/login falló/.test(raw)) return 'ZonaProp rechazó las credenciales de la integración (revisalas en Configurar).';
+    if (/(→\s*401\b|invalid_token)/i.test(raw)) return 'La sesión con ZonaProp expiró o fue rechazada. Probá de nuevo en un rato.';
+    if (/→\s*409\b/.test(raw)) return 'ZonaProp todavía no vinculó esta cuenta a la integración (pendiente de QuintoAndar).';
+    return raw;
+  }
   async function relaApiCall(action, body = {}) {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (!session) throw new Error('No hay sesión activa');
@@ -894,7 +907,7 @@ try {
       });
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || `Error ${res.status}`);
+        throw new Error(relaFriendlyError(errJson.error || `Error ${res.status}`));
       }
       const json = await res.json().catch(() => ({}));
       return json;
@@ -1050,13 +1063,21 @@ try {
     }
   };
 
-  window.adminApp.relaSyncCatalogs = async function () {    if (!['super_admin', 'broker'].includes(currentProfile?.role)) { showToast('Solo super_admin o broker pueden sincronizar RELA', 'error'); return; }
+  window.adminApp.relaSyncCatalogs = async function () {
+    if (!['super_admin', 'broker'].includes(currentProfile?.role)) { showToast('Solo super_admin o broker pueden sincronizar RELA', 'error'); return; }
     try {
       showToast('Sincronizando catálogos RELA (ubicaciones, tipos, planes)…', 'info');
       const res = await relaApiCall('catalogs_sync');
       const okCount = (res.synced || []).length;
-      const failCount = Object.keys(res.failed || {}).length;
-      showToast(`Catálogos: ${okCount} sincronizados${failCount ? ', ' + failCount + ' con error' : ''}`, failCount ? 'warning' : 'success');
+      const failed = res.failed || {};
+      const failCount = Object.keys(failed).length;
+      /* Los 5 catálogos caen a la vez sólo si la API de ZonaProp está caída:
+         mostrar el motivo real en vez de un "5 con error" sin explicación. */
+      if (!okCount && failCount) {
+        showToast('Catálogos RELA: ' + relaFriendlyError(Object.values(failed)[0]), 'error');
+      } else {
+        showToast(`Catálogos: ${okCount} sincronizados${failCount ? ', ' + failCount + ' con error' : ''}`, failCount ? 'warning' : 'success');
+      }
       loadRelaPanel();
     } catch (err) { showToast('Error catálogos RELA: ' + err.message, 'error'); }
   };
@@ -1067,7 +1088,17 @@ try {
     try {
       showToast('Reconciliando con RELA…', 'info');
       const res = await relaApiCall('reconcile');
-      showToast(`Reconciliación: ${(res.reconciled || []).length} avisos consultados`, 'success');
+      const lista = res.reconciled || [];
+      const fallas = lista.filter((r) => r.error);
+      /* Toda la lista con error = la API de ZonaProp está caída: no mentir con
+         "N avisos consultados" cuando no se pudo consultar ninguno. */
+      if (lista.length && fallas.length === lista.length) {
+        showToast('Reconciliación: ' + relaFriendlyError(fallas[0].error), 'error');
+      } else if (fallas.length) {
+        showToast(`Reconciliación: ${(lista.length - fallas.length)} avisos consultados, ${fallas.length} con error`, 'warning');
+      } else {
+        showToast(`Reconciliación: ${lista.length} avisos consultados`, 'success');
+      }
       loadProperties();
       loadRelaPanel();
     } catch (err) { showToast('Error reconciliación: ' + err.message, 'error'); }
