@@ -134,6 +134,20 @@ Idempotencia: `rela_webhook_events.event_id` UNIQUE → un duplicado responde
 respondemos 4xx/5xx; por eso errores internos de proceso responden 200 y quedan
 `processed=false` para revisión.
 
+**Auditoría schema completa (2026-11-08, antes de que llegue el primer evento)**:
+comparadas TODAS las columnas de `.from()/insert/update` de
+`rela-{callbacks,sync,proxy}` + `_shared/rela.ts` contra
+`information_schema.columns` → **0 faltantes** (columnas y tablas). El bug real
+que dio la auditoría: la exclusión de stages terminales de la consolidación de
+leads usaba labels **inventados** del enum `lead_stage` (`cerrado_vendido`,
+`vendido`, `descartado`) → el filtro explotaba con `22P02` en runtime, la query
+devolvía vacía y el lead se duplicaba en silencio (mismo bug nacido en ML).
+Labels reales: `nuevo, contactado, calificado, visita_agendada,
+visita_realizada, negociacion, cerrado_ganado, cerrado_perdido`. Fix en
+rela-callbacks + ml-webhook (`757f64f`) + guard `tests/stage-enum-contract.spec.js`.
+El informe de los duplicados históricos que dejó el bug en producción:
+`docs/leads-duplicados-2026-11-08.md` (solo lectura; fusión = decisión del dueño).
+
 ## Despliegue
 
 ```powershell
