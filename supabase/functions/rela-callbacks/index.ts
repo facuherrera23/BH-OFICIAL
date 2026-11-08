@@ -157,8 +157,10 @@ async function processEvent(
    queda en UN solo lead de source='rela_zonaprop'. La consolidación rellena
    campos vacíos, vincula la propiedad adicional vía lead_properties y traza
    cada mensaje en notes (anti-duplicado por subcadena). Nunca consolida sobre
-   leads terminales (cerrado/perdido/vendido/descartado). */
-const RELA_TERMINAL_STAGES_EXCL = '("cerrado_perdido","cerrado_vendido","vendido","descartado")';
+   leads terminales (cerrado_ganado/cerrado_perdido — labels REALES del enum
+   lead_stage: un label inventado explota el filtro con 22P02 en runtime y la
+   consolidación muere en silencio; guard: tests/stage-enum-contract.spec.js). */
+const RELA_TERMINAL_STAGES_EXCL = '("cerrado_ganado","cerrado_perdido")';
 const RELA_ANON_NAME = 'Contacto RELA (anónimo)';
 
 async function findConsolidableRelaLead(
@@ -171,7 +173,7 @@ async function findConsolidableRelaLead(
   const digits = (phone || '').replace(/\D/g, '');
   if (digits.length >= 10) filters.push(`phone.ilike.%${digits.slice(-10)}%`);
   if (!filters.length) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('leads')
     .select('id, full_name, email, phone, whatsapp, notes, stage, property_id')
     .eq('source', 'rela_zonaprop')
@@ -181,6 +183,7 @@ async function findConsolidableRelaLead(
     .order('created_at', { ascending: true }) /* el lead canónico es el primero */
     .limit(1)
     .maybeSingle();
+  if (error) console.error('[rela-callbacks] findConsolidableRelaLead query error', error);
   return data ?? null;
 }
 

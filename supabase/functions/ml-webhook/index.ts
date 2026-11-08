@@ -346,8 +346,11 @@ async function handleQuestions(payload: MlWebhookPayload): Promise<void> {
    2. La misma persona interesada en otra publicación (o dos veces por la misma)
       queda en UN SOLO lead con todas las propiedades y la traza de contactos.
    3. Matcheo por email / últimos 10 dígitos del teléfono / "Usuario ML: id" o
-      "Evento ML vinculado: id" en las notas; nunca sobre leads terminales. */
-const ML_TERMINAL_STAGES_EXCL = '("cerrado_perdido","cerrado_vendido","vendido","descartado")';
+      "Evento ML vinculado: id" en las notas; nunca sobre leads terminales
+      (labels REALES del enum lead_stage: cerrado_ganado/cerrado_perdido — un
+      label inventado explota el filtro con 22P02 en runtime y la consolidación
+      muere en silencio; guard: tests/stage-enum-contract.spec.js). */
+const ML_TERMINAL_STAGES_EXCL = '("cerrado_ganado","cerrado_perdido")';
 
 /* ─── SLA de primer contacto: vive en _shared/firstContact.ts ───
    Compartido con tasacion-submit, contact-submit y social-youtube-comments:
@@ -369,7 +372,7 @@ async function findConsolidableMlLead(
         filters.push(`notes.ilike.%Evento ML vinculado: ${buyerId}%`);
     }
     if (!filters.length) return null;
-    const { data } = await supabase
+    const { data, error } = await supabase
         .from('leads')
         .select('id, full_name, email, phone, whatsapp, notes, stage, property_id, ml_lead_id')
         .eq('source', 'ml')
@@ -379,6 +382,7 @@ async function findConsolidableMlLead(
         .order('created_at', { ascending: true }) /* el lead canónico es el primero */
         .limit(1)
         .maybeSingle();
+    if (error) console.error('[ml-webhook] findConsolidableMlLead query error', error);
     return data ?? null;
 }
 
