@@ -961,6 +961,7 @@ try {
           </div>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;${canManage ? '' : ' opacity:.5; pointer-events:none;'}" title="${canManage ? '' : 'Solo super_admin o broker'}">
             ${status?.dry_run ? '<span class="nav-badge" style="background:rgba(255,184,0,0.15); color:var(--warning); font-size:11px; flex-shrink:0; white-space:nowrap;"><i class="fas fa-flask"></i> DRY-RUN activo</span>' : ''}
+            <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" data-action="relaPreflight"><i class="fas fa-clipboard-check"></i> Validar todos</button>
             <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" data-action="relaSyncCatalogs"><i class="fas fa-rotate"></i> Catálogos</button>
             <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" data-action="relaReconcile"><i class="fas fa-arrows-rotate"></i> Reconciliar</button>
             <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" data-action="openRelaConfig"><i class="fas fa-cog"></i> Configurar</button>
@@ -984,11 +985,16 @@ try {
             <div style="font-size:13px; color:${(L.errors || L.blocked) ? 'var(--danger)' : '#fff'}; margin-top:4px;">${(L.errors ?? 0)} / ${(L.blocked ?? 0)}</div>
           </div>
           <div style="background:rgba(255,255,255,0.03); border-radius:10px; padding:12px;">
+            <div style="font-size:11px; color:var(--text-dim);">Vendidas (fuera de cola)</div>
+            <div style="font-size:13px; color:#fff; margin-top:4px;">${(L.not_publishable ?? 0)}</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03); border-radius:10px; padding:12px;">
             <div style="font-size:11px; color:var(--text-dim);">Callbacks</div>
             <div style="font-size:13px; color:#fff; margin-top:4px;">${dot(!!status?.callbacks_enabled)} ${status?.callbacks_enabled ? 'Activos' : 'Sin configurar'}</div>
           </div>
         </div>
         ${status?.last_error ? `<div style="margin-top:12px; font-size:12px; color:var(--danger);">Último error: ${esc(status.last_error)}</div>` : ''}
+        <div id="relaPreflightResult" style="margin-top:12px;"></div>
         ${events.length ? `
           <details style="margin-top:14px;">
             <summary style="cursor:pointer; font-size:12px; color:var(--text-dim);">Últimos eventos de callback (${events.length})</summary>
@@ -1001,8 +1007,50 @@ try {
       </div>`;
   };
 
-  window.adminApp.relaSyncCatalogs = async function () {
-    if (!['super_admin', 'broker'].includes(currentProfile?.role)) { showToast('Solo super_admin o broker pueden sincronizar RELA', 'error'); return; }
+  /* "Validar todos": qué avisos quedarían listos para publicar en RELA.
+     Sólo lectura (no llama a RELA ni publica nada): clasifica cada
+     propiedad en listo / bloqueado (con el motivo) / fuera de cola. */
+  window.adminApp.relaPreflight = async function () {
+    if (!['super_admin', 'broker'].includes(currentProfile?.role)) { showToast('Solo super_admin o broker pueden validar RELA', 'error'); return; }
+    const box = $('#relaPreflightResult');
+    if (box) box.innerHTML = '<div style="font-size:12px; color:var(--text-dim);">Validando…</div>';
+    try {
+      const res = await relaApiCall('preflight');
+      if (!box) return;
+      const detalle = res.detalle || [];
+      const bloqueados = detalle.filter((d) => d.publicable && (d.errores || []).length);
+      const listos = detalle.filter((d) => d.publicable && !(d.errores || []).length);
+      const fuera = detalle.filter((d) => !d.publicable);
+      const zonas = res.zonas_sin_mapeo || [];
+      /* Los textos se arman FUERA del template: anidar backticks dentro de
+         un ${} rompe el parseo (y `node --check` lo detecta). */
+      const zonasTxt = zonas.map((z) => esc(z.zona) + ' (' + (z.codigos || []).length + ')').join(', ');
+      const bloqueadosTxt = bloqueados.map((d) =>
+        '<div style="padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
+        '<strong>' + esc(d.codigo) + '</strong> · ' + esc(d.zona || 'sin zona') + '<br>' +
+        (d.errores || []).map((e) => '· ' + esc(e)).join('<br>') +
+        '</div>').join('');
+      const zonasHtml = zonas.length
+        ? '<div style="font-size:12px; color:var(--warning); margin-bottom:8px;">Zonas sin mapear en RELA: ' + zonasTxt + '. Mapealas en Configurar → ubicaciones.</div>'
+        : '';
+      const bloqueadosHtml = bloqueados.length
+        ? '<details open><summary style="cursor:pointer; font-size:12px; color:var(--text-dim);">Bloqueados (' + bloqueados.length + ')</summary>' +
+          '<div style="margin-top:6px;">' + bloqueadosTxt + '</div></details>'
+        : '<div style="font-size:12px; color:#4ade80;">Todo lo publicable tiene los datos completos.</div>';
+      box.innerHTML =
+        '<div style="font-size:12px; margin-bottom:8px;">' +
+        '<strong style="color:#4ade80;">' + listos.length + ' listos</strong> · ' +
+        '<strong style="color:var(--danger);">' + bloqueados.length + ' bloqueados</strong> · ' +
+        fuera.length + ' fuera de cola (vendidas o pausadas)' +
+        '</div>' + zonasHtml + bloqueadosHtml;
+      showToast(`RELA: ${listos.length} aviso(s) listos para publicar`, 'success');
+    } catch (err) {
+      if (box) box.innerHTML = `<div style="font-size:12px; color:var(--danger);">No se pudo validar: ${esc(err.message)}</div>`;
+      showToast('Error validando RELA: ' + err.message, 'error');
+    }
+  };
+
+  window.adminApp.relaSyncCatalogs = async function () {    if (!['super_admin', 'broker'].includes(currentProfile?.role)) { showToast('Solo super_admin o broker pueden sincronizar RELA', 'error'); return; }
     try {
       showToast('Sincronizando catálogos RELA (ubicaciones, tipos, planes)…', 'info');
       const res = await relaApiCall('catalogs_sync');

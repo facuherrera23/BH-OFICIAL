@@ -284,3 +284,109 @@ modal de config que escribe `rela_config` con policy super_admin,
   delegación de clicks null-safe, scripts `defer` (DOM listo antes de bind),
   `window.BH_CONFIG.SUPABASE_URL` existe, botones por fila correctos según
   existencia de listing en `rela_listings`, `#propertiesTableBody` estático.
+
+## Estado 2026-11-07 — "Validar todos" + bloqueos reales + host de producción
+
+### El panel ya no confunde "vendido" con "bloqueado"
+
+El panel decía **18 bloqueados** cuando el problema real eran **5 avisos**.
+De esas 18 filas, 13 eran de propiedades ya **vendidas**: no son un bloqueo
+(nunca se van a publicar), son propiedades que quedan **fuera de la cola**.
+Además, un dry-run sobre una propiedad vendida **pisaba a `BLOCKED` una fila que
+podía estar `PUBLISHED`** → se perdía el estado real de un aviso vivo.
+
+Corregido en tres capas (migración `20261107000001_rela_preflight_no_publicables.sql`,
+aplicada en producción el 2026-11-07):
+
+| Capa | Cambio |
+|---|---|
+| `rela_portal_status()` (RPC) | `blocked` cuenta sólo avisos de propiedades en venta/alquiler; nueva métrica `not_publishable` para las vendidas/pausadas. Permisos verificados: anon ✗ / authenticated ✓ / service_role ✓ |
+| `rela-proxy` (edge) | `esPublicable()`: si la propiedad no es publicable **no se crea fila `BLOCKED`**; si el aviso ya está `PUBLISHED` **nunca se pisa a `BLOCKED`** (responde `published:true` con el motivo) |
+| Mapper canónico | `esPublicable(p)` + `preflightRela(props, cfg)` en `_shared/rela.mapper.ts` (puro, testeado) |
+
+### Botón "Validar todos" (action `preflight`)
+
+Portales → RELA → **Validar todos**. Es **sólo lectura**: no llama a la API de
+RELA, no publica nada, no escribe en `rela_listings`. Clasifica cada propiedad:
+
+- **listos** → publicable y sin errores (el aviso se puede publicar).
+- **bloqueados** → publicable pero le falta algo, con el **motivo exacto**.
+- **fuera de cola** → vendidas/alquiladas/pausadas (no son un error).
+
+Además agrupa las **zonas sin mapear** con los avisos que dependen de cada una
+(para resolverlas de una sola vez).
+
+### Números reales (verificados contra producción el 2026-11-07)
+
+| Concepto | Cantidad |
+|---|---|
+| Propiedades activas en la base | 45 |
+| Publicables (venta/alquiler) | 32 |
+| **Listas para publicar** (datos completos + zona mapeada) | **27** |
+| **Bloqueadas** | **5** |
+| Fuera de cola (vendidas/pausadas) | 13 |
+
+Las **5 bloqueadas** son todas por **3 zonas sin `idUbicacion` en RELA**
+(los datos de la propiedad están completos; lo que falta es el código de zona):
+
+| Zona (clave de `ubicacion_map`) | Avisos | thorn |
+|---|---|---|
+| `loma del tigre` | DA-P0001, DA-P0013 | Loma Del Tigre |
+| `la alfonsina` | DA-P0015, DA-P0016 | La Alfonsina |
+| `san javier del lago` | DA-P0026 | San Javier del Lago |
+
+### La API: sandbox caída + host de producción descubierto
+
+- **`https://api-zp-sandbox-open.navent.com` → HTTP 521** (caída global del
+  servidor, no es un error de BH: responde 521 incluso en `/`). Verificado por
+  `curl` y por `net.http_get` desde la base. **No se puede obtener el catálogo
+  de ubicaciones hasta que vuelva.**
+- **El host de PRODUCCIÓN existe**: `https://api-zp-open.navent.com`
+  (responde 401 `invalid_token` sin token; con el token de sandbox también
+  `invalid_token`, que es lo esperado: los tokens son por ambiente).
+  → Hay que setear `RELA_BASE_URL=https://api-zp-open.navent.com` +
+  `environment=production` + credenciales de producción.
+- El token guardado (`rela_tokens.access_token`, en claro, vigente hasta
+  2036-08-28) es **de sandbox** y sirve para consultar catálogos sin exponerlo
+  (se lee desde la base, nunca sale a la red del cliente).
+
+### Pendientes (en orden)
+
+1. **QuintoAndar destrabe el binding** (`GET /v1/inmobiliarias/30662083/disponibilidad`
+   → 409 "no pertenece a la integracion 20354"; `GET /v1/inmobiliarias` → `{"total":0}`).
+   Verificación: botón **Stock** del panel → 200 = binding OK.
+2. **Pedir credenciales de producción** + confirmar la base URL de producción
+   y el `role` (`zp`).
+3. **Pedir permiso de administración de la integración** para
+   `GET/PUT /v1/configuracion/callbacks` (hoy responde 500 "Access is denied").
+4. **Mapear las 3 zonas** que faltan: cuando la API vuelva, botón **Catálogos**
+   → `ubicacion_map` con los `idUbicacion` reales. Alternativa: pedirle a
+   QuintoAndar el `idUbicacion` de esas 3 zonas por email (son 5 avisos = 5/32
+   = 16 % de la cola).
+5. **Completar `contacto_telefono`** en la config (hoy `null`) — RELA lo exige
+   para publicar.
+6. **Apagar DRY-RUN** recién con los 27 listos confirmados y 1 aviso de prueba
+   publicado a mano.
+
+### Gotchas del código nuevo
+
+- **NUNCA anidar backticks dentro de `${}`** en un template literal de
+  `admin-portales.js`: rompe el parseo (`SyntaxError: Missing } in template
+  expression`) y `node --check` lo detecta. Para HTML con listas, armar los
+  textos **fuera** del template y concatenar.
+- La regla "publicable" está duplicada a propósito (`_shared/rela.mapper.ts` =
+  canónico testeado; copia inline en `rela-proxy` porque el deploy no empaqueta
+  `_shared`). `tests/rela-preflight.spec.js` falla si las dos se divergen.
+- La RPC `rela_portal_status()` se recrea con `CREATE OR REPLACE`: si se
+  cambia, **mantener `GRANT EXECUTE ... TO authenticated`** (verificado con
+  `has_function_privilege` × anon/authenticated/service_role).
+
+### Email listo para enviar a QuintoAndar
+
+Texto completo (copiar y pegar): **[`RELA-EMAIL-QUINTOANDAR.md`](./RELA-EMAIL-QUINTOANDAR.md)**
+
+- Destinatario: **integracion@ar.quintoandar.com**
+- Asunto: **Bienenhaus Propiedades — re-vinculación de la inmobiliaria 30662083 y solicitud de credenciales de producción**
+
+---
+

@@ -102,6 +102,16 @@ export function makeCodigoAviso(p: BhProperty): string {
   return base.replace(/\s+/g, '-').slice(0, 60);
 }
 
+/**
+ * ¿La propiedad es publicable en RELA?
+ * Sólo 'venta' y 'alquiler'. Una propiedad vendida/alquilada/pausada NO es un
+ * "bloqueo" (nunca se iba a publicar): es una propiedad que queda fuera de la
+ * cola. Mezclar las dos cosas llenaba el panel de 13 bloqueos falsos.
+ */
+export function esPublicable(p: BhProperty): boolean {
+  return p.status === 'venta' || p.status === 'alquiler';
+}
+
 export function validateForRela(p: BhProperty, cfg: RelaConfig): string[] {
   const errors: string[] = [];
 
@@ -127,7 +137,7 @@ export function validateForRela(p: BhProperty, cfg: RelaConfig): string[] {
   if (!ubId) {
     errors.push(`No hay idUbicacion RELA para la zona "${p.zone || 'sin definir'}". Sincronizá el catálogo de ubicaciones y mapeala en Portales > RELA.`);
   }
-  if (p.status !== 'venta' && p.status !== 'alquiler') {
+  if (!esPublicable(p)) {
     errors.push(`La propiedad está en estado "${p.status || 'sin estado'}"; sólo se publican 'venta' o 'alquiler'.`);
   }
   if (!p.price_usd || p.price_usd <= 0) {
@@ -144,6 +154,85 @@ export function validateForRela(p: BhProperty, cfg: RelaConfig): string[] {
     errors.push('No se puede publicar en RELA: no hay fotos con URL pública (http/https).');
   }
   return errors;
+}
+
+/* ------------------------------------------------------------
+   PREFLIGHT: "¿qué avisos quedan listos para publicar?"
+   ------------------------------------------------------------
+   Clasifica TODAS las propiedades en 3 grupos honestos:
+     · listo         → publicable y sin errores (el aviso se puede publicar)
+     · bloqueado    → publicable pero le falta algo (con el motivo exacto)
+     · no publicable→ vendida/alquilada/pausada: NO es un bloqueo, queda
+                       fuera de la cola (no se publica nunca).
+   Es la misma regla que usa la edge function `rela-proxy` (action
+   `preflight`), pero en forma pura para poder testearla sin red.
+   ------------------------------------------------------------ */
+
+export interface PreflightItem {
+  codigo: string;
+  estado: string | null;
+  zona: string | null;
+  publicable: boolean;
+  errores: string[];
+}
+
+export interface PreflightZona {
+  zona: string;
+  codigos: string[];
+}
+
+export interface PreflightResult {
+  total: number;
+  publicables: number;
+  listos: number;
+  bloqueados: number;
+  no_publicables: number;
+  detalle: PreflightItem[];
+  zonas_sin_mapeo: PreflightZona[];
+}
+
+export function preflightRela(props: BhProperty[], cfg: RelaConfig): PreflightResult {
+  const detalle: PreflightItem[] = [];
+  const zonasSinMapeo = new Map<string, string[]>();
+  let publicables = 0;
+  let listos = 0;
+  let bloqueados = 0;
+  let noPublicables = 0;
+
+  for (const p of props) {
+    const publicable = esPublicable(p);
+    const codigo = p.property_code || p.id.slice(0, 8);
+    if (!publicable) {
+      noPublicables++;
+      detalle.push({ codigo, estado: p.status, zona: p.zone, publicable: false, errores: [] });
+      continue;
+    }
+    publicables++;
+    const errores = validateForRela(p, cfg);
+    if (errores.length) {
+      bloqueados++;
+      detalle.push({ codigo, estado: p.status, zona: p.zone, publicable: true, errores });
+      const zonaNorm = p.zone ? normalizeZone(p.zone) : '';
+      if (zonaNorm && !cfg.ubicacionMap?.[zonaNorm]) {
+        const lista = zonasSinMapeo.get(zonaNorm) || [];
+        lista.push(codigo);
+        zonasSinMapeo.set(zonaNorm, lista);
+      }
+    } else {
+      listos++;
+      detalle.push({ codigo, estado: p.status, zona: p.zone, publicable: true, errores: [] });
+    }
+  }
+
+  return {
+    total: props.length,
+    publicables,
+    listos,
+    bloqueados,
+    no_publicables: noPublicables,
+    detalle,
+    zonas_sin_mapeo: [...zonasSinMapeo.entries()].map(([zona, codigos]) => ({ zona, codigos })),
+  };
 }
 
 function surfaceValues(p: BhProperty): { total: number | null; covered: number | null } {

@@ -7,6 +7,8 @@ import {
   mapPropertyToRela,
   hashPayload,
   makeCodigoAviso,
+  esPublicable,
+  preflightRela,
 } from '../../supabase/functions/_shared/rela.mapper.ts';
 
 const baseProperty = {
@@ -78,6 +80,59 @@ test('validateForRela: propiedad vendida no se puede publicar', () => {
 test('validateForRela: sin fotos http → error', () => {
   const errs = validateForRela({ ...baseProperty, image_urls: [] }, validConfig);
   assert.ok(errs.some((e) => e.includes('fotos')));
+});
+
+/* ------------------------------------------------------------
+   esPublicable / preflightRela (2026-11-07)
+   ------------------------------------------------------------ */
+
+test('esPublicable: sólo venta y alquiler se publican', () => {
+  assert.equal(esPublicable({ ...baseProperty, status: 'venta' }), true);
+  assert.equal(esPublicable({ ...baseProperty, status: 'alquiler' }), true);
+  assert.equal(esPublicable({ ...baseProperty, status: 'vendido' }), false);
+  assert.equal(esPublicable({ ...baseProperty, status: 'alquilado' }), false);
+  assert.equal(esPublicable({ ...baseProperty, status: 'pausado' }), false);
+  assert.equal(esPublicable({ ...baseProperty, status: null }), false);
+});
+
+test('preflightRela: separa listos, bloqueados y no publicables', () => {
+  const lista = [
+    { ...baseProperty, property_code: 'DA-0001' },                              // listo
+    { ...baseProperty, property_code: 'DA-0002', zone: 'Loma Del Tigre' },       // bloqueado (zona)
+    { ...baseProperty, property_code: 'FH-0003', status: 'vendido' },            // fuera de cola
+  ];
+  const r = preflightRela(lista, validConfig);
+  assert.equal(r.total, 3);
+  assert.equal(r.publicables, 2);
+  assert.equal(r.listos, 1);
+  assert.equal(r.bloqueados, 1);
+  assert.equal(r.no_publicables, 1);
+  const bloqueado = r.detalle.find((d) => d.codigo === 'DA-0002');
+  assert.ok(bloqueado, 'debe detallar el bloqueado');
+  assert.ok(bloqueado.errores.some((e) => e.includes('Loma Del Tigre')));
+  const fuera = r.detalle.find((d) => d.codigo === 'FH-0003');
+  assert.equal(fuera.publicable, false);
+  assert.deepEqual(fuera.errores, [], 'lo que no es publicable NO es un bloqueo');
+});
+
+test('preflightRela: agrupa las zonas sin mapear con los avisos que dependen de cada una', () => {
+  const lista = [
+    { ...baseProperty, property_code: 'DA-0010', zone: 'Loma Del Tigre' },
+    { ...baseProperty, property_code: 'DA-0011', zone: 'Loma Del Tigre' },
+    { ...baseProperty, property_code: 'DA-0012', zone: 'La Alfonsina' },
+  ];
+  const r = preflightRela(lista, validConfig);
+  assert.equal(r.bloqueados, 3);
+  assert.equal(r.zonas_sin_mapeo.length, 2);
+  const loma = r.zonas_sin_mapeo.find((z) => z.zona === 'loma del tigre');
+  assert.ok(loma, 'debe listar la zona sin mapear');
+  assert.deepEqual(loma.codigos.sort(), ['DA-0010', 'DA-0011']);
+});
+
+test('preflightRela: una propiedad mapificada no aparece entre las zonas pendientes', () => {
+  const r = preflightRela([{ ...baseProperty }], validConfig);
+  assert.equal(r.zonas_sin_mapeo.length, 0);
+  assert.equal(r.listos, 1);
 });
 
 test('mapPropertyToRela: payload completo y estructurado', () => {

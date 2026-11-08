@@ -170,6 +170,15 @@ function normalizeZone(zone: string): string {
 }
 function isHttpUrl(u: string): boolean { return /^https?:\/\//i.test(u); }
 
+/**
+ * ¿La propiedad es publicable en RELA? Sólo 'venta' y 'alquiler'.
+ * Una propiedad vendida NO es un bloqueo: queda fuera de la cola.
+ * (Espejo de _shared/rela.mapper.ts — mantener los dos en paralelo.)
+ */
+function esPublicable(p: BhProperty): boolean {
+  return p.status === 'venta' || p.status === 'alquiler';
+}
+
 function makeCodigoAviso(p: BhProperty): string {
   const base = (p.property_code && p.property_code.trim()) || `BH-${p.id.slice(0, 8)}`;
   return base.replace(/\s+/g, '-').slice(0, 60);
@@ -319,6 +328,62 @@ async function handleRequest(req: Request): Promise<Response> {
       const { data } = await supabase.rpc('rela_portal_status');
       return json({ ok: true, status: data, credentials_configured: !!(Deno.env.get('RELA_CLIENT_ID') && Deno.env.get('RELA_CLIENT_SECRET')) });
     }
+    /* PREFLIGHT: "¿qué avisos quedan listos para publicar?"
+       Sólo lectura: NO llama a RELA y NO escribe listings. Clasifica todas
+       las propiedades en 3 grupos honestos:
+         · listo          → publicable y sin errores
+         · bloqueado     → publicable pero le falta algo (con el motivo)
+         · no publicable → vendida/alquilada/pausada (no es un bloqueo)
+       También lista las ZONAS que falta mapear y qué avisos dependen de
+       cada una (para resolverlas de una sola vez). */
+    if (action === 'preflight') {
+      const { data: props, error: pErr } = await supabase
+        .from('properties')
+        .select('id, property_code, title, description, property_type, status, zone, address, price_usd, price_currency, area_m2, surface_covered, surface_total, rooms, bedrooms, bathrooms, garage_spaces, year_built, image_urls, video_url')
+        .is('deleted_at', null)
+        .limit(1000);
+      if (pErr) return json({ ok: false, error: pErr.message }, 500);
+      const lista = (props || []) as BhProperty[];
+      const detalle: Array<Record<string, unknown>> = [];
+      const zonasSinMapeo = new Map<string, string[]>();
+      let publicables = 0;
+      let listos = 0;
+      let bloqueados = 0;
+      let noPublicables = 0;
+      for (const p of lista) {
+        const codigo = p.property_code || p.id.slice(0, 8);
+        if (!esPublicable(p)) {
+          noPublicables++;
+          detalle.push({ codigo, estado: p.status, zona: p.zone, publicable: false, errores: [] });
+          continue;
+        }
+        publicables++;
+        const errores = validateForRela(p, cfg);
+        if (errores.length) {
+          bloqueados++;
+          detalle.push({ codigo, estado: p.status, zona: p.zone, publicable: true, errores });
+          const z = p.zone ? normalizeZone(p.zone) : '';
+          if (z && !cfg.ubicacionMap?.[z]) {
+            const listaZona = zonasSinMapeo.get(z) || [];
+            listaZona.push(codigo);
+            zonasSinMapeo.set(z, listaZona);
+          }
+        } else {
+          listos++;
+          detalle.push({ codigo, estado: p.status, zona: p.zone, publicable: true, errores: [] });
+        }
+      }
+      return json({
+        ok: true,
+        total: lista.length,
+        publicables,
+        listos,
+        bloqueados,
+        no_publicables: noPublicables,
+        detalle,
+        zonas_sin_mapeo: [...zonasSinMapeo.entries()].map(([zona, codigos]) => ({ zona, codigos })),
+      });
+    }
     if (action === 'config_get') return json({ ok: true, config: cfgRow });
     if (action === 'catalogs_list') {
       const { data } = await supabase.from('rela_catalog_cache').select('catalog, fetched_at');
@@ -350,6 +415,38 @@ async function handleRequest(req: Request): Promise<Response> {
       const property = await loadProperty(supabase, propertyId);
       const errors = validateForRela(property, cfg);
       if (errors.length) {
+        /* 2026-11-07: antes, CUALQUIER error pisaba la fila a BLOCKED. Eso:
+             a) creaba 13 filas basura por propiedades ya vendidas (no son
+                bloqueos: nunca se publican), y
+             b) si el aviso estaba PUBLISHED, un dry-run lo tapaba y se
+                perdía el estado real de una publicación viva.
+           Ahora: no se crea fila para lo que no es publicable, y una fila
+           publicada nunca se pisa a BLOCKED. */
+        const { data: actual } = await supabase
+          .from('rela_listings')
+          .select('id, status')
+          .eq('property_id', propertyId)
+          .maybeSingle();
+        if (!esPublicable(property)) {
+          return json({
+            ok: false,
+            no_publicable: true,
+            estado_propiedad: property.status,
+            aviso: actual?.status === 'PUBLISHED'
+              ? 'La propiedad ya no es publicable: despublicá el aviso de RELA con el botón "Despublicar".'
+              : 'La propiedad no es publicable (no está en venta ni en alquiler): no se genera aviso.',
+            errors: [],
+          }, 200);
+        }
+        if (actual?.status === 'PUBLISHED') {
+          return json({
+            ok: false,
+            blocked: true,
+            published: true,
+            aviso: 'El aviso ya está publicado en RELA: no se pisa el estado. Corregí los datos y usá "Actualizar".',
+            errors,
+          }, 200);
+        }
         await supabase.from('rela_listings').upsert({
           property_id: propertyId, codigo_aviso: makeCodigoAviso(property),
           status: 'BLOCKED', last_error: errors.join(' | '), last_sync_at: new Date().toISOString(),
