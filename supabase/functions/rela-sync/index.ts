@@ -5,8 +5,9 @@
 // 2) Recalcula el hash del payload: si la propiedad cambió y el aviso
 //    está publicado, marca UPDATE_PENDING (la re-publicación la dispara
 //    un usuario desde el panel — RELA consume créditos por plan).
-// Se invoca con un header X-Cron-Secret o como función verify_jwt OFF
-// desde pg_cron (ver migración de scheduling en docs/integrations/RELA.md).
+// Se invoca como función verify_jwt OFF con header x-sync-secret (el mismo
+// compartido de zernio_config, patrón backup-snapshot/zernio-sync) — ver la
+// migración de scheduling pendiente en docs/integrations/RELA.md.
 // ============================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -23,18 +24,21 @@ function json(body: unknown, status = 200): Response {
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204 });
 
-  // Fail-closed (patrón rela-callbacks): sin CRON_SECRET la función queda
-  // abierta — mejor 503 que un endpoint de reconciliación sin auth.
-  const secret = Deno.env.get('CRON_SECRET') ?? '';
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+
+  // Fail-closed con el patrón de los crons que funcionan (backup-snapshot,
+  // zernio-sync, ml-vis-sweep): el secret vive en zernio_config(key='sync_secret')
+  // y pg_cron lo lee en runtime. (Antes era env CRON_SECRET — el patrón que ya
+  // rompió 3 crons de este proyecto por secret inexistente / mal seteado.)
+  const { data: secretRow } = await supabase.from('zernio_config').select('value').eq('key', 'sync_secret').maybeSingle();
+  const secret = (secretRow?.value?.secret) || '';
   if (!secret) {
-    console.error('[rela-sync] CRON_SECRET no configurado');
-    return json({ error: 'rela-sync no configurado (falta CRON_SECRET)' }, 503);
+    console.error('[rela-sync] sync_secret no configurado (zernio_config)');
+    return json({ error: 'rela-sync no configurado (falta sync_secret)' }, 503);
   }
-  if (req.headers.get('x-cron-secret') !== secret) {
+  if (req.headers.get('x-sync-secret') !== secret) {
     return json({ error: 'no autorizado' }, 401);
   }
-
-  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
   const { data: cfgRow } = await supabase.from('rela_config').select('*').eq('id', true).maybeSingle();
   if (!cfgRow?.codigo_inmobiliaria) {

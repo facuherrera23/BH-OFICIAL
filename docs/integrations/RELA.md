@@ -231,10 +231,18 @@ modal de config que escribe `rela_config` con policy super_admin,
 - **CORREGIDO (bug de seguridad)**: `rela-sync` estaba en NO_VERIFY (verify_jwt
   OFF) y su gate era `if (secret && mismatch)` — con `CRON_SECRET` vacío quedaba
   un endpoint de reconciliación SIN auth (verificado: 200 anónimo). Ahora es
-  fail-closed como `rela-callbacks`: sin secret → 503; secret erróneo → 401
-  (v34 deployado, verificado 503/401 anónimo). Programar su cron: setear
-  `CRON_SECRET` como secret de Supabase (o alinear al patrón
-  `x-sync-secret` de `zernio_config`).
+  fail-closed: sin secret → 503; secret erróneo → 401.
+- **ALINEADO al patrón de los crons que funcionan (2026-11-08)**: `rela-sync`
+  ya NO busca `CRON_SECRET` en env (el patrón que rompió 3 crons de este
+  proyecto por secret inexistente / mal seteado). Ahora valida `x-sync-secret`
+  contra `zernio_config(key='sync_secret')` — el mismo secret que ya usan
+  backup-snapshot, zernio-sync y ml-vis-sweep (verificado en crons verdes).
+  Verificado en producción: probe anónimo → **401 no autorizado** (antes 503).
+  Para programar su cron en el go-live: `net.http_post` con URL hardcodeada de
+  `${SUPABASE_URL}/functions/v1/rela-sync` + header `x-sync-secret` leído en
+  runtime (patrón de `visits-reminders`/`backup-snapshot-daily` en `cron.job`),
+  y RECORDAR `dry_run=false` de `rela_config` (mientras esté en true, la fn
+  solo responde skipped — no toca la API).
 - **CORREGIDO (feature muerta)**: `rela_webhook_events` no tenía policy → la
   lectura directa del panel (`loadSyncHistory`) caía siempre al `.catch`
   silencioso: los eventos RELA nunca se veían en la vista Sincronizaciones.
