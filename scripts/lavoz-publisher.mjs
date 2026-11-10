@@ -126,6 +126,21 @@ const ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
   args: ['--disable-blink-features=AutomationControlled'],
 });
 
+/* Si el proceso falla en cualquier punto posterior, cerrar el navegador SIEMPRE.
+ * Sin esto, una corrida que muere deja ventanas Chromium huerfanas tomando el
+ * perfil, y la corrida siguiente muere al instante con "Se cerró el navegador"
+ * (la causa del 4/4 del 2026-11-09 al encadenar corridas). */
+let cerrandoFatal = false;
+const fatalExit = async (err) => {
+  if (cerrandoFatal) return;
+  cerrandoFatal = true;
+  try { await ctx.close(); } catch {}
+  console.error('[lavoz] FATAL:', (err && err.message) || err);
+  process.exit(1);
+};
+process.on('uncaughtException', (e) => { fatalExit(e); });
+process.on('unhandledRejection', (e) => { fatalExit(e); });
+
 const page = ctx.pages()[0] || await ctx.newPage();
 
 async function shot(nombre) {
@@ -293,7 +308,7 @@ async function asegurarSesionLaVoz() {
     if (espera % 30000 === 0) log('  … esperando el login de La Voz');
   }
   const urlFinal = urlActual(page);
-  if (urlFinal.includes('/usuario/login')) throw new Error('Login de La Voz no completado');
+  if (urlFinal.includes('/usuario/login')) throw new Error('Login de La Voz no completado (url final: ' + urlFinal.slice(0, 120) + ')');
   if (!urlFinal.includes('/publicar')) {
     await page.goto(PUBLISH_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(3000);
