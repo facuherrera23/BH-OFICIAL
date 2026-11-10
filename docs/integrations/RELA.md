@@ -372,6 +372,28 @@ Las **5 bloqueadas** son todas por **3 zonas sin `idUbicacion` en RELA**
   2036-08-28) es **de sandbox** y sirve para consultar catálogos sin exponerlo
   (se lee desde la base, nunca sale a la red del cliente).
 
+### Estado 2026-11-09 — mapeo de zonas COMPLETADO + causa raíz aclarada
+
+- **✅ Mapeo terminado**: la sandbox volvió (HTTP 200) y se caminó el árbol desde
+  la base con `net.http_get` (el token de `rela_tokens` nunca sale al cliente):
+  province `V1-B-7` (Córdoba) → **ciudad `V1-C-1002226` (Villa Carlos Paz)** →
+  sus 39 barrios NO contienen `loma del tigre` / `la alfonsina` /
+  `san javier del lago` → **patrón `sin_equivalencia`**: los 3 quedaron mapeados
+  a la ciudad (`V1-C-1002226`) y el barrio real va en la descripción del aviso.
+  `ubicacion_map` = **20 zonas** (merge aditivo, las 17 previas intactas).
+  ⚠️ pg_net: `timeout_milliseconds := 30000` es obligatorio en esta API (el
+  default de 5 s explotó en el primer intento). El botón **Validar todos**
+  refrescará la cola: esperado **32 listas / 0 bloqueadas / 13 fuera de cola**.
+- **Causa raíz del bloqueo = PACK/créditos, no el binding**: en el hilo
+  **SP-61526** (mensaje del 10/9) QuintoAndar aclaró que la cuenta **no tiene
+  créditos en producción** y que **Sandbox es espejo de producción** (y la
+  interfaz monoempresa les dificulta dar créditos de prueba). Cierre
+  **"Resuelta — Esperando por el cliente"** = esperan que se contrate el pack.
+  El email (enviado por **Facundo Herrera Orquera**) va como continuación de
+  ese hilo con el pack de primer punto; los 4 pedidos de la plantilla vieja
+  siguen, como pedidos 3 a 5.
+- Config BH pendiente: `contacto_telefono` (RELA lo exige; hoy `null`).
+
 ### Pendientes (en orden)
 
 1. **QuintoAndar destrabe el binding** (`GET /v1/inmobiliarias/30662083/disponibilidad`
@@ -381,11 +403,10 @@ Las **5 bloqueadas** son todas por **3 zonas sin `idUbicacion` en RELA**
    y el `role` (`zp`).
 3. **Pedir permiso de administración de la integración** para
    `GET/PUT /v1/configuracion/callbacks` (hoy responde 500 "Access is denied").
-4. **Mapear las 3 zonas** que faltan (5 avisos = 5/32 = 16 % de la cola).
-   **Receta cuando la API vuelva** — la estructura del árbol ya es conocida por
-   los 17 mapeados: provincia `V1-B-7` (Córdoba) → ciudad `V1-C-…` → barrio/zona
-   `V1-D-…`. Las 3 zonas son de **Villa Carlos Paz** (su `V1-C-…` todavía no
-   está en el mapa, se descubre caminando el árbol):
+4. ~~**Mapear las 3 zonas** que faltan (5 avisos = 5/32 = 16 % de la cola)~~
+   **✅ HECHO 2026-11-09** (ver "Estado 2026-11-09" arriba): los 3 nombres no
+   existen en el catálogo (39 barrios de VC Paz) y se aplicó `sin_equivalencia`
+   → `V1-C-1002226`. La receta queda como histórico.
    1. Chequear que la API volvió: `curl --max-time 15 https://api-zp-sandbox-open.navent.com/v1/ubicaciones`
       → 200 (si sigue 521, nada que hacer).
    2. Desde la BASE (el token de `rela_tokens` nunca sale al cliente), pedir el
