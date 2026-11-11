@@ -5685,7 +5685,7 @@
   function switchSubTab(sub) {
     _subTab = sub;
     $$('#contenidoSubTabs button').forEach(b => b.classList.toggle('is-active', b.dataset.sub === sub));
-    const views = { accounts: '#contenidoAccounts', create: '#contenidoCreate', history: '#contenidoHistory', studio: '#contenidoStudio' };
+    const views = { accounts: '#contenidoAccounts', create: '#contenidoCreate', history: '#contenidoHistory', studio: '#contenidoStudio', leads: '#contenidoLeads' };
     Object.values(views).forEach(sel => { const el = $(sel); if (el) el.style.display = 'none'; });
     const el = $(views[sub]);
     if (el) el.style.display = '';
@@ -5704,6 +5704,12 @@
     /* REPARACIÓN: entrar al Studio sin ningún canal conectado mostraba un
        panel vacío sin explicación → estado vacío con acción. */
     if (sub === 'studio' && !hasYoutubeChannel()) renderStudioEmpty();
+    /* Captación de leads desde redes (FB/IG): render lazy de la bandeja
+       cada vez que se entra al tab (los comentarios pueden haber llegado
+       por webhook desde la última visita). */
+    if (sub === 'leads' && window.BH_YT && window.BH_YT.socialInbox) {
+      window.BH_YT.socialInbox.open(switchSubTab);
+    }
   }
 
   function hasYoutubeChannel() {
@@ -5736,9 +5742,13 @@
         /* REPARACIÓN: el Studio no tenía botón — al abrirlo la barra quedaba
            sin pestaña activa y el único regreso era el botón del header. */
         '<button type="button" data-sub="studio" class="yt-tab"><i class="fas fa-sliders"></i> Studio</button>' +
+        /* Captación de leads desde redes: bandeja de comentarios FB/IG
+           (+ notas de YouTube/TikTok). Lógica en social-inbox.js. */
+        '<button type="button" data-sub="leads" class="yt-tab"><i class="fas fa-inbox"></i> Consultas</button>' +
       '</div>' +
       '<div id="contenidoAccounts" class="yt-account-grid"></div>' +
       '<div id="contenidoStudio" style="display:none;"></div>' +
+      '<div id="contenidoLeads" style="display:none;"></div>' +
       '<div id="contenidoCreate" style="display:none;">' +
         /* Switcher de plataforma (YouTube v1 + Instagram v2 — FB/TikTok "próximamente") */
         '<div class="yt-inline" style="margin-bottom:14px;gap:8px;">' +

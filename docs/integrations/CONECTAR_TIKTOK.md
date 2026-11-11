@@ -203,4 +203,17 @@ Mientras la app esté sin auditar, **todo lo que publicamos queda privado** (se 
 
 ---
 
+## 14. Por qué TikTok NO trae leads de comentarios (limitación real)
+
+De los 4 canales del módulo, TikTok es el único sin captación de leads por comentarios, y **no es algo que se pueda "arreglar" con código**: la Content Posting API es SOLO para publicar (no expone los comentarios de los videos), y la Research API (donde sí hay datos) requiere aprobación de TikTok y está orientada a estudios académicos, no a apps productivas.
+
+**Qué hay en su lugar (sin mantenimiento):**
+- El **CTA del caption** (el bloque que agrega el panel con WhatsApp + teléfono) es el canal real de contacto: quien quiere la propiedad escribe por WhatsApp.
+- Los leads de TikTok llegan por WhatsApp → se cargan **a mano** en el CRM con origen **TikTok** (el origen ya existe en las listas del panel para poder medir cuántos traen).
+- La bandeja **Contenido → Consultas** muestra esta limitación en su nota de TikTok (para que nadie la busque como si fuera un bug).
+
+Si TikTok abre una API de comentarios para apps productivas, el módulo está preparado para sumarla: la tabla de comentarios es genérica (`social_comments.platform` es TEXT libre).
+
+---
+
 *Guía creada 2026-11-11 · Código: `supabase/functions/social-tiktok/`, `social-auth-tiktok/`, `supabase/functions/_shared/social.ts` (refresh rotativo), `assets/js/admin-contenido.js` · Tests: `tests/contenido-tiktok.spec.js` · Docs verificadas contra developers.tiktok.com (nov 2026): Media Transfer Guide, Photo/Direct Post reference, Get/Refresh User Access Token, Content Sharing Guidelines.*

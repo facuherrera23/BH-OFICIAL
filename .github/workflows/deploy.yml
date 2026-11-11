@@ -212,6 +212,7 @@ jobs:
             "social-auth-youtube"
             "social-auth-facebook"
             "social-auth-tiktok"
+            "social-webhook-meta"
             "supervision-api"
             "supervision-digest"
             "supervision-ml-anomaly"

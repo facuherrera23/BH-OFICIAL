@@ -54,6 +54,8 @@ export const RATE_LIMIT_CONFIG = {
     'social-facebook': { requests: 20, windowMs: 60_000 }, // 20/min - publicaciones FB
     'social-auth-tiktok': { requests: 10, windowMs: 60_000 }, // 10/min - OAuth panel
     'social-tiktok': { requests: 20, windowMs: 60_000 }, // 20/min - publicaciones TikTok
+    'social-comments': { requests: 30, windowMs: 60_000 }, // 30/min - bandeja FB/IG + leads
+    'social-webhook-meta': { requests: 120, windowMs: 60_000 }, // 120/min - webhook Meta (ráfagas de página)
 } as const;
 
 export type RateLimitFnName = keyof typeof RATE_LIMIT_CONFIG;

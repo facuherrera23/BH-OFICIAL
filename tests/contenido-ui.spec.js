@@ -13,11 +13,12 @@ const { test, expect } = require('@playwright/test');
 const { VIDEO, boot } = require('./helpers/yt-harness');
 
 test.describe('Contenido/YouTube — reparaciones del lote', () => {
-  test('el shell expone las 4 sub-pestañas (incluido Studio)', async ({ page }) => {
+  test('el shell expone las 5 sub-pestañas (Consultas incluida)', async ({ page }) => {
     await boot(page);
     const tabs = page.locator('#contenidoSubTabs button');
-    await expect(tabs).toHaveCount(4);
+    await expect(tabs).toHaveCount(5);
     await expect(page.locator('#contenidoSubTabs button[data-sub="studio"]')).toHaveCount(1);
+    await expect(page.locator('#contenidoSubTabs button[data-sub="leads"]')).toHaveCount(1);
     await expect(page.locator('#contenidoSubTabs button[data-sub="accounts"]')).toHaveClass(/is-active/);
   });
 
@@ -289,7 +290,7 @@ test.describe('Contenido/YouTube — diseño (Lote 3)', () => {
   test('las sub-pestañas usan la barra del módulo (.yt-tabs / .yt-tab)', async ({ page }) => {
     await boot(page);
     await expect(page.locator('#contenidoSubTabs')).toHaveClass(/yt-tabs/);
-    await expect(page.locator('#contenidoSubTabs button')).toHaveCount(4);
+    await expect(page.locator('#contenidoSubTabs button')).toHaveCount(5);
     await expect(page.locator('#contenidoSubTabs button').first()).toHaveClass(/yt-tab/);
     await expect(page.locator('#contenidoSubTabs button[data-sub="accounts"]')).toHaveClass(/is-active/);
     // al cambiar de pestaña se mueve la clase activa

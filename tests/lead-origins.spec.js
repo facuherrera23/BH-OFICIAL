@@ -104,4 +104,20 @@ test.describe('Orígenes de lead — listas sincronizadas', () => {
     const soloCrm = sorted(ORIGINS).filter(o => !ZOD_VALUES.includes(o));
     expect(soloCrm).toEqual([]);
   });
+
+  test('los 4 canales de redes tienen su propio origen (2026-11-11)', () => {
+    // Captación de leads desde redes: cada canal lleva su origen para
+    // poder medir su performance (misma lógica que ml/lavoz/rela).
+    const esperados = { youtube: 'YouTube', facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok' };
+    for (const [o, label] of Object.entries(esperados)) {
+      expect(ORIGINS).toContain(o);
+      expect(ORIGIN_LABELS[o]).toBe(label);
+    }
+    // gvamax existe en producción (1 lead) — sin label mostraba la clave cruda.
+    expect(ORIGINS).toContain('gvamax');
+    // El lead de YouTube se crea con source 'youtube' (no 'youtube_comment').
+    const ytComments = fs.readFileSync(path.join(ROOT, 'supabase', 'functions', 'social-youtube-comments', 'index.ts'), 'utf8');
+    expect(ytComments).not.toMatch(/source:\s*'youtube_comment'/);
+    expect(ytComments).toMatch(/source:\s*'youtube'/);
+  });
 });

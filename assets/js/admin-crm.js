@@ -36,8 +36,8 @@ var LEGACY_STAGE_MAP = { visita: 'visita_agendada', oferta: 'negociacion', cerra
    - 'walkin' NO es un portal: es "Visita en persona" (alguien que se
      acercan a la oficina). Cada portal va con su propio origen para poder
      medir su performance. */
-var ORIGINS = ['landing_page','newsletter','manual','landing','ml','rela_zonaprop','lavoz','chat','referido','tasacion','walkin','contacto','propiedad','whatsapp','web'];
-var ORIGIN_LABELS = { manual:'Manual', landing_page:'Landing web', landing:'Landing (legado)', newsletter:'Newsletter', ml:'Mercado Libre', rela_zonaprop:'ZonaProp (RELA)', lavoz:'Clasificados La Voz', chat:'Chat', referido:'Referido', tasacion:'Tasación', walkin:'Visita en persona', contacto:'Contacto', propiedad:'Propiedad', whatsapp:'WhatsApp', web:'Web' };
+var ORIGINS = ['landing_page','newsletter','manual','landing','ml','rela_zonaprop','lavoz','youtube','facebook','instagram','tiktok','gvamax','chat','referido','tasacion','walkin','contacto','propiedad','whatsapp','web'];
+var ORIGIN_LABELS = { manual:'Manual', landing_page:'Landing web', landing:'Landing (legado)', newsletter:'Newsletter', ml:'Mercado Libre', rela_zonaprop:'ZonaProp (RELA)', lavoz:'Clasificados La Voz', youtube:'YouTube', facebook:'Facebook', instagram:'Instagram', tiktok:'TikTok', gvamax:'Gvamax (import)', chat:'Chat', referido:'Referido', tasacion:'Tasación', walkin:'Visita en persona', contacto:'Contacto', propiedad:'Propiedad', whatsapp:'WhatsApp', web:'Web' };
 var TIPO_CLIENTE_OPTS = ['propietario','comprador','inversor','inquilino'];
 var OPERATION_OPTS = ['compra','venta','alquiler'];
 

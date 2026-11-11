@@ -359,7 +359,11 @@ Deno.serve(async (req) => {
                     phone: phone ?? null,
                     whatsapp: phone ?? null,
                     notes,
-                    source: 'youtube_comment',
+                    /* Origen canónico 'youtube' (en las 4 listas del admin).
+                       Era 'youtube_comment' — en producción NUNCA hubo
+                       filas con ese valor (0, verificado por SQL), así
+                       que el cambio no rompe históricos. */
+                    source: 'youtube',
                     stage: 'nuevo',
                     property_id: propertyId,
                     consent_at: new Date().toISOString(),

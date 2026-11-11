@@ -209,7 +209,7 @@ function esc(s) {
        admin-crm.js y con el <select name="source"> de admin.html
        (guard: tests/lead-origins.spec.js). Si falta un valor, el alta
        falla con "Origen inválido". */
-    source: z.enum(['landing_page', 'newsletter', 'manual', 'landing', 'ml', 'rela_zonaprop', 'lavoz', 'chat', 'referido', 'tasacion', 'walkin', 'contacto', 'propiedad', 'whatsapp', 'web']).default('manual'),
+    source: z.enum(['landing_page', 'newsletter', 'manual', 'landing', 'ml', 'rela_zonaprop', 'lavoz', 'youtube', 'facebook', 'instagram', 'tiktok', 'gvamax', 'chat', 'referido', 'tasacion', 'walkin', 'contacto', 'propiedad', 'whatsapp', 'web']).default('manual'),
     stage: z.enum(['nuevo', 'contactado', 'calificado', 'visita_agendada', 'visita_realizada', 'negociacion', 'cerrado_ganado', 'cerrado_perdido']).default('nuevo'),
     property_id: z.string().uuid('ID de propiedad inválido').optional().nullable(),
     assigned_to: z.string().uuid('ID de broker inválido').optional().nullable(),
@@ -2672,7 +2672,7 @@ function esc(s) {
         </div>`;
 
       /* ── CONVERSIÓN POR FUENTE ── */
-      const SOURCE_LBL = { manual:'Manual', landing_page:'Landing web', landing:'Landing (legado)', newsletter:'Newsletter', ml:'Mercado Libre', rela_zonaprop:'ZonaProp (RELA)', lavoz:'Clasificados La Voz', chat:'Chat', referido:'Referido', tasacion:'Tasación', walkin:'Visita en persona', contacto:'Contacto', propiedad:'Propiedad', whatsapp:'WhatsApp', web:'Web' };
+      const SOURCE_LBL = { manual:'Manual', landing_page:'Landing web', landing:'Landing (legado)', newsletter:'Newsletter', ml:'Mercado Libre', rela_zonaprop:'ZonaProp (RELA)', lavoz:'Clasificados La Voz', youtube:'YouTube', facebook:'Facebook', instagram:'Instagram', tiktok:'TikTok', gvamax:'Gvamax (import)', chat:'Chat', referido:'Referido', tasacion:'Tasación', walkin:'Visita en persona', contacto:'Contacto', propiedad:'Propiedad', whatsapp:'WhatsApp', web:'Web' };
       const bySource = {};
       leads.forEach(l => {
         const src = l.source || 'otros';

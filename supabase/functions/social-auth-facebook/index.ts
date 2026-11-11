@@ -42,6 +42,11 @@ const FB_SCOPES = [
     'pages_show_list',
     'pages_manage_posts',
     'pages_read_engagement',
+    /* Webhook de comentarios (subscribed_apps field feed) — exige
+       pages_manage_metadata. Sin él, la action `subscribe` de
+       social-comments rechaza con error de permiso y los comentarios
+       solo llegan por sync manual. */
+    'pages_manage_metadata',
 ].join(',');
 
 /* ------- state firmado (patrón ml-oauth/social-auth-*) ------- */

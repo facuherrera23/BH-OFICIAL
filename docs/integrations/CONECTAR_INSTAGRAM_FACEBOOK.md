@@ -210,6 +210,7 @@ Repetir en **Instagram**: switcher → Instagram → misma mecánica (foto de la
 - [ ] **2 redirect URIs** pegadas exactas y guardadas
 - [ ] App ID + App Secret pasados **por canal seguro**
 - [ ] Piloto: 1 post con foto en Facebook ✓ + 1 en Instagram ✓
+- [ ] **Webhook de comentarios** verificado (object Page + object Instagram) y **Suscribir cuentas** en verde (sección 14)
 
 **Agente (conmigo):**
 - [ ] Credenciales cargadas en `app_settings` keys `social_instagram` Y `social_facebook`
@@ -217,6 +218,30 @@ Repetir en **Instagram**: switcher → Instagram → misma mecánica (foto de la
 - [ ] Páginas sobrantes desconectadas (si las hubo)
 - [ ] `audit_log` con `fb_publish` / `ig_publish` success
 - [ ] Registro del resultado en `AGENTS.md`
+
+---
+
+## 14. Webhook de comentarios (traer leads del CRM)
+
+Las publicaciones de Facebook e Instagram YA generan consultas: cuando alguien comenta un post, el comentario entra a la bandeja **Contenido → Consultas** y desde ahí se crea el lead (el mismo criterio que los comentarios de YouTube en el Studio). Una vez configurado, no requiere mantenimiento.
+
+**Dueño (una vez, ~10 minutos, con la app ya creada de la sección 5):**
+
+1. En el panel: **Contenido → Consultas** → caja "Webhook de comentarios". Copiá los DOS valores:
+   - **Callback URL**: `https://rnldqiwwzhjnurkguihu.supabase.co/functions/v1/social-webhook-meta`
+   - **Verify token**: lo genera el panel (botón de copiar al lado).
+2. En **developers.facebook.com → tu app → Webhooks**:
+   - Objeto **Page** → pegar Callback URL + Verify token → **Verify and save** (Meta verifica en el momento con un GET).
+   - Suscribir al campo **feed** (cubre los comentarios de la página).
+   - Objeto **Instagram** → la MISMA Callback URL + el MISMO token → **Verify and save** → suscribir al campo **comments**.
+3. Volver al panel y apretar **Suscribir cuentas**: suscribe cada página de Facebook (campo feed) y cada usuario IG (campo comments) con su token — Meta lo exige además de la app.
+
+**Qué hace el sistema:** el webhook (`social-webhook-meta`) recibe cada comentario **firmado** (X-Hub-Signature-256 con el App Secret) y lo deja en la tabla `social_comments`. El botón **Sincronizar** de la bandeja, además, trae los comentarios de los posts publicados directo del Graph API (cubre lo que el webhook no entregó — mismo criterio de red de seguridad que ML). Desde cada comentario: **Crear lead** (el lead nace con `consent_at`, dedup 60 días por email/teléfono si la persona lo escribió en el texto, y tarea de primer contacto) o **Descartar** (sin lead).
+
+**Notas:**
+- Con la app en modo **Development**, los comentarios reales solo se entregan para cuentas admin/tester de la app (en la práctica: la del dueño). Para el público general, pasar la app a **Live**.
+- El permiso `pages_manage_metadata` (agregado al login del panel el 2026-11-11) es el que permite suscribir la página. Si una cuenta fue conectada ANTES de esa fecha, reconectala desde Cuentas para que el token lo tenga.
+- **TikTok no participa de esta bandeja**: no expone comentarios por API (ver CONECTAR_TIKTOK.md §14).
 
 ---
 
