@@ -82,8 +82,8 @@ test.describe('Captación de leads desde redes — infraestructura', () => {
   test('social-comments: bandeja + crear lead con patrón comment_lead', () => {
     expect(server).toMatch(/requireAdmin/);
     expect(server).toMatch(/'social-comments'/);
-    // Las 6 acciones del contrato.
-    for (const action of ['list', 'webhook_info', 'subscribe', 'sync', 'create_lead', 'dismiss']) {
+    // Las 8 acciones del contrato (ronda 2: + reply + moderate).
+    for (const action of ['list', 'webhook_info', 'subscribe', 'sync', 'create_lead', 'reply', 'moderate', 'dismiss']) {
       expect(server).toMatch(new RegExp(`'${action}'`));
     }
     // El lead nace con consent_at (la persona pidió info públicamente).
@@ -137,5 +137,107 @@ test.describe('Captación de leads desde redes — infraestructura', () => {
     const yt = read('supabase/functions/social-youtube-comments/index.ts');
     expect(yt).toMatch(/source: 'youtube'/);
     expect(yt).not.toMatch(/source: 'youtube_comment'/);
+  });
+});
+
+test.describe('Ronda 2 — bandeja completa (responder/moderar/realtime/self-noise)', () => {
+  const fbServer = read('supabase/functions/social-facebook/index.ts');
+  const igServer = read('supabase/functions/social-instagram/index.ts');
+  const ttServer = read('supabase/functions/social-tiktok/index.ts');
+  const fbAuth = read('supabase/functions/social-auth-facebook/index.ts');
+  const igAuth = read('supabase/functions/social-auth-instagram/index.ts');
+
+  test('server: responder comentarios (FB /{id}/comments · IG /{id}/replies)', () => {
+    expect(server).toMatch(/async function replyComment/);
+    // FB: respuesta = comentario hijo; IG: endpoint de replies.
+    expect(server).toMatch(/\/comments\?access_token=/);
+    expect(server).toMatch(/\/replies\?access_token=/);
+    // El token sale de la cuenta de la fila (page token FB / user token IG).
+    expect(server).toMatch(/getSocialAccessToken\(supabase, row\.account_id\)/);
+    // Marca "respondido" en la fila (best-effort) + auditoría.
+    expect(server).toMatch(/replied_at/);
+    expect(server).toMatch(/fb_comment_reply/);
+    expect(server).toMatch(/ig_comment_reply/);
+  });
+
+  test('server: moderar (delete ambas redes · hide FB is_hidden / IG hide)', () => {
+    expect(server).toMatch(/async function moderateComment/);
+    // Solo ops conocidas (delete|hide|unhide) — nada libre.
+    expect(server).toMatch(/\['delete', 'hide', 'unhide'\]/);
+    expect(server).toMatch(/method = 'DELETE'/);
+    expect(server).toMatch(/is_hidden=/);   // FB
+    expect(server).toMatch(/hide=/);        // IG
+    // Tras delete la fila sale de la triage con la traza.
+    expect(server).toMatch(/moderated: 'deleted'/);
+    expect(server).toMatch(/fb_comment_moderate/);
+    expect(server).toMatch(/ig_comment_moderate/);
+  });
+
+  test('server: webhook_info expone el estado de las cuentas conectadas', () => {
+    expect(server).toMatch(/\.from\('social_accounts'\)/);
+    expect(server).toMatch(/accounts:/);
+  });
+
+  test('server: los replies PROPIOS se saltan en sync (self-noise)', () => {
+    expect(server).toMatch(/const isSelf = /);
+    expect(server).toMatch(/selfSkipped/);
+    expect(server).toMatch(/self_skipped: selfSkipped/);
+  });
+
+  test('webhook: los comentarios propios llegan como dismissed + metadata.self', () => {
+    expect(webhook).toMatch(/async function isSelfComment/);
+    // Insert con estado según self (la fila existe, fuera de los "nuevos").
+    expect(webhook).toMatch(/status: self \? 'dismissed' : 'new'/);
+    expect(webhook).toMatch(/metadata: self \? \{ \.\.\.c\.metadata, self: true \} : c\.metadata/);
+  });
+
+  test('webhook: errores de insert quedan en audit_log (sin rastro perdido)', () => {
+    expect(webhook).toMatch(/async function auditInsertError/);
+    expect(webhook).toMatch(/meta_webhook_error/);
+    expect(webhook).toMatch(/error_code/);
+    // El user_id queda NULL (escritura del server) — el audit se envuelve
+    // en try/catch para no tumbar la entrega de Meta.
+    expect(webhook).toMatch(/catch \(_\) \{ \/\* best-effort: no tumba la entrega \*\/ \}/);
+  });
+
+  test('scopes OAuth nuevos para responder/moderar (reconectar cuentas viejas)', () => {
+    expect(igAuth).toMatch(/instagram_manage_comments/);
+    expect(fbAuth).toMatch(/pages_manage_engagement/);
+  });
+
+  test('cleanup de huérfanos en social-temp (prefijo propio, 24h, máx 20)', () => {
+    for (const [name, src, prefix] of [['facebook', fbServer, 'fb_'], ['instagram', igServer, 'ig_'], ['tiktok', ttServer, 'tt_']]) {
+      expect(src, `cleanup en ${name}`).toMatch(/async function cleanupTempOrphans/);
+      expect(src, `llamada con prefijo en ${name}`).toMatch(new RegExp(`cleanupTempOrphans\\('${prefix}'\\)`));
+    }
+    // Ventana de 24h y tope por llamada (idéntico en los 3).
+    expect(fbServer).toMatch(/24 \* 3600 \* 1000/);
+    expect(fbServer).toMatch(/removed >= 20/);
+  });
+
+  test('cliente: responder/moderar/abrir lead + realtime + badge', () => {
+    // Acciones nuevas vía el server.
+    expect(client).toMatch(/call\('reply'/);
+    expect(client).toMatch(/call\('moderate'/);
+    // Moderación con el diálogo del panel (confirm() nativo prohibido).
+    expect(client).toMatch(/showConfirmDialog/);
+    expect(client).not.toMatch(/window\.confirm\(/);
+    // Abrir el lead creado vía la API del CRM.
+    expect(client).toMatch(/BH_CRM/);
+    expect(client).toMatch(/crm\.open\(leadId\)/);
+    // Realtime: canal propio con UN .on() por tabla (social_comments).
+    expect(client).toMatch(/\.channel\('bh-social-inbox'\)/);
+    expect(client).toMatch(/postgres_changes/);
+    expect(client).toMatch(/table: 'social_comments'/);
+    expect(client).toMatch(/channel\.subscribe\(\)/);
+    // Badge del sub-tab Consultas (status='new' head-count).
+    expect(client).toMatch(/yt-comments-badge/);
+    expect(client).toMatch(/data-sub="leads"/);
+    expect(client).toMatch(/count: 'exact', head: true/);
+    // Filtro por estado.
+    expect(client).toMatch(/socialInboxState/);
+    for (const st of ['"new"', '"lead"', '"dismissed"']) {
+      expect(client).toMatch(new RegExp(`<option value=${st}`));
+    }
   });
 });

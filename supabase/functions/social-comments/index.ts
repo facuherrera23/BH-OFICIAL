@@ -20,6 +20,13 @@
 //                  comentario — patrón social-youtube-comments:
 //                  admin-initiated, consent_at, dedup 60 días por
 //                  email/teléfono, timeline + SLA de primer contacto
+//   reply:         responde el comentario DESDE el Graph API
+//                  (FB: /{id}/comments · IG: /{id}/replies) — el token
+//                  sale del account_id de la fila (page token FB /
+//                  user token IG, getSocialAccessToken)
+//   moderate:      elimina (DELETE /{id}, ambas redes) u oculta/muestra
+//                  (POST /{id} is_hidden FB / hide IG). Tras delete la
+//                  fila pasa a dismissed + metadata.moderated
 //   dismiss:       marca el comentario como revisado (sin lead)
 //
 // Todas requireAdmin + verify_jwt ON + rate limit. El cliente NUNCA
@@ -154,6 +161,11 @@ async function webhookInfo() {
                 { onConflict: 'key' },
             );
     }
+    const { data: accounts } = await supabase
+        .from('social_accounts')
+        .select('platform, display_name, status')
+        .in('platform', ['facebook', 'instagram'])
+        .order('platform');
     const baseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     return {
         callback_url: `${baseUrl}/functions/v1/social-webhook-meta`,
@@ -161,6 +173,13 @@ async function webhookInfo() {
         /* La MISMA app de Meta configura el callback UNA vez y sirve las
            dos redes (Page → field feed; Instagram → field comments). */
         fields: { facebook: 'feed', instagram: 'comments' },
+        /* Estado de conexión por cuenta (chips en la caja del webhook del
+           panel: qué cuentas van a recibir comentarios por webhook). */
+        accounts: (accounts ?? []).map((a) => ({
+            platform: a.platform,
+            name: a.display_name,
+            status: a.status,
+        })),
     };
 }
 
@@ -203,9 +222,16 @@ async function syncComments(platform: string) {
     const since = new Date(Date.now() - SYNC_DAYS * 86400000).toISOString();
     let posts = 0;
     let fetched = 0;
+    let selfSkipped = 0;
     const errors: string[] = [];
 
     for (const acc of accounts) {
+        /* Nuestros PROPIOS comentarios/replies (from.id == external_id de
+           la cuenta) son ruido para la triage: se saltan acá y el webhook
+           los inserta como dismissed + metadata.self — la bandeja queda
+           solo con gente externa. */
+        const isSelf = (fromId: unknown): boolean =>
+            !!fromId && String(fromId) === String(acc.external_id);
         let token: string;
         try {
             token = await getSocialAccessToken(supabase, acc.id);
@@ -234,6 +260,10 @@ async function syncComments(platform: string) {
 
                 const rows = (comments as any[]).flatMap((c) => {
                     const isFb = platform === 'facebook';
+                    if (isSelf(c.from?.id)) {
+                        selfSkipped++;
+                        return [];
+                    }
                     const externalId = clip(isFb ? c.id : c.id, 80);
                     if (!externalId) return [];
                     const base = {
@@ -253,7 +283,15 @@ async function syncComments(platform: string) {
                         metadata: { source: 'sync', from_id: clip(c.from?.id, 60) },
                     };
                     const replies = !isFb && Array.isArray(c.replies) ? c.replies : [];
-                    const replyRows = replies.map((r: any) => ({
+                    const replyRows = replies
+                        .filter((r: any) => {
+                            if (isSelf(r.from?.id)) {
+                                selfSkipped++;
+                                return false;
+                            }
+                            return true;
+                        })
+                        .map((r: any) => ({
                         ...base,
                         external_id: clip(r.id, 80),
                         body: clip(r.text, 3000) || null,
@@ -278,7 +316,7 @@ async function syncComments(platform: string) {
             }
         }
     }
-    return { accounts: accounts.length, posts, fetched, errors: errors.slice(0, 5) };
+    return { accounts: accounts.length, posts, fetched, self_skipped: selfSkipped, errors: errors.slice(0, 5) };
 }
 
 /** FB unix-seconds / IG ISO string → ISO. */
@@ -295,6 +333,142 @@ function toIso(t: unknown): string | null {
         return isNaN(d.getTime()) ? null : d.toISOString();
     }
     return null;
+}
+
+/* ------------------------------------------------------------
+   Responder un comentario (desde la bandeja del panel)
+   ------------------------------------------------------------ */
+
+interface CommentStub {
+    id: string;
+    platform: string;
+    account_id: string | null;
+    external_id: string;
+    metadata: Record<string, unknown>;
+}
+
+async function loadCommentStub(commentId: string): Promise<CommentStub | null> {
+    const { data } = await supabase
+        .from('social_comments')
+        .select('id, platform, account_id, external_id, metadata')
+        .eq('id', commentId)
+        .maybeSingle();
+    return (data as CommentStub | null) ?? null;
+}
+
+async function replyComment(body: { comment_id?: string; message?: string }, adminId: string) {
+    const commentId = clip(String(body.comment_id ?? ''), 80);
+    const message = clip(String(body.message ?? ''), 2200);
+    if (!commentId || !message) return { error: 'Faltan datos', status: 400 };
+
+    const row = await loadCommentStub(commentId);
+    if (!row) return { error: 'Comentario no encontrado', status: 404 };
+    if (!row.account_id) return { error: 'El comentario no tiene cuenta conectada', status: 400 };
+
+    let token: string;
+    try {
+        token = await getSocialAccessToken(supabase, row.account_id);
+    } catch (err) {
+        return { error: (err as Error).message || 'Token no disponible', status: 400 };
+    }
+
+    /* FB: responder = comentario hijo (/{id}/comments).
+       IG: el endpoint de respuestas es /{id}/replies. */
+    const url = row.platform === 'facebook'
+        ? `${GRAPH_API}/${row.external_id}/comments?access_token=${encodeURIComponent(token)}`
+        : `${GRAPH_API}/${row.external_id}/replies?access_token=${encodeURIComponent(token)}`;
+    await graphFetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message }),
+    });
+
+    /* Marca "respondido" en la fila para que la bandeja muestre el
+       estado (best-effort). El reply en sí NO entra a la bandeja: es
+       ruido propio (webhook/sync lo marcan self). */
+    await supabase
+        .from('social_comments')
+        .update({
+            updated_at: new Date().toISOString(),
+            metadata: { ...(row.metadata ?? {}), replied_at: new Date().toISOString() },
+        })
+        .eq('id', row.id);
+
+    await supabase.from('audit_log').insert({
+        user_id: adminId,
+        action: row.platform === 'facebook' ? 'fb_comment_reply' : 'ig_comment_reply',
+        module: 'contenido',
+        table_name: 'social_comments',
+        record_id: row.id,
+        status: 'success',
+        metadata: { external_id: row.external_id },
+    });
+
+    return { ok: true };
+}
+
+/* ------------------------------------------------------------
+   Moderar: eliminar / ocultar / mostrar
+   ------------------------------------------------------------ */
+
+async function moderateComment(body: { comment_id?: string; op?: string }, adminId: string) {
+    const commentId = clip(String(body.comment_id ?? ''), 80);
+    const op = String(body.op ?? '');
+    if (!commentId || !['delete', 'hide', 'unhide'].includes(op)) {
+        return { error: 'Faltan datos', status: 400 };
+    }
+
+    const row = await loadCommentStub(commentId);
+    if (!row) return { error: 'Comentario no encontrado', status: 404 };
+    if (!row.account_id) return { error: 'El comentario no tiene cuenta conectada', status: 400 };
+
+    let token: string;
+    try {
+        token = await getSocialAccessToken(supabase, row.account_id);
+    } catch (err) {
+        return { error: (err as Error).message || 'Token no disponible', status: 400 };
+    }
+
+    /* delete → DELETE /{comment-id} (ambas redes). Ocultar/mostrar:
+       FB usa POST /{comment-id}?is_hidden, IG POST /{comment-id}?hide. */
+    let url: string;
+    let method = 'POST';
+    if (op === 'delete') {
+        method = 'DELETE';
+        url = `${GRAPH_API}/${row.external_id}?access_token=${encodeURIComponent(token)}`;
+    } else if (row.platform === 'facebook') {
+        const v = op === 'hide' ? 'true' : 'false';
+        url = `${GRAPH_API}/${row.external_id}?is_hidden=${v}&access_token=${encodeURIComponent(token)}`;
+    } else {
+        const v = op === 'hide' ? 'true' : 'false';
+        url = `${GRAPH_API}/${row.external_id}?hide=${v}&access_token=${encodeURIComponent(token)}`;
+    }
+    await graphFetch(url, { method });
+
+    if (op === 'delete') {
+        /* El comentario ya no existe en la red → sale de la triage
+           (dismissed) con la traza de la moderación. */
+        await supabase
+            .from('social_comments')
+            .update({
+                status: 'dismissed',
+                updated_at: new Date().toISOString(),
+                metadata: { ...(row.metadata ?? {}), moderated: 'deleted', moderated_at: new Date().toISOString() },
+            })
+            .eq('id', row.id);
+    }
+
+    await supabase.from('audit_log').insert({
+        user_id: adminId,
+        action: row.platform === 'facebook' ? 'fb_comment_moderate' : 'ig_comment_moderate',
+        module: 'contenido',
+        table_name: 'social_comments',
+        record_id: row.id,
+        status: 'success',
+        metadata: { external_id: row.external_id, op },
+    });
+
+    return { ok: true };
 }
 
 /* ------------------------------------------------------------
@@ -473,6 +647,14 @@ Deno.serve(async (req) => {
                 return respond(200, await syncComments(String(body.platform ?? '')));
             case 'create_lead': {
                 const res = await createLead(body, adminId);
+                return respond(res.error ? (res.status ?? 400) : 200, res);
+            }
+            case 'reply': {
+                const res = await replyComment(body, adminId);
+                return respond(res.error ? (res.status ?? 400) : 200, res);
+            }
+            case 'moderate': {
+                const res = await moderateComment(body, adminId);
                 return respond(res.error ? (res.status ?? 400) : 200, res);
             }
             case 'dismiss': {

@@ -88,6 +88,31 @@
 
 ## 5. Verificación
 
-- Suite completa: **529 passed / 3 skipped** (agregados: `tests/contenido-social-leads.spec.js` 7 guards nuevos + orígenes actualizados en `tests/lead-origins.spec.js` + conteos de sub-tabs en `tests/contenido-ui.spec.js`).
-- `deno check` verde en las 4 funciones tocadas (`social-comments`, `social-webhook-meta`, `social-youtube-comments`, `social-auth-facebook`).
-- `npm run bump` aplicado (admin.html: admin-crm v104, admin-app v632, admin-contenido v24 + `social-inbox.js` v1).
+- Suite completa: **549 passed / 3 skipped** (ronda 1: 529; ronda 2 sumó los 9 guards nuevos de `tests/contenido-social-leads.spec.js` + el spec behavioral `tests/contenido-consultas.spec.js` — 9 tests con harness que corren el módulo real).
+- `deno check` verde en las 7 funciones tocadas (`social-comments`, `social-webhook-meta`, `social-facebook`, `social-instagram`, `social-tiktok`, `social-auth-facebook`, `social-auth-instagram`).
+- `npm run bump` aplicado (admin.html: admin-crm v104, admin-app v632, admin-contenido v24 + `social-inbox.js` v3).
+
+---
+
+## Addendum — Ronda 2 de la bandeja Consultas (2026-11-11, mismo día)
+
+Paridad completa con la bandeja de YouTube. Nada de esto rompe producción: el webhook sigue dormido hasta que el dueño configure la app de Meta.
+
+**Nuevas acciones del server (`social-comments`):**
+- `reply` — responde el comentario desde el Graph API: FB `POST /{id}/comments`, IG `POST /{id}/replies`. El token sale del `account_id` de la fila vía `getSocialAccessToken` (page token FB / user token IG). Marca `metadata.replied_at` (chip "Respondido" en la fila) + audit `fb_comment_reply` / `ig_comment_reply`.
+- `moderate` — `delete` = `DELETE /{id}` (ambas redes) → la fila pasa a `dismissed` + `metadata.moderated='deleted'`; `hide`/`unhide` = `POST /{id}?is_hidden=` (FB) / `?hide=` (IG). Audit `fb_comment_moderate` / `ig_comment_moderate`.
+- `webhook_info` devuelve ahora `accounts[]` de `social_accounts` → chips de conexión en la caja del webhook del panel.
+
+**Cliente (`social-inbox.js` v3):** filtro por estado (nuevos / con lead / descartados) combinado con el de plataforma, replybox inline, moderación con `window.__BH.showConfirmDialog` (confirm() nativo prohibido), botón **Abrir lead** en filas con `lead_id` → `window.BH_CRM.open()`, realtime y badge (abajo). Toasts vía `window.__BH.showToast` (no es global).
+
+**Self-noise:** los replies PROPIOS (hechos con la cuenta que publicó) no ensucian la triage — `sync` los salta (`from.id == external_id` de la cuenta, contador `self_skipped` visible en el toast) y el webhook los inserta como `status='dismissed'` + `metadata.self=true` (`isSelfComment` consulta `social_accounts` del post). `social_comments.status` es TEXT sin CHECK (default `'new'`) → el insert explícito del webhook es seguro.
+
+**Observabilidad del webhook:** errores de insert ≠ duplicado quedan en `audit_log` (`action='meta_webhook_error'`, `error_code`, `user_id` NULL válido — verificado por SQL; envuelto en try/catch para no tumbar la entrega de Meta). Sin esto, un fallo de PostgREST invisibilizaba comentarios sin rastro (clase de bug de ml-webhook pre-`logRejectedPayload`).
+
+**Realtime + badge:** canal PROPIO `bh-social-inbox` en `social-inbox.js` (verificado: `social_comments` NO está en `setupCoreRealtime` de admin-app.js — sus 13 tablas son de CRM). UN `.on()` con `event:'INSERT'` → refresca la bandeja si está visible + badge con head-count `status='new'` en el botón del sub-tab (sin count → oculto; el badge solo existe cuando `#contenidoSubTabs` está montado).
+
+**Scopes OAuth nuevos:** `pages_manage_engagement` (FB) + `instagram_manage_comments` (IG). Las cuentas conectadas ANTES hay que reconectarlas para estas acciones; los flujos de publicación siguen con la conexión vieja (el gate es por acción).
+
+**Higiene `social-temp`:** los 3 servers de publicación (fb_/ig_/tt_) limpian huérfanos propios >24h en cada `upload_temp` (máx 20, best-effort, prefijo propio para no pisar flujos en vuelo) — si el browser muere entre upload y cleanup el archivo quedaba eterno en el bucket puente.
+
+**Guards:** `tests/contenido-social-leads.spec.js` extendido (16 estáticos) + `tests/contenido-consultas.spec.js` (9 behavioral: filtros, crear lead + `BH_CRM.open`, reply, moderación confirmada/cancelada, badge, realtime simulando INSERT, sync con self_skipped).

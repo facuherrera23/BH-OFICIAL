@@ -39,6 +39,9 @@ const GRAPH_API = 'https://graph.facebook.com/v21.0';
 const IG_SCOPES = [
     'instagram_basic',
     'instagram_content_publish',
+    /* Responder/ocultar comentarios desde la bandeja Consultas. Las
+       cuentas conectadas ANTES hay que reconectarlas para traerlo. */
+    'instagram_manage_comments',
     'pages_show_list',
 ].join(',');
 

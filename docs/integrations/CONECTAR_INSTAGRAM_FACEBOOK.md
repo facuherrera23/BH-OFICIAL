@@ -91,8 +91,10 @@ La app necesita que estos permisos estén disponibles; el código los pide solo,
 
 | Red | Permisos que pide el panel |
 |---|---|
-| Instagram | `instagram_basic`, `instagram_content_publish`, `pages_show_list` |
-| Facebook | `pages_show_list`, `pages_manage_posts`, `pages_read_engagement` |
+| Instagram | `instagram_basic`, `instagram_content_publish`, `instagram_manage_comments`, `pages_show_list` |
+| Facebook | `pages_show_list`, `pages_manage_posts`, `pages_read_engagement`, `pages_manage_metadata`, `pages_manage_engagement` |
+
+Los 2 últimos habilitan la bandeja **Consultas**: `pages_manage_metadata` suscribe la página al webhook de comentarios (field `feed`) y `pages_manage_engagement` permite ocultar/eliminar comentarios desde el panel; `instagram_manage_comments` hace lo propio en Instagram (responder + eliminar). Los permisos de publicación siguen siendo los mismos de antes.
 
 ✅ **No hace falta App Review**: mientras la app quede en **modo Desarrollo** (default al crear) y **solo el dueño** conecte sus cuentas, Facebook no exige revisión ni verificación de negocio. La review se necesita si en el futuro la app pasa a "Live" o conectan usuarios que no son admins de la app — no es nuestro caso hoy.
 
@@ -236,11 +238,12 @@ Las publicaciones de Facebook e Instagram YA generan consultas: cuando alguien c
    - Objeto **Instagram** → la MISMA Callback URL + el MISMO token → **Verify and save** → suscribir al campo **comments**.
 3. Volver al panel y apretar **Suscribir cuentas**: suscribe cada página de Facebook (campo feed) y cada usuario IG (campo comments) con su token — Meta lo exige además de la app.
 
-**Qué hace el sistema:** el webhook (`social-webhook-meta`) recibe cada comentario **firmado** (X-Hub-Signature-256 con el App Secret) y lo deja en la tabla `social_comments`. El botón **Sincronizar** de la bandeja, además, trae los comentarios de los posts publicados directo del Graph API (cubre lo que el webhook no entregó — mismo criterio de red de seguridad que ML). Desde cada comentario: **Crear lead** (el lead nace con `consent_at`, dedup 60 días por email/teléfono si la persona lo escribió en el texto, y tarea de primer contacto) o **Descartar** (sin lead).
+**Qué hace el sistema:** el webhook (`social-webhook-meta`) recibe cada comentario **firmado** (X-Hub-Signature-256 con el App Secret) y lo deja en la tabla `social_comments`. El botón **Sincronizar** de la bandeja, además, trae los comentarios de los posts publicados directo del Graph API (cubre lo que el webhook no entregó — mismo criterio de red de seguridad que ML). Desde cada comentario: **Crear lead** (el lead nace con `consent_at`, dedup 60 días por email/teléfono si la persona lo escribió en el texto, y tarea de primer contacto), **Responder** (el reply se publica en la red con la cuenta conectada), **Ocultar/Eliminar** (moderación real desde el panel) o **Descartar** (sin lead). Los comentarios que uno deja como respuesta propia no ensucian la bandeja (quedan marcados como "respuesta propia").
 
 **Notas:**
 - Con la app en modo **Development**, los comentarios reales solo se entregan para cuentas admin/tester de la app (en la práctica: la del dueño). Para el público general, pasar la app a **Live**.
 - El permiso `pages_manage_metadata` (agregado al login del panel el 2026-11-11) es el que permite suscribir la página. Si una cuenta fue conectada ANTES de esa fecha, reconectala desde Cuentas para que el token lo tenga.
+- Con las conexiones hechas ese mismo día también llegan `pages_manage_engagement` (Facebook) e `instagram_manage_comments` (Instagram) — responder, ocultar y eliminar comentarios desde la bandeja. **Todas las cuentas conectadas antes de esa fecha hay que reconectarlas**: sin el scope, el botón "Suscribir cuentas" y las acciones de moderar fallan con error de permiso (los flujos de publicación siguen funcionando con la conexión vieja, el gate es por acción).
 - **TikTok no participa de esta bandeja**: no expone comentarios por API (ver CONECTAR_TIKTOK.md §14).
 
 ---

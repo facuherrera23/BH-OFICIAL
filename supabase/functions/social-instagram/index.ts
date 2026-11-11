@@ -47,6 +47,34 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
    (pico ~160 MB) y coincide con el tope por archivo del bucket Storage free. */
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
+/* ------- Cleanup de huérfanos en social-temp -------
+   Si el browser muere entre upload_temp y cleanup_temp, el archivo
+   queda huérfano para siempre (el contenido vive en la red destino —
+   el bucket es SOLO puente). En cada subida limpiamos los PROPIOS con
+   más de 24h: prefijo propio del server (fb_/ig_/tt_) para no pisar
+   archivos de los otros flujos en vuelo. Máx 20 por llamada,
+   best-effort: jamás rompe la subida que lo disparó. */
+async function cleanupTempOrphans(prefix: string): Promise<void> {
+    try {
+        const { data: files, error } = await supabase.storage
+            .from(TEMP_BUCKET)
+            .list('', { limit: 100, sortBy: { column: 'created_at', order: 'asc' } });
+        if (error || !Array.isArray(files)) return;
+        const cutoff = Date.now() - 24 * 3600 * 1000;
+        let removed = 0;
+        for (const f of files) {
+            if (removed >= 20) break;
+            if (!String(f.name ?? '').startsWith(prefix)) continue;
+            const t = Date.parse(String((f as { created_at?: string }).created_at ?? ''));
+            if (!isFinite(t)) continue;
+            if (t > cutoff) break; // orden asc: todo lo que sigue es más nuevo
+            const { error: delErr } = await supabase.storage.from(TEMP_BUCKET).remove([f.name]);
+            if (!delErr) removed++;
+        }
+        if (removed) console.log(`[contenido] cleanup social-temp (${prefix}): ${removed} eliminados`);
+    } catch (_) { /* best-effort */ }
+}
+
 interface IgAccount {
     id: string;
     platform: string;
@@ -174,6 +202,7 @@ Deno.serve(async (req) => {
             if (!isVideo && sizeBytes > MAX_IMAGE_BYTES) return respond(400, { error: 'La imagen supera 8 MB' });
 
             await ensureTempBucket();
+            await cleanupTempOrphans('ig_');
             const bin = atob(raw.includes(',') ? raw.split(',')[1] : raw);
             const buf = new Uint8Array(bin.length);
             for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);

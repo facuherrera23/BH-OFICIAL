@@ -47,6 +47,9 @@ const FB_SCOPES = [
        social-comments rechaza con error de permiso y los comentarios
        solo llegan por sync manual. */
     'pages_manage_metadata',
+    /* Ocultar/mostrar y eliminar comentarios desde la bandeja
+       Consultas. Las cuentas conectadas ANTES hay que reconectarlas. */
+    'pages_manage_engagement',
 ].join(',');
 
 /* ------- state firmado (patrón ml-oauth/social-auth-*) ------- */

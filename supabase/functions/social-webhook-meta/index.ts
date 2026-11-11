@@ -235,6 +235,43 @@ async function findPost(platform: string, externalPostId: string): Promise<PostM
     return null;
 }
 
+/** ¿Es un comentario PROPIO (hecho desde la cuenta/page que publicó)?
+    Los replies que dejamos nosotros vuelven por el webhook igual que
+    cualquier comentario — si entraran a la triage ensuciarían la
+    bandeja. Se insertan igual (queda la traza del diálogo) pero como
+    dismissed + metadata.self, fuera de los "nuevos". */
+async function isSelfComment(accountId: string | null, fromId: string): Promise<boolean> {
+    if (!accountId || !fromId) return false;
+    const { data } = await supabase
+        .from('social_accounts')
+        .select('external_id')
+        .eq('id', accountId)
+        .limit(1)
+        .maybeSingle();
+    return !!data && String((data as { external_id?: string }).external_id ?? '') === String(fromId);
+}
+
+/** Error de insert ≠ duplicado → traza en audit_log (user_id NULL es
+    válido: la escritura es del server, no de un usuario). Sin esto un
+    fallo de PostgREST invisibiliza comentarios sin rastro (la clase de
+    bug de ml-webhook pre-logRejectedPayload). */
+async function auditInsertError(platform: string, externalId: string, error: { code?: string; message?: string }) {
+    try {
+        await supabase.from('audit_log').insert({
+            action: 'meta_webhook_error',
+            module: 'contenido',
+            table_name: 'social_comments',
+            status: 'error',
+            error_code: clip(error.code ?? '', 40),
+            metadata: {
+                platform,
+                external_id: externalId,
+                message: clip(error.message ?? '', 300),
+            },
+        });
+    } catch (_) { /* best-effort: no tumba la entrega */ }
+}
+
 /* ------------------------------------------------------------
    Handler
    ------------------------------------------------------------ */
@@ -315,9 +352,12 @@ Deno.serve(async (req) => {
 
     const comments = collectComments(payload);
     let inserted = 0;
+    let selfRows = 0;
     for (const c of comments) {
         try {
             const post = await findPost(c.platform, c.externalPostId);
+            const fromId = String(c.metadata.from_id ?? '');
+            const self = await isSelfComment(post?.account_id ?? null, fromId);
             const { error } = await supabase.from('social_comments').upsert(
                 {
                     platform: c.platform,
@@ -331,22 +371,25 @@ Deno.serve(async (req) => {
                     body: c.body || null,
                     parent_external_id: c.parentExternalId,
                     commented_at: c.commentedAt ?? new Date().toISOString(),
-                    metadata: c.metadata,
+                    status: self ? 'dismissed' : 'new',
+                    metadata: self ? { ...c.metadata, self: true } : c.metadata,
                 },
                 { onConflict: 'external_id', ignoreDuplicates: true },
             );
             /* 23505 (duplicado reclamado por ignoreDuplicates) NO es error:
-               el comentario ya está. Un error real se loguea y sigue — la
+               el comentario ya está. Un error real se audita y sigue — la
                entrega no se tumba por un comentario fallado. */
             if (error && error.code !== '23505') {
                 console.error('[social-webhook-meta] insert error:', error);
+                await auditInsertError(c.platform, c.externalId, error as { code?: string; message?: string });
             } else if (!error) {
-                inserted++;
+                if (self) selfRows++;
+                else inserted++;
             }
         } catch (err) {
             console.error('[social-webhook-meta] procesando comentario:', err);
         }
     }
 
-    return jsonResponse(200, { ok: true, received: comments.length, inserted }, req);
+    return jsonResponse(200, { ok: true, received: comments.length, inserted, self: selfRows }, req);
 });

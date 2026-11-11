@@ -83,10 +83,13 @@ const HARNESS = `<!doctype html>
       window.__ROWS = {
         social_accounts: [{ id: 'acc-1', platform: 'youtube', display_name: 'Bienenhaus Propiedades', avatar_url: '', status: 'active', last_publish_at: null, scope: 'https://www.googleapis.com/auth/youtube.force-ssl' }],
         social_posts: [],
+        social_comments: [],
         audit_log: [],
         properties: [{ id: 'prop-1', property_code: 'ML-0001', title: 'Casa en Nueva Córdoba', property_type: 'casa', status: 'venta', zone: 'Nueva Córdoba', address: 'Av. Siempreviva 123', surface_total: 120, rooms: 3, bedrooms: 2, bathrooms: 1, is_published: true }],
         app_settings: { value: [] },
       };
+      /* Counts para queries head (ej: badge de la bandeja Consultas). */
+      window.__COUNTS = {};
       window.__INSERTS = [];
       window.__INSERT_SEQ = 0;
       /* Overrides para queries .maybeSingle() puntuales (ej: image_urls de una
@@ -98,7 +101,11 @@ const HARNESS = `<!doctype html>
         },
         from: function (table) {
           var obj = {
-            select: function () { return obj; },
+            __count: undefined,
+            select: function (_cols, opts) {
+              if (opts && typeof (window.__COUNTS || {})[table] === 'number') obj.__count = window.__COUNTS[table];
+              return obj;
+            },
             order: function () { return obj; },
             limit: function () { return obj; },
             eq: function () { return obj; },
@@ -126,14 +133,43 @@ const HARNESS = `<!doctype html>
               }
               return Promise.resolve({ data: window.__ROWS[table], error: null });
             },
-            then: function (resolve) { return resolve({ data: window.__ROWS[table], error: null }); },
+            then: function (resolve, reject) {
+              /* Promise REAL (y no devolución cruda) para que los callers
+                 puedan encadenar .catch (ej: updateBadge del inbox). */
+              var result = { data: window.__ROWS[table], error: null, count: obj.__count };
+              return Promise.resolve(result).then(resolve, reject);
+            },
           };
           return obj;
         },
+        /* Realtime fake (solo lo usa social-inbox.js): graba los .on() para
+           que el spec asserte la suscripción a social_comments y pueda
+           disparar el handler simulando un INSERT de la DB. */
+        channel: function (name) {
+          var ch = {
+            __name: name,
+            on: function (_type, filter, cb) {
+              window.__REALTIME_ON = window.__REALTIME_ON || [];
+              window.__REALTIME_ON.push({ channel: name, table: filter && filter.table, event: filter && filter.event });
+              window.__REALTIME_HANDLERS = window.__REALTIME_HANDLERS || [];
+              window.__REALTIME_HANDLERS.push({ table: filter && filter.table, cb: cb });
+              return ch;
+            },
+            subscribe: function () { return ch; },
+            send: function () { return Promise.resolve('ok'); },
+            unsubscribe: function () { return Promise.resolve('ok'); },
+          };
+          return ch;
+        },
       };
+      /* El cliente ANON global (window.supabaseClient) en producción es un
+         cliente completo: el fake le agrega .from/.channel para los módulos
+         que lo leen directo (badge + realtime del inbox de Consultas). */
+      window.supabaseClient.from = window.__FAKE_CLIENT.from;
+      window.supabaseClient.channel = window.__FAKE_CLIENT.channel;
     })();
   </script>
-</body></html>`;
+</body></html`;
 
 /* Video de ejemplo del canal (inventario del Studio). */
 const VIDEO = {
@@ -453,6 +489,7 @@ async function boot(page, opts = {}) {
   await page.addScriptTag({ url: '/assets/js/yt-ops.js' });
   await page.addScriptTag({ url: '/assets/js/yt-integrations.js' });
   await page.addScriptTag({ url: '/assets/js/yt-seo-score.js' });
+  await page.addScriptTag({ url: '/assets/js/social-inbox.js' });
   await page.addScriptTag({ url: '/assets/js/admin-contenido.js' });
 
   if (opts.accounts) {
