@@ -87,7 +87,15 @@ const HARNESS = `<!doctype html>
         properties: [{ id: 'prop-1', property_code: 'ML-0001', title: 'Casa en Nueva Córdoba', property_type: 'casa', status: 'venta', zone: 'Nueva Córdoba', address: 'Av. Siempreviva 123', surface_total: 120, rooms: 3, bedrooms: 2, bathrooms: 1, is_published: true }],
         app_settings: { value: [] },
       };
+      window.__INSERTS = [];
+      window.__INSERT_SEQ = 0;
+      /* Overrides para queries .maybeSingle() puntuales (ej: image_urls de una
+         propiedad en el picker de Instagram). */
+      window.__MAYBE_SINGLE_OVERRIDES = {};
       window.__FAKE_CLIENT = {
+        auth: {
+          getUser: async function () { return { data: { user: { id: 'user-test-1' } }, error: null }; },
+        },
         from: function (table) {
           var obj = {
             select: function () { return obj; },
@@ -98,11 +106,26 @@ const HARNESS = `<!doctype html>
             lt: function () { return obj; },
             is: function () { return obj; },
             update: function () { return obj; },
-            insert: function () { return obj; },
+            insert: function (row) {
+              obj.__fromInsert = true;
+              obj.__lastInsert = row || {};
+              window.__INSERTS.push({ table: table, row: row });
+              return obj;
+            },
             upsert: function () { return obj; },
             delete: function () { return obj; },
-            maybeSingle: function () { return Promise.resolve({ data: window.__ROWS[table], error: null }); },
-            single: function () { return Promise.resolve({ data: window.__ROWS[table], error: null }); },
+            maybeSingle: function () {
+              if (window.__MAYBE_SINGLE_OVERRIDES[table]) return Promise.resolve({ data: window.__MAYBE_SINGLE_OVERRIDES[table], error: null });
+              return Promise.resolve({ data: window.__ROWS[table], error: null });
+            },
+            single: function () {
+              if (obj.__fromInsert) {
+                obj.__fromInsert = false;
+                var fresh = Object.assign({ id: 'post-new-' + (++window.__INSERT_SEQ) }, obj.__lastInsert);
+                return Promise.resolve({ data: fresh, error: null });
+              }
+              return Promise.resolve({ data: window.__ROWS[table], error: null });
+            },
             then: function (resolve) { return resolve({ data: window.__ROWS[table], error: null }); },
           };
           return obj;
@@ -156,7 +179,8 @@ async function boot(page, opts = {}) {
   /* Contadores de llamadas a la Edge Function (para assertar refrescos). */
   const calls = { channel: 0, videos: 0, analytics: 0, init: 0, complete: 0, fail: 0, dry_run: 0, video_categories: 0, audit_log: 0,
     comments_list: 0, comments_inbox: 0, comment_reply: 0, comment_heart: 0, comment_moderate: 0, comment_lead: 0,
-    analytics_report: 0, settings_get: 0, settings_set: 0, videos_sync_public: 0 };
+    analytics_report: 0, settings_get: 0, settings_set: 0, videos_sync_public: 0,
+    upload_temp: 0, create: 0, status: 0, publish: 0, media_info: 0, cleanup_temp: 0, 'delete': 0 };
   /* Copia de app_settings en el server fake (settings_set escribe acá). */
   const settingsStore = Object.assign({}, opts.settings || {});
   /* Peticiones capturadas (para assertar el body que viaja al server). */
@@ -187,7 +211,12 @@ async function boot(page, opts = {}) {
         truncated: !!opts.truncated,
       };
     } else if (action === 'platforms_config') {
-      payload = { platforms: [{ platform: 'youtube', configured: true }, { platform: 'instagram', configured: false }] };
+      payload = { platforms: opts.platformsConfig || [
+        { platform: 'youtube', configured: true },
+        { platform: 'instagram', configured: false },
+        { platform: 'facebook', configured: false },
+        { platform: 'tiktok', configured: false },
+      ] };
     } else if (action === 'playlists') {
       payload = { playlists: [] };
     } else if (action === 'analytics') {
@@ -265,7 +294,68 @@ async function boot(page, opts = {}) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, url: 'https://youtube.com/watch?v=x' }) });
   });
 
-  /* Endpoint de comentarios (listar/responder/moderar/lead). */
+  /* Endpoint de Instagram (upload_temp/create/status/publish/media_info/
+     delete/cleanup_temp). Estados configurables vía opts.ig*. */
+  await page.route('**/functions/v1/social-instagram', async (route) => {
+    const body = route.request().postDataJSON() || {};
+    requests.push({ fn: 'instagram', body: body });
+    if (calls[body.action] !== undefined) calls[body.action]++;
+    if (opts.igFailAction && body.action === opts.igFailAction) {
+      return route.fulfill({
+        status: opts.igFailStatus || 400,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: opts.igFailError || 'Instagram rechazó la media' }),
+      });
+    }
+    let payload = {};
+    if (body.action === 'upload_temp') {
+      payload = { url: 'https://rnldqiwwzhjnurkguihu.supabase.co/storage/v1/object/public/social-temp/ig_1_test.jpg', temp_path: 'ig_1_test.jpg' };
+    } else if (body.action === 'create') {
+      payload = { creation_id: 'cont-1' };
+    } else if (body.action === 'status') {
+      /* opts.igStatusCode permite simular ERROR / procesamiento eterno */
+      payload = { status_code: opts.igStatusCode || 'FINISHED', error: opts.igStatusError || null };
+    } else if (body.action === 'publish') {
+      payload = { media_id: 'ig-media-1' };
+    } else if (body.action === 'media_info') {
+      payload = { media_info: { permalink: 'https://www.instagram.com/p/test123/', media_type: 'IMAGE' } };
+    } else {
+      payload = { ok: true };
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
+  });
+
+  /* Endpoint de Facebook (upload_temp/create/status/media_info/delete/
+     cleanup_temp). La foto es sincrónica: create devuelve media_id directo;
+     el video devuelve video_id y se poll-ea con status. Estados
+     configurables vía opts.fb*. */
+  await page.route('**/functions/v1/social-facebook', async (route) => {
+    const body = route.request().postDataJSON() || {};
+    requests.push({ fn: 'facebook', body: body });
+    if (calls[body.action] !== undefined) calls[body.action]++;
+    if (opts.fbFailAction && body.action === opts.fbFailAction) {
+      return route.fulfill({
+        status: opts.fbFailStatus || 400,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: opts.fbFailError || 'Facebook rechazó la media' }),
+      });
+    }
+    let payload = {};
+    if (body.action === 'upload_temp') {
+      payload = { url: 'https://rnldqiwwzhjnurkguihu.supabase.co/storage/v1/object/public/social-temp/fb_1_test.jpg', temp_path: 'fb_1_test.jpg' };
+    } else if (body.action === 'create') {
+      if (body.media_type === 'video') payload = { video_id: 'fb-video-1' };
+      else payload = { media_id: 'fb-post-1', done: true };
+    } else if (body.action === 'status') {
+      /* opts.fbStatusCode permite simular ERROR / procesamiento eterno */
+      payload = { status_code: opts.fbStatusCode || 'FINISHED', error: opts.fbStatusError || null };
+    } else if (body.action === 'media_info') {
+      payload = { media_info: { permalink_url: 'https://www.facebook.com/bienenhaus/posts/123', message: 'post' } };
+    } else {
+      payload = { ok: true };
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
+  });
   await page.route('**/functions/v1/social-youtube-comments', async (route) => {
     const body = route.request().postDataJSON() || {};
     requests.push({ fn: 'comments', body: body });
@@ -340,6 +430,11 @@ async function boot(page, opts = {}) {
   }
   if (opts.properties) {
     await page.evaluate((rows) => { window.__ROWS.properties = rows; }, opts.properties);
+  }
+  /* Overrides puntuales para queries .maybeSingle() (ej: image_urls de la
+     propiedad en el picker de Instagram). */
+  if (opts.maybeSingle) {
+    await page.evaluate((o) => { window.__MAYBE_SINGLE_OVERRIDES = o || {}; }, opts.maybeSingle);
   }
   /* Posts fallidos (los lee el semáforo de salud desde social_posts). */
   if (opts.failedPosts) {

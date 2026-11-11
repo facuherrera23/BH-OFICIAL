@@ -14,7 +14,9 @@
 //   media:           listado del contenido publicado
 //   upload_temp:     subir imagen/video a bucket temporal → URL pública
 //   create:          crear contenedor de publicación (image/video/reel)
+//   status:          poll del contenedor (status_code IN_PROGRESS/FINISHED/ERROR)
 //   publish:         publicar el contenedor (media_publish)
+//   media_info:      permalink + media_type de un post publicado
 //   delete:          borrar un post de Instagram
 //
 // Flow de publicación (asincrónico):
@@ -38,7 +40,12 @@ const supabase = createClient(
 const GRAPH_API = 'https://graph.facebook.com/v21.0';
 const TEMP_BUCKET = 'social-temp';
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+/* 50 MB y no más: el archivo viaja base64 en el body del request (~1.33×) y
+   el decode pico usa ~2.5× el binario (string base64 + bin + buffer) — con el
+   límite de 256 MB de memoria por request de las Edge Functions, un video de
+   100 MB reventaba por OOM antes de decodificar. 50 MB deja margen cómodo
+   (pico ~160 MB) y coincide con el tope por archivo del bucket Storage free. */
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
 interface IgAccount {
     id: string;
@@ -163,7 +170,7 @@ Deno.serve(async (req) => {
 
             const isVideo = fileType.startsWith('video/');
             const sizeBytes = raw.length * 0.75;
-            if (isVideo && sizeBytes > MAX_VIDEO_BYTES) return respond(400, { error: 'El video supera 100 MB' });
+            if (isVideo && sizeBytes > MAX_VIDEO_BYTES) return respond(400, { error: 'El video supera 50 MB' });
             if (!isVideo && sizeBytes > MAX_IMAGE_BYTES) return respond(400, { error: 'La imagen supera 8 MB' });
 
             await ensureTempBucket();
@@ -214,6 +221,24 @@ Deno.serve(async (req) => {
             return respond(200, { creation_id: created.id });
         }
 
+        /* ------- Estado del contenedor (polling del panel) ------- */
+        if (body.action === 'status') {
+            if (!accountId) return respond(400, { error: 'Falta la cuenta' });
+            await loadAccount(supabase, accountId);
+            const accessToken = await getSocialAccessToken(supabase, accountId);
+
+            const creationId = clip(String(body.creation_id ?? ''), 100);
+            if (!creationId) return respond(400, { error: 'Falta el ID del contenedor' });
+
+            const st = (await graphFetch(
+                `${GRAPH_API}/${creationId}?fields=status_code,status&access_token=${accessToken}`,
+            )) as { status_code?: string; status?: { message?: string } | null };
+            return respond(200, {
+                status_code: st.status_code || 'IN_PROGRESS',
+                error: (st.status && st.status.message) || null,
+            });
+        }
+
         /* ------- Publicar (después de que el contenedor esté listo) ------- */
         if (body.action === 'publish') {
             if (!accountId) return respond(400, { error: 'Falta la cuenta' });
@@ -234,6 +259,21 @@ Deno.serve(async (req) => {
             if (!published.id) throw new Error('Instagram no devolvió el ID del post');
 
             return respond(200, { media_id: published.id });
+        }
+
+        /* ------- Info del post publicado (permalink para el CRM) ------- */
+        if (body.action === 'media_info') {
+            if (!accountId) return respond(400, { error: 'Falta la cuenta' });
+            await loadAccount(supabase, accountId);
+            const accessToken = await getSocialAccessToken(supabase, accountId);
+
+            const mediaId = clip(String(body.media_id ?? ''), 100);
+            if (!mediaId) return respond(400, { error: 'Falta el ID del post' });
+
+            const info = (await graphFetch(
+                `${GRAPH_API}/${mediaId}?fields=permalink,media_type&access_token=${accessToken}`,
+            )) as Record<string, unknown>;
+            return respond(200, { media_info: info });
         }
 
         /* ------- Borrar post de Instagram ------- */

@@ -1,14 +1,23 @@
 /* ============================================================
    BIENENHAUS PROPIEDADES - Admin - Módulo: CONTENIDO (Redes)
    Publicación de videos/posts a YouTube (v1) desde el panel.
-   Fase 1: cuentas + alta de video con progreso + historial.
-   Las plataformas pendientes (FB/IG/TikTok) se muestran como
-   "próximamente" hasta que se implementen.
+   Fase 2: Instagram (v2) — post al feed (foto) o Reel (video).
+   Facebook/TikTok se muestran como "próximamente" hasta que
+   se implementen (exigen apps propias + subida multipart).
    Helpers via window.__BH (patrón de los demás módulos).
    ============================================================ */
 (function () {
   'use strict';
   const { $, $$, esc, logError, showToast, getAuthedClient } = window.__BH || {};
+
+  /* escAttr + safeImageUrl locales — el módulo NO depende de window.BHUtils
+     (el patrón es el de yt-seo-score.js: helpers propios junto al IIFE).
+     esc() ya escapa & < > " ' → sirve para atributos tal cual. */
+  function escAttr(s) { return esc(s); }
+  function safeImageUrl(u) {
+    const s = String(u == null ? '' : u);
+    return /^https?:\/\//i.test(s) ? s : '';
+  }
 
   const FN_BASE = (window.BH_CONFIG && window.BH_CONFIG.SUPABASE_URL) + '/functions/v1';
   const MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB — límite práctico (sube por chunks resumables)
@@ -29,7 +38,7 @@
   const PLATFORM_META = {
     youtube:   { name: 'YouTube',   icon: 'fab fa-youtube',      color: '#FF0000', available: true },
     instagram: { name: 'Instagram', icon: 'fab fa-instagram',   color: '#E1306C', available: true },
-    facebook:  { name: 'Facebook',  icon: 'fab fa-facebook-f',   color: '#1877F2', available: false },
+    facebook:  { name: 'Facebook',  icon: 'fab fa-facebook-f',   color: '#1877F2', available: true },
     tiktok:    { name: 'TikTok',    icon: 'fab fa-tiktok',       color: '#F5F5F5', available: false },
   };
   const STATUS_META = {
@@ -52,6 +61,20 @@
   let _ytHistory = [];        // #22/#23: snapshots diarios [{d, v:{videoId:views}}]
   let _createProps = [];      // #1: listado para el vínculo con propiedades
   let _lastHistory = [];      // #3/#42: data cruda del historial para copiar/reintentar
+
+  /* ---------- Instagram (v2) ---------- */
+  let _igPlat = 'youtube';        // plataforma activa del tab Crear (youtube | instagram | facebook)
+  let _igMediaMode = 'property';  // origen de la media: 'property' (foto Cloudinary) | 'upload' (PC)
+  let _igPublishing = false;      // lock de publicación IG
+  let _igFile = null;             // File elegido (upload mode)
+  let _igPhoto = '';              // URL Cloudinary de la foto seleccionada (property mode)
+  let _igPhotosCache = {};        // propId → image_urls (1 query por propiedad elegida — compartido con FB)
+
+  /* ---------- Facebook (v3) ---------- */
+  let _fbMediaMode = 'property';  // origen de la media: 'property' (foto Cloudinary) | 'upload' (PC)
+  let _fbPublishing = false;      // lock de publicación FB
+  let _fbFile = null;             // File elegido (upload mode)
+  let _fbPhoto = '';              // URL de la foto seleccionada (property mode)
 
   const YT_TPL_KEY = 'bh_yt_templates';   // #2: plantillas locales
   const YT_QUOTA_KEY = 'bh_yt_quota';     // #44: HUD de cuota (estimación local)
@@ -2228,7 +2251,9 @@
        conectadas se ven igual (y el estado de redes se actualiza al rato). */
     renderAccounts();
     renderCreateAccountOptions();
-    loadPlatformsConfig().then(function () { renderAccounts(); });
+    renderIgAccounts(); // Instagram (v2): el estado del form Crear sigue a las cuentas
+    renderFbAccounts(); // Facebook (v3): idem
+    loadPlatformsConfig().then(function () { renderAccounts(); renderIgAccounts(); renderFbAccounts(); });
   }
 
   /* ¿Qué redes tienen credenciales OAuth configuradas? (app_settings
@@ -2714,6 +2739,7 @@
     }
     _createProps = data || [];
     renderPropertyOptions('');
+    fillIgPropertyOptions(''); // Instagram (v2): mismo pool de propiedades
   }
 
   /* MEJORA: el <select> con 300 propiedades era inmanejable → buscador por
@@ -3841,7 +3867,7 @@
 
     const { data, error } = await client
       .from('social_posts')
-      .select('id, platform, status, post_type, content, published_at, created_at, external_url, error, property_id, social_accounts(display_name)')
+      .select('id, platform, status, post_type, content, published_at, created_at, external_url, external_post_id, error, property_id, social_accounts(display_name)')
       .order('created_at', { ascending: false })
       .limit(30);
     if (error) { logError('Contenido: loadHistory', error); return; }
@@ -3892,6 +3918,14 @@
         importedChip +
         (p.status !== 'publishing' ? '<button type="button" data-contenido-copy="' + esc(p.id) + '" title="Copiar esta metadata al formulario" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:4px;flex-shrink:0;"><i class="fas fa-copy" style="font-size:12px;"></i></button>' : '') +
         (p.status === 'failed' ? '<button type="button" data-contenido-retry="' + esc(p.id) + '" title="Reintentar: carga la metadata en el formulario" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:4px;flex-shrink:0;"><i class="fas fa-rotate-right" style="font-size:12px;"></i></button>' : '') +
+        /* Instagram (v2): post publicado en IG → eliminar de verdad (no solo el registro). */
+        (p.platform === 'instagram' && p.status === 'published' && p.external_post_id
+          ? '<button type="button" data-ig-delete="' + esc(p.id) + '" title="Eliminar el post de Instagram (el registro queda como fallado)" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:4px;flex-shrink:0;"><i class="fab fa-instagram" style="font-size:12px;"></i></button>'
+          : '') +
+        /* Facebook (v3): post publicado en FB → eliminar de verdad (no solo el registro). */
+        (p.platform === 'facebook' && p.status === 'published' && p.external_post_id
+          ? '<button type="button" data-fb-delete="' + esc(p.id) + '" title="Eliminar el post de Facebook (el registro queda como fallado)" style="background:none;border:none;color:var(--danger);cursor:pointer;padding:4px;flex-shrink:0;"><i class="fab fa-facebook-f" style="font-size:12px;"></i></button>'
+          : '') +
         '<span style="font-size:10.5px;color:' + st.color + ';flex-shrink:0;">' + esc(st.label) + '</span>' +
         (removable ? '<button type="button" data-contenido-delete="' + esc(p.id) + '" title="Borrar registro fallido" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:4px;flex-shrink:0;"><i class="fas fa-trash-can" style="font-size:12px;"></i></button>' : '') +
         '</div>';
@@ -3943,6 +3977,1151 @@
     } catch (err) {
       logError('Contenido: backup', err);
       showToast('No se pudo exportar: ' + err.message, 'error');
+    }
+  }
+
+  /* ============================================================
+     INSTAGRAM (v2) — post al feed (foto) o Reel (video)
+     ------------------------------------------------------------
+     El contenido vive ÚNICAMENTE en Instagram (decisión del dueño,
+     igual que YouTube):
+       · Foto de propiedad → URL Cloudinary (ya es pública, IG la
+         descarga — no hay storage intermedio)
+       · Subida desde PC → bucket temporal social-temp → IG la
+         descarga → cleanup_temp borra el archivo al terminar
+     Flujo: social_posts(status publishing) → create (contenedor)
+     → poll del status cada 4s (máx ~5 min) → publish → media_info
+     (permalink) → update published → cleanup → audit.
+     ============================================================ */
+
+  const IG_LOCK_IDS = ['igPropertySearch', 'igProperty', 'igMediaType', 'igCaption', 'igPublishBtn', 'igCtaBtn', 'igFile'];
+  const IG_POLL_MS = 4000;
+  const IG_POLL_MAX_MS = 5 * 60 * 1000;
+
+  async function igApiCall(action, payload) {
+    const res = await fetch(FN_BASE + '/social-instagram', {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify(Object.assign({ action: action }, payload || {})),
+    });
+    const json = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
+    return json;
+  }
+
+  function igActiveAccount() {
+    return _accounts.find(function (a) { return a.platform === 'instagram' && a.status === 'active'; }) || null;
+  }
+
+  /* Tab Crear multi-plataforma: YouTube (v1) | Instagram (v2) | Facebook (v3) */
+  function switchCreatePlatform(pid) {
+    if (!PLATFORM_META[pid] || !PLATFORM_META[pid].available) return;
+    _igPlat = pid;
+    $$('#contenidoCreate [data-create-plat]').forEach(function (b) {
+      b.classList.toggle('is-active', b.dataset.createPlat === pid);
+    });
+    const yt = $('#ytCreatePanel');
+    const ig = $('#igCreatePanel');
+    const fb = $('#fbCreatePanel');
+    if (yt) yt.style.display = pid === 'youtube' ? '' : 'none';
+    if (ig) ig.style.display = pid === 'instagram' ? '' : 'none';
+    if (fb) fb.style.display = pid === 'facebook' ? '' : 'none';
+    if (pid === 'instagram') ensureIgPanel();
+    if (pid === 'facebook') ensureFbPanel();
+  }
+
+  /* Construye el form de IG UNA vez (guard) + rellena los slots dinámicos */
+  function ensureIgPanel() {
+    const panel = $('#igCreatePanel');
+    if (!panel) return;
+    if (panel.dataset.rendered !== '1') {
+      panel.dataset.rendered = '1';
+      panel.innerHTML = igPanelHtml();
+      bindIgForm();
+    }
+    renderIgAccounts();
+    fillIgPropertyOptions('');
+  }
+
+  function igPanelHtml() {
+    return '<div class="glass-panel" style="padding:24px;">' +
+      '<h3 class="yt-section-title" style="font-size:17px;"><i class="fab fa-instagram" style="color:#E1306C;"></i> Publicar en Instagram</h3>' +
+      '<p class="yt-muted" style="margin:0 0 18px;">Post al feed (foto) o Reel (video). La cuenta tiene que ser Business/Creator y estar vinculada a una página de Facebook.</p>' +
+      '<div id="igConnectState"></div>' +
+      '<div id="igFormWrap" style="display:none;">' +
+        '<div class="yt-field"><span class="yt-label">Cuenta</span>' +
+          '<select id="igAccountSelect" class="crm-field-input crm-field-input--select"></select>' +
+        '</div>' +
+        '<div class="yt-field"><span class="yt-label">Propiedad vinculada <span style="font-size:10.5px;text-transform:none;letter-spacing:0;">(opcional — llena el caption y aporta la foto)</span></span>' +
+          '<input id="igPropertySearch" type="text" class="crm-field-input" placeholder="Buscar por código, título o zona…" style="margin-bottom:6px;">' +
+          '<select id="igProperty" class="crm-field-input crm-field-input--select"><option value="">— Sin propiedad vinculada —</option></select>' +
+        '</div>' +
+        '<div class="yt-field"><span class="yt-label">Origen de la foto/video</span>' +
+          '<div class="yt-inline" style="gap:8px;">' +
+            '<button type="button" data-ig-mode="property" class="yt-tab is-active" style="padding:7px 12px;font-size:11.5px;"><i class="fas fa-image"></i> Foto de la propiedad</button>' +
+            '<button type="button" data-ig-mode="upload" class="yt-tab" style="padding:7px 12px;font-size:11.5px;"><i class="fas fa-upload"></i> Subir desde PC</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="igModeProperty">' +
+          '<div class="yt-field"><span class="yt-label">Foto</span>' +
+            '<div id="igPhotoGrid" class="yt-inline" style="flex-wrap:wrap;gap:10px;"><span class="yt-hint">Elegí primero la propiedad.</span></div>' +
+            '<span class="yt-hint">La foto viaja a Instagram en su versión 1440px (misma escala que la ficha).</span>' +
+          '</div>' +
+        '</div>' +
+        '<div id="igModeUpload" style="display:none;">' +
+          '<div class="yt-field"><span class="yt-label">Archivo (imagen ≤ 8 MB · video ≤ 50 MB)</span>' +
+            '<input id="igFile" type="file" accept="image/*,video/*" class="crm-field-input" style="width:100%;padding:8px;">' +
+            '<div id="igFileInfo" style="font-size:11px;color:var(--accent);margin-top:4px;display:none;"></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="yt-field"><span class="yt-label">Tipo de publicación</span>' +
+          '<select id="igMediaType" class="crm-field-input crm-field-input--select" style="width:auto;">' +
+            '<option value="FEED">Post al feed (foto)</option>' +
+            '<option value="REELS">Reel (video)</option>' +
+          '</select>' +
+          '<span id="igMediaTypeHint" class="yt-hint" style="margin-left:10px;"></span>' +
+        '</div>' +
+        '<div class="yt-field"><span class="yt-label">Caption <span id="igCaptionCounter" class="yt-counter"></span></span>' +
+          '<textarea id="igCaption" rows="5" class="crm-field-input" maxlength="2200" placeholder="Título de la propiedad + detalle + #hashtags…" style="width:100%;"></textarea>' +
+          '<div class="yt-inline" style="margin-top:8px;">' +
+            '<button type="button" id="igCtaBtn" class="btn-luxury-action" title="Insertar bloque de contacto + hashtags institucionales" style="padding:7px 12px;font-size:11px;"><i class="fas fa-bullhorn"></i> Insertar CTA</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="igProgress" class="yt-progress">' +
+          '<div class="yt-progress-track"><div id="igUploadBar" class="yt-progress-bar"></div></div>' +
+          '<div id="igUploadPct" class="yt-progress-label"></div>' +
+        '</div>' +
+        '<div class="yt-actions yt-actions--left">' +
+          '<button type="button" id="igPublishBtn" class="btn-luxury-action yt-btn--lg"><i class="fab fa-instagram"></i> Publicar en Instagram</button>' +
+        '</div>' +
+        '<p class="yt-muted" style="font-size:11px;margin-top:12px;">Las subidas desde PC pasan por un bucket temporal y se borran automáticamente al terminar — el contenido queda únicamente en Instagram.</p>' +
+      '</div>' +
+    '</div>';
+  }
+
+  /* Listeners del form IG: se cuelgan UNA vez (el shell no se re-renderiza) */
+  function bindIgForm() {
+    const igCap = $('#igCaption');
+    const igCounter = $('#igCaptionCounter');
+    if (igCap && igCounter) {
+      const upd = function () {
+        igCounter.textContent = igCap.value.length + '/2200' + (igCap.value.length > 2100 ? ' ⚠' : '');
+        igCounter.style.color = igCap.value.length > 2100 ? 'var(--warning)' : 'var(--text-dim)';
+      };
+      igCap.addEventListener('input', upd);
+      upd();
+    }
+    const igFileInput = $('#igFile');
+    if (igFileInput) igFileInput.addEventListener('change', onIgFileChange);
+    const igSearch = $('#igPropertySearch');
+    if (igSearch) igSearch.addEventListener('input', function () { fillIgPropertyOptions(this.value); });
+    const igPropSel = $('#igProperty');
+    if (igPropSel) {
+      igPropSel.addEventListener('change', function () {
+        loadIgPhotos(this.value);
+        prefillIgCaptionFromProperty(this.value);
+      });
+    }
+    updateIgTypeHint();
+  }
+
+  /* Estado de conexión IG dentro del form (sin cuenta activa → CTA) */
+  function renderIgAccounts() {
+    const state = $('#igConnectState');
+    const sel = $('#igAccountSelect');
+    const formWrap = $('#igFormWrap');
+    if (!state || !sel || !formWrap) return; // el panel IG todavía no existe
+    const accs = _accounts.filter(function (a) { return a.platform === 'instagram' && a.status === 'active'; });
+    if (!accs.length) {
+      const configured = platformConfigured('instagram');
+      state.innerHTML =
+        '<div class="empty-state" style="padding:20px;">' +
+          '<i class="fab fa-instagram" style="font-size:26px;color:#E1306C;"></i>' +
+          '<div class="empty-state-title">' + (configured ? 'Sin cuenta de Instagram conectada' : 'Instagram todavía no tiene su app configurada') + '</div>' +
+          '<div style="max-width:420px;line-height:1.6;">' + (configured
+            ? 'Conectá la cuenta de Instagram (tipo Business/Creator, vinculada a una página de Facebook).'
+            : 'Faltan las credenciales de la app de Meta (app_settings → social_instagram).') + '</div>' +
+          (configured ? '<button type="button" class="btn-luxury-action" data-contenido-connect="instagram"><i class="fas fa-plug"></i> Conectar Instagram</button>' : '') +
+        '</div>';
+      formWrap.style.display = 'none';
+      sel.innerHTML = '';
+      return;
+    }
+    state.innerHTML = '';
+    formWrap.style.display = '';
+    sel.innerHTML = accs.map(function (a) {
+      return '<option value="' + esc(a.id) + '">' + esc(a.display_name || 'Instagram') + '</option>';
+    }).join('');
+  }
+
+  /* Mismo pool de propiedades del picker YT (con buscador propio) */
+  function fillIgPropertyOptions(query) {
+    const sel = $('#igProperty');
+    if (!sel) return; // el panel IG todavía no existe
+    const q = bhNorm(String(query || ''));
+    const list = _createProps.filter(function (p) {
+      if (!q) return true;
+      return bhNorm(p.title || '').indexOf(q) >= 0
+        || bhNorm(p.property_code || '').indexOf(q) >= 0
+        || bhNorm(p.zone || '').indexOf(q) >= 0;
+    });
+    sel.innerHTML = '<option value="">— Sin propiedad vinculada —</option>' + list.map(function (p) {
+      return '<option value="' + esc(p.id) + '">' + esc((p.property_code || '(sin código)') + ' — ' + (p.title || '(sin título)')) + '</option>';
+    }).join('');
+  }
+
+  /* Grid de fotos de la propiedad (Cloudinary w_200 para el thumb) */
+  async function loadIgPhotos(propId) {
+    const grid = $('#igPhotoGrid');
+    if (!grid) return;
+    _igPhoto = '';
+    if (!propId) {
+      grid.innerHTML = '<span class="yt-hint">Elegí primero la propiedad.</span>';
+      return;
+    }
+    if (!_igPhotosCache[propId]) {
+      const client = await getAuthedClient();
+      if (!client) return;
+      const { data, error } = await client.from('properties')
+        .select('id, image_urls').eq('id', propId).maybeSingle();
+      if (error) { logError('Contenido: ig photos', error); grid.innerHTML = ''; return; }
+      _igPhotosCache[propId] = (data && Array.isArray(data.image_urls)) ? data.image_urls : [];
+    }
+    const urls = _igPhotosCache[propId] || [];
+    if (!urls.length) {
+      grid.innerHTML = '<span class="yt-hint">La propiedad no tiene fotos cargadas — usá "Subir desde PC".</span>';
+      return;
+    }
+    grid.innerHTML = urls.map(function (u, i) {
+      const s = String(u || '');
+      const isCloud = s.indexOf('res.cloudinary.com') >= 0 && s.indexOf('/upload/') >= 0;
+      const thumb = isCloud ? s.replace('/upload/', '/upload/w_200,h_200,c_fill,') : s;
+      return '<button type="button" data-ig-photo="' + escAttr(s) + '" class="yt-photo-cell" title="Usar esta foto">' +
+        '<img src="' + escAttr(safeImageUrl(thumb)) + '" alt="Foto ' + (i + 1) + '" loading="lazy"></button>';
+    }).join('');
+  }
+
+  function selectIgPhoto(url) {
+    if (!url) return;
+    _igPhoto = (_igPhoto === url) ? '' : url; // click de nuevo = deselecciona
+    $$('#igPhotoGrid [data-ig-photo]').forEach(function (b) {
+      b.classList.toggle('is-active', b.getAttribute('data-ig-photo') === _igPhoto);
+    });
+  }
+
+  function switchIgMediaMode(mode) {
+    if (mode !== 'property' && mode !== 'upload') return;
+    _igMediaMode = mode;
+    $$('#igCreatePanel [data-ig-mode]').forEach(function (b) {
+      b.classList.toggle('is-active', b.dataset.igMode === mode);
+    });
+    const prop = $('#igModeProperty');
+    const up = $('#igModeUpload');
+    if (prop) prop.style.display = mode === 'property' ? '' : 'none';
+    if (up) up.style.display = mode === 'upload' ? '' : 'none';
+    updateIgTypeHint();
+  }
+
+  function updateIgTypeHint() {
+    const hint = $('#igMediaTypeHint');
+    if (!hint) return;
+    hint.textContent = _igMediaMode === 'property'
+      ? 'Foto de la propiedad → post al feed.'
+      : 'Imagen → post al feed · video → Reel (se ajusta según el archivo).';
+  }
+
+  function prefillIgCaptionFromProperty(propId) {
+    if (!propId) return;
+    const cap = $('#igCaption');
+    if (!cap || cap.value.trim()) return; // no pisa lo que ya escribió
+    const prop = _createProps.find(function (p) { return p.id === propId; });
+    if (!prop) return;
+    cap.value = (prop.property_code || '') + ' — ' + (prop.title || '') + '\n\n';
+    cap.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  /* CTA + hashtags institucionales (misma fábrica que YouTube) */
+  function insertIgCta() {
+    const cap = $('#igCaption');
+    if (!cap) return;
+    if (/bienenhaus/i.test(cap.value)) {
+      showToast('El caption ya trae el bloque de contacto/hashtags.', 'info');
+      return;
+    }
+    const p = _createProps.find(function (x) { return x.id === (($('#igProperty') || {}).value || ''); });
+    cap.value = cap.value.replace(/\s*$/, '') + buildCtaBlock(p);
+    cap.dispatchEvent(new Event('input', { bubbles: true }));
+    showToast('CTA + hashtags agregados al caption.', 'success');
+  }
+
+  /* Validación del archivo elegido: imagen >4MB se reescala en canvas a
+     1440px jpeg 0.85 (el body viaja en base64 al edge function), video ≤50MB
+     directo (100 MB reventaría por memoria — ver server). El tipo de post se
+     ajusta solo (imagen → FEED, video → REELS). */
+  async function onIgFileChange() {
+    const input = $('#igFile');
+    const info = $('#igFileInfo');
+    const typeSel = $('#igMediaType');
+    if (!input || !info) return;
+    _igFile = null;
+    const f = input.files && input.files[0];
+    if (!f) { info.style.display = 'none'; return; }
+    const isVideo = !f.type || f.type.indexOf('video/') === 0;
+    if (!isVideo && f.type && f.type.indexOf('image/') !== 0) {
+      showToast('El archivo no es una imagen ni un video (' + f.type + ').', 'error');
+      input.value = '';
+      return;
+    }
+    if (isVideo && f.size > 50 * 1024 * 1024) {
+      showToast('El video supera 50 MB (límite del panel para subir desde PC).', 'error');
+      input.value = '';
+      info.style.display = 'none';
+      return;
+    }
+    if (typeSel) typeSel.value = isVideo ? 'REELS' : 'FEED';
+    if (!isVideo && f.size > 4 * 1024 * 1024) {
+      info.textContent = 'Reescalando la imagen a 1440px…';
+      info.style.color = 'var(--warning)';
+      info.style.display = '';
+      try {
+        const blob = await downscaleImageForIg(f);
+        _igFile = blob;
+        info.textContent = '✓ ' + f.name + ' (' + fmtBytes(blob.size) + ') — reescalada a 1440px para Instagram';
+        info.style.color = 'var(--accent)';
+      } catch (err) {
+        _igFile = f;
+        info.textContent = '⚠ No se pudo reescalar — se envía el original (' + fmtBytes(f.size) + ')';
+        info.style.color = 'var(--warning)';
+      }
+      return;
+    }
+    _igFile = f;
+    info.textContent = '✓ ' + f.name + ' (' + fmtBytes(f.size) + ')' + (isVideo ? ' — Reel' : '');
+    info.style.color = 'var(--accent)';
+    info.style.display = '';
+  }
+
+  function downscaleImageForIg(file) {
+    return new Promise(function (resolve, reject) {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = function () {
+        try {
+          const maxSide = 1440;
+          const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+          const w = Math.max(1, Math.round(img.naturalWidth * scale));
+          const h = Math.max(1, Math.round(img.naturalHeight * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) { URL.revokeObjectURL(url); reject(new Error('canvas no disponible')); return; }
+          ctx.drawImage(img, 0, 0, w, h);
+          canvas.toBlob(function (blob) {
+            URL.revokeObjectURL(url);
+            if (blob && blob.size > 0) resolve(blob);
+            else reject(new Error('no se generó el JPEG'));
+          }, 'image/jpeg', 0.85);
+        } catch (e) { URL.revokeObjectURL(url); reject(e); }
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('imagen ilegible')); };
+      img.src = url;
+    });
+  }
+
+  function fileToBase64(f) {
+    return new Promise(function (resolve, reject) {
+      const r = new FileReader();
+      r.onload = function () { resolve(String(r.result || '')); };
+      r.onerror = function () { reject(new Error('No se pudo leer el archivo')); };
+      r.readAsDataURL(f);
+    });
+  }
+
+  function setIgProgress(pct, txt) {
+    const wrap = $('#igProgress');
+    const bar = $('#igUploadBar');
+    const label = $('#igUploadPct');
+    if (wrap) wrap.classList.add('is-visible'); // .yt-progress arranca display:none
+    if (bar) bar.style.width = pct + '%';
+    if (label) label.innerHTML = '<span>' + txt + '</span><span>' + pct + '%</span>';
+  }
+
+  function hideIgProgress() {
+    const wrap = $('#igProgress');
+    if (wrap) wrap.classList.remove('is-visible');
+  }
+
+  function publishToInstagram() {
+    if (_igPublishing) return;
+    publishToInstagramAsync().catch(function (e) {
+      /* Guard extra: un error de programación fuera del try no deja el lock colgado */
+      logError('Contenido: publishToInstagram', e);
+      _igPublishing = false;
+    });
+  }
+
+  async function publishToInstagramAsync() {
+    const accountSel = $('#igAccountSelect');
+    const accountId = (accountSel && accountSel.value) || '';
+    if (!accountId) { showToast('Conectá primero la cuenta de Instagram (tarjeta en Cuentas).', 'warning'); return; }
+    const propId = (($('#igProperty') || {}).value || '');
+    const prop = propId ? _createProps.find(function (p) { return p.id === propId; }) : null;
+    const caption = (($('#igCaption') || {}).value || '').trim();
+    const typeSel = $('#igMediaType');
+    let mediaType = typeSel ? (typeSel.value || 'FEED') : 'FEED';
+
+    let imageUrl = '';
+    let localFile = null;
+    if (_igMediaMode === 'property') {
+      if (!_igPhoto) { showToast('Elegí una foto de la propiedad.', 'warning'); return; }
+      imageUrl = _igPhoto;
+      mediaType = 'FEED';
+    } else {
+      localFile = _igFile;
+      if (!localFile) { showToast('Elegí el archivo (imagen o video).', 'warning'); return; }
+      mediaType = (!localFile.type || localFile.type.indexOf('video/') === 0) ? 'REELS' : 'FEED';
+    }
+    if (!caption) { showToast('Escribí el caption del post.', 'warning'); return; }
+
+    _igPublishing = true;
+    const btn = $('#igPublishBtn');
+    const btnHtml = btn ? btn.innerHTML : '';
+    IG_LOCK_IDS.forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.disabled = true;
+    });
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Publicando…'; }
+    setIgProgress(0, 'Preparando…');
+
+    let postId = null;
+    let client = null;
+    let tempUploaded = null; // { url, path } del bucket temporal
+
+    try {
+      client = await getAuthedClient();
+      if (!client) throw new Error('Sin sesión activa');
+
+      /* 1. Registro previo en social_posts (patrón YT: queda traza aunque
+         la subida muera a mitad — el sweep del historial lo ve). */
+      const { data: userWrap } = await client.auth.getUser();
+      const row = {
+        account_id: accountId,
+        platform: 'instagram',
+        post_type: mediaType === 'REELS' ? 'reel' : 'photo',
+        content: {
+          caption: caption,
+          title: prop ? (prop.property_code || '') + ' — ' + (prop.title || '') : caption.substring(0, 80),
+          source: _igMediaMode,
+        },
+        media: { type: mediaType === 'REELS' ? 'video' : 'image' },
+        status: 'publishing',
+        property_id: propId || null,
+        created_by: userWrap && userWrap.user ? userWrap.user.id : null,
+      };
+      const { data: inserted, error: insErr } = await client
+        .from('social_posts').insert(row).select('id').single();
+      if (insErr) throw new Error('No se pudo registrar la publicación: ' + insErr.message);
+      postId = inserted.id;
+
+      /* 2. Subida desde PC → bucket temporal (IG exige URL pública para descargar) */
+      if (localFile) {
+        setIgProgress(15, 'Subiendo archivo (temporal)…');
+        const b64 = await fileToBase64(localFile);
+        const up = await igApiCall('upload_temp', {
+          account_id: accountId,
+          file_base64: b64,
+          file_type: localFile.type || 'image/jpeg',
+          file_name: localFile.name || 'media',
+        });
+        if (!up.url) throw new Error('No se pudo subir el archivo temporal');
+        tempUploaded = { url: up.url, path: up.temp_path || '' };
+      }
+
+      /* 3. Crear contenedor en Instagram */
+      setIgProgress(35, 'Creando contenedor en Instagram…');
+      const createPayload = { account_id: accountId, caption: caption, media_type: mediaType };
+      if (mediaType === 'REELS') createPayload.video_url = tempUploaded ? tempUploaded.url : '';
+      else createPayload.image_url = tempUploaded ? tempUploaded.url : imageUrl;
+      const created = await igApiCall('create', createPayload);
+      const creationId = created.creation_id;
+      if (!creationId) throw new Error('Instagram no devolvió el ID del contenedor');
+
+      /* 4. Poll del contenedor: IG procesa la media ANTES de permitir el
+         publish (IN_PROGRESS → FINISHED | ERROR). Fallo transitorio del
+         poll ≠ fallo de la media: reintenta hasta el límite. */
+      const startedAt = Date.now();
+      let ready = false;
+      let lastErr = '';
+      while (Date.now() - startedAt < IG_POLL_MAX_MS) {
+        await new Promise(function (r) { setTimeout(r, IG_POLL_MS); });
+        setIgProgress(55, 'Instagram está procesando la media…');
+        let st = null;
+        try { st = await igApiCall('status', { account_id: accountId, creation_id: creationId }); }
+        catch (pollErr) { lastErr = pollErr.message; continue; }
+        if (st.status_code === 'FINISHED') { ready = true; break; }
+        if (st.status_code === 'ERROR') { lastErr = st.error || 'Instagram rechazó la media'; break; }
+      }
+      if (!ready) throw new Error(lastErr || 'Instagram tardó más de 5 minutos en procesar la media.');
+
+      /* 5. Publicar */
+      setIgProgress(82, 'Publicando…');
+      const published = await igApiCall('publish', { account_id: accountId, creation_id: creationId });
+      if (!published.media_id) throw new Error('Instagram no devolvió el ID del post');
+
+      /* 6. Permalink (best-effort: si falla, llega con el próximo sync) */
+      let permalink = '';
+      try {
+        const info = await igApiCall('media_info', { account_id: accountId, media_id: published.media_id });
+        permalink = (info.media_info && info.media_info.permalink) || '';
+      } catch (_) { /* no bloquea la publicación */ }
+
+      /* 7. Update del post */
+      await client.from('social_posts').update({
+        status: 'published',
+        published_at: new Date().toISOString(),
+        external_post_id: published.media_id,
+        external_url: permalink || null,
+      }).eq('id', postId);
+
+      /* 8. Audit (la escribe el server: RLS no deja insertar del cliente) */
+      if (CORE && CORE.audit) {
+        CORE.audit('ig_publish', {
+          recordId: postId,
+          status: 'success',
+          errorCode: null,
+          metadata: { media_type: mediaType, property_id: propId || null, media_id: published.media_id },
+        });
+      }
+
+      setIgProgress(100, 'Publicado.');
+      showToast('Publicado en Instagram.', 'success');
+      /* Limpieza suave: caption y archivo se van; propiedad y foto quedan
+         (postear 2-3 fotos de la misma propiedad es el uso típico). */
+      const capEl = $('#igCaption');
+      if (capEl) { capEl.value = ''; capEl.dispatchEvent(new Event('input', { bubbles: true })); }
+      const fileEl = $('#igFile');
+      if (fileEl) fileEl.value = '';
+      _igFile = null;
+      const fileInfo = $('#igFileInfo');
+      if (fileInfo) { fileInfo.style.display = 'none'; fileInfo.textContent = ''; }
+      const typeEl = $('#igMediaType');
+      if (typeEl) typeEl.value = 'FEED';
+      await loadHistory();
+    } catch (err) {
+      const msg = String((err && err.message) || err);
+      /* Marcar el post como fallado en el acto — sin esto quedaba 'publishing'
+         zombi hasta el sweep del historial. */
+      if (postId && client) {
+        try { await client.from('social_posts').update({ status: 'failed', error: msg.substring(0, 500) }).eq('id', postId); } catch (_) {}
+      }
+      if (CORE && CORE.audit) {
+        CORE.audit('ig_publish_fail', {
+          recordId: postId,
+          status: 'error',
+          errorCode: 'IG_PUBLISH_FAIL',
+          metadata: { message: msg },
+        });
+      }
+      showToast('No se pudo publicar: ' + msg, 'error');
+      hideIgProgress();
+    } finally {
+      /* Cleanup del bucket temporal SIEMPRE (publicado o fallado) */
+      if (tempUploaded && tempUploaded.path) {
+        try { await igApiCall('cleanup_temp', { temp_path: tempUploaded.path }); } catch (_) {}
+      }
+      _igPublishing = false;
+      IG_LOCK_IDS.forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.disabled = false;
+      });
+      if (btn) { btn.disabled = false; btn.innerHTML = btnHtml; }
+    }
+  }
+
+  /* Eliminar un post publicado de verdad (no solo el registro del CRM) */
+  async function igDeletePost(postId) {
+    const p = _lastHistory.find(function (x) { return x.id === postId; });
+    if (!p) return;
+    if (!p.external_post_id) { showToast('El post no tiene ID de Instagram — borrá el registro.', 'warning'); return; }
+    const acc = igActiveAccount();
+    if (!acc) { showToast('La cuenta de Instagram no está conectada — borrá el post desde la app.', 'warning'); return; }
+    const ok = await ytConfirm({
+      title: 'Eliminar de Instagram',
+      message: '¿Eliminar este post de Instagram? La acción no se puede deshacer (el registro queda como fallado en el historial).',
+      icon: 'fab fa-instagram',
+      confirmText: 'Eliminar',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await igApiCall('delete', { account_id: acc.id, media_id: p.external_post_id });
+      /* Patrón YT Studio: la fila no se borra — pasa a failed con el motivo
+         (el historial conserva la traza y /canal.html deja de linkear). */
+      const client = await getAuthedClient();
+      if (client) {
+        await client.from('social_posts')
+          .update({ status: 'failed', error: 'Eliminado de Instagram' })
+          .eq('id', postId);
+      }
+      showToast('Post eliminado de Instagram.', 'success');
+      await loadHistory();
+    } catch (err) {
+      showToast('No se pudo eliminar: ' + String((err && err.message) || err), 'error');
+    }
+  }
+
+  /* ============================================================
+     FACEBOOK (v3) — post al feed (foto sync | video con poll)
+     ------------------------------------------------------------
+     La API de Facebook publica en PÁGINAS (no en perfiles
+     personales). Igual decisión que IG/YouTube: el contenido
+     queda únicamente en Facebook.
+       · Foto de propiedad → URL Cloudinary (ya es pública, FB la
+         descarga). POST /{page-id}/photos es SINCRÓNICO: devuelve
+         el id del post directo — no hay contenedor ni poll.
+       · Subida desde PC → bucket temporal social-temp → cleanup.
+       · Video → el server descarga los bytes y los sube multipart
+         DIRECTO a /{page-id}/videos (sin file_url) → poll de
+         procesamiento hasta ready.
+     Flujo: social_posts(status publishing) → create
+       (foto: media_id | video: video_id) → [poll status]
+       → media_info (permalink) → update published → cleanup → audit.
+     ============================================================ */
+
+  const FB_LOCK_IDS = ['fbPropertySearch', 'fbProperty', 'fbMediaType', 'fbCaption', 'fbPublishBtn', 'fbCtaBtn', 'fbFile'];
+  const FB_POLL_MS = 4000;
+  const FB_POLL_MAX_MS = 5 * 60 * 1000;
+
+  async function fbApiCall(action, payload) {
+    const res = await fetch(FN_BASE + '/social-facebook', {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify(Object.assign({ action: action }, payload || {})),
+    });
+    const json = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
+    return json;
+  }
+
+  function fbActiveAccount() {
+    return _accounts.find(function (a) { return a.platform === 'facebook' && a.status === 'active'; }) || null;
+  }
+
+  /* Construye el form de FB UNA vez (guard) + rellena los slots dinámicos */
+  function ensureFbPanel() {
+    const panel = $('#fbCreatePanel');
+    if (!panel) return;
+    if (panel.dataset.rendered !== '1') {
+      panel.dataset.rendered = '1';
+      panel.innerHTML = fbPanelHtml();
+      bindFbForm();
+    }
+    renderFbAccounts();
+    fillFbPropertyOptions('');
+  }
+
+  function fbPanelHtml() {
+    return '<div class="glass-panel" style="padding:24px;">' +
+      '<h3 class="yt-section-title" style="font-size:17px;"><i class="fab fa-facebook-f" style="color:#1877F2;"></i> Publicar en Facebook</h3>' +
+      '<p class="yt-muted" style="margin:0 0 18px;">Post al feed de la página (foto o video). La API no publica en perfiles personales — se conectan las páginas que administrás.</p>' +
+      '<div id="fbConnectState"></div>' +
+      '<div id="fbFormWrap" style="display:none;">' +
+        '<div class="yt-field"><span class="yt-label">Página</span>' +
+          '<select id="fbAccountSelect" class="crm-field-input crm-field-input--select"></select>' +
+        '</div>' +
+        '<div class="yt-field"><span class="yt-label">Propiedad vinculada <span style="font-size:10.5px;text-transform:none;letter-spacing:0;">(opcional — llena el caption y aporta la foto)</span></span>' +
+          '<input id="fbPropertySearch" type="text" class="crm-field-input" placeholder="Buscar por código, título o zona…" style="margin-bottom:6px;">' +
+          '<select id="fbProperty" class="crm-field-input crm-field-input--select"><option value="">— Sin propiedad vinculada —</option></select>' +
+        '</div>' +
+        '<div class="yt-field"><span class="yt-label">Origen de la foto/video</span>' +
+          '<div class="yt-inline" style="gap:8px;">' +
+            '<button type="button" data-fb-mode="property" class="yt-tab is-active" style="padding:7px 12px;font-size:11.5px;"><i class="fas fa-image"></i> Foto de la propiedad</button>' +
+            '<button type="button" data-fb-mode="upload" class="yt-tab" style="padding:7px 12px;font-size:11.5px;"><i class="fas fa-upload"></i> Subir desde PC</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="fbModeProperty">' +
+          '<div class="yt-field"><span class="yt-label">Foto</span>' +
+            '<div id="fbPhotoGrid" class="yt-inline" style="flex-wrap:wrap;gap:10px;"><span class="yt-hint">Elegí primero la propiedad.</span></div>' +
+            '<span class="yt-hint">La foto viaja a Facebook por su URL (FB la descarga — sin storage intermedio).</span>' +
+          '</div>' +
+        '</div>' +
+        '<div id="fbModeUpload" style="display:none;">' +
+          '<div class="yt-field"><span class="yt-label">Archivo (imagen ≤ 8 MB · video ≤ 50 MB)</span>' +
+            '<input id="fbFile" type="file" accept="image/*,video/*" class="crm-field-input" style="width:100%;padding:8px;">' +
+            '<div id="fbFileInfo" style="font-size:11px;color:var(--accent);margin-top:4px;display:none;"></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="yt-field"><span class="yt-label">Tipo de publicación</span>' +
+          '<select id="fbMediaType" class="crm-field-input crm-field-input--select" style="width:auto;">' +
+            '<option value="photo">Post al feed (foto)</option>' +
+            '<option value="video">Post al feed (video)</option>' +
+          '</select>' +
+          '<span id="fbMediaTypeHint" class="yt-hint" style="margin-left:10px;"></span>' +
+        '</div>' +
+        '<div class="yt-field"><span class="yt-label">Caption <span id="fbCaptionCounter" class="yt-counter"></span></span>' +
+          '<textarea id="fbCaption" rows="5" class="crm-field-input" maxlength="2200" placeholder="Título de la propiedad + detalle + #hashtags…" style="width:100%;"></textarea>' +
+          '<div class="yt-inline" style="margin-top:8px;">' +
+            '<button type="button" id="fbCtaBtn" class="btn-luxury-action" title="Insertar bloque de contacto + hashtags institucionales" style="padding:7px 12px;font-size:11px;"><i class="fas fa-bullhorn"></i> Insertar CTA</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="fbProgress" class="yt-progress">' +
+          '<div class="yt-progress-track"><div id="fbUploadBar" class="yt-progress-bar"></div></div>' +
+          '<div id="fbUploadPct" class="yt-progress-label"></div>' +
+        '</div>' +
+        '<div class="yt-actions yt-actions--left">' +
+          '<button type="button" id="fbPublishBtn" class="btn-luxury-action yt-btn--lg"><i class="fab fa-facebook-f"></i> Publicar en Facebook</button>' +
+        '</div>' +
+        '<p class="yt-muted" style="font-size:11px;margin-top:12px;">Las subidas desde PC pasan por un bucket temporal y se borran automáticamente al terminar — el contenido queda únicamente en Facebook.</p>' +
+      '</div>' +
+    '</div>';
+  }
+
+  /* Listeners del form FB: se cuelgan UNA vez (el shell no se re-renderiza) */
+  function bindFbForm() {
+    const fbCap = $('#fbCaption');
+    const fbCounter = $('#fbCaptionCounter');
+    if (fbCap && fbCounter) {
+      const upd = function () {
+        fbCounter.textContent = fbCap.value.length + '/2200' + (fbCap.value.length > 2100 ? ' ⚠' : '');
+        fbCounter.style.color = fbCap.value.length > 2100 ? 'var(--warning)' : 'var(--text-dim)';
+      };
+      fbCap.addEventListener('input', upd);
+      upd();
+    }
+    const fbFileInput = $('#fbFile');
+    if (fbFileInput) fbFileInput.addEventListener('change', onFbFileChange);
+    const fbSearch = $('#fbPropertySearch');
+    if (fbSearch) fbSearch.addEventListener('input', function () { fillFbPropertyOptions(this.value); });
+    const fbPropSel = $('#fbProperty');
+    if (fbPropSel) {
+      fbPropSel.addEventListener('change', function () {
+        loadFbPhotos(this.value);
+        prefillFbCaptionFromProperty(this.value);
+      });
+    }
+    updateFbTypeHint();
+  }
+
+  /* Estado de conexión FB dentro del form (sin página activa → CTA) */
+  function renderFbAccounts() {
+    const state = $('#fbConnectState');
+    const sel = $('#fbAccountSelect');
+    const formWrap = $('#fbFormWrap');
+    if (!state || !sel || !formWrap) return; // el panel FB todavía no existe
+    const accs = _accounts.filter(function (a) { return a.platform === 'facebook' && a.status === 'active'; });
+    if (!accs.length) {
+      const configured = platformConfigured('facebook');
+      state.innerHTML =
+        '<div class="empty-state" style="padding:20px;">' +
+          '<i class="fab fa-facebook-f" style="font-size:26px;color:#1877F2;"></i>' +
+          '<div class="empty-state-title">' + (configured ? 'Sin página de Facebook conectada' : 'Facebook todavía no tiene su app configurada') + '</div>' +
+          '<div style="max-width:420px;line-height:1.6;">' + (configured
+            ? 'Conectá tu cuenta de Meta (la API no publica en perfiles personales — se conectan las páginas que administrás).'
+            : 'Faltan las credenciales de la app de Meta (app_settings → social_facebook).') + '</div>' +
+          (configured ? '<button type="button" class="btn-luxury-action" data-contenido-connect="facebook"><i class="fas fa-plug"></i> Conectar Facebook</button>' : '') +
+        '</div>';
+      formWrap.style.display = 'none';
+      sel.innerHTML = '';
+      return;
+    }
+    state.innerHTML = '';
+    formWrap.style.display = '';
+    sel.innerHTML = accs.map(function (a) {
+      return '<option value="' + esc(a.id) + '">' + esc(a.display_name || 'Facebook') + '</option>';
+    }).join('');
+  }
+
+  /* Mismo pool de propiedades del picker (con buscador propio) */
+  function fillFbPropertyOptions(query) {
+    const sel = $('#fbProperty');
+    if (!sel) return; // el panel FB todavía no existe
+    const q = bhNorm(String(query || ''));
+    const list = _createProps.filter(function (p) {
+      if (!q) return true;
+      return bhNorm(p.title || '').indexOf(q) >= 0
+        || bhNorm(p.property_code || '').indexOf(q) >= 0
+        || bhNorm(p.zone || '').indexOf(q) >= 0;
+    });
+    sel.innerHTML = '<option value="">— Sin propiedad vinculada —</option>' + list.map(function (p) {
+      return '<option value="' + esc(p.id) + '">' + esc((p.property_code || '(sin código)') + ' — ' + (p.title || '(sin título)')) + '</option>';
+    }).join('');
+  }
+
+  /* Grid de fotos de la propiedad — misma cache que IG (_igPhotosCache) */
+  async function loadFbPhotos(propId) {
+    const grid = $('#fbPhotoGrid');
+    if (!grid) return;
+    _fbPhoto = '';
+    if (!propId) {
+      grid.innerHTML = '<span class="yt-hint">Elegí primero la propiedad.</span>';
+      return;
+    }
+    if (!_igPhotosCache[propId]) {
+      const client = await getAuthedClient();
+      if (!client) return;
+      const { data, error } = await client.from('properties')
+        .select('id, image_urls').eq('id', propId).maybeSingle();
+      if (error) { logError('Contenido: fb photos', error); grid.innerHTML = ''; return; }
+      _igPhotosCache[propId] = (data && Array.isArray(data.image_urls)) ? data.image_urls : [];
+    }
+    const urls = _igPhotosCache[propId] || [];
+    if (!urls.length) {
+      grid.innerHTML = '<span class="yt-hint">La propiedad no tiene fotos cargadas — usá "Subir desde PC".</span>';
+      return;
+    }
+    grid.innerHTML = urls.map(function (u, i) {
+      const s = String(u || '');
+      const isCloud = s.indexOf('res.cloudinary.com') >= 0 && s.indexOf('/upload/') >= 0;
+      const thumb = isCloud ? s.replace('/upload/', '/upload/w_200,h_200,c_fill,') : s;
+      return '<button type="button" data-fb-photo="' + escAttr(s) + '" class="yt-photo-cell" title="Usar esta foto">' +
+        '<img src="' + escAttr(safeImageUrl(thumb)) + '" alt="Foto ' + (i + 1) + '" loading="lazy"></button>';
+    }).join('');
+  }
+
+  function selectFbPhoto(url) {
+    if (!url) return;
+    _fbPhoto = (_fbPhoto === url) ? '' : url; // click de nuevo = deselecciona
+    $$('#fbPhotoGrid [data-fb-photo]').forEach(function (b) {
+      b.classList.toggle('is-active', b.getAttribute('data-fb-photo') === _fbPhoto);
+    });
+  }
+
+  function switchFbMediaMode(mode) {
+    if (mode !== 'property' && mode !== 'upload') return;
+    _fbMediaMode = mode;
+    $$('#fbCreatePanel [data-fb-mode]').forEach(function (b) {
+      b.classList.toggle('is-active', b.dataset.fbMode === mode);
+    });
+    const prop = $('#fbModeProperty');
+    const up = $('#fbModeUpload');
+    if (prop) prop.style.display = mode === 'property' ? '' : 'none';
+    if (up) up.style.display = mode === 'upload' ? '' : 'none';
+    updateFbTypeHint();
+  }
+
+  function updateFbTypeHint() {
+    const hint = $('#fbMediaTypeHint');
+    if (!hint) return;
+    hint.textContent = _fbMediaMode === 'property'
+      ? 'Foto de la propiedad → post al feed.'
+      : 'Imagen → post al feed · video → post con video (se ajusta según el archivo).';
+  }
+
+  function prefillFbCaptionFromProperty(propId) {
+    if (!propId) return;
+    const cap = $('#fbCaption');
+    if (!cap || cap.value.trim()) return; // no pisa lo que ya escribió
+    const prop = _createProps.find(function (p) { return p.id === propId; });
+    if (!prop) return;
+    cap.value = (prop.property_code || '') + ' — ' + (prop.title || '') + '\n\n';
+    cap.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  /* CTA + hashtags institucionales (misma fábrica que YouTube/IG) */
+  function insertFbCta() {
+    const cap = $('#fbCaption');
+    if (!cap) return;
+    if (/bienenhaus/i.test(cap.value)) {
+      showToast('El caption ya trae el bloque de contacto/hashtags.', 'info');
+      return;
+    }
+    const p = _createProps.find(function (x) { return x.id === (($('#fbProperty') || {}).value || ''); });
+    cap.value = cap.value.replace(/\s*$/, '') + buildCtaBlock(p);
+    cap.dispatchEvent(new Event('input', { bubbles: true }));
+    showToast('CTA + hashtags agregados al caption.', 'success');
+  }
+
+  /* Validación del archivo elegido (igual que IG): imagen >4MB se
+     reescala a 1440px, video ≤50MB directo (base64 por edge function:
+     100 MB reventaría por memoria — ver server). El tipo de post se
+     ajusta solo (imagen → photo, video → video). */
+  async function onFbFileChange() {
+    const input = $('#fbFile');
+    const info = $('#fbFileInfo');
+    const typeSel = $('#fbMediaType');
+    if (!input || !info) return;
+    _fbFile = null;
+    const f = input.files && input.files[0];
+    if (!f) { info.style.display = 'none'; return; }
+    const isVideo = !f.type || f.type.indexOf('video/') === 0;
+    if (!isVideo && f.type && f.type.indexOf('image/') !== 0) {
+      showToast('El archivo no es una imagen ni un video (' + f.type + ').', 'error');
+      input.value = '';
+      return;
+    }
+    if (isVideo && f.size > 50 * 1024 * 1024) {
+      showToast('El video supera 50 MB (límite del panel para subir desde PC).', 'error');
+      input.value = '';
+      info.style.display = 'none';
+      return;
+    }
+    if (typeSel) typeSel.value = isVideo ? 'video' : 'photo';
+    if (!isVideo && f.size > 4 * 1024 * 1024) {
+      info.textContent = 'Reescalando la imagen a 1440px…';
+      info.style.color = 'var(--warning)';
+      info.style.display = '';
+      try {
+        const blob = await downscaleImageForIg(f); // helper compartido con IG
+        _fbFile = blob;
+        info.textContent = '✓ ' + f.name + ' (' + fmtBytes(blob.size) + ') — reescalada a 1440px';
+        info.style.color = 'var(--accent)';
+      } catch (err) {
+        _fbFile = f;
+        info.textContent = '⚠ No se pudo reescalar — se envía el original (' + fmtBytes(f.size) + ')';
+        info.style.color = 'var(--warning)';
+      }
+      return;
+    }
+    _fbFile = f;
+    info.textContent = '✓ ' + f.name + ' (' + fmtBytes(f.size) + ')' + (isVideo ? ' — video' : '');
+    info.style.color = 'var(--accent)';
+    info.style.display = '';
+  }
+
+  function setFbProgress(pct, txt) {
+    const wrap = $('#fbProgress');
+    const bar = $('#fbUploadBar');
+    const label = $('#fbUploadPct');
+    if (wrap) wrap.classList.add('is-visible'); // .yt-progress arranca display:none
+    if (bar) bar.style.width = pct + '%';
+    if (label) label.innerHTML = '<span>' + txt + '</span><span>' + pct + '%</span>';
+  }
+
+  function hideFbProgress() {
+    const wrap = $('#fbProgress');
+    if (wrap) wrap.classList.remove('is-visible');
+  }
+
+  function publishToFacebook() {
+    if (_fbPublishing) return;
+    publishToFacebookAsync().catch(function (e) {
+      /* Guard extra: un error de programación fuera del try no deja el lock colgado */
+      logError('Contenido: publishToFacebook', e);
+      _fbPublishing = false;
+    });
+  }
+
+  async function publishToFacebookAsync() {
+    const accountSel = $('#fbAccountSelect');
+    const accountId = (accountSel && accountSel.value) || '';
+    if (!accountId) { showToast('Conectá primero la página de Facebook (tarjeta en Cuentas).', 'warning'); return; }
+    const propId = (($('#fbProperty') || {}).value || '');
+    const prop = propId ? _createProps.find(function (p) { return p.id === propId; }) : null;
+    const caption = (($('#fbCaption') || {}).value || '').trim();
+    const typeSel = $('#fbMediaType');
+    let mediaType = typeSel ? (typeSel.value || 'photo') : 'photo';
+
+    let imageUrl = '';
+    let localFile = null;
+    if (_fbMediaMode === 'property') {
+      if (!_fbPhoto) { showToast('Elegí una foto de la propiedad.', 'warning'); return; }
+      imageUrl = _fbPhoto;
+      mediaType = 'photo';
+    } else {
+      localFile = _fbFile;
+      if (!localFile) { showToast('Elegí el archivo (imagen o video).', 'warning'); return; }
+      mediaType = (!localFile.type || localFile.type.indexOf('video/') === 0) ? 'video' : 'photo';
+    }
+    if (!caption) { showToast('Escribí el caption del post.', 'warning'); return; }
+
+    _fbPublishing = true;
+    const btn = $('#fbPublishBtn');
+    const btnHtml = btn ? btn.innerHTML : '';
+    FB_LOCK_IDS.forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.disabled = true;
+    });
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Publicando…'; }
+    setFbProgress(0, 'Preparando…');
+
+    let postId = null;
+    let client = null;
+    let tempUploaded = null; // { url, path } del bucket temporal
+
+    try {
+      client = await getAuthedClient();
+      if (!client) throw new Error('Sin sesión activa');
+
+      /* 1. Registro previo en social_posts (patrón YT/IG: queda traza aunque
+         la subida muera a mitad — el sweep del historial lo ve). */
+      const { data: userWrap } = await client.auth.getUser();
+      const row = {
+        account_id: accountId,
+        platform: 'facebook',
+        post_type: mediaType,
+        content: {
+          caption: caption,
+          title: prop ? (prop.property_code || '') + ' — ' + (prop.title || '') : caption.substring(0, 80),
+          source: _fbMediaMode,
+        },
+        media: { type: mediaType === 'video' ? 'video' : 'image' },
+        status: 'publishing',
+        property_id: propId || null,
+        created_by: userWrap && userWrap.user ? userWrap.user.id : null,
+      };
+      const { data: inserted, error: insErr } = await client
+        .from('social_posts').insert(row).select('id').single();
+      if (insErr) throw new Error('No se pudo registrar la publicación: ' + insErr.message);
+      postId = inserted.id;
+
+      /* 2. Subida desde PC → bucket temporal (la URL pública viaja a FB) */
+      if (localFile) {
+        setFbProgress(15, 'Subiendo archivo (temporal)…');
+        const b64 = await fileToBase64(localFile);
+        const up = await fbApiCall('upload_temp', {
+          account_id: accountId,
+          file_base64: b64,
+          file_type: localFile.type || 'image/jpeg',
+          file_name: localFile.name || 'media',
+        });
+        if (!up.url) throw new Error('No se pudo subir el archivo temporal');
+        tempUploaded = { url: up.url, path: up.temp_path || '' };
+      }
+
+      /* 3. Publicar: la foto es sincrónica (post_id directo); el video
+         entra en procesamiento y se poll-ea hasta ready. */
+      let mediaId = '';
+      if (mediaType === 'photo') {
+        setFbProgress(55, 'Publicando en Facebook…');
+        const created = await fbApiCall('create', {
+          account_id: accountId,
+          media_type: 'photo',
+          image_url: tempUploaded ? tempUploaded.url : imageUrl,
+          caption: caption,
+        });
+        mediaId = created.media_id;
+        if (!mediaId) throw new Error('Facebook no devolvió el ID del post');
+      } else {
+        setFbProgress(35, 'Subiendo el video a Facebook…');
+        const created = await fbApiCall('create', {
+          account_id: accountId,
+          media_type: 'video',
+          video_url: tempUploaded ? tempUploaded.url : '',
+          caption: caption,
+        });
+        mediaId = created.video_id;
+        if (!mediaId) throw new Error('Facebook no devolvió el ID del video');
+
+        /* 4. Poll del procesamiento del video (fallo transitorio del poll ≠
+           fallo del video: reintenta hasta el límite). */
+        const startedAt = Date.now();
+        let ready = false;
+        let lastErr = '';
+        while (Date.now() - startedAt < FB_POLL_MAX_MS) {
+          await new Promise(function (r) { setTimeout(r, FB_POLL_MS); });
+          setFbProgress(55, 'Facebook está procesando el video…');
+          let st = null;
+          try { st = await fbApiCall('status', { account_id: accountId, video_id: mediaId }); }
+          catch (pollErr) { lastErr = pollErr.message; continue; }
+          if (st.status_code === 'FINISHED') { ready = true; break; }
+          if (st.status_code === 'ERROR') { lastErr = st.error || 'Facebook rechazó el video'; break; }
+        }
+        if (!ready) throw new Error(lastErr || 'Facebook tardó más de 5 minutos en procesar el video.');
+      }
+
+      /* 5. Permalink (best-effort: si falla, llega con el próximo sync).
+         Los posts de FB tienen permalink_url; las fotos tienen link
+         (si create devolvió solo el id de la foto, sin post_id). */
+      setFbProgress(82, 'Obteniendo el link…');
+      let permalink = '';
+      try {
+        const info = await fbApiCall('media_info', { account_id: accountId, media_id: mediaId });
+        permalink = (info.media_info && (info.media_info.permalink_url || info.media_info.link)) || '';
+      } catch (_) { /* no bloquea la publicación */ }
+
+      /* 6. Update del post */
+      await client.from('social_posts').update({
+        status: 'published',
+        published_at: new Date().toISOString(),
+        external_post_id: mediaId,
+        external_url: permalink || null,
+      }).eq('id', postId);
+
+      /* 7. Audit (la escribe el server: RLS no deja insertar del cliente) */
+      if (CORE && CORE.audit) {
+        CORE.audit('fb_publish', {
+          recordId: postId,
+          status: 'success',
+          errorCode: null,
+          metadata: { media_type: mediaType, property_id: propId || null, media_id: mediaId },
+        });
+      }
+
+      setFbProgress(100, 'Publicado.');
+      showToast('Publicado en Facebook.', 'success');
+      /* Limpieza suave: caption y archivo se van; propiedad y foto quedan
+         (postear 2-3 fotos de la misma propiedad es el uso típico). */
+      const capEl = $('#fbCaption');
+      if (capEl) { capEl.value = ''; capEl.dispatchEvent(new Event('input', { bubbles: true })); }
+      const fileEl = $('#fbFile');
+      if (fileEl) fileEl.value = '';
+      _fbFile = null;
+      const fileInfo = $('#fbFileInfo');
+      if (fileInfo) { fileInfo.style.display = 'none'; fileInfo.textContent = ''; }
+      const typeEl = $('#fbMediaType');
+      if (typeEl) typeEl.value = 'photo';
+      await loadHistory();
+    } catch (err) {
+      const msg = String((err && err.message) || err);
+      /* Marcar el post como fallado en el acto — sin esto quedaba 'publishing'
+         zombi hasta el sweep del historial. */
+      if (postId && client) {
+        try { await client.from('social_posts').update({ status: 'failed', error: msg.substring(0, 500) }).eq('id', postId); } catch (_) {}
+      }
+      if (CORE && CORE.audit) {
+        CORE.audit('fb_publish_fail', {
+          recordId: postId,
+          status: 'error',
+          errorCode: 'FB_PUBLISH_FAIL',
+          metadata: { message: msg },
+        });
+      }
+      showToast('No se pudo publicar: ' + msg, 'error');
+      hideFbProgress();
+    } finally {
+      /* Cleanup del bucket temporal SIEMPRE (publicado o fallado) */
+      if (tempUploaded && tempUploaded.path) {
+        try { await fbApiCall('cleanup_temp', { temp_path: tempUploaded.path }); } catch (_) {}
+      }
+      _fbPublishing = false;
+      FB_LOCK_IDS.forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.disabled = false;
+      });
+      if (btn) { btn.disabled = false; btn.innerHTML = btnHtml; }
+    }
+  }
+
+  /* Eliminar un post publicado de verdad (no solo el registro del CRM) */
+  async function fbDeletePost(postId) {
+    const p = _lastHistory.find(function (x) { return x.id === postId; });
+    if (!p) return;
+    if (!p.external_post_id) { showToast('El post no tiene ID de Facebook — borrá el registro.', 'warning'); return; }
+    const acc = fbActiveAccount();
+    if (!acc) { showToast('La página de Facebook no está conectada — borrá el post desde Facebook.', 'warning'); return; }
+    const ok = await ytConfirm({
+      title: 'Eliminar de Facebook',
+      message: '¿Eliminar este post de Facebook? La acción no se puede deshacer (el registro queda como fallado en el historial).',
+      icon: 'fab fa-facebook-f',
+      confirmText: 'Eliminar',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await fbApiCall('delete', { account_id: acc.id, media_id: p.external_post_id });
+      /* Patrón YT Studio: la fila no se borra — pasa a failed con el motivo
+         (el historial conserva la traza). */
+      const client = await getAuthedClient();
+      if (client) {
+        await client.from('social_posts')
+          .update({ status: 'failed', error: 'Eliminado de Facebook' })
+          .eq('id', postId);
+      }
+      showToast('Post eliminado de Facebook.', 'success');
+      await loadHistory();
+    } catch (err) {
+      showToast('No se pudo eliminar: ' + String((err && err.message) || err), 'error');
     }
   }
 
@@ -4006,7 +5185,14 @@
       '<div id="contenidoAccounts" class="yt-account-grid"></div>' +
       '<div id="contenidoStudio" style="display:none;"></div>' +
       '<div id="contenidoCreate" style="display:none;">' +
+        /* Switcher de plataforma (YouTube v1 + Instagram v2 — FB/TikTok "próximamente") */
+        '<div class="yt-inline" style="margin-bottom:14px;gap:8px;">' +
+          '<button type="button" data-create-plat="youtube" class="yt-tab is-active" style="padding:8px 16px;"><i class="fab fa-youtube" style="color:#FF0000;"></i> YouTube</button>' +
+          '<button type="button" data-create-plat="instagram" class="yt-tab" style="padding:8px 16px;"><i class="fab fa-instagram" style="color:#E1306C;"></i> Instagram</button>' +
+          '<button type="button" data-create-plat="facebook" class="yt-tab" style="padding:8px 16px;"><i class="fab fa-facebook-f" style="color:#1877F2;"></i> Facebook</button>' +
+        '</div>' +
         /* MEJORA 2026-10-30: layout en 2 columnas — form a la izquierda + Score SEO (vidIQ) pegado a la derecha */
+        '<div id="ytCreatePanel">' +
         '<div class="yt-row">' +
         '<div class="yt-col-form">' +
         '<div class="glass-panel" style="padding:24px;">' +
@@ -4142,6 +5328,14 @@
           '</div>' +
         '</div>' +
         '</div>' +
+        '</div>' +
+        /* Instagram (v2): el form se construye en ensureIgPanel() al entrar
+           al tab (renderShell corre UNA vez y el estado de la conexión
+           cambia en vivo — el panel se rellena con renderIgAccounts()). */
+        '<div id="igCreatePanel" style="display:none;"></div>' +
+        /* Facebook (v3): el form se construye en ensureFbPanel() al entrar
+           al tab (mismo patrón que IG — renderShell corre UNA vez). */
+        '<div id="fbCreatePanel" style="display:none;"></div>' +
       '</div>' +
       '<div id="contenidoHistory" style="display:none;"></div>';
   }
@@ -4262,6 +5456,26 @@
       if (e.target.closest('#ytTemplateDel')) { deleteCurrentTemplate(); return; }
       if (e.target.closest('#ytQuickFixTags')) { quickFixTags(); return; }
       if (e.target.closest('#ytCloneMeta')) { openCloneModal(); return; }
+      /* ---------- Instagram (v2) ---------- */
+      const platBtn = e.target.closest('[data-create-plat]');
+      if (platBtn) { switchCreatePlatform(platBtn.dataset.createPlat); return; }
+      const igMode = e.target.closest('[data-ig-mode]');
+      if (igMode) { switchIgMediaMode(igMode.dataset.igMode); return; }
+      const igPhotoBtn = e.target.closest('[data-ig-photo]');
+      if (igPhotoBtn) { selectIgPhoto(igPhotoBtn.getAttribute('data-ig-photo')); return; }
+      if (e.target.closest('#igPublishBtn')) { publishToInstagram(); return; }
+      if (e.target.closest('#igCtaBtn')) { insertIgCta(); return; }
+      const igDel = e.target.closest('[data-ig-delete]');
+      if (igDel) { igDeletePost(igDel.dataset.igDelete); return; }
+      /* ---------- Facebook (v3) ---------- */
+      const fbMode = e.target.closest('[data-fb-mode]');
+      if (fbMode) { switchFbMediaMode(fbMode.dataset.fbMode); return; }
+      const fbPhotoBtn = e.target.closest('[data-fb-photo]');
+      if (fbPhotoBtn) { selectFbPhoto(fbPhotoBtn.getAttribute('data-fb-photo')); return; }
+      if (e.target.closest('#fbPublishBtn')) { publishToFacebook(); return; }
+      if (e.target.closest('#fbCtaBtn')) { insertFbCta(); return; }
+      const fbDel = e.target.closest('[data-fb-delete]');
+      if (fbDel) { fbDeletePost(fbDel.dataset.fbDelete); return; }
       /* #3/#42: historial → copiar o reintentar (metadata al form) */
       const copyBtn = e.target.closest('[data-contenido-copy]');
       if (copyBtn) {

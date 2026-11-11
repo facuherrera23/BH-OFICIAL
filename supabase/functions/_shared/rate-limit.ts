@@ -50,6 +50,8 @@ export const RATE_LIMIT_CONFIG = {
     'social-youtube-comments': { requests: 30, windowMs: 60_000 }, // 30/min - comentarios (leer + responder)
     'social-auth-instagram': { requests: 10, windowMs: 60_000 }, // 10/min - OAuth panel
     'social-instagram': { requests: 20, windowMs: 60_000 }, // 20/min - publicaciones IG
+    'social-auth-facebook': { requests: 10, windowMs: 60_000 }, // 10/min - OAuth panel
+    'social-facebook': { requests: 20, windowMs: 60_000 }, // 20/min - publicaciones FB
 } as const;
 
 export type RateLimitFnName = keyof typeof RATE_LIMIT_CONFIG;

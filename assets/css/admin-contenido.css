@@ -1118,3 +1118,9 @@
 .yt-health-label { font-size: 12px; font-weight: 600; color: var(--text-primary); }
 .yt-health-detail { font-size: 11px; color: var(--text-dim); line-height: 1.45; margin-top: 2px; }
 
+/* Instagram (v2) — grid de fotos de la propiedad (tab Crear) */
+.yt-photo-cell { background: none; border: none; padding: 0; cursor: pointer; line-height: 0; border-radius: 10px; }
+.yt-photo-cell img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; border: 2px solid rgba(148, 163, 184, 0.25); display: block; transition: border-color 0.15s; }
+.yt-photo-cell:hover img { border-color: rgba(225, 48, 108, 0.55); }
+.yt-photo-cell.is-active img { border-color: var(--accent); }
+

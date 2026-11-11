@@ -391,7 +391,12 @@ Las **5 bloqueadas** son todas por **3 zonas sin `idUbicacion` en RELA**
   **"Resuelta — Esperando por el cliente"** = esperan que se contrate el pack.
   El email (enviado por **Facundo Herrera Orquera**) va como continuación de
   ese hilo con el pack de primer punto; los 4 pedidos de la plantilla vieja
-  siguen, como pedidos 3 a 5.
+  siguen, como pedidos 3 a 5. **✅ ENVIADO 2026-11-09**: correo nuevo a
+  `jira@navent.atlassian.net`, asunto exacto `SP-61526 Fwd: Solicitud de
+  información para integración con Zonaprop` (el hilo de Gmail era copia
+  reenviada y no respondía a Jira). En espera de respuesta de Bryan Díaz en el
+  ticket; si no llega en ~3 días hábiles, hacer seguimiento respondiendo de
+  nuevo al ticket.
 - Config BH pendiente: `contacto_telefono` (RELA lo exige; hoy `null`).
 
 ### Pendientes (en orden)
