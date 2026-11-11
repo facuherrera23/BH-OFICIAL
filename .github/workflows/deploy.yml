@@ -211,6 +211,7 @@ jobs:
             "social-auth-instagram"
             "social-auth-youtube"
             "social-auth-facebook"
+            "social-auth-tiktok"
             "supervision-api"
             "supervision-digest"
             "supervision-ml-anomaly"

@@ -52,6 +52,8 @@ export const RATE_LIMIT_CONFIG = {
     'social-instagram': { requests: 20, windowMs: 60_000 }, // 20/min - publicaciones IG
     'social-auth-facebook': { requests: 10, windowMs: 60_000 }, // 10/min - OAuth panel
     'social-facebook': { requests: 20, windowMs: 60_000 }, // 20/min - publicaciones FB
+    'social-auth-tiktok': { requests: 10, windowMs: 60_000 }, // 10/min - OAuth panel
+    'social-tiktok': { requests: 20, windowMs: 60_000 }, // 20/min - publicaciones TikTok
 } as const;
 
 export type RateLimitFnName = keyof typeof RATE_LIMIT_CONFIG;

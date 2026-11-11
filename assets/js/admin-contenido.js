@@ -39,7 +39,7 @@
     youtube:   { name: 'YouTube',   icon: 'fab fa-youtube',      color: '#FF0000', available: true },
     instagram: { name: 'Instagram', icon: 'fab fa-instagram',   color: '#E1306C', available: true },
     facebook:  { name: 'Facebook',  icon: 'fab fa-facebook-f',   color: '#1877F2', available: true },
-    tiktok:    { name: 'TikTok',    icon: 'fab fa-tiktok',       color: '#F5F5F5', available: false },
+    tiktok:    { name: 'TikTok',    icon: 'fab fa-tiktok',       color: '#000000', available: true },
   };
   const STATUS_META = {
     publishing: { label: 'Publicando', color: 'var(--warning)' },
@@ -75,6 +75,12 @@
   let _fbPublishing = false;      // lock de publicación FB
   let _fbFile = null;             // File elegido (upload mode)
   let _fbPhoto = '';              // URL de la foto seleccionada (property mode)
+
+  /* ---------- TikTok (v4) ---------- */
+  let _ttMediaMode = 'property';  // origen de la media: 'property' (foto Cloudinary) | 'upload' (PC)
+  let _ttPublishing = false;      // lock de publicación TikTok
+  let _ttFile = null;             // File elegido (upload mode)
+  let _ttPhoto = '';              // URL de la foto seleccionada (property mode)
 
   const YT_TPL_KEY = 'bh_yt_templates';   // #2: plantillas locales
   const YT_QUOTA_KEY = 'bh_yt_quota';     // #44: HUD de cuota (estimación local)
@@ -2253,7 +2259,8 @@
     renderCreateAccountOptions();
     renderIgAccounts(); // Instagram (v2): el estado del form Crear sigue a las cuentas
     renderFbAccounts(); // Facebook (v3): idem
-    loadPlatformsConfig().then(function () { renderAccounts(); renderIgAccounts(); renderFbAccounts(); });
+    renderTtAccounts(); // TikTok (v4): idem
+    loadPlatformsConfig().then(function () { renderAccounts(); renderIgAccounts(); renderFbAccounts(); renderTtAccounts(); });
   }
 
   /* ¿Qué redes tienen credenciales OAuth configuradas? (app_settings
@@ -4023,11 +4030,14 @@
     const yt = $('#ytCreatePanel');
     const ig = $('#igCreatePanel');
     const fb = $('#fbCreatePanel');
+    const tt = $('#ttCreatePanel');
     if (yt) yt.style.display = pid === 'youtube' ? '' : 'none';
     if (ig) ig.style.display = pid === 'instagram' ? '' : 'none';
     if (fb) fb.style.display = pid === 'facebook' ? '' : 'none';
+    if (tt) tt.style.display = pid === 'tiktok' ? '' : 'none';
     if (pid === 'instagram') ensureIgPanel();
     if (pid === 'facebook') ensureFbPanel();
+    if (pid === 'tiktok') ensureTtPanel();
   }
 
   /* Construye el form de IG UNA vez (guard) + rellena los slots dinámicos */
@@ -4301,13 +4311,13 @@
     info.style.display = '';
   }
 
-  function downscaleImageForIg(file) {
+  function downscaleImageForIg(file, maxSideOverride) {
     return new Promise(function (resolve, reject) {
       const img = new Image();
       const url = URL.createObjectURL(file);
       img.onload = function () {
         try {
-          const maxSide = 1440;
+          const maxSide = maxSideOverride || 1440; // TikTok: 1080 (límite de la API de fotos)
           const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
           const w = Math.max(1, Math.round(img.naturalWidth * scale));
           const h = Math.max(1, Math.round(img.naturalHeight * scale));
@@ -5125,6 +5135,551 @@
     }
   }
 
+  /* ============================================================
+     TIKTOK (v4) — Direct Post (foto por URL | video FILE_UPLOAD)
+     ------------------------------------------------------------
+     La Content Posting API de TikTok difiere de FB/IG en tres
+     cosas que el form expone en claro:
+       · El access token vive 2h: el server refresca solo y persiste
+         el refresh token ROTADO (TikTok lo invalida en cada refresh).
+       · La FOTO SOLO viaja por URL (PULL_FROM_URL — TikTok la
+         descarga; requiere el dominio verificado en la app). El
+         video va por FILE_UPLOAD: el server baja los bytes y los
+         sube con PUT al upload_url firmado (≤50 MB = 1 chunk).
+       · NO hay endpoint para borrar posts (por eso este módulo no
+         tiene botón eliminar en el historial).
+     App sin auditar → TikTok solo permite posts PRIVADOS (el form
+     arranca en "Solo yo"; Público se habilita con la app auditada).
+     Flujo: social_posts(status publishing) → create (publish_id)
+       → [poll status hasta PUBLISH_COMPLETE/FAILED] → media_info
+       (permalink best-effort con el username) → update published
+       → cleanup → audit tt_publish/tt_publish_fail.
+     ============================================================ */
+
+  const TT_LOCK_IDS = ['ttPropertySearch', 'ttProperty', 'ttMediaType', 'ttCaption', 'ttPublishBtn', 'ttCtaBtn', 'ttFile', 'ttPrivacy'];
+  const TT_POLL_MS = 4000;
+  const TT_POLL_MAX_MS = 5 * 60 * 1000;
+
+  async function ttApiCall(action, payload) {
+    const res = await fetch(FN_BASE + '/social-tiktok', {
+      method: 'POST',
+      headers: await authHeaders(),
+      body: JSON.stringify(Object.assign({ action: action }, payload || {})),
+    });
+    const json = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
+    return json;
+  }
+
+  function ttActiveAccount() {
+    return _accounts.find(function (a) { return a.platform === 'tiktok' && a.status === 'active'; }) || null;
+  }
+
+  /* Construye el form de TikTok UNA vez (guard) + rellena los slots dinámicos */
+  function ensureTtPanel() {
+    const panel = $('#ttCreatePanel');
+    if (!panel) return;
+    if (panel.dataset.rendered !== '1') {
+      panel.dataset.rendered = '1';
+      panel.innerHTML = ttPanelHtml();
+      bindTtForm();
+    }
+    renderTtAccounts();
+    fillTtPropertyOptions('');
+  }
+
+  function ttPanelHtml() {
+    return '<div class="glass-panel" style="padding:24px;">' +
+      '<h3 class="yt-section-title" style="font-size:17px;"><i class="fab fa-tiktok"></i> Publicar en TikTok</h3>' +
+      '<p class="yt-muted" style="margin:0 0 18px;">Direct Post a la cuenta conectada (foto o video). La app sin auditar solo permite posts privados — habilitá "Público" cuando la auditoría de Content Posting API esté aprobada.</p>' +
+      '<div id="ttConnectState"></div>' +
+      '<div id="ttFormWrap" style="display:none;">' +
+        '<div class="yt-field"><span class="yt-label">Cuenta</span>' +
+          '<select id="ttAccountSelect" class="crm-field-input crm-field-input--select"></select>' +
+        '</div>' +
+        '<div class="yt-field"><span class="yt-label">Propiedad vinculada <span style="font-size:10.5px;text-transform:none;letter-spacing:0;">(opcional — llena el caption y aporta la foto)</span></span>' +
+          '<input id="ttPropertySearch" type="text" class="crm-field-input" placeholder="Buscar por código, título o zona…" style="margin-bottom:6px;">' +
+          '<select id="ttProperty" class="crm-field-input crm-field-input--select"><option value="">— Sin propiedad vinculada —</option></select>' +
+        '</div>' +
+        '<div class="yt-field"><span class="yt-label">Origen de la foto/video</span>' +
+          '<div class="yt-inline" style="gap:8px;">' +
+            '<button type="button" data-tt-mode="property" class="yt-tab is-active" style="padding:7px 12px;font-size:11.5px;"><i class="fas fa-image"></i> Foto de la propiedad</button>' +
+            '<button type="button" data-tt-mode="upload" class="yt-tab" style="padding:7px 12px;font-size:11.5px;"><i class="fas fa-upload"></i> Subir desde PC</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="ttModeProperty">' +
+          '<div class="yt-field"><span class="yt-label">Foto</span>' +
+            '<div id="ttPhotoGrid" class="yt-inline" style="flex-wrap:wrap;gap:10px;"><span class="yt-hint">Elegí primero la propiedad.</span></div>' +
+            '<span class="yt-hint">La foto viaja a TikTok por su URL (TikTok la descarga — requiere el dominio de Cloudinary verificado en la app).</span>' +
+          '</div>' +
+        '</div>' +
+        '<div id="ttModeUpload" style="display:none;">' +
+          '<div class="yt-field"><span class="yt-label">Archivo (imagen ≤ 8 MB · video ≤ 50 MB)</span>' +
+            '<input id="ttFile" type="file" accept="image/*,video/*" class="crm-field-input" style="width:100%;padding:8px;">' +
+            '<div id="ttFileInfo" style="font-size:11px;color:var(--accent);margin-top:4px;display:none;"></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="yt-field"><span class="yt-label">Tipo de publicación</span>' +
+          '<select id="ttMediaType" class="crm-field-input crm-field-input--select" style="width:auto;">' +
+            '<option value="photo">Post de fotos</option>' +
+            '<option value="video">Post de video</option>' +
+          '</select>' +
+          '<span id="ttMediaTypeHint" class="yt-hint" style="margin-left:10px;"></span>' +
+        '</div>' +
+        '<div class="yt-field"><span class="yt-label">Privacidad</span>' +
+          '<select id="ttPrivacy" class="crm-field-input crm-field-input--select" style="width:auto;">' +
+            '<option value="SELF_ONLY" selected>Solo yo (privado)</option>' +
+            '<option value="MUTUAL_FOLLOW_FRIENDS">Seguidores mutuos</option>' +
+            '<option value="PUBLIC_TO_EVERYONE">Público</option>' +
+          '</select>' +
+          '<span class="yt-hint" style="margin-left:10px;">App sin auditar: TikTok fuerza privado — el post se ve solo en tu cuenta.</span>' +
+        '</div>' +
+        '<div class="yt-field"><span class="yt-label">Caption <span id="ttCaptionCounter" class="yt-counter"></span></span>' +
+          '<textarea id="ttCaption" rows="5" class="crm-field-input" maxlength="2200" placeholder="Título de la propiedad + detalle + #hashtags…" style="width:100%;"></textarea>' +
+          '<div class="yt-inline" style="margin-top:8px;">' +
+            '<button type="button" id="ttCtaBtn" class="btn-luxury-action" title="Insertar bloque de contacto + hashtags institucionales" style="padding:7px 12px;font-size:11px;"><i class="fas fa-bullhorn"></i> Insertar CTA</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="ttProgress" class="yt-progress">' +
+          '<div class="yt-progress-track"><div id="ttUploadBar" class="yt-progress-bar"></div></div>' +
+          '<div id="ttUploadPct" class="yt-progress-label"></div>' +
+        '</div>' +
+        '<div class="yt-actions yt-actions--left">' +
+          '<button type="button" id="ttPublishBtn" class="btn-luxury-action yt-btn--lg"><i class="fab fa-tiktok"></i> Publicar en TikTok</button>' +
+        '</div>' +
+        '<p class="yt-muted" style="font-size:11px;margin-top:12px;">Las subidas desde PC pasan por un bucket temporal y se borran automáticamente al terminar — el contenido queda únicamente en TikTok. TikTok no permite borrar posts por API: para eliminar uno, hacelo desde la app.</p>' +
+      '</div>' +
+    '</div>';
+  }
+
+  /* Listeners del form TikTok: se cuelgan UNA vez (el shell no se re-renderiza) */
+  function bindTtForm() {
+    const ttCap = $('#ttCaption');
+    const ttCounter = $('#ttCaptionCounter');
+    if (ttCap && ttCounter) {
+      const upd = function () {
+        ttCounter.textContent = ttCap.value.length + '/2200' + (ttCap.value.length > 2100 ? ' ⚠' : '');
+        ttCounter.style.color = ttCap.value.length > 2100 ? 'var(--warning)' : 'var(--text-dim)';
+      };
+      ttCap.addEventListener('input', upd);
+      upd();
+    }
+    const ttFileInput = $('#ttFile');
+    if (ttFileInput) ttFileInput.addEventListener('change', onTtFileChange);
+    const ttSearch = $('#ttPropertySearch');
+    if (ttSearch) ttSearch.addEventListener('input', function () { fillTtPropertyOptions(this.value); });
+    const ttPropSel = $('#ttProperty');
+    if (ttPropSel) {
+      ttPropSel.addEventListener('change', function () {
+        loadTtPhotos(this.value);
+        prefillTtCaptionFromProperty(this.value);
+      });
+    }
+    updateTtTypeHint();
+  }
+
+  /* Estado de conexión TikTok dentro del form (sin cuenta activa → CTA) */
+  function renderTtAccounts() {
+    const state = $('#ttConnectState');
+    const sel = $('#ttAccountSelect');
+    const formWrap = $('#ttFormWrap');
+    if (!state || !sel || !formWrap) return; // el panel TikTok todavía no existe
+    const accs = _accounts.filter(function (a) { return a.platform === 'tiktok' && a.status === 'active'; });
+    if (!accs.length) {
+      const configured = platformConfigured('tiktok');
+      state.innerHTML =
+        '<div class="empty-state" style="padding:20px;">' +
+          '<i class="fab fa-tiktok" style="font-size:26px;"></i>' +
+          '<div class="empty-state-title">' + (configured ? 'Sin cuenta de TikTok conectada' : 'TikTok todavía no tiene su app configurada') + '</div>' +
+          '<div style="max-width:420px;line-height:1.6;">' + (configured
+            ? 'Conectá tu cuenta de TikTok (Direct Post con la app de developers.tiktok.com).'
+            : 'Faltan las credenciales de la app de TikTok (app_settings → social_tiktok).') + '</div>' +
+          (configured ? '<button type="button" class="btn-luxury-action" data-contenido-connect="tiktok"><i class="fas fa-plug"></i> Conectar TikTok</button>' : '') +
+        '</div>';
+      formWrap.style.display = 'none';
+      sel.innerHTML = '';
+      return;
+    }
+    state.innerHTML = '';
+    formWrap.style.display = '';
+    sel.innerHTML = accs.map(function (a) {
+      return '<option value="' + esc(a.id) + '">' + esc(a.display_name || 'TikTok') + '</option>';
+    }).join('');
+  }
+
+  /* Mismo pool de propiedades del picker (con buscador propio) */
+  function fillTtPropertyOptions(query) {
+    const sel = $('#ttProperty');
+    if (!sel) return; // el panel TikTok todavía no existe
+    const q = bhNorm(String(query || ''));
+    const list = _createProps.filter(function (p) {
+      if (!q) return true;
+      return bhNorm(p.title || '').indexOf(q) >= 0
+        || bhNorm(p.property_code || '').indexOf(q) >= 0
+        || bhNorm(p.zone || '').indexOf(q) >= 0;
+    });
+    sel.innerHTML = '<option value="">— Sin propiedad vinculada —</option>' + list.map(function (p) {
+      return '<option value="' + esc(p.id) + '">' + esc((p.property_code || '(sin código)') + ' — ' + (p.title || '(sin título)')) + '</option>';
+    }).join('');
+  }
+
+  /* Grid de fotos de la propiedad — misma cache que IG/FB (_igPhotosCache) */
+  async function loadTtPhotos(propId) {
+    const grid = $('#ttPhotoGrid');
+    if (!grid) return;
+    _ttPhoto = '';
+    if (!propId) {
+      grid.innerHTML = '<span class="yt-hint">Elegí primero la propiedad.</span>';
+      return;
+    }
+    if (!_igPhotosCache[propId]) {
+      const client = await getAuthedClient();
+      if (!client) return;
+      const { data, error } = await client.from('properties')
+        .select('id, image_urls').eq('id', propId).maybeSingle();
+      if (error) { logError('Contenido: tt photos', error); grid.innerHTML = ''; return; }
+      _igPhotosCache[propId] = (data && Array.isArray(data.image_urls)) ? data.image_urls : [];
+    }
+    const urls = _igPhotosCache[propId] || [];
+    if (!urls.length) {
+      grid.innerHTML = '<span class="yt-hint">La propiedad no tiene fotos cargadas — usá "Subir desde PC".</span>';
+      return;
+    }
+    grid.innerHTML = urls.map(function (u, i) {
+      const s = String(u || '');
+      const isCloud = s.indexOf('res.cloudinary.com') >= 0 && s.indexOf('/upload/') >= 0;
+      const thumb = isCloud ? s.replace('/upload/', '/upload/w_200,h_200,c_fill,') : s;
+      return '<button type="button" data-tt-photo="' + escAttr(s) + '" class="yt-photo-cell" title="Usar esta foto">' +
+        '<img src="' + escAttr(safeImageUrl(thumb)) + '" alt="Foto ' + (i + 1) + '" loading="lazy"></button>';
+    }).join('');
+  }
+
+  function selectTtPhoto(url) {
+    if (!url) return;
+    _ttPhoto = (_ttPhoto === url) ? '' : url; // click de nuevo = deselecciona
+    $$('#ttPhotoGrid [data-tt-photo]').forEach(function (b) {
+      b.classList.toggle('is-active', b.getAttribute('data-tt-photo') === _ttPhoto);
+    });
+  }
+
+  function switchTtMediaMode(mode) {
+    if (mode !== 'property' && mode !== 'upload') return;
+    _ttMediaMode = mode;
+    $$('#ttCreatePanel [data-tt-mode]').forEach(function (b) {
+      b.classList.toggle('is-active', b.dataset.ttMode === mode);
+    });
+    const prop = $('#ttModeProperty');
+    const up = $('#ttModeUpload');
+    if (prop) prop.style.display = mode === 'property' ? '' : 'none';
+    if (up) up.style.display = mode === 'upload' ? '' : 'none';
+    updateTtTypeHint();
+  }
+
+  function updateTtTypeHint() {
+    const hint = $('#ttMediaTypeHint');
+    if (!hint) return;
+    hint.textContent = _ttMediaMode === 'property'
+      ? 'Foto de la propiedad → post de fotos (viaja por URL).'
+      : 'Imagen → post de fotos · video → post de video (se ajusta según el archivo).';
+  }
+
+  function prefillTtCaptionFromProperty(propId) {
+    if (!propId) return;
+    const cap = $('#ttCaption');
+    if (!cap || cap.value.trim()) return; // no pisa lo que ya escribió
+    const prop = _createProps.find(function (p) { return p.id === propId; });
+    if (!prop) return;
+    cap.value = (prop.property_code || '') + ' — ' + (prop.title || '') + '\n\n';
+    cap.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  /* CTA + hashtags institucionales (misma fábrica que YouTube/IG/FB) */
+  function insertTtCta() {
+    const cap = $('#ttCaption');
+    if (!cap) return;
+    if (/bienenhaus/i.test(cap.value)) {
+      showToast('El caption ya trae el bloque de contacto/hashtags.', 'info');
+      return;
+    }
+    const p = _createProps.find(function (x) { return x.id === (($('#ttProperty') || {}).value || ''); });
+    cap.value = cap.value.replace(/\s*$/, '') + buildCtaBlock(p);
+    cap.dispatchEvent(new Event('input', { bubbles: true }));
+    showToast('CTA + hashtags agregados al caption.', 'success');
+  }
+
+  /* Validación del archivo elegido (igual que IG/FB): imagen >4MB se
+     reescala a 1440px, video ≤50MB directo (base64 por edge function).
+     El tipo de post se ajusta solo (imagen → photo, video → video). */
+  async function onTtFileChange() {
+    const input = $('#ttFile');
+    const info = $('#ttFileInfo');
+    const typeSel = $('#ttMediaType');
+    if (!input || !info) return;
+    _ttFile = null;
+    const f = input.files && input.files[0];
+    if (!f) { info.style.display = 'none'; return; }
+    const isVideo = !f.type || f.type.indexOf('video/') === 0;
+    if (!isVideo && f.type && f.type.indexOf('image/') !== 0) {
+      showToast('El archivo no es una imagen ni un video (' + f.type + ').', 'error');
+      input.value = '';
+      return;
+    }
+    if (isVideo && f.size > 50 * 1024 * 1024) {
+      showToast('El video supera 50 MB (límite del panel para subir desde PC).', 'error');
+      input.value = '';
+      info.style.display = 'none';
+      return;
+    }
+    if (typeSel) typeSel.value = isVideo ? 'video' : 'photo';
+    if (!isVideo && f.size > 4 * 1024 * 1024) {
+      info.textContent = 'Reescalando la imagen a 1080px…';
+      info.style.color = 'var(--warning)';
+      info.style.display = '';
+      try {
+        const blob = await downscaleImageForIg(f, 1080); // helper compartido — TikTok limita las fotos a 1080p
+        _ttFile = blob;
+        info.textContent = '✓ ' + f.name + ' (' + fmtBytes(blob.size) + ') — reescalada a 1080px (límite de fotos de TikTok)';
+        info.style.color = 'var(--accent)';
+      } catch (err) {
+        _ttFile = f;
+        info.textContent = '⚠ No se pudo reescalar — se envía el original (' + fmtBytes(f.size) + ')';
+        info.style.color = 'var(--warning)';
+      }
+      return;
+    }
+    _ttFile = f;
+    info.textContent = '✓ ' + f.name + ' (' + fmtBytes(f.size) + ')' + (isVideo ? ' — video' : '');
+    info.style.color = 'var(--accent)';
+    info.style.display = '';
+  }
+
+  function setTtProgress(pct, txt) {
+    const wrap = $('#ttProgress');
+    const bar = $('#ttUploadBar');
+    const label = $('#ttUploadPct');
+    if (wrap) wrap.classList.add('is-visible'); // .yt-progress arranca display:none
+    if (bar) bar.style.width = pct + '%';
+    if (label) label.innerHTML = '<span>' + txt + '</span><span>' + pct + '%</span>';
+  }
+
+  function hideTtProgress() {
+    const wrap = $('#ttProgress');
+    if (wrap) wrap.classList.remove('is-visible');
+  }
+
+  /* TikTok limita las fotos a 1080p y solo acepta JPEG/WebP: para fotos de
+     propiedad (URL Cloudinary) pedimos la variante capada con un transform
+     embebido — TikTok la descarga ya en el tamaño/formato correcto. Solo se
+     inserta si la URL no trae transforms propios (los params duplicados de
+     Cloudinary dejan ganar al último). */
+  function ttPhotoUrlForApi(url) {
+    const s = String(url || '');
+    if (s.indexOf('res.cloudinary.com') < 0 || s.indexOf('/upload/') < 0) return s;
+    const idx = s.indexOf('/upload/');
+    const after = s.substring(idx + 8);
+    if (/^[a-z]+_/.test(after)) return s; // ya tiene transforms — no se toca
+    return s.replace('/upload/', '/upload/w_1080,c_limit,f_jpg,');
+  }
+
+  function publishToTikTok() {
+    if (_ttPublishing) return;
+    publishToTikTokAsync().catch(function (e) {
+      /* Guard extra: un error de programación fuera del try no deja el lock colgado */
+      logError('Contenido: publishToTikTok', e);
+      _ttPublishing = false;
+    });
+  }
+
+  async function publishToTikTokAsync() {
+    const accountSel = $('#ttAccountSelect');
+    const accountId = (accountSel && accountSel.value) || '';
+    if (!accountId) { showToast('Conectá primero la cuenta de TikTok (tarjeta en Cuentas).', 'warning'); return; }
+    const propId = (($('#ttProperty') || {}).value || '');
+    const prop = propId ? _createProps.find(function (p) { return p.id === propId; }) : null;
+    const caption = (($('#ttCaption') || {}).value || '').trim();
+    const privacySel = $('#ttPrivacy');
+    const privacy = privacySel ? (privacySel.value || 'SELF_ONLY') : 'SELF_ONLY';
+    const typeSel = $('#ttMediaType');
+    let mediaType = typeSel ? (typeSel.value || 'photo') : 'photo';
+
+    let imageUrl = '';
+    let localFile = null;
+    if (_ttMediaMode === 'property') {
+      if (!_ttPhoto) { showToast('Elegí una foto de la propiedad.', 'warning'); return; }
+      imageUrl = ttPhotoUrlForApi(_ttPhoto);
+      mediaType = 'photo';
+    } else {
+      localFile = _ttFile;
+      if (!localFile) { showToast('Elegí el archivo (imagen o video).', 'warning'); return; }
+      mediaType = (!localFile.type || localFile.type.indexOf('video/') === 0) ? 'video' : 'photo';
+    }
+    if (!caption) { showToast('Escribí el caption del post.', 'warning'); return; }
+
+    _ttPublishing = true;
+    const btn = $('#ttPublishBtn');
+    const btnHtml = btn ? btn.innerHTML : '';
+    TT_LOCK_IDS.forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.disabled = true;
+    });
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Publicando…'; }
+    setTtProgress(0, 'Preparando…');
+
+    let postId = null;
+    let client = null;
+    let tempUploaded = null; // { url, path } del bucket temporal
+
+    try {
+      client = await getAuthedClient();
+      if (!client) throw new Error('Sin sesión activa');
+
+      /* 1. Registro previo en social_posts (patrón YT/IG/FB: queda traza aunque
+         la subida muera a mitad — el sweep del historial lo ve). */
+      const { data: userWrap } = await client.auth.getUser();
+      const row = {
+        account_id: accountId,
+        platform: 'tiktok',
+        post_type: mediaType,
+        content: {
+          caption: caption,
+          title: prop ? (prop.property_code || '') + ' — ' + (prop.title || '') : caption.substring(0, 80),
+          source: _ttMediaMode,
+          privacy_level: privacy,
+        },
+        media: { type: mediaType === 'video' ? 'video' : 'image' },
+        status: 'publishing',
+        property_id: propId || null,
+        created_by: userWrap && userWrap.user ? userWrap.user.id : null,
+      };
+      const { data: inserted, error: insErr } = await client
+        .from('social_posts').insert(row).select('id').single();
+      if (insErr) throw new Error('No se pudo registrar la publicación: ' + insErr.message);
+      postId = inserted.id;
+
+      /* 2. Subida desde PC → bucket temporal (la URL pública viaja a TikTok) */
+      if (localFile) {
+        setTtProgress(15, 'Subiendo archivo (temporal)…');
+        const b64 = await fileToBase64(localFile);
+        const up = await ttApiCall('upload_temp', {
+          account_id: accountId,
+          file_base64: b64,
+          file_type: localFile.type || 'image/jpeg',
+          file_name: localFile.name || 'media',
+        });
+        if (!up.url) throw new Error('No se pudo subir el archivo temporal');
+        tempUploaded = { url: up.url, path: up.temp_path || '' };
+      }
+
+      /* 3. Publicar: foto (URL) y video (FILE_UPLOAD) devuelven publish_id;
+         el post entra en procesamiento en TikTok y se poll-ea. Cada tipo
+         viaja por SU campo (el server elige con image_url || video_url). */
+      setTtProgress(localFile ? 55 : 45, 'Publicando en TikTok…');
+      const created = await ttApiCall('create', {
+        account_id: accountId,
+        media_type: mediaType,
+        image_url: mediaType === 'photo' ? (tempUploaded ? tempUploaded.url : imageUrl) : '',
+        video_url: mediaType === 'video' && tempUploaded ? tempUploaded.url : '',
+        caption: caption,
+        privacy_level: privacy,
+      });
+      const publishId = created.publish_id;
+      if (!publishId) throw new Error('TikTok no devolvió el publish_id');
+
+      /* 4. Poll del procesamiento (fallo transitorio del poll ≠ fallo del
+         post: reintenta hasta el límite). El post_id público solo llega si
+         es público Y pasó moderación — los privados no lo tienen. */
+      const startedAt = Date.now();
+      let ready = false;
+      let lastErr = '';
+      let ttPostIds = [];
+      while (Date.now() - startedAt < TT_POLL_MAX_MS) {
+        await new Promise(function (r) { setTimeout(r, TT_POLL_MS); });
+        setTtProgress(62, 'TikTok está procesando el post…');
+        let st = null;
+        try { st = await ttApiCall('status', { account_id: accountId, publish_id: publishId }); }
+        catch (pollErr) { lastErr = pollErr.message; continue; }
+        if (st.status_code === 'FINISHED') { ready = true; ttPostIds = st.post_ids || []; break; }
+        if (st.status_code === 'ERROR') { lastErr = st.error || 'TikTok rechazó la publicación'; break; }
+      }
+      if (!ready) throw new Error(lastErr || 'TikTok tardó más de 5 minutos en procesar el post.');
+
+      /* 5. Permalink (best-effort: TikTok no da post_id de posts privados —
+         el link puede quedar vacío y llega cuando el post es público). */
+      setTtProgress(82, 'Obteniendo el link…');
+      let permalink = '';
+      const firstPostId = ttPostIds.length ? String(ttPostIds[0]) : '';
+      if (firstPostId) {
+        try {
+          const info = await ttApiCall('media_info', { account_id: accountId, post_id: firstPostId });
+          permalink = (info.media_info && info.media_info.permalink) || '';
+        } catch (_) { /* no bloquea la publicación */ }
+      }
+
+      /* 6. Update del post */
+      await client.from('social_posts').update({
+        status: 'published',
+        published_at: new Date().toISOString(),
+        external_post_id: publishId,
+        external_url: permalink || null,
+      }).eq('id', postId);
+
+      /* 7. Audit (la escribe el server: RLS no deja insertar del cliente) */
+      if (CORE && CORE.audit) {
+        CORE.audit('tt_publish', {
+          recordId: postId,
+          status: 'success',
+          errorCode: null,
+          metadata: { media_type: mediaType, property_id: propId || null, publish_id: publishId, privacy_level: privacy },
+        });
+      }
+
+      setTtProgress(100, 'Publicado.');
+      showToast(privacy === 'SELF_ONLY'
+        ? 'Publicado en TikTok (privado — se ve solo en tu cuenta hasta auditar la app).'
+        : 'Publicado en TikTok.', 'success');
+      /* Limpieza suave: caption y archivo se van; propiedad y foto quedan
+         (postear 2-3 fotos de la misma propiedad es el uso típico). */
+      const capEl = $('#ttCaption');
+      if (capEl) { capEl.value = ''; capEl.dispatchEvent(new Event('input', { bubbles: true })); }
+      const fileEl = $('#ttFile');
+      if (fileEl) fileEl.value = '';
+      _ttFile = null;
+      const fileInfo = $('#ttFileInfo');
+      if (fileInfo) { fileInfo.style.display = 'none'; fileInfo.textContent = ''; }
+      const typeEl = $('#ttMediaType');
+      if (typeEl) typeEl.value = 'photo';
+      await loadHistory();
+    } catch (err) {
+      const msg = String((err && err.message) || err);
+      /* Marcar el post como fallado en el acto — sin esto quedaba 'publishing'
+         zombi hasta el sweep del historial. */
+      if (postId && client) {
+        try { await client.from('social_posts').update({ status: 'failed', error: msg.substring(0, 500) }).eq('id', postId); } catch (_) {}
+      }
+      if (CORE && CORE.audit) {
+        CORE.audit('tt_publish_fail', {
+          recordId: postId,
+          status: 'error',
+          errorCode: 'TT_PUBLISH_FAIL',
+          metadata: { message: msg },
+        });
+      }
+      showToast('No se pudo publicar: ' + msg, 'error');
+      hideTtProgress();
+    } finally {
+      /* Cleanup del bucket temporal SIEMPRE (publicado o fallado) */
+      if (tempUploaded && tempUploaded.path) {
+        try { await ttApiCall('cleanup_temp', { temp_path: tempUploaded.path }); } catch (_) {}
+      }
+      _ttPublishing = false;
+      TT_LOCK_IDS.forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.disabled = false;
+      });
+      if (btn) { btn.disabled = false; btn.innerHTML = btnHtml; }
+    }
+  }
+
   /* ---------- Shell + sub-tabs ---------- */
 
   function switchSubTab(sub) {
@@ -5190,6 +5745,7 @@
           '<button type="button" data-create-plat="youtube" class="yt-tab is-active" style="padding:8px 16px;"><i class="fab fa-youtube" style="color:#FF0000;"></i> YouTube</button>' +
           '<button type="button" data-create-plat="instagram" class="yt-tab" style="padding:8px 16px;"><i class="fab fa-instagram" style="color:#E1306C;"></i> Instagram</button>' +
           '<button type="button" data-create-plat="facebook" class="yt-tab" style="padding:8px 16px;"><i class="fab fa-facebook-f" style="color:#1877F2;"></i> Facebook</button>' +
+          '<button type="button" data-create-plat="tiktok" class="yt-tab" style="padding:8px 16px;"><i class="fab fa-tiktok"></i> TikTok</button>' +
         '</div>' +
         /* MEJORA 2026-10-30: layout en 2 columnas — form a la izquierda + Score SEO (vidIQ) pegado a la derecha */
         '<div id="ytCreatePanel">' +
@@ -5336,6 +5892,9 @@
         /* Facebook (v3): el form se construye en ensureFbPanel() al entrar
            al tab (mismo patrón que IG — renderShell corre UNA vez). */
         '<div id="fbCreatePanel" style="display:none;"></div>' +
+        /* TikTok (v4): el form se construye en ensureTtPanel() al entrar
+           al tab (mismo patrón que IG/FB — renderShell corre UNA vez). */
+        '<div id="ttCreatePanel" style="display:none;"></div>' +
       '</div>' +
       '<div id="contenidoHistory" style="display:none;"></div>';
   }
@@ -5476,6 +6035,13 @@
       if (e.target.closest('#fbCtaBtn')) { insertFbCta(); return; }
       const fbDel = e.target.closest('[data-fb-delete]');
       if (fbDel) { fbDeletePost(fbDel.dataset.fbDelete); return; }
+      /* ---------- TikTok (v4) — sin delete: la API no permite borrar posts ---------- */
+      const ttMode = e.target.closest('[data-tt-mode]');
+      if (ttMode) { switchTtMediaMode(ttMode.dataset.ttMode); return; }
+      const ttPhotoBtn = e.target.closest('[data-tt-photo]');
+      if (ttPhotoBtn) { selectTtPhoto(ttPhotoBtn.getAttribute('data-tt-photo')); return; }
+      if (e.target.closest('#ttPublishBtn')) { publishToTikTok(); return; }
+      if (e.target.closest('#ttCtaBtn')) { insertTtCta(); return; }
       /* #3/#42: historial → copiar o reintentar (metadata al form) */
       const copyBtn = e.target.closest('[data-contenido-copy]');
       if (copyBtn) {

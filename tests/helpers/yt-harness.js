@@ -356,6 +356,39 @@ async function boot(page, opts = {}) {
     }
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
   });
+
+  /* Endpoint de TikTok (upload_temp/create/status/media_info/cleanup_temp —
+     SIN delete: la Content Posting API no permite borrar posts). La foto y el
+     video son asíncronos: create devuelve publish_id y se poll-ea con status.
+     Estados configurables vía opts.tt*. */
+  await page.route('**/functions/v1/social-tiktok', async (route) => {
+    const body = route.request().postDataJSON() || {};
+    requests.push({ fn: 'tiktok', body: body });
+    if (calls[body.action] !== undefined) calls[body.action]++;
+    if (opts.ttFailAction && body.action === opts.ttFailAction) {
+      return route.fulfill({
+        status: opts.ttFailStatus || 400,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: opts.ttFailError || 'TikTok rechazó la media' }),
+      });
+    }
+    let payload = {};
+    if (body.action === 'upload_temp') {
+      payload = { url: 'https://rnldqiwwzhjnurkguihu.supabase.co/storage/v1/object/public/social-temp/tt_1_test.mp4', temp_path: 'tt_1_test.mp4' };
+    } else if (body.action === 'create') {
+      payload = { publish_id: 'tt-publish-1' };
+    } else if (body.action === 'status') {
+      /* opts.ttStatusCode permite simular ERROR / procesamiento eterno.
+         post_ids: el post_id público solo llega si pasó moderación (los
+         posts privados no lo tienen) — ttPostIds: [] simula un privado. */
+      payload = { status_code: opts.ttStatusCode || 'FINISHED', error: opts.ttStatusError || null, post_ids: opts.ttPostIds !== undefined ? opts.ttPostIds : ['tt-post-1'] };
+    } else if (body.action === 'media_info') {
+      payload = { media_info: { permalink: 'https://www.tiktok.com/@bienenhaus/video/111222333', post_id: 'tt-post-1' } };
+    } else {
+      payload = { ok: true };
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
+  });
   await page.route('**/functions/v1/social-youtube-comments', async (route) => {
     const body = route.request().postDataJSON() || {};
     requests.push({ fn: 'comments', body: body });
