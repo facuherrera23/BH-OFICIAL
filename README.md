@@ -1109,24 +1109,25 @@ npm run lavoz:estado   # sólo lectura: la cola de avisos en la terminal
 
 ### Funciones versionadas en el repo (48) y estado de deploy
 
-**Estado verificado contra producción el 2026-10-15**: 49 funciones desplegadas (47 del repo + `tmp-gen-jwt` y `cta-test`, leftovers de debug que viven **solo en el dashboard** como stubs 410 y deben borrarse manualmente). El CI deploya todas las del repo en cada push a `main` con el mapa `verify_jwt` de `deploy.yml`; `contact-submit` y `convert-image` están en `EXCLUDED_FUNCTIONS` (nunca se deployan desde CI).
+**Estado verificado contra producción el 2026-11-11**: 64 funciones deployables en el repo (`supabase/functions/*` con `index.ts`) + `tmp-gen-jwt` y `cta-test`, leftovers de debug que viven **solo en el dashboard** como stubs 410 y deben borrarse manualmente. El CI deploya todas las del repo en cada push a `main` con el mapa `verify_jwt` de `deploy.yml`; solo `convert-image` queda en `EXCLUDED_FUNCTIONS` (nunca se deploya desde CI). **Guard global**: `tests/functions-deploy.spec.js` falla si una función queda excluida sin motivo documentado, si una función llamada sin JWT (cron/trigger/webhook/callback/pre-login) falta en `NO_VERIFY`, o si alguna de las dos listas tiene nombres zombie.
 
 | Función | JWT | Propósito |
 |---|---|---|
 | `backup-snapshot` | OFF (cron) | Snapshot lógico diario 04:00 ART → bucket privado `backups` (retención 30 días) |
 | `check-password-hash` | OFF | HIBP k-anonymity (pre-login) |
-| `cloudinary-sign` | ON + admin | Firma uploads con allowlist de carpetas |
+| `cloudinary-sign` | OFF (valida el JWT dentro de la función) | Firma uploads con allowlist de carpetas |
 | `ficha` | ON | Redirector legado `/ficha?code=X` → ficha estática |
 | `ficha-publish` | — | **Stub 410 deprecado** (2026-10-11): el pipeline canónico es `scripts/generate-ficha.mjs` vía CI |
 | `ics-feed` | ON | Calendario ICS por token de agente |
 | `manage-users` | ON + super_admin | `invite`, `create-direct`, `set-role`, `update-user`, `update-self` |
 | `ml-oauth` · `ml-callback` | OFF (OAuth) | Conexión OAuth 2.0 con Mercado Libre |
 | `ml-webhook` | OFF | Notificaciones ML: `questions` (claim + auto-reply, nunca crea leads) y `vis_leads` (identity gate + consolidación) |
-| `ml-sync` · `ml-sync-import` · `ml-questions-sweep` · `ml-portal-status` | OFF (cron) | Sync bidireccional, importación inversa, barrido de preguntas, estado del panel |
+| `ml-sync` · `ml-questions-sweep` · `ml-portal-status` | OFF (cron/panel) | Sync bidireccional, barrido de preguntas, estado del panel |
+| `ml-sync-import` | ON (acepta JWT o `x-sync-secret`) | Importación inversa desde el panel admin |
 | `ml-publish` · `ml-api` · `ml-auth` · `ml-config` · `ml-categories` · `ml-listing-types` · `ml-metrics` · `ml-answer-question` · `ml-bulk-enqueue` · `ml-revoke-tokens` · `ml-import-listings` · `ml-disconnect` | mixto | Suite ML (publicación, catálogos, métricas, respuestas, tokens cifrados) |
 | `monthly_commission_liquidation` · `trigger_commission_on_close` | OFF (cron/evento) | Liquidación mensual y comisión al cerrar |
-| `cron_exclusivity_renewals` · `owner-tasks-reminder` · `visits-reminders` | OFF (cron) | Recordatorios de exclusividades, tareas y visitas |
-| `notify-new-lead` | OFF | Email de lead nuevo al agente (Brevo) |
+| `cron_exclusivity_renewals` · `owner-tasks-reminder` · `visits-process-reminders` | OFF (cron) | Recordatorios de exclusividades, tareas y visitas. ⚠️ La función `visits-reminders` es huérfana (el cron del mismo nombre llama a `visits-process-reminders`) — borrado manual pendiente |
+| `notify-new-lead` | OFF (trigger SQL) | Email de lead nuevo al agente (Brevo). La llama el trigger `notify_new_lead()` sobre `leads` via pg_net, sin JWT — con verify_jwt ON la plataforma responde 401 y los emails mueren en silencio (drift repo↔producción alineado 2026-11-11) |
 | `rela-callbacks` · `rela-sync` · `rela-proxy` | mixto | Integración RELA (OAuth, sync, proxy de publicación) |
 | `lavoz-proxy` | ON | Clasificados La Voz — publicación **asistida**: arma el aviso (texto + fotos con la portada primero) y trackea estado/vencimiento (La Voz no tiene API) |
 | `supervision-api` | ON | API externa del Centro de Supervisión (rate limit 60/min) |
@@ -1137,13 +1138,13 @@ npm run lavoz:estado   # sólo lectura: la cola de avisos en la terminal
 | `zernio-webhook` | OFF | Recibe webhooks (HMAC timing-safe, dedup, persistencia) — pendiente registrar en el dashboard de Zernio |
 | `zernio-webhook-test` | OFF | Test de configuración |
 
-### Crons activos verificados (2026-10-15, `pg_cron`)
+### Crons activos verificados (2026-11-11, `pg_cron`)
 
-`backup-snapshot-daily` (07:00 UTC) · `evaluate-supervision-rules` (cada 5 min) · `supervision-anomalies-15min` · `supervision-baselines-hourly` · `supervision-digest-weekly` (lunes 11:00 UTC) · `purge-supervision-daily` · `purge-rate-limit-logs` · `ml-sync-every-5-min` · `ml-questions-sweep` (cada 10 min) · `zernio-sync-every-2-min` · `visits-reminders` · `owner-tasks-reminder` (cada 15 min) · `survey-reminders-daily` (15:00 UTC) · `crm-followup-alerts` · `crm-overdue-visits` (hourly) · `crm-stale-leads` (lunes) · `monthly-commission-liquidation` (día 1). **17 jobs, todos activos.**
+`backup-snapshot-daily` (07:00 UTC) · `evaluate-supervision-rules` (cada 5 min) · `supervision-anomalies-15min` · `supervision-baselines-hourly` · `supervision-digest-weekly` (lunes 11:00 UTC) · `purge-supervision-daily` · `purge-rate-limit-logs` · `ml-sync-every-5-min` · `ml-questions-sweep` (cada 10 min) · `ml-vis-sweep-every-30-min` (cada 30 min, red de seguridad de leads ML) · `ml-webhook-events-purge-daily` · `exclusive-expiry-alert-daily` · `zernio-sync-every-2-min` · `visits-reminders` (cron → llama a la función `visits-process-reminders`) · `owner-tasks-reminder` (cada 15 min) · `survey-reminders-daily` (15:00 UTC) · `crm-followup-alerts` · `crm-overdue-visits` (hourly) · `crm-stale-leads` (lunes) · `monthly-commission-liquidation` (día 1, 02:00 UTC). **20 jobs, todos activos** — los 10 HTTP tienen su target en `NO_VERIFY` de `deploy.yml` con headers correctos.
 
 > ⚠️ **Patrón obligatorio en crons con `net.http_post`** (fix 2026-10-15, migración `20261015000004`): URL **hardcodeada** + auth por `x-sync-secret` leído de `zernio_config(key='sync_secret')` en runtime. `current_setting('app.settings.*')` es NULL en este proyecto y rompió 4 crons en total (ml-questions-sweep 2026-10-08, digest semanal con 401 silencioso, owner-tasks-reminder con 3.999 fallos, monthly-commission en no-op). Verificar la entrega con la respuesta real en `net._http_response`, no con el estado del cron (el SQL solo encola el request).
 
-> Las funciones huérfanas `qr-checkin`, `admin-user-invite`, `audit-log`, `chat-ai`, `chat-upload` se eliminaron de producción el 2026-08-30; `tmp-gen-jwt` y `cta-test` quedan neutralizadas como stubs 410 hasta su borrado manual.
+> Las funciones huérfanas `qr-checkin`, `admin-user-invite`, `audit-log`, `chat-ai`, `chat-upload` se eliminaron de producción el 2026-08-30; `tmp-gen-jwt` y `cta-test` quedan neutralizadas como stubs 410 hasta su borrado manual. **Nueva huérfana viva (2026-11-11)**: `visits-reminders` existe deployada pero nadie la llama (el cron del mismo nombre apunta a `visits-process-reminders`) — borrado manual pendiente, mismo patrón que tmp-gen-jwt/cta-test.
 
 ---
 

@@ -116,3 +116,37 @@ Paridad completa con la bandeja de YouTube. Nada de esto rompe producción: el w
 **Higiene `social-temp`:** los 3 servers de publicación (fb_/ig_/tt_) limpian huérfanos propios >24h en cada `upload_temp` (máx 20, best-effort, prefijo propio para no pisar flujos en vuelo) — si el browser muere entre upload y cleanup el archivo quedaba eterno en el bucket puente.
 
 **Guards:** `tests/contenido-social-leads.spec.js` extendido (16 estáticos) + `tests/contenido-consultas.spec.js` (9 behavioral: filtros, crear lead + `BH_CRM.open`, reply, moderación confirmada/cancelada, badge, realtime simulando INSERT, sync con self_skipped).
+
+---
+
+## Addendum 3 — Hallazgos post-deploy (2026-11-11, auditoría de la cadena de deploy)
+
+Trabajo posterior al deploy de la Ronda 2 (commit `bee92e2`, CI success 06:04): smoke del perímetro y revisión completa del pipeline CI↔producción. Cuatro hallazgos, tres cerrados en el mismo lote.
+
+### H1 — Drift repo↔producción del flag verify_jwt en `notify-new-lead` ✅ CORREGIDO
+
+- **Síntoma por evidencia**: `POST /functions/v1/notify-new-lead` sin auth respondía **400 de la función** (no 401 del gateway) → en producción `verify_jwt` estaba **OFF**, mientras `deploy.yml` la deployaría ON. La cadena de emails de leads está VIVA (alertas `crm_email_broken` del 5-10/10 cuando faltaba la key; BREVO configurado el 12/10 y desde entonces envía sin rastro) — el flag OFF provenía de un deploy manual anterior que el CI nunca tocó.
+- **Causa raíz — semántica del CLI**: `supabase functions deploy` SIN `--no-verify-jwt` **NO resetea** un flag ya existente (el repo decía ON y producción conservó el OFF durante 5 corridas CI); funciones NUEVAS sin flag nacen con verify_jwt ON. `NO_VERIFY` de `deploy.yml` es la única fuente de verdad del flag.
+- **Riesgo real si no se arregla**: el trigger `notify_new_lead()` llama via pg_net con **solo Content-Type** (sin JWT ni secret) → el próximo deploy con flag ON habría matado los emails de lead nuevo con 401 silencioso (la petición muere en el gateway, nada en logs).
+- **Fix**: `"notify-new-lead"` en `NO_VERIFY` + comentario de bloque con la explicación. Exposición unauth aceptada (valida `lead_id` UUID + re-lee el lead con service_role; precedente `ml-questions-sweep`). El próximo CI re-deploya con `--no-verify-jwt` explícito — **sin cambio de comportamiento** (producción ya corre OFF).
+
+### H2 — Sin guard global del deploy ✅ CERRADO
+
+Ningún guard impedía la clase de incidente `EXCLUDED_FUNCTIONS` (contact-submit skipeado 38 días). Nuevo **`tests/functions-deploy.spec.js`** (6 tests, estático fs, 0 red): (1) nada excluido sin motivo documentado (`ALLOWED_EXCLUDED` = solo `convert-image`), (2) exclusiones sin zombie, (3) `NO_VERIFY` sin nombres zombie/typos, (4) **toda función llamada sin JWT (24 entradas: 11 crons+trigger, 2 pre-login, 4 webhooks, 7 callbacks OAuth — verificadas contra el dump de `cron.job` y simulaciones en producción) ⊆ `NO_VERIFY`**, (5) el mapa sin referencias a funciones borradas, (6) sanity del loop >50 deployables. **Trampa aplicada**: el array NO lleva comentarios inline con `)` (el regex `/NO_VERIFY=\(([^)]*)\)/` corta ahí — falso positivo real en la primera corrida).
+
+### H3 — Gap de reproducibilidad del schema, cuantificado ⚠️ DOCUMENTADO (no resuelto)
+
+**26 de las 72** tablas de producción tienen `create table` en las 121 migraciones del repo. Las ~25 core (`leads`, `properties`, `visits`, `agents`, `owners`, `profiles`, `tasaciones`, `site_*`, `ml_listings`, `ml_oauth_states`, `ml_orders/payments/questions/shipments`, `ml_auto_reply_*`, `ml_sync_queue_failed_archive`, `property_images/sequences`, `qr_checkins`, `portal_settings`, `app_settings`, `social_posts`, `social_accounts`…) se crearon por dashboard antes de la disciplina de migraciones — ningún `create table` de las migraciones las menciona. Consecuencia: un proyecto fresco NO es reproducible con el repo solo, y una migración de `social_posts`/`social_accounts` (hallazgo 3 original) fallaría en replay por FKs a core sin migración. Se registra con números; **no** se genera DDL sin OK del dueño.
+
+### H4 — Función huérfana `visits-reminders` ⚠️ PENDIENTE de borrado manual
+
+La función existe deployada con verify_jwt ON y **0 llamadores** (el cron `visits-reminders` llama a `visits-process-reminders`). README la documentaba mal. Mismo patrón que tmp-gen-jwt/cta-test: limpieza del dashboard por el dueño (verificar antes que nadie la use).
+
+### Smoke del perímetro (producción, post-deploy `bee92e2`)
+
+`social-comments`/`social-facebook`/`social-instagram`/`social-tiktok` POST sin auth → **401** · webhook Meta GET con verify token inválido → **403** · POST sin firma → **401** · `ml-sync-import` (verify_jwt ON, llamador = panel con JWT) → **401** · `contact-submit` (NO_VERIFY) → **400** de la función. Todo como se diseñó.
+
+### Otros estados verificados
+
+- **20 crons activos** (10 HTTP con target ⊆ `NO_VERIFY` y headers correctos; 10 SQL internos) — README actualizado de 17 a 20 (faltaban `ml-vis-sweep-every-30-min`, `ml-webhook-events-purge-daily`, `exclusive-expiry-alert-daily`).
+- `ml-questions-sweep`: su cron NO envía secret y la función no lo exige (abierto por diseño, rate-limited) — consistente, no bug. `ml-sync-import`: verify_jwt ON correcto (dual JWT/secret, llamador = panel). `cloudinary-sign`: OFF + valida JWT dentro de la función (patrón válido; README stale corregido).

@@ -186,6 +186,19 @@ jobs:
           # contact-submit + tasacion-submit: endpoints públicos pre-login
           # (form del landing y tasacionero) — NUNCA verify_jwt ON o el
           # visitante anónimo recibe 401 y los leads se pierden en silencio.
+          # notify-new-lead: la llama el trigger SQL notify_new_lead sobre
+          # leads via pg_net, SIN JWT ni secret — con verify_jwt ON la
+          # plataforma responde 401 antes de que el código corra y los
+          # emails de lead nuevo mueren en silencio. Hallazgo 2026-11-11:
+          # producción tenía el flag OFF de un deploy manual mientras el
+          # repo decía ON — el drift quedó alineado acá y el guard
+          # tests/functions-deploy.spec.js valida esta lista contra el
+          # mapa de llamadores sin JWT. SEMANTICA del CLI: la orden
+          # supabase functions deploy SIN --no-verify-jwt NO resetea un
+          # flag ya existente — producción conservó el OFF del deploy
+          # manual durante 5 corridas CI — y una función NUEVA sin flag
+          # nace verify_jwt ON. Esta lista es la ÚNICA fuente de verdad
+          # del flag: si una función se llama sin JWT, DEBE estar acá.
           NO_VERIFY=(
             "backup-snapshot"
             "check-password-hash"
@@ -204,6 +217,7 @@ jobs:
             "ml-vis-sweep"
             "ml-webhook"
             "monthly_commission_liquidation"
+            "notify-new-lead"
             "owner-tasks-reminder"
             "process-retention-policies"
             "rela-callbacks"
