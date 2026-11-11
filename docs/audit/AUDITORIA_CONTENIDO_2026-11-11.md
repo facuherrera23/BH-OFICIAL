@@ -150,3 +150,12 @@ La función existe deployada con verify_jwt ON y **0 llamadores** (el cron `visi
 
 - **20 crons activos** (10 HTTP con target ⊆ `NO_VERIFY` y headers correctos; 10 SQL internos) — README actualizado de 17 a 20 (faltaban `ml-vis-sweep-every-30-min`, `ml-webhook-events-purge-daily`, `exclusive-expiry-alert-daily`).
 - `ml-questions-sweep`: su cron NO envía secret y la función no lo exige (abierto por diseño, rate-limited) — consistente, no bug. `ml-sync-import`: verify_jwt ON correcto (dual JWT/secret, llamador = panel). `cloudinary-sign`: OFF + valida JWT dentro de la función (patrón válido; README stale corregido).
+
+### H5 — Scan función por función repo↔producción (2026-11-11, mismo día) ✅ CORREGIDO
+
+Contraste completo con `list_edge_functions` (65 en producción vs 64 deployables del repo — la diferencia exacta son los zombies `tmp-gen-jwt`/`cta-test`; `convert-image` excluida en CI y ausente en producción, consistente):
+
+- **`ics-feed` — el único drift de la clase "rompe en silencio" que quedaba**: producción OFF (requisito — la suscripción de calendario externa con `?token=<agents.ics_token>` no puede mandar JWT) y el repo NO lo documentaba en `NO_VERIFY` → una re-creación manual (MCP defaults verify_jwt=true) o un cambio de semántica del CLI (`setup-cli` usa "latest") apagaba la agenda de todos los brokers con 401 al refrescar la suscripción. Fix: en `NO_VERIFY` + entrada en `CALLED_WITHOUT_JWT` + README corregido (decía ON).
+- **`ml-disconnect`, `manage-users`, `supervision-api`, `zernio-proxy`** — producción OFF y todos validan JWT/rol DENTRO de la función (`requireAdmin`/`getUser`/`requireSuperAdmin`/`requireStaff`): el flag del gateway es irrelevante para sus llamadores. Drift benigno; solo docs stale corregidas (README decía ON en 3 de ellas; AGENTS.md decía ON para supervision-api y repetía la línea vencida de BREVO no-configurada).
+- **`visits-reminders`** — huérfana con flag OFF en producción y sin entrada en `NO_VERIFY`: irrelevante (0 llamadores, borrado pendiente); NO se agrega a `NO_VERIFY` para no cimentar un zombie.
+- **Lección**: el CI nunca gira el flag existente (semántica CLI), así que este drift solo explota en re-creaciones manuales o cambios de CLI — exactamente como notify-new-lead. El guard + `list_edge_functions` son la dupla de verificación periódica.

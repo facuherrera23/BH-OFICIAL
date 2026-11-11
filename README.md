@@ -1116,10 +1116,10 @@ npm run lavoz:estado   # sólo lectura: la cola de avisos en la terminal
 | `backup-snapshot` | OFF (cron) | Snapshot lógico diario 04:00 ART → bucket privado `backups` (retención 30 días) |
 | `check-password-hash` | OFF | HIBP k-anonymity (pre-login) |
 | `cloudinary-sign` | OFF (valida el JWT dentro de la función) | Firma uploads con allowlist de carpetas |
-| `ficha` | ON | Redirector legado `/ficha?code=X` → ficha estática |
+| `ficha` | OFF | Redirector legado `/ficha?code=X` → ficha estática |
 | `ficha-publish` | — | **Stub 410 deprecado** (2026-10-11): el pipeline canónico es `scripts/generate-ficha.mjs` vía CI |
-| `ics-feed` | ON | Calendario ICS por token de agente |
-| `manage-users` | ON + super_admin | `invite`, `create-direct`, `set-role`, `update-user`, `update-self` |
+| `ics-feed` | OFF (token en la URL) | Calendario ICS por agente — los clientes externos (Google Calendar/Apple/Outlook) se suscriben con `?token=<agents.ics_token>` y no pueden mandar JWT |
+| `manage-users` | OFF (valida JWT + rol dentro) | `invite`, `create-direct`, `set-role`, `update-user`, `update-self` |
 | `ml-oauth` · `ml-callback` | OFF (OAuth) | Conexión OAuth 2.0 con Mercado Libre |
 | `ml-webhook` | OFF | Notificaciones ML: `questions` (claim + auto-reply, nunca crea leads) y `vis_leads` (identity gate + consolidación) |
 | `ml-sync` · `ml-questions-sweep` · `ml-portal-status` | OFF (cron/panel) | Sync bidireccional, barrido de preguntas, estado del panel |
@@ -1130,10 +1130,10 @@ npm run lavoz:estado   # sólo lectura: la cola de avisos en la terminal
 | `notify-new-lead` | OFF (trigger SQL) | Email de lead nuevo al agente (Brevo). La llama el trigger `notify_new_lead()` sobre `leads` via pg_net, sin JWT — con verify_jwt ON la plataforma responde 401 y los emails mueren en silencio (drift repo↔producción alineado 2026-11-11) |
 | `rela-callbacks` · `rela-sync` · `rela-proxy` | mixto | Integración RELA (OAuth, sync, proxy de publicación) |
 | `lavoz-proxy` | ON | Clasificados La Voz — publicación **asistida**: arma el aviso (texto + fotos con la portada primero) y trackea estado/vencimiento (La Voz no tiene API) |
-| `supervision-api` | ON | API externa del Centro de Supervisión (rate limit 60/min) |
+| `supervision-api` | OFF (valida super_admin dentro) | API externa del Centro de Supervisión (rate limit 60/min) |
 | `supervision-digest` | OFF (cron) | **Digest semanal** (lunes 08:00 ART) a `bienenhaus.propiedades@gmail.com` vía Brevo |
 | `supervision-notify` · `supervision-notifications` · `supervision-ml-anomaly` | — | **Stubs 410 deprecados** (Fase 2, 2026-10-12): el digest semanal reemplazó a notify/notifications; la detección ML la hace el cron SQL `supervision-anomalies-15min` |
-| `zernio-proxy` | ON | `send_message`, `mark_read`, `typing`, `list_accounts`, `backfill_*`, `diagnose` (super_admin; broker: send/typing/mark_read en conversaciones propias) |
+| `zernio-proxy` | OFF (valida JWT + rol staff dentro) | `send_message`, `mark_read`, `typing`, `list_accounts`, `backfill_*`, `diagnose` (super_admin; broker: send/typing/mark_read en conversaciones propias) |
 | `zernio-sync` | OFF | Cron cada 2 min: pull incremental de Zernio → realtime del panel (puentea la falta de webhook push; secret `x-sync-secret` en `zernio_config`) |
 | `zernio-webhook` | OFF | Recibe webhooks (HMAC timing-safe, dedup, persistencia) — pendiente registrar en el dashboard de Zernio |
 | `zernio-webhook-test` | OFF | Test de configuración |

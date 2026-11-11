@@ -199,6 +199,10 @@ jobs:
           # manual durante 5 corridas CI — y una función NUEVA sin flag
           # nace verify_jwt ON. Esta lista es la ÚNICA fuente de verdad
           # del flag: si una función se llama sin JWT, DEBE estar acá.
+          # ics-feed: suscripción externa de calendario — Google Calendar,
+          # Apple Calendar y Outlook piden la URL con ?token= y no pueden
+          # mandar JWT; con verify_jwt ON la agenda de cada broker muere
+          # en silencio (401 al refrescar la suscripción).
           NO_VERIFY=(
             "backup-snapshot"
             "check-password-hash"
@@ -207,6 +211,7 @@ jobs:
             "cron_exclusivity_renewals"
             "exclusive-expiry-alert"
             "ficha"
+            "ics-feed"
             "manage-users"
             "ml-callback"
             "ml-oauth"
