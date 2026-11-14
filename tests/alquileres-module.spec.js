@@ -143,9 +143,33 @@ test.describe('alquileres-app.js — controlador Supabase', () => {
   });
 
   test('estado ilegible/corrupto en la DB NO deja la página en blanco', () => {
-    expect(app).toMatch(/catch \(e\) \{[\s\S]{0,200}S = null;/);
-    // y el fallback arranca vacío con bhInitS
+    // el catch no crashea el boot: S=null y cae a la pantalla de reintento
+    // (guard P0 anti-pisón de abajo) — jamás un render en blanco ni un vacío pisando la fila
+    expect(app).toMatch(/catch \(e\) \{[\s\S]{0,300}S = null;/);
+    // y el fallback de usuario nuevo arranca vacío con bhInitS
     expect(app).toMatch(/if \(!S\) \{[\s\S]{0,900}bhInitS\(S\);/);
+  });
+
+  test('P0 anti-pisón: carga fallida o ilegible NUNCA arranca vacío (pisaría la fila real)', () => {
+    // 2026-11-14: si la lectura inicial falla (red/JWT) o el estado no se
+    // puede interpretar, arrancar vacío + el auto-guardado (~1.2s) sobrescribía
+    // la fila real con un estado vacío (RLS lo permite: es la fila propia).
+    // Hoy: pantalla de reintento + syncNow bloqueado hasta cargar bien.
+    expect(app).toMatch(/if \(!cargado && \(row \|\| err\)\) \{/);
+    expect(app).toMatch(/loadFailed = true;[\s\S]{0,120}showRetry\(\);[\s\S]{0,40}return;/);
+    expect(app).toMatch(/if \(!client \|\| !S \|\| !alqUser \|\| loadFailed\) return;/);
+    // el estado vacío sólo se crea como usuario nuevo (lectura OK sin fila)
+    // y ahí mismo se libera el bloqueo
+    expect(app).toMatch(/if \(!S\) \{[\s\S]{0,900}bhInitS\(S\);[\s\S]{0,300}loadFailed = false;/);
+    // reintento: botón manual + reconexión automática de red
+    expect(app).toContain('function showRetry()');
+    expect(app).toMatch(/addEventListener\('online'[\s\S]{0,80}if \(loadFailed && !S\) init\(\)/);
+  });
+
+  test('reintento permanente del guardado tras agotar los 5 backoffs', () => {
+    // antes: superados los 5 reintentos, los edits posteriores probaban UNA vez
+    // y "reintentando…" mentía (nunca más se reintentaba hasta recargar)
+    expect(app).toMatch(/if \(\+\+attempts <= 5\) \{ saveTimer = setTimeout\(syncNow, 3000 \* attempts\); \}[\s\S]{0,80}else \{ saveTimer = setTimeout\(syncNow, 30000\); \}/);
   });
 
   test('flush al ocultar la pestaña (no se pierden cambios)', () => {

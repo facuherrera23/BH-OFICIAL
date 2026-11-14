@@ -29,6 +29,9 @@ let saving = false;
 let savePending = false;
 let saveError = false;
 let attempts = 0;
+let loadFailed = false;    // true = la carga inicial falló → sync BLOQUEADO
+                           // (si arrancara vacío, el primer auto-guardado
+                           // pisaría la fila real con un estado vacío)
 
 /* ---------- Modo embebido (iframe del panel admin) ----------
    Cuando la página corre dentro del iframe de la section
@@ -76,6 +79,23 @@ function gateError(msg) {
   const e = document.getElementById('alqGateError');
   if (e) { e.textContent = msg; e.style.display = msg ? 'block' : 'none'; }
 }
+
+/* Pantalla de reintento: la carga inicial falló (red/JWT) o el estado de la
+   DB no se pudo interpretar. Muestra el problema + botón Reintentar;
+   mientras loadFailed, syncNow está bloqueado — los datos reales de la nube
+   jamás se pisan con un estado vacío. */
+function showRetry() {
+  failBoot('No se pudo cargar tu administración desde la nube (error de conexión). Tus datos están a salvo: no se guarda nada hasta que cargue bien.');
+  const card = document.querySelector('#v .card');
+  if (card && !document.getElementById('alqRetryBtn')) {
+    const b = document.createElement('button');
+    b.id = 'alqRetryBtn';
+    b.textContent = 'Reintentar';
+    b.style.cssText = 'margin-top:14px;padding:9px 22px;border-radius:9px;border:0;background:linear-gradient(135deg,#1FC8C3,#0E9488);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;font-size:14px';
+    b.addEventListener('click', () => { b.disabled = true; b.textContent = 'Reintentando…'; init(); });
+    card.appendChild(b);
+  }
+}
 function traducirAuth(m) {
   const s = String(m || '').toLowerCase();
   if (s.includes('invalid login credentials')) return 'Correo o contraseña incorrectos.';
@@ -100,7 +120,7 @@ function est() {
 /* ---------- Sincronización con alquileres_state ---------- */
 async function syncNow() {
   if (saving) { savePending = true; return; }
-  if (!client || !S || !alqUser) return;
+  if (!client || !S || !alqUser || loadFailed) return;
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   const snap = JSON.stringify(S);
   if (snap === LAST && !saveError) { est(); return; } // nada cambió desde el último persistido
@@ -119,6 +139,7 @@ async function syncNow() {
     console.error('[alquileres] guardado:', err);
     saveError = true;
     if (++attempts <= 5) { saveTimer = setTimeout(syncNow, 3000 * attempts); }
+    else { saveTimer = setTimeout(syncNow, 30000); } // tras 5 fallos: reintento lento permanente (el estado "reintentando…" es verdad)
   } finally {
     saving = false;
     est();
@@ -162,6 +183,7 @@ async function init() {
   } catch (e) { err = e; }
   if (err) console.error('[alquileres] carga:', err);
 
+  let cargado = false;
   if (row && row.state && Array.isArray(row.state.props)) {
     try {
       S = row.state;
@@ -171,16 +193,27 @@ async function init() {
       LAST = JSON.stringify(S);
       DIRTY = false;
       saveError = false;
+      attempts = 0;
       SAVEDAT = row.updated_at ? new Date(row.updated_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+      cargado = true;
     } catch (e) {
-      // Estado ilegible en la DB: no morir en blanco — arrancar vacío y avisar
-      console.error('[alquileres] estado ilegible, arranco vacío:', e);
+      // Estado ilegible en la DB: NO arrancar vacío — la fila queda intacta
+      // para inspección/recuperación y el sync sigue bloqueado (loadFailed).
+      console.error('[alquileres] estado ilegible:', e);
       S = null;
-      gateError('');
     }
   }
+  if (!cargado && (row || err)) {
+    // Hay fila propia (ilegible) o la lectura falló (red/JWT): NUNCA arrancar
+    // vacío — el primer auto-guardado pisaría la fila real con un estado
+    // vacío (el RLS lo permite: es la fila propia). Pantalla de reintento.
+    loadFailed = true;
+    gateHide();
+    showRetry();
+    return;
+  }
   if (!S) {
-    // Usuario nuevo (o estado ilegible): arranca vacío con el mes actual
+    // Usuario nuevo (lectura OK sin fila): arranca vacío con el mes actual
     // (configura sus datos en "Datos de la inmobiliaria"). NO hereda
     // propiedades de nadie: la fila es propia (RLS) y la crea su primer guardado.
     const dd = new Date();
@@ -188,6 +221,7 @@ async function init() {
     bhInitS(S);
     vista = 'res';
   }
+  loadFailed = false;
 
   gateHide();
   render(); tot(); est();
@@ -230,6 +264,9 @@ if (OKCFG) {
   window.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && S && DIRTY && saveTimer) { clearTimeout(saveTimer); saveTimer = null; syncNow(); }
   });
+
+  /* Reconexión de red: si la carga inicial había fallado, reintentar sola. */
+  window.addEventListener('online', () => { if (loadFailed && !S) init(); });
 
   init();
 
