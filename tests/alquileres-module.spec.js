@@ -247,6 +247,9 @@ test.describe('alquileres.html — retheme identidad del panel', () => {
     expect(html).toMatch(/body\.embed \.btn-back-panel/);
     expect(html).toMatch(/body\.embed #gateBack/);
     expect(html).toContain('btn-back-panel');
+    // canvas del iframe dark (transparente → Chrome pinta el canvas blanco)
+    expect(html).toMatch(/html\{background:var\(--bg\)\}/);
+    expect(html).toMatch(/body\.embed\{background:var\(--bg\)\}/);
     const app = read('assets/js/alquileres-app.js');
     expect(app).toMatch(/window\.self !== window\.top/);
     expect(app).toContain("'bh-alq-height'");

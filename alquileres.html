@@ -58,8 +58,13 @@ textarea{font:inherit;width:100%;border:1px solid var(--line);border-radius:6px;
    acento #1FC8C3 · texto #F8FAFC/#8E9BAE · Playfair + Jakarta.
    ================================================================ */
 :root{--ink:#F8FAFC;--bg:#05070A;--card:rgba(14,19,26,.85);--line:rgba(255,255,255,.08);--acc:#1FC8C3;--warn:#F59E0B;--bad:#FF4757;--mut:#8E9BAE;--dim:#64748B;--ok:#10B981;--ok-bg:rgba(16,185,129,.12);--warn-bg:rgba(245,158,11,.12);--soft:rgba(255,255,255,.04)}
+/* El canvas del documento manda dentro del iframe: si html/body quedan
+   transparentes, Chrome pinta el canvas BLANCO (reporte del dueño: "el fondo
+   se ve blanco"). html con bg fija → canvas dark siempre; el guard de print
+   de abajo lo vuelve blanco al imprimir. */
+html{background:var(--bg)}
 body{font-family:'Plus Jakarta Sans',system-ui,Segoe UI,sans-serif}
-body.embed{background:transparent}
+body.embed{background:var(--bg)}
 header{background:rgba(5,7,10,.96);border-bottom:1px solid var(--line);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
 header h1{font-family:'Playfair Display',Georgia,serif;font-size:19px}
 header button.s{color:#F8FAFC;border-color:rgba(255,255,255,.16)}
