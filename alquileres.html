@@ -57,11 +57,11 @@ textarea{font:inherit;width:100%;border:1px solid var(--line);border-radius:6px;
    Tokens = admin.css: bg #05070A · cards rgba(14,19,26,.85) ·
    acento #1FC8C3 · texto #F8FAFC/#8E9BAE · Playfair + Jakarta.
    ================================================================ */
-:root{--ink:#F8FAFC;--bg:#05070A;--card:rgba(14,19,26,.85);--line:rgba(255,255,255,.08);--acc:#1FC8C3;--warn:#F59E0B;--bad:#FF4757;--mut:#8E9BAE;--dim:#64748B}
+:root{--ink:#F8FAFC;--bg:#05070A;--card:rgba(14,19,26,.85);--line:rgba(255,255,255,.08);--acc:#1FC8C3;--warn:#F59E0B;--bad:#FF4757;--mut:#8E9BAE;--dim:#64748B;--ok:#10B981;--ok-bg:rgba(16,185,129,.12);--warn-bg:rgba(245,158,11,.12);--soft:rgba(255,255,255,.04)}
 body{font-family:'Plus Jakarta Sans',system-ui,Segoe UI,sans-serif}
 body.embed{background:transparent}
-header{background:rgba(5,7,10,.96);border-bottom:1px solid var(--line)}
-header h1{font-family:'Playfair Display',Georgia,serif}
+header{background:rgba(5,7,10,.96);border-bottom:1px solid var(--line);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+header h1{font-family:'Playfair Display',Georgia,serif;font-size:19px}
 header button.s{color:#F8FAFC;border-color:rgba(255,255,255,.16)}
 button{background:linear-gradient(135deg,var(--acc),#159A95);color:#020305;border-radius:9999px;font-weight:700}
 button:hover{filter:brightness(1.08)}
@@ -90,13 +90,30 @@ label{color:var(--mut)}
 /* Modo embebido (iframe del panel): el sidebar ya es la navegación —
    ocultar los accesos de "volver al panel" de la página. */
 body.embed .btn-back-panel,body.embed #gateBack{display:none}
+/* ——— pulido de diseño (ronda 2): superficie y profundidad ——— */
+main{padding-bottom:28px}
+.card{border-radius:12px;padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,.28)}
+.card h3{font-size:16px}
+.ab{border:1px solid var(--line);border-left:3px solid rgba(255,255,255,.22)}
+.ab.rojo{border-color:rgba(255,71,87,.4);border-left-color:var(--bad)}
+.ab.amar{border-color:rgba(245,158,11,.4);border-left-color:var(--warn)}
+.ab.nar{border-color:rgba(249,115,22,.4);border-left-color:#f97316}
+input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px rgba(31,200,195,.14)}
+input[type=checkbox]{accent-color:var(--acc)}
+.t tbody tr{transition:background .15s}
+.t tbody tr:hover{background:rgba(255,255,255,.02)}
+#lista button{border-radius:10px}
+#lista button:hover{border-color:var(--acc)}
+#lista button.on{border-color:var(--acc);box-shadow:inset 3px 0 var(--acc);background:rgba(31,200,195,.08)}
+/* preview de impresión: backdrop dark (antes #6b7280 — rompía la identidad) */
+#print.on{background:#0A0D12}
 @media print{html,body{background:#fff!important}}
 </style></head><body>
 <header><h1>Administración de alquileres</h1><button class="s btn-back-panel" onclick="location.href='admin.html'" title="Volver al panel">← Panel</button><span id="per"></span>
 <button class="s" onclick="mesMas(-1)">◀</button><button class="s" onclick="mesMas(1)">Cerrar mes y pasar al siguiente ▶</button>
 <button class="s" onclick="vista='res';render()">Resumen</button><button class="s" onclick="HM=ym();vista='hist';render()">Historial / Excel</button>
 <button class="s" onclick="imprimirTodo('o')">Todas las órdenes</button><button class="s" onclick="imprimirTodo('l')">Todas las liquidaciones</button>
-<button class="wa" onclick="guardarArchivo()" title="Guardar en la nube (alquileres_state)">💾 Guardar</button><span id="est" style="font-size:12px;font-weight:700"></span>
+<button onclick="guardarArchivo()" title="Guardar en la nube (alquileres_state)">💾 Guardar</button><span id="est" style="font-size:12px;font-weight:700"></span>
 <button class="s" onclick="exportar()">Respaldo (.json)</button><button class="s" onclick="$('#fi').click()">Cargar datos de otro archivo</button>
 <input id="fi" type="file" accept=".json,.html" hidden="" onchange="importar(this.files[0]);this.value=''"></header>
 <div id="al"></div>
@@ -125,7 +142,7 @@ body.embed .btn-back-panel,body.embed #gateBack{display:none}
 <script defer src="assets/vendor/supabase-js.umd.js?v=1"></script>
 <script defer src="assets/js/config.js?v=321"></script>
 <script defer src="assets/js/supabase-client.js?v=320"></script>
-<script defer src="assets/js/alquileres-core.js?v=1"></script>
-<script defer src="assets/js/alquileres-app.js?v=2"></script>
+<script defer src="assets/js/alquileres-core.js?v=2"></script>
+<script defer src="assets/js/alquileres-app.js?v=3"></script>
 
 </body>

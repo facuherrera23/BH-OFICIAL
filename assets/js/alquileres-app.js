@@ -92,7 +92,7 @@ function est() {
   if (!client) return;
   const e = document.getElementById('est');
   if (!e) return;
-  if (saveError) { e.textContent = '⚠ Error de guardado — reintentando…'; e.style.color = '#b45309'; return; }
+  if (saveError) { e.textContent = '⚠ Error de guardado — reintentando…'; e.style.color = '#F59E0B'; return; }
   e.textContent = DIRTY ? '● Guardando cambios…' : '✔ Guardado en la nube ' + SAVEDAT;
   e.style.color = DIRTY ? '#fca5a5' : '#86efac';
 }

@@ -261,6 +261,23 @@ test.describe('alquileres.html — retheme identidad del panel', () => {
     // los documentos no usan vars: siguen hardcoded en blanco
     expect(html).toMatch(/\.pg\{[^}]*background:#fff/);
   });
+
+  test('core sin colores hardcodeados del tema claro (retheme por vars)', () => {
+    // Los boxes de pago (#fff pendiente, #ecfdf3 cobrado, #fffbeb parcial), los
+    // boxes de OCR/WhatsApp (#f8fafc) y los textos ámbar/rojo oscuro iban inline
+    // en el HTML que genera el core → sobre el tema dark quedaban manchas
+    // blancas (reporte del dueño 2026-11-14). Hoy van por vars del retheme.
+    const core = read('assets/js/alquileres-core.js');
+    const claros = ['#fff', '#f8fafc', '#ecfdf3', '#fffbeb', '#51607a', '#b45309', '#b42318', '#16a34a', '#d97706'];
+    const presentes = claros.filter(c => core.includes(c));
+    expect(presentes, `colores claros hardcodeados: ${presentes.join(', ')}`).toEqual([]);
+    // y el retheme define las vars que el core consume
+    for (const v of ['--ok:', '--ok-bg:', '--warn-bg:', '--soft:']) expect(html).toContain(v);
+  });
+
+  test('el backdrop del preview de impresión es dark (antes #6b7280)', () => {
+    expect(html).toMatch(/#print\.on\{background:#0A0D12\}/);
+  });
 });
 
 test.describe('migraciones SQL', () => {
