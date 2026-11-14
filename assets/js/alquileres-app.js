@@ -30,10 +30,33 @@ let savePending = false;
 let saveError = false;
 let attempts = 0;
 
+/* ---------- Modo embebido (iframe del panel admin) ----------
+   Cuando la página corre dentro del iframe de la section
+   #tab-alquileres, el host ajusta la altura del iframe al contenido
+   real vía postMessage {type:'bh-alq-height'} — sin scroll interno,
+   con el sidebar del panel siempre visible. ResizeObserver reporta
+   cualquier cambio de altura (render, gate, mes, vistas). */
+let EMBEDDED = false;
+try { EMBEDDED = window.self !== window.top; } catch (_) { EMBEDDED = true; }
+function alqNotifyHeight() {
+  if (!EMBEDDED) return;
+  try { window.parent.postMessage({ type: 'bh-alq-height', h: document.documentElement.scrollHeight }, location.origin); } catch (_) {}
+}
+if (EMBEDDED) {
+  document.body.classList.add('embed');
+  if (typeof ResizeObserver === 'function') {
+    const alqRO = new ResizeObserver(alqNotifyHeight);
+    alqRO.observe(document.body);
+    alqRO.observe(document.documentElement);
+  } else {
+    setInterval(alqNotifyHeight, 600);
+  }
+}
+
 /* ---------- UI: boot fallido y gate de login ---------- */
 function failBoot(msg) {
   const vv = document.getElementById('v');
-  if (vv) vv.innerHTML = '<div class="card" style="text-align:center;color:#b42318"><b>'
+  if (vv) vv.innerHTML = '<div class="card" style="text-align:center;color:#FF4757"><b>'
     + String(msg).replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]))
     + '</b></div>';
 }
@@ -168,6 +191,7 @@ async function init() {
 
   gateHide();
   render(); tot(); est();
+  alqNotifyHeight();
   try { await restaurarAdj(); } catch (_) {}
 }
 

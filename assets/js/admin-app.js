@@ -1998,12 +1998,10 @@ function esc(s) {
   }
 
   function navigateTo(section, opts) {
-    /* Alquileres vive en una página propia (alquileres.html) con su propio
-       cliente Supabase y sesión compartida: el nav-item NO tiene una
-       <section class="tab-module"> en el DOM del admin — si se tratara como
-       tab, navigateTo desactiva TODAS las secciones y el content-area queda
-       en blanco (bug real). Navegar a la página y volver. */
-    if (section === 'tab-alquileres') { window.location.href = 'alquileres.html'; return; }
+    /* Alquileres vive embebido en la <section id="tab-alquileres"> (iframe
+       same-origin → alquileres.html): es un tab normal del panel, con el
+       sidebar visible. La carga del iframe es LAZY (más abajo) y conserva
+       su estado entre cambios de tab. */
     /* #43: form crítico con cambios en un modal abierto → confirmar antes.
        El modal sigue abierto aunque navegues; esto evita perder el hilo. */
     if ((!opts || !opts.force) && section !== currentSection && pendingDirtyForm()) {
@@ -2052,6 +2050,7 @@ function esc(s) {
       'tab-leads': 'CRM & Prospectos',
       'tab-agenda': 'Agenda',
       'tab-tasaciones': 'Tasaciones',
+      'tab-alquileres': 'Administración de Alquileres',
       'tab-sitio-web': 'Editor del Sitio Web',
       'tab-contenido': 'Contenido & Redes',
       'tab-portales': 'Portales & APIs',
@@ -2103,9 +2102,30 @@ function esc(s) {
       if (prevFrame) prevFrame.src = '';
     }
 
+    /* Alquileres: carga LAZY del iframe — el src se setea sólo en el primer
+       ingreso al tab (después conserva su estado entre cambios de tab). */
+    if (section === 'tab-alquileres') {
+      const alqFrame = document.getElementById('alqFrame');
+      if (alqFrame && !alqFrame.getAttribute('src')) alqFrame.setAttribute('src', alqFrame.dataset.src);
+    }
+
     /* Close mobile sidebar */
     $('#sidebar')?.classList.remove('is-open');
   }
+
+  /* Auto-height del módulo Alquileres embebido: el documento del iframe
+     reporta su altura real (ResizeObserver → postMessage) y el host la
+     aplica — sin scroll interno, la página del admin crece y el sidebar
+     queda siempre visible. Origen validado (same-origin) y clamp mínimo. */
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin) return;
+    const data = e.data;
+    if (!data || data.type !== 'bh-alq-height') return;
+    const alqFrame = document.getElementById('alqFrame');
+    if (!alqFrame || !e.source || e.source !== alqFrame.contentWindow) return;
+    const h = Math.max(520, Number(data.h) || 0) + 12;
+    if (h > 0) alqFrame.style.height = h + 'px';
+  });
 
   /* Mobile menu toggle */
   $('#mobileMenuToggle')?.addEventListener('click', () => {

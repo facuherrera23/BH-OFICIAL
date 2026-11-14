@@ -1640,6 +1640,15 @@
 </div>
 </div>
 </section>
+<!-- ALQUILERES — módulo embebido en un iframe same-origin (alquileres.html).
+     El iframe se carga LAZY en navigateTo (src se setea desde data-src en el
+     primer ingreso) y conserva su estado entre cambios de tab. La altura la
+     reporta el propio módulo vía postMessage {type:'bh-alq-height'} → sin
+     scroll interno: la página del admin crece y el sidebar queda visible. -->
+<section class="tab-module" id="tab-alquileres">
+<iframe id="alqFrame" data-src="alquileres.html" title="Administración de Alquileres" style="width:100%; height:720px; border:none; display:block; border-radius:var(--radius-md); background:#0A0D12;">
+</iframe>
+</section>
 <!-- 10. USUARIOS -->
 <section class="tab-module" id="tab-usuarios">
 <div class="glass-panel">

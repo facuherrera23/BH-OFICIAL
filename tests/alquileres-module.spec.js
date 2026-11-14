@@ -185,25 +185,81 @@ test.describe('alquileres.html — página standalone', () => {
   });
 });
 
-test.describe('integración con el panel admin', () => {
-  test('navigateTo intercepta tab-alquileres → página propia (sin blank)', () => {
+test.describe('integración con el panel admin — iframe embebido', () => {
+  test('navigateTo ya NO redirige: el módulo vive EN el panel (lazy-load)', () => {
     const app = read('assets/js/admin-app.js');
+    // el redirect a página propia quedó reemplazado
+    expect(app.includes("window.location.href = 'alquileres.html'")).toBe(false);
     const i = app.indexOf("function navigateTo(section, opts) {");
     expect(i, 'debe existir navigateTo').toBeGreaterThan(-1);
-    const bloque = app.slice(i, i + 1200);
-    expect(bloque).toMatch(/if \(section === 'tab-alquileres'\) \{ window\.location\.href = 'alquileres\.html'; return; \}/);
+    const bloque = app.slice(i, i + 6000);
+    // lazy-load: el src del iframe se setea desde data-src en el primer ingreso
+    expect(bloque).toMatch(/section === 'tab-alquileres'[\s\S]{0,400}getElementById\('alqFrame'\)[\s\S]{0,200}dataset\.src/);
   });
 
-  test('admin.html conserva el nav-item de Alquileres', () => {
+  test('auto-height: postMessage con origen y fuente del mensaje validados', () => {
+    const app = read('assets/js/admin-app.js');
+    expect(app).toContain("'bh-alq-height'");
+    // origen same-origin obligatorio (un postMessage de afuera no puede pisar la altura)
+    expect(app).toMatch(/e\.origin !== location\.origin[\s\S]{0,400}'bh-alq-height'/);
+    // sólo se acepta el mensaje del propio iframe
+    expect(app).toMatch(/e\.source !== alqFrame\.contentWindow/);
+    expect(app).toMatch(/Math\.max\(520/);
+  });
+
+  test('admin.html: nav-item + section tab-module + iframe embebido', () => {
     const html = read('admin.html');
     expect(html).toContain('data-tab="tab-alquileres"');
-    // y NO existe una <section> fantasma para ese tab (por eso el interceptor)
-    expect(html.includes('id="tab-alquileres"')).toBe(false);
+    // la section SÍ existe (tab normal — el contenido va en un iframe same-origin)
+    expect(html).toMatch(/<section class="tab-module" id="tab-alquileres">/);
+    expect(html).toMatch(/<iframe id="alqFrame" data-src="alquileres\.html"/);
   });
 
   test('los HTML del root referencian la versión bumped de admin-app.js', () => {
     const html = read('admin.html');
     expect(html).toMatch(/assets\/js\/admin-app\.js\?v=\d+/);
+  });
+});
+
+test.describe('alquileres.html — retheme identidad del panel', () => {
+  let html;
+  test.beforeAll(() => { html = read('alquileres.html'); });
+
+  test('fuentes del admin (Playfair Display + Plus Jakarta Sans) con CSP y links', () => {
+    expect(html).toMatch(/fonts\.googleapis\.com\/css2\?family=Playfair\+Display[\s\S]*Plus\+Jakarta\+Sans/);
+    expect(html).toMatch(/Content-Security-Policy[^>]*style-src[^>]*fonts\.googleapis\.com/);
+    expect(html).toMatch(/Content-Security-Policy[^>]*font-src[^>]*fonts\.gstatic\.com/);
+  });
+
+  test('tokens del panel en el CSS del módulo (gana por cascada)', () => {
+    expect(html).toMatch(/--acc:#1FC8C3/);
+    expect(html).toMatch(/--ink:#F8FAFC/);
+    expect(html).toContain("font-family:'Plus Jakarta Sans'");
+    expect(html).toMatch(/'Playfair Display',Georgia,serif/);
+    // el retheme vive al FINAL del style (después de las reglas originales)
+    const iOriginal = html.indexOf(':root{--ink:#1b2a41');
+    const iRetheme = html.indexOf('--acc:#1FC8C3');
+    expect(iOriginal).toBeGreaterThan(-1);
+    expect(iRetheme).toBeGreaterThan(iOriginal);
+  });
+
+  test('modo embebido: .embed oculta los accesos de vuelta + el controlador detecta el iframe', () => {
+    expect(html).toMatch(/body\.embed \.btn-back-panel/);
+    expect(html).toMatch(/body\.embed #gateBack/);
+    expect(html).toContain('btn-back-panel');
+    const app = read('assets/js/alquileres-app.js');
+    expect(app).toMatch(/window\.self !== window\.top/);
+    expect(app).toContain("'bh-alq-height'");
+    expect(app).toContain("document.body.classList.add('embed')");
+    // falla cerrada: si el acceso a window.top está bloqueado, asume embebido
+    expect(app).toMatch(/catch \(_\) \{ EMBEDDED = true; \}/);
+  });
+
+  test('la impresión sigue en blanco (los PDFs no se rethemaron)', () => {
+    // guard al final del retheme: en print fuerza blanco aunque el body sea dark
+    expect(html).toMatch(/@media print\{html,body\{background:#fff!important\}\}/);
+    // los documentos no usan vars: siguen hardcoded en blanco
+    expect(html).toMatch(/\.pg\{[^}]*background:#fff/);
   });
 });
 

@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="es" style="--hh: 55px;"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Administración de Alquileres | BIENENHAUS PROPIEDADES</title><meta name="robots" content="noindex, nofollow"><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdnjs.cloudflare.com; worker-src 'self' blob:; frame-src blob: data:;"><meta name="theme-color" content="#eef1f4"><link rel="icon" href="/assets/images/favicon.ico">
+<title>Administración de Alquileres | BIENENHAUS PROPIEDADES</title><meta name="robots" content="noindex, nofollow"><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdnjs.cloudflare.com; worker-src 'self' blob:; frame-src blob: data:;"><meta name="theme-color" content="#05070A"><link rel="icon" href="/assets/images/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--ink:#1b2a41;--bg:#eef1f4;--card:#fff;--line:#d5dbe3;--acc:#0f766e;--warn:#b45309;--bad:#b42318}
 *{box-sizing:border-box}body{margin:0;font:14px system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--ink)}
@@ -45,8 +48,51 @@ textarea{font:inherit;width:100%;border:1px solid var(--line);border-radius:6px;
 .ft{display:block;width:100%}
 .pg.land{width:297mm;height:209mm;display:flex;gap:6mm;padding:6mm}.pg.land .dc{flex:1;min-width:0;height:100%;font-size:9.5pt}.land .hd{padding:4px 8px 6px}.land .hd .nm{font-size:11pt}.land .rt img{height:13mm}.land .r>div{padding:1px 6px}.land .bx{padding:3px 8px}.land .kv{grid-template-columns:30% 70%}.land .nt{padding:4px 8px}
 @media print{html,body{background:#fff}body>*:not(#print){display:none!important}#print.on{position:static;overflow:visible;background:#fff;padding:0}.tb{display:none}.pg{margin:0;box-shadow:none;page-break-after:always}.pg:last-child{page-break-after:auto}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+/* ================================================================
+   RE-THEME BIENENHAUS (identidad del panel admin) — gana por cascada
+   (último bloque). Los documentos de impresión (.pg/.dc/.hd/.r/.v/
+   .bx/.kv/…) están hardcoded en blanco/#000 SIN usar vars → rethemar
+   :root NO los afecta; @media print fuerza blanco igualmente (guard
+   repetido al final de este bloque).
+   Tokens = admin.css: bg #05070A · cards rgba(14,19,26,.85) ·
+   acento #1FC8C3 · texto #F8FAFC/#8E9BAE · Playfair + Jakarta.
+   ================================================================ */
+:root{--ink:#F8FAFC;--bg:#05070A;--card:rgba(14,19,26,.85);--line:rgba(255,255,255,.08);--acc:#1FC8C3;--warn:#F59E0B;--bad:#FF4757;--mut:#8E9BAE;--dim:#64748B}
+body{font-family:'Plus Jakarta Sans',system-ui,Segoe UI,sans-serif}
+body.embed{background:transparent}
+header{background:rgba(5,7,10,.96);border-bottom:1px solid var(--line)}
+header h1{font-family:'Playfair Display',Georgia,serif}
+header button.s{color:#F8FAFC;border-color:rgba(255,255,255,.16)}
+button{background:linear-gradient(135deg,var(--acc),#159A95);color:#020305;border-radius:9999px;font-weight:700}
+button:hover{filter:brightness(1.08)}
+button.s{background:rgba(255,255,255,.04);color:#F8FAFC;border:1px solid rgba(255,255,255,.12)}
+button.s:hover{background:rgba(255,255,255,.08);filter:none}
+button.d{background:var(--bad);color:#fff}
+.wa{background:#25d366;color:#04361a}
+input,select,textarea{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.12);color:#F8FAFC;border-radius:10px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc)}
+select option{background:#0A0D12;color:#F8FAFC}
+label{color:var(--mut)}
+.sub{color:var(--mut)}
+#lista small{color:var(--dim)}
+.selc{background:rgba(14,19,26,.85);border:1px solid var(--line);box-shadow:0 3px 8px #0006}
+.selc label{color:var(--mut)}
+.ab{background:rgba(14,19,26,.85)}
+#lista button{background:rgba(14,19,26,.85)}
+.card h3{font-family:'Playfair Display',Georgia,serif}
+.t th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+#print .tb{background:#0A0D12}
+*{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.22)}
+::-webkit-scrollbar-track{background:transparent}
+/* Modo embebido (iframe del panel): el sidebar ya es la navegación —
+   ocultar los accesos de "volver al panel" de la página. */
+body.embed .btn-back-panel,body.embed #gateBack{display:none}
+@media print{html,body{background:#fff!important}}
 </style></head><body>
-<header><h1>Administración de alquileres</h1><button class="s" onclick="location.href='admin.html'" title="Volver al panel">← Panel</button><span id="per"></span>
+<header><h1>Administración de alquileres</h1><button class="s btn-back-panel" onclick="location.href='admin.html'" title="Volver al panel">← Panel</button><span id="per"></span>
 <button class="s" onclick="mesMas(-1)">◀</button><button class="s" onclick="mesMas(1)">Cerrar mes y pasar al siguiente ▶</button>
 <button class="s" onclick="vista='res';render()">Resumen</button><button class="s" onclick="HM=ym();vista='hist';render()">Historial / Excel</button>
 <button class="s" onclick="imprimirTodo('o')">Todas las órdenes</button><button class="s" onclick="imprimirTodo('l')">Todas las liquidaciones</button>
@@ -54,25 +100,25 @@ textarea{font:inherit;width:100%;border:1px solid var(--line);border-radius:6px;
 <button class="s" onclick="exportar()">Respaldo (.json)</button><button class="s" onclick="$('#fi').click()">Cargar datos de otro archivo</button>
 <input id="fi" type="file" accept=".json,.html" hidden="" onchange="importar(this.files[0]);this.value=''"></header>
 <div id="al"></div>
-<main><div class="card selc" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end"><div style="flex:1;min-width:240px"><label>PROPIEDAD CON LA QUE ESTÁS TRABAJANDO</label><select id="sel" onchange="elegir(this.value)"></select></div><button onclick="nueva()">+ Propiedad</button><button class="s" onclick="vista='corr';render()">Datos de la inmobiliaria</button></div><section id="v"><div class="card" style="text-align:center;color:#51607a">Conectando con la base de datos…</div></section></main>
+<main><div class="card selc" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end"><div style="flex:1;min-width:240px"><label>PROPIEDAD CON LA QUE ESTÁS TRABAJANDO</label><select id="sel" onchange="elegir(this.value)"></select></div><button onclick="nueva()">+ Propiedad</button><button class="s" onclick="vista='corr';render()">Datos de la inmobiliaria</button></div><section id="v"><div class="card" style="text-align:center;color:#8E9BAE">Conectando con la base de datos…</div></section></main>
 <div id="print" class=""></div>
 
 
 
 <!-- GATE DE ACCESO (Supabase auth; comparte la sesión con el panel admin) -->
-<div id="alqGate" style="display:none;position:fixed;inset:0;background:#eef1f4;z-index:1000;align-items:center;justify-content:center;">
- <div style="background:#fff;border:1px solid #d5dbe3;border-radius:12px;padding:26px;max-width:360px;width:92%;box-shadow:0 8px 30px rgba(0,0,0,.15)">
-  <div style="font:700 15px Georgia,serif;color:#1b2a41">Administración de alquileres</div>
-  <div style="font-size:12.5px;color:#51607a;margin:4px 0 16px">Ingresá con tu usuario del panel BIENENHAUS. Cada usuario ve solo sus propiedades.</div>
-  <div id="alqGateError" style="display:none;color:#b42318;font-size:13px;margin-bottom:10px"></div>
+<div id="alqGate" style="display:none;position:fixed;inset:0;background:#05070A;z-index:1000;align-items:center;justify-content:center;">
+ <div style="background:rgba(14,19,26,.95);border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:26px;max-width:360px;width:92%;box-shadow:0 20px 50px rgba(0,0,0,.5)">
+  <div style="font:700 15px 'Playfair Display',Georgia,serif;color:#F8FAFC">Administración de alquileres</div>
+  <div style="font-size:12.5px;color:#8E9BAE;margin:4px 0 16px">Ingresá con tu usuario del panel BIENENHAUS. Cada usuario ve solo sus propiedades.</div>
+  <div id="alqGateError" style="display:none;color:#FF4757;font-size:13px;margin-bottom:10px"></div>
   <form id="alqGateForm">
-    <label style="display:block;font-size:12px;color:#51607a;margin-bottom:2px">Correo</label>
+    <label style="display:block;font-size:12px;color:#8E9BAE;margin-bottom:2px">Correo</label>
     <input id="alqGateEmail" type="email" autocomplete="username" required style="margin-bottom:10px">
-    <label style="display:block;font-size:12px;color:#51607a;margin-bottom:2px">Contraseña</label>
+    <label style="display:block;font-size:12px;color:#8E9BAE;margin-bottom:2px">Contraseña</label>
     <input id="alqGatePass" type="password" autocomplete="current-password" required>
     <button id="alqGateBtn" style="width:100%;margin-top:14px">Ingresar</button>
   </form>
-  <a href="admin.html" style="font-size:12px;color:#51607a;display:block;text-align:center;margin-top:12px">← Volver al panel</a>
+  <a id="gateBack" href="admin.html" style="font-size:12px;color:#8E9BAE;display:block;text-align:center;margin-top:12px">← Volver al panel</a>
  </div>
 </div>
 
@@ -80,6 +126,6 @@ textarea{font:inherit;width:100%;border:1px solid var(--line);border-radius:6px;
 <script defer src="assets/js/config.js?v=321"></script>
 <script defer src="assets/js/supabase-client.js?v=320"></script>
 <script defer src="assets/js/alquileres-core.js?v=1"></script>
-<script defer src="assets/js/alquileres-app.js?v=1"></script>
+<script defer src="assets/js/alquileres-app.js?v=2"></script>
 
 </body>
