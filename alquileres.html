@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BIENENHAUS PROPIEDADES | Administración de Alquileres</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://*.supabase.co https://r.ldngts.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://*.cloudinary.com https://images.unsplash.com https://*.supabase.co https://res.cloudinary.com https://*.tile.openstreetmap.org https://*.ggpht.com https://*.googleusercontent.com https://*.ytimg.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.mercadolibre.com https://api.telegram.org https://api.cloudinary.com https://res.cloudinary.com https://r.ldngts.com https://static.cloudflareinsights.com https://api.cloudflareinsights.com https://nominatim.openstreetmap.org https://www.googleapis.com; frame-src 'self';" />
+  <meta name="theme-color" content="#020305" />
+  <link rel="icon" href="/assets/images/favicon.ico">
+  <script nonce="bienenhaus2024">
+    (function() {
+      document.documentElement.setAttribute('csp-nonce', 'bienenhaus2024');
+    })();
+  </script>
+  <meta name="theme-color" content="#020305" />
+  <link rel="icon" href="/assets/images/favicon.ico">
+  <link rel="preconnect" href="https://rnldqiwwzhjnurkguihu.supabase.co" crossorigin>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="assets/vendor/fontawesome/css/all.min.css?v=1" />
+  <link rel="stylesheet" href="assets/css/admin.css?v=490" />
+  <link rel="stylesheet" href="assets/css/admin-contenido.css?v=7" />
+</head>
+<body class="is-loading">
+<!-- PRELOADER LUXURY -->
+<div class="preloader" id="preloader">
+  <div class="preloader-mark">
+    <span>BIENENHAUS</span>
+    <div class="preloader-bar"></div>
+  </div>
+</div>
+<!-- OVERLAYS GLOBALES -->
+<div class="grain-overlay"></div>
+<!-- ============================================================ PANTALLA DE LOGIN ============================================================== -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">BIENENHAUS</div>
+    <div class="login-sub">ADMINISTRACIÓN DE ALQUILERES</div>
+    <div class="login-error" id="loginError"></div>
+    <form id="loginForm">
+      <div class="login-input-group">
+        <label>Correo Corporativo</label>
+        <div class="login-input-wrapper">
+          <i class="fas fa-envelope"></i>
+          <input type="email" id="loginEmail" name="username" autocomplete="username" placeholder="admin@bienenhaus.com.ar" required />
+        </div>
+      </div>
+      <div class="login-input-group">
+        <label>Contraseña de Seguridad</label>
+        <div class="login-input-wrapper">
+          <i class="fas fa-lock"></i>
+          <input type="password" id="loginPassword" name="current-password" autocomplete="current-password" placeholder="••••••••" required />
+        </div>
+      </div>
+      <div class="login-options">
+        <label>
+          <input type="checkbox" checked style="accent-color:var(--accent);" /> Recordar credenciales
+        </label>
+        <a href="index.html">← Volver al sitio</a>
+      </div>
+      <button type="submit" class="btn-login" id="btnLoginSubmit">
+        <span>Ingresar al Panel</span>
+        <i class="fas fa-arrow-right"></i>
+      </button>
+    </form>
+  </div>
+</div>
+<!-- ============================================================ LAYOUT PRINCIPAL ============================================================== -->
+<div class="app-layout" id="appLayout" style="display:none;">
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">
+        <span class="brand-title">BIENENHAUS</span>
+        <span class="brand-subtitle">ALQUILERES</span>
+      </div>
+      <button type="button" id="sidebarCollapseToggle" class="sidebar-collapse-btn" title="Contraer menú" aria-label="Contraer o expandir menú">
+        <i class="fas fa-angles-left"></i>
+      </button>
+    </div>
+    <nav class="sidebar-menu">
+      <div class="menu-category">Alquileres</div>
+      <div class="nav-item is-active" data-tab="tab-resumen">
+        <div class="nav-item-left">
+          <i class="fas fa-chart-line"></i>
+          <span>Resumen del Mes</span>
+        </div>
+      </div>
+      <div class="nav-item" data-tab="tab-propiedades">
+        <div class="nav-item-left">
+          <i class="fas fa-building"></i>
+          <span>Propiedades</span>
+        </div>
+        <span class="nav-badge" id="sideBadgePropsAlq">0</span>
+      </div>
+      <div class="nav-item" data-tab="tab-historial">
+        <div class="nav-item-left">
+          <i class="fas fa-history"></i>
+          <span>Historial</span>
+        </div>
+      </div>
+      <div class="nav-item" data-tab="tab-config">
+        <div class="nav-item-left">
+          <i class="fas fa-cog"></i>
+          <span>Configuración</span>
+        </div>
+      </div>
+      <div class="menu-category">Sistema</div>
+      <div class="nav-item" data-tab="tab-admin">
+        <div class="nav-item-left">
+          <i class="fas fa-arrow-left"></i>
+          <span>Volver al Admin</span>
+        </div>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-build" id="sidebarBuild"></div>
+      <div class="user-card" id="sidebarUserProfile" title="Mi usuario" style="cursor:pointer;">
+        <div class="user-avatar-placeholder" id="sidebarUserAvatarAlq">A</div>
+        <div class="user-info">
+          <span class="user-name" id="sidebarUserNameAlq">Admin</span>
+          <span class="user-role" id="sidebarUserRoleAlq">Administrador</span>
+        </div>
+        <button style="color:var(--text-dim); padding:6px;" title="Cerrar sesión" id="logoutBtnAlq">
+          <i class="fas fa-arrow-right-from-bracket"></i>
+        </button>
+      </div>
+    </div>
+  </aside>
+  <!-- MAIN CONTENT -->
+  <main class="main-wrapper">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button id="mobileMenuToggle" class="icon-badge-btn" style="display:none;" aria-label="Abrir Menú">
+          <i class="fas fa-bars"></i>
+        </button>
+        <h1 class="page-title" id="moduleTitle">Administración de Alquileres</h1>
+      </div>
+      <div class="topbar-right">
+        <span id="mesActual" style="font-weight:600;color:var(--accent);margin-right:16px;"></span>
+      </div>
+    </header>
+    <div class="content-area">
+      <!-- TAB: RESUMEN DEL MES -->
+      <section class="tab-module is-active" id="tab-resumen">
+        <div class="glass-panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Resumen del Mes</h2>
+              <p style="color:var(--text-muted); font-size:12.5px;">Vista consolidada de órdenes, liquidaciones y saldos</p>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+              <button class="btn-luxury-action" id="btnMesAnterior" title="Mes anterior"><i class="fas fa-chevron-left"></i> Mes Anterior</button>
+              <button class="btn-luxury-action" id="btnMesSiguiente" title="Cerrar mes y pasar al siguiente"><i class="fas fa-chevron-right"></i> Cerrar Mes y Avanzar</button>
+              <button class="btn-luxury-action" id="btnImprimirOrdenes" title="Todas las órdenes de pago"><i class="fas fa-file-invoice"></i> Imprimir Órdenes</button>
+              <button class="btn-luxury-action" id="btnImprimirLiquidaciones" title="Todas las liquidaciones"><i class="fas fa-file-invoice-dollar"></i> Imprimir Liquidaciones</button>
+              <button class="btn-luxury-action" id="btnExportarExcel" title="Descargar Excel del mes"><i class="fas fa-file-excel"></i> Excel</button>
+            </div>
+          </div>
+          <div id="resumenContent"></div>
+        </div>
+      </section>
+      <!-- TAB: PROPIEDADES -->
+      <section class="tab-module" id="tab-propiedades">
+        <div class="glass-panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Propiedades en Administración</h2>
+              <p style="color:var(--text-muted); font-size:12.5px;">Gestión de contratos, servicios e inquilinos</p>
+            </div>
+            <button class="btn-luxury-action" id="btnNuevaPropiedadAlq"><i class="fas fa-plus"></i> Nueva Propiedad</button>
+          </div>
+          <div id="propiedadesList"></div>
+        </div>
+      </section>
+      <!-- TAB: HISTORIAL -->
+      <section class="tab-module" id="tab-historial">
+        <div class="glass-panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Historial de Meses</h2>
+              <p style="color:var(--text-muted); font-size:12.5px;">Consulta y descarga de meses cerrados</p>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+              <select id="histMesSelect" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:7px 12px; color:#fff; font-size:12.5px; min-width:200px;"></select>
+              <button class="btn-luxury-action" id="btnVerOrdenesHist" title="Ver todas las órdenes"><i class="fas fa-file-invoice"></i> Ver Órdenes</button>
+              <button class="btn-luxury-action" id="btnVerLiqHist" title="Ver todas las liquidaciones"><i class="fas fa-file-invoice-dollar"></i> Ver Liquidaciones</button>
+              <button class="btn-luxury-action" id="btnExcelHist" title="Descargar Excel"><i class="fas fa-file-excel"></i> Excel</button>
+            </div>
+          </div>
+          <div id="historialContent"></div>
+        </div>
+      </section>
+      <!-- TAB: CONFIGURACIÓN -->
+      <section class="tab-module" id="tab-config">
+        <div class="glass-panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Configuración de la Inmobiliaria</h2>
+              <p style="color:var(--text-muted); font-size:12.5px;">Datos que salen en los PDF (órdenes, liquidaciones, rendiciones)</p>
+            </div>
+          </div>
+          <form id="configForm" class="form-grid-2">
+            <div class="form-field"><label>Nombre</label><input type="text" id="cfgNombre" class="cfg-field" placeholder="DANILO ARBO PROPIEDADES" required /></div>
+            <div class="form-field"><label>Dirección</label><input type="text" id="cfgDireccion" class="cfg-field" placeholder="Roberto Cayol 3224 - 1 Bº Poeta Lugones Córdoba" /></div>
+            <div class="form-field"><label>Teléfono y Mail</label><input type="text" id="cfgTelefono" class="cfg-field" placeholder="Tel 0351-156158064  danilo.arbo@gmail.com" /></div>
+            <div class="form-field"><label>Datos Bancarios</label><textarea id="cfgBancarios" class="cfg-field" placeholder="CBU / Alias / Banco" rows="2"></textarea></div>
+            <div class="form-field"><label>Vencimiento sin Recargo (día)</label><input type="number" id="cfgV1" class="cfg-field" min="1" max="31" value="10" /></div>
+            <div class="form-field"><label>Vencimiento con Recargo (día)</label><input type="number" id="cfgV2" class="cfg-field" min="1" max="31" value="20" /></div>
+            <div class="form-field"><label>Recargo %</label><input type="number" step="0.01" id="cfgRecargo" class="cfg-field" value="10" /></div>
+            <div class="form-field"><label>Facturas: tomar vencimiento posterior al día</label><input type="number" id="cfgDAgua" class="cfg-field" min="1" max="31" value="10" /></div>
+          </form>
+          <div style="margin-top:24px;">
+            <button class="btn-luxury-action" id="btnGuardarConfig"><i class="fas fa-save"></i> Guardar Configuración</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+<!-- MODALES -->
+<!-- Modal Nueva Propiedad / Editar -->
+<div class="admin-modal" id="propiedadModalAlq">
+  <div class="modal-box modal-box--xl">
+    <h3 id="propModalTitleAlq" style="font-family:var(--font-heading); font-size:22px; color:#fff; margin-bottom:18px;">Nueva Propiedad</h3>
+    <form id="propiedadFormAlq" class="pf-dense" novalidate>
+      <input type="hidden" id="propIdAlq" />
+      <h4 class="pf-section-title"><i class="fas fa-id-card"></i>Ficha</h4>
+      <div class="form-grid-2">
+        <div class="form-field"><label>Código *</label><input type="text" id="propCodAlq" required placeholder="Ej: 5-1" /></div>
+        <div class="form-field"><label>Dirección *</label><input type="text" id="propDirAlq" required placeholder="Santiago Baravino 4411 Depto" /></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-field"><label>Inquilino *</label><input type="text" id="propInqAlq" required placeholder="Molina, Gisele del Rosario" /></div>
+        <div class="form-field"><label>Teléfono Inquilino</label><input type="text" id="propTelAlq" placeholder="3512 64-0584" /></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-field"><label>Propietario *</label><input type="text" id="propPropAlq" required placeholder="Ferrero Carlos" /></div>
+        <div class="form-field"><label>Alquiler $ *</label><input type="number" step="0.01" id="propAlqAlq" required placeholder="397177.80" /></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-field"><label>Honorarios %</label><input type="number" step="0.1" id="propHonAlq" value="10" /></div>
+        <div class="form-field"><label>Actualización cada (meses)</label><input type="number" id="propActAlq" value="4" min="1" max="12" /></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-field"><label>Inicio Contrato</label><input type="date" id="propIniAlq" /></div>
+        <div class="form-field"><label>Fin Contrato</label><input type="date" id="propFinAlq" /></div>
+      </div>
+      <div class="form-field"><label>Cuenta de Agua</label><input type="text" id="propCtaAguaAlq" placeholder="481114" /></div>
+      <div class="form-field"><label>Cuenta de Luz (EPEC)</label><input type="text" id="propCtaLuzAlq" placeholder="" /></div>
+      <div class="form-field"><label>Cuenta de Gas</label><input type="text" id="propCtaGasAlq" placeholder="" /></div>
+      <div class="form-field"><label>Cuenta Municipal</label><input type="text" id="propCtaMuniAlq" placeholder="" /></div>
+      <div class="form-field"><label>Cuenta Rentas</label><input type="text" id="propCtaRentasAlq" placeholder="" /></div>
+      <h4 class="pf-section-title"><i class="fas fa-cogs"></i>Servicios e Impuestos</h4>
+      <div id="serviciosContainerAlq"></div>
+      <h4 class="pf-section-title"><i class="fas fa-file-contract"></i>Contrato</h4>
+      <div class="form-field">
+        <label>Alquiler Inicial Contrato</label>
+        <input type="number" step="0.01" id="propAlqIniAlq" placeholder="395522" />
+      </div>
+      <div class="form-field">
+        <label>Archivo Contrato (PDF)</label>
+        <input type="file" id="propContratoFileAlq" accept=".pdf" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-input); border-radius:10px; padding:10px 14px; color:#fff; font-size:13px; width:100%;" />
+        <small style="color:var(--text-dim);">Se guarda en IndexedDB para leer datos automáticamente</small>
+      </div>
+      <h4 class="pf-section-title"><i class="fas fa-sticky-note"></i>Notas</h4>
+      <div class="form-grid-2">
+        <div class="form-field"><label>Nota para Inquilino (sale en orden)</label><textarea id="propNotasAlq" rows="3" placeholder="NOTIFICACIÓN: DETALLE DE SERVICIOS POR CONSUMO..."></textarea></div>
+        <div class="form-field"><label>Nota para Propietario (sale en liquidación)</label><textarea id="propNotasLAlq" rows="3" placeholder="Cuentas de transferencia..."></textarea></div>
+      </div>
+      <div class="pf-modal-actions">
+        <button type="button" class="btn-ghost modal-close-btn">Cancelar</button>
+        <button type="submit" class="btn-luxury-action btn-sm" id="propSaveBtnAlq">Guardar Propiedad</button>
+      </div>
+    </form>
+  </div>
+</div>
+<!-- Modal Ver PDF (Órdenes/Liquidaciones/Rendiciones) -->
+<div class="admin-modal" id="pdfModalAlq">
+  <div class="modal-box" style="max-width:90vw; max-height:90vh;">
+    <div class="modal-box" style="padding:0; max-width:none; max-height:none; border:none; background:transparent; box-shadow:none;">
+      <iframe id="pdfIframeAlq" style="width:100%; height:90vh; border:none; background:white;"></iframe>
+    </div>
+  </div>
+</div>
+<!-- TOAST -->
+<div class="toast-msg" id="toastAlq"><i class="fas fa-circle-check" style="color:var(--accent); font-size:18px;"></i><span id="toastTextAlq">Operación exitosa.</span></div>
+<!-- ============================================================ SCRIPTS ============================================================ -->
+<!-- Fallback banner -->
+<style>
+#cdnWarningBannerAlq {display: none;position: fixed;top: 0; left: 0; right: 0;z-index: 1000001;background: linear-gradient(135deg, #DC2626, #B91C1C);color: #fff;padding: 14px 24px;font-family: -apple-system, BlinkMacSystemFont, sans-serif;font-size: 14px;font-weight: 600;text-align: center;box-shadow: 0 4px 20px rgba(220, 38, 38, 0.4);}
+#cdnWarningBannerAlq a { color: #FEE2E2; text-decoration: underline; margin-left: 8px; }
+</style>
+<div id="cdnWarningBannerAlq"><i class="fas fa-exclamation-triangle"></i> El panel no pudo cargar recursos críticos. Revisá tu conexión a internet y recargá la página (F5).<a href="#" data-action="closeCdnWarning">Cerrar</a></div>
+<script nonce="bienenhaus2024">(function(){function checkCDN(){var missing=[];if(!window.supabase) missing.push('Supabase JS');if(window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl=document.createElement('i');testEl.className='fas fa-check';testEl.style.position='absolute';testEl.style.left='-9999px';document.body.appendChild(testEl);var computed=window.getComputedStyle(testEl);if(computed.fontFamily.indexOf('Font Awesome')===-1){missing.push('Font Awesome');}document.body.removeChild(testEl);if(missing.length){var banner=document.getElementById('cdnWarningBannerAlq');if(banner){banner.style.display='block';banner.innerHTML='<i class="fas fa-exclamation-triangle"></i> <strong>Recursos críticos no cargaron.</strong> Revisá tu conexión a internet y recargá la página (F5). Si persiste, tus datos están a salvo — reintentá más tarde. Faltan: '+missing.join(', ')+'.';}return false;}return true;}setTimeout(function(){ checkCDN(); }, 3000);setTimeout(function(){ checkCDN(); }, 6000);})();</script>
+<script defer src="assets/js/admin-app.js?v=642"></script>
+<script defer src="assets/js/alquileres.js?v=2"></script>
+</body>
+</html>
