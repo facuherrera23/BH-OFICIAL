@@ -1998,6 +1998,12 @@ function esc(s) {
   }
 
   function navigateTo(section, opts) {
+    /* Alquileres vive en una página propia (alquileres.html) con su propio
+       cliente Supabase y sesión compartida: el nav-item NO tiene una
+       <section class="tab-module"> en el DOM del admin — si se tratara como
+       tab, navigateTo desactiva TODAS las secciones y el content-area queda
+       en blanco (bug real). Navegar a la página y volver. */
+    if (section === 'tab-alquileres') { window.location.href = 'alquileres.html'; return; }
     /* #43: form crítico con cambios en un modal abierto → confirmar antes.
        El modal sigue abierto aunque navegues; esto evita perder el hilo. */
     if ((!opts || !opts.force) && section !== currentSection && pendingDirtyForm()) {

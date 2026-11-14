@@ -31,3 +31,7 @@ chat-attach-final.png
 
 # Backups locales (datos reales de clientes � jamas al repo)
 backups/
+
+# HTML standalone original del dueño con datos de clientes (12MB) — fuente del
+# seed de alquileres_state y de la restauración de adjuntos en el navegador
+/10_octubre_2026_administracion-alquileres*.html
