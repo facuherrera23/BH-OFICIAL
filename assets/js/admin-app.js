@@ -2138,6 +2138,7 @@ function esc(s) {
   async function loadDashboard() {
     const client = await getAuthedClient();
     if (!client) return;
+    renderDashAlquileres(); /* Bloque 2.E + 2.D: independiente — no depende de las demás queries */
     try {
       const now = new Date();
       const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
@@ -2197,7 +2198,6 @@ function esc(s) {
       renderDashLostReasons();
       renderDashRecommendations();
       renderDashConversion();
-      renderDashAlquileres(); /* Bloque 2.E + 2.D: KPIs y vencimientos del módulo */
       const stamp = $('#dashLastUpdated');
       if (stamp) stamp.textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
       const refreshBtn = $('#dashRefreshBtn');
