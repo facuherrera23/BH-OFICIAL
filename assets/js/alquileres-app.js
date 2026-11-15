@@ -263,8 +263,12 @@ async function alqPortalPublish(cm, cy) {
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + jwt, 'apikey': CFG.SUPABASE_ANON_KEY || '' },
       body: JSON.stringify({ items, notify: true }),
     });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) { alqToast('Portal: error al publicar (' + (j.error || res.status) + '). Las liquidaciones quedan en el historial del módulo.'); return; }
+    if (!res.ok) {
+      const je = await res.json().catch(() => ({}));
+      alqToast('Portal: error al publicar (' + (je.error || res.status) + '). Las liquidaciones quedan en el historial del módulo.');
+      return;
+    }
+    const j = await res.json();
     alqToast('Portal de propietarios: ' + (j.publicadas || 0) + ' liquidaciones publicadas'
       + (sinMapear ? ' · ' + sinMapear + ' sin vincular' : '')
       + (Array.isArray(j.notificados) && j.notificados.length ? ' · avisos: ' + j.notificados.length : ''));
