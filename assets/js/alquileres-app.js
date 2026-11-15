@@ -145,6 +145,47 @@ async function alqSnapshot(cm, cy) {
 }
 window.__ALQ_SNAPSHOT = (cm, cy) => { alqSnapshot(cm, cy); };
 
+/* ---------- KPIs para el Dashboard del panel (Bloque 2.E + 2.D) ----------
+   Se calculan con la MISMA lógica del core (calc/sorted/pagoG/listaInq —
+   funciones del core accesibles desde acá) y viajan DENTRO del estado
+   (S.kpis) en cada sync: el Dashboard los lee vía RPC sin duplicar la
+   lógica de negocio. Vencimientos: misma fórmula que alertas() del core. */
+function alqKpisCompute() {
+  if (!S || !Array.isArray(S.props)) return null;
+  let orden = 0, hon = 0, neto = 0, cobrados = 0, liquidadas = 0, cobrables = 0;
+  const venc = [];
+  for (const p of sorted()) {
+    const c = calc(p);
+    hon += (+c.hon || 0);
+    if (c.cuenta) continue; // cuenta del cliente: sin orden/neto/cobranza (como el resumen)
+    cobrables++;
+    orden += (+c.tot || 0);
+    neto += (+c.neto || 0);
+    // cobro del inquilino del mes en curso — misma semántica que cobroTxt()
+    const L = listaInq('inq:' + p.cod, ym(), c.tot);
+    const sCob = L.reduce((a, x) => a + (+x.m || 0), 0);
+    if (L.length && sCob >= c.tot - 0.5) cobrados++;
+    // liquidación al propietario — misma semántica que liqTxt()
+    if (pagoG('prop:' + own(p), ym()).ok) liquidadas++;
+    // vencimientos de contrato — misma fórmula que alertas(); acotado a
+    // [-3, +3] meses para que un contrato viejo no contamine para siempre
+    if (p.fin) {
+      const fp = String(p.fin).split('-').map(Number);
+      if (fp[0] && fp[1]) {
+        const d = (fp[0] - S.y) * 12 + (fp[1] - 1 - S.m);
+        if (d <= 3 && d >= -3) venc.push({ cod: p.cod, dir: p.dir || '', fin: p.fin, d });
+      }
+    }
+  }
+  const r2 = v => Math.round((+v || 0) * 100) / 100;
+  return {
+    m: S.m, y: S.y, props: S.props.length, cobrables,
+    orden: r2(orden), hon: r2(hon), neto: r2(neto),
+    cobrados, liquidadas,
+    vencimientos: venc.sort((a, b) => a.d - b.d).slice(0, 10),
+  };
+}
+
 /* ---------- Ventana de respaldos: listar + restaurar ---------- */
 let alqSnapsCache = [];
 async function alqSnapsOpen() {
@@ -228,6 +269,9 @@ async function syncNow() {
   if (saving) { savePending = true; return; }
   if (!client || !S || !alqUser || loadFailed) return;
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  // KPIs para el Dashboard (Bloque 2.E): recalculados con la lógica del core
+  // y persistidos dentro del estado — el Dashboard solo los lee.
+  if (S && Array.isArray(S.props)) { try { S.kpis = alqKpisCompute(); } catch (_) {} }
   const snap = JSON.stringify(S);
   if (snap === LAST && !saveError) { est(); return; } // nada cambió desde el último persistido
 

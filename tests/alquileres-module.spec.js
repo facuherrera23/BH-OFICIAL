@@ -427,3 +427,81 @@ test.describe('migraciones SQL', () => {
     expect(sql).toMatch(/'alq_contracts_expiring', v_alq_contracts/);
   });
 });
+
+test.describe('Bloque 2 — KPIs en Dashboard, vencimientos y recordatorio de cierre', () => {
+  test('2.E módulo: KPIs calculados con la lógica del core y persistidos en S.kpis', () => {
+    const app = read('assets/js/alquileres-app.js');
+    // cero duplicación de negocio: usa calc/sorted/pagoG/listaInq/own del core
+    expect(app).toMatch(/function alqKpisCompute\(\) \{[\s\S]{0,200}for \(const p of sorted\(\)\) \{[\s\S]{0,120}const c = calc\(p\);/);
+    expect(app).toMatch(/listaInq\('inq:' \+ p\.cod, ym\(\), c\.tot\)/);
+    expect(app).toMatch(/pagoG\('prop:' \+ own\(p\), ym\(\)\)\.ok/);
+    // viajan dentro del estado, ANTES del snapshot del save
+    expect(app).toMatch(/S\.kpis = alqKpisCompute\(\);[\s\S]{0,80}const snap = JSON\.stringify\(S\);/);
+    // vencimientos con la fórmula de alertas() acotada a [-3, +3] meses
+    expect(app).toMatch(/\(fp\[0\] - S\.y\) \* 12 \+ \(fp\[1\] - 1 - S\.m\)/);
+    expect(app).toMatch(/d <= 3 && d >= -3/);
+  });
+
+  test('2.E RPC: alquileres_dashboard_kpis() lee la fila no vacía más reciente', () => {
+    const sql = read('supabase/migrations/20261115000001_alquileres_dashboard_kpis.sql');
+    expect(sql).toMatch(/create or replace function public\.alquileres_dashboard_kpis\(\)/);
+    expect(sql).toMatch(/security definer/i);
+    expect(sql).toMatch(/set search_path to ''/i);
+    // una fila vacía de otro usuario NO tapa al operador activo
+    expect(sql).toMatch(/jsonb_array_length\(s\.state->'props'\) > 0/);
+    expect(sql).toMatch(/order by s\.updated_at desc nulls last/i);
+    // duración de accesos: authenticated + service_role, anon fuera
+    expect(sql).toMatch(/grant execute on function public\.alquileres_dashboard_kpis\(\) to authenticated/i);
+    expect(sql).toMatch(/revoke all on function public\.alquileres_dashboard_kpis\(\) from anon/i);
+  });
+
+  test('2.E+2.D Dashboard: tarjeta con KPIs y vencimientos + botón al módulo', () => {
+    const html = read('admin.html');
+    expect(html).toContain('id="alqDashPanel"');
+    expect(html).toContain('id="alqDashBody"');
+    expect(html).toContain('id="alqDashPeriodo"');
+    expect(html).toContain('data-action="goToAlquileres"');
+    const app = read('assets/js/admin-app.js');
+    expect(app).toMatch(/async function renderDashAlquileres\(\)/);
+    expect(app).toMatch(/\.rpc\('alquileres_dashboard_kpis'\)/);
+    expect(app).toMatch(/renderDashAlquileres\(\); \/\* Bloque 2\.E \+ 2\.D/);
+    // navegación al módulo desde la tarjeta
+    expect(app).toMatch(/case 'goToAlquileres':\s*navigateTo\('tab-alquileres'\);/);
+    // vencimientos en la tarjeta (2.D): vence este mes / vencido / vence en N
+    expect(app).toMatch(/vence este mes/);
+    expect(app).toMatch(/vencido \(/);
+  });
+
+  test('2.C edge function: secret, detección de mes sin cerrar, dedupe y email', () => {
+    const fn = read('supabase/functions/alquileres-month-reminder/index.ts');
+    // auth idéntica al digest (fix 20261015000004: zernio_config, no app.settings)
+    expect(fn).toMatch(/x-sync-secret/);
+    expect(fn).toMatch(/key = 'sync_secret'|"sync_secret"/);
+    // detección: hist sin la clave 'YYYY-MM' del mes previo + props activas
+    expect(fn).toMatch(/!Array\.isArray\(st\.props\) \|\| st\.props\.length === 0/);
+    expect(fn).toMatch(/!hist\[prevYm\]/);
+    // dedupe: un solo email por mes vía audit_log
+    expect(fn).toMatch(/\.eq\("action", "alq_month_reminder"\)/);
+    expect(fn).toMatch(/\.gte\("created_at", monthStart\)/);
+    // envío por Brevo + traza de auditoría con el resultado
+    expect(fn).toMatch(/api\.brevo\.com\/v3\/smtp\/email/);
+    expect(fn).toMatch(/action: 'alq_month_reminder'/);
+    // ART (UTC-3) para el mes de referencia
+    expect(fn).toMatch(/3 \* 60 \* 60 \* 1000/);
+  });
+
+  test('2.C cron: días 2 y 3 a las 12:00 ART con x-sync-secret de zernio_config', () => {
+    const sql = read('supabase/migrations/20261115000002_alquileres_month_reminder_cron.sql');
+    expect(sql).toMatch(/cron\.schedule\(\s*'alquileres-month-reminder',\s*'0 15 2,3 \* \*'/);
+    expect(sql).toMatch(/functions\/v1\/alquileres-month-reminder'/);
+    expect(sql).toMatch(/value->>'secret' FROM public\.zernio_config WHERE key = 'sync_secret'/);
+    expect(sql).not.toMatch(/current_setting\('app\.settings/); // el pisón de 2026-10-15 no vuelve
+  });
+
+  test('2.C la función cron está en NO_VERIFY del deploy (sin JWT)', () => {
+    const yml = read('.github/workflows/deploy.yml');
+    const m = yml.match(/NO_VERIFY=\(([^)]*)\)/); // el regex corta en el primer ')' — sin comentarios inline adentro
+    expect(m, 'bloque NO_VERIFY presente').toBeTruthy();
+    expect(m[1]).toContain('"alquileres-month-reminder"');
+  });
+});

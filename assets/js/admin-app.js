@@ -2197,6 +2197,7 @@ function esc(s) {
       renderDashLostReasons();
       renderDashRecommendations();
       renderDashConversion();
+      renderDashAlquileres(); /* Bloque 2.E + 2.D: KPIs y vencimientos del módulo */
       const stamp = $('#dashLastUpdated');
       if (stamp) stamp.textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
       const refreshBtn = $('#dashRefreshBtn');
@@ -2221,6 +2222,57 @@ function esc(s) {
     } catch (err) {
       logError('Dashboard error:', err);
       showToast('Error al cargar el Dashboard: ' + err.message, 'error');
+    }
+  }
+
+  /* ------------------------------------------------
+     Bloque 2.E + 2.D: tarjeta "Administración de Alquileres".
+     Los KPIs los calcula el MÓDULO con su propia lógica de negocio
+     (alquileres-app.js → S.kpis) y los expone la RPC
+     alquileres_dashboard_kpis() (fila no vacía más reciente).
+     Sin duplicar lógica de cobranzas acá: solo lectura.
+     ------------------------------------------------ */
+  async function renderDashAlquileres() {
+    const body = $('#alqDashBody');
+    if (!body) return;
+    const client = await getAuthedClient();
+    if (!client) return;
+    try {
+      const { data, error } = await client.rpc('alquileres_dashboard_kpis');
+      if (error) throw error;
+      const k = data && data.kpis;
+      if (!k || !Array.isArray(k.vencimientos)) {
+        body.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:8px 0;">Sin datos todavía — abrí el módulo Alquileres y cargá una propiedad: los KPIs aparecen al sincronizar.</p>';
+        const per = $('#alqDashPeriodo');
+        if (per) per.textContent = 'Resumen del mes en curso del módulo.';
+        return;
+      }
+      const ars = v => '$ ' + (Math.round((+v || 0) * 100) / 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const MES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      const per = $('#alqDashPeriodo');
+      if (per) per.textContent = `${MES[k.m] || ''} ${k.y} · ${k.props} propiedades${data.updated_at ? ' — actualizado ' + new Date(data.updated_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : ''}`;
+      const vencHtml = k.vencimientos.length ? `
+        <div style="margin-top:14px;">
+          <div style="font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px;">Vencimientos de contrato</div>
+          ${k.vencimientos.map(v => {
+            const cuando = v.d === 0 ? '<span style="color:#FFB800;">vence este mes</span>'
+              : v.d < 0 ? `<span style="color:#ef4444;">vencido (${v.fin})</span>`
+              : `vence en ${v.d} mes${v.d > 1 ? 'es' : ''} (${v.fin})`;
+            return `<div style="display:flex; justify-content:space-between; gap:12px; padding:5px 0; border-bottom:1px solid rgba(255,255,255,.06); font-size:12.5px;">
+              <span style="color:var(--text-main);">${v.cod} ${v.dir}</span><span>${cuando}</span>
+            </div>`;
+          }).join('')}
+        </div>` : '';
+      body.innerHTML = `
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px;">
+          <div><div style="font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.04em;">Órdenes del mes</div><div style="font-size:18px; font-weight:800; color:var(--text-main);">${ars(k.orden)}</div></div>
+          <div><div style="font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.04em;">Honorarios</div><div style="font-size:18px; font-weight:800; color:var(--accent);">${ars(k.hon)}</div></div>
+          <div><div style="font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.04em;">Neto a propietarios</div><div style="font-size:18px; font-weight:800; color:var(--text-main);">${ars(k.neto)}</div></div>
+          <div><div style="font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.04em;">Cobranza / Liquidación</div><div style="font-size:14px; font-weight:700; color:var(--text-main); margin-top:2px;">${k.cobrados}/${k.cobrables} cobradas<br>${k.liquidadas}/${k.cobrables} liquidadas</div></div>
+        </div>${vencHtml}`;
+    } catch (err) {
+      logError('Alquileres KPIs:', err);
+      body.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:8px 0;">No se pudieron cargar los KPIs de administración.</p>';
     }
   }
 
@@ -3647,17 +3699,21 @@ window.exportAnomaliesCSV = async function() {
         case 'goToDashboard':
           navigateTo('tab-dashboard');
           break;
+        case 'goToAlquileres':
+          navigateTo('tab-alquileres');
+          break;
       }
     });
   });
 
   /* Dashboard quick-view buttons */
-  $$('[data-action="goToAgenda"], [data-action="goToLeads"], [data-action="goToAgents"]').forEach(btn => {
+  $$('[data-action="goToAgenda"], [data-action="goToLeads"], [data-action="goToAgents"], [data-action="goToAlquileres"]').forEach(btn => {
     btn.addEventListener('click', () => {
       const action = btn.dataset.action;
       if (action === 'goToAgenda') navigateTo('tab-agenda');
       else if (action === 'goToLeads') navigateTo('tab-leads');
       else if (action === 'goToAgents') navigateTo('tab-agentes');
+      else if (action === 'goToAlquileres') navigateTo('tab-alquileres');
     });
   });
 

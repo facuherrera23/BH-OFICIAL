@@ -240,6 +240,7 @@ jobs:
             "tasacion-submit"
             "trigger_commission_on_close"
             "visits-process-reminders"
+            "alquileres-month-reminder"
             "zernio-proxy"
             "zernio-sync"
             "zernio-webhook"

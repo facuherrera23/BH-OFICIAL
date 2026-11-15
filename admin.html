@@ -339,6 +339,22 @@
 </i> Matrículas C.R.I. activas</div>
 </div>
 </div>
+<!-- Bloque 2.E + 2.D: KPIs y vencimientos del módulo Administración de Alquileres.
+     Los datos los calcula el módulo (misma lógica de negocio, state->'kpis') y
+     los lee la RPC alquileres_dashboard_kpis(). Sin datos → el cuerpo muestra
+     el mensaje vacío; la tarjeta vive en el Dashboard para el empleador. -->
+<div class="glass-panel" style="margin:20px 0;" id="alqDashPanel">
+<div class="panel-header">
+<div>
+<h2 class="panel-title" style="font-size:16px;"><i class="fas fa-key" style="color:var(--accent);"></i> Administración de Alquileres</h2>
+<p style="color:var(--text-muted); font-size:12px;" id="alqDashPeriodo">Resumen del mes en curso del módulo.</p>
+</div>
+<button class="status-pill active" data-action="goToAlquileres">Abrir módulo</button>
+</div>
+<div id="alqDashBody">
+<p style="color:var(--text-dim); font-size:12px; padding:8px 0;">Cargando administración...</p>
+</div>
+</div>
 <div class="dashboard-analytics-grid">
 <div class="glass-panel" style="margin-bottom:0;">
 <div class="panel-header">

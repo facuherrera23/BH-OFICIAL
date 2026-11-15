@@ -70,6 +70,7 @@ function functionDirs() {
    ------------------------------------------------------------------ */
 const CALLED_WITHOUT_JWT = [
   // — Crons pg_cron (dump de cron.job 2026-11-11; net.http_post sin JWT) —
+  { fn: 'alquileres-month-reminder', caller: 'cron alquileres-month-reminder (días 2 y 3, 12:00 ART)' },
   { fn: 'backup-snapshot', caller: 'cron backup-snapshot-daily' },
   { fn: 'exclusive-expiry-alert', caller: 'cron exclusive-expiry-alert-daily' },
   { fn: 'ml-questions-sweep', caller: 'cron ml-questions-sweep' },
