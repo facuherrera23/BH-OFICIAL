@@ -233,6 +233,7 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
       try { renderExclusividad(d, owner, props); } catch (e) { console.error('[portal] exclusividad:', e); }
       try { renderVisitasExtras(d, owner); } catch (e) { console.error('[portal] visitas extras:', e); }
       try { renderEncuestas(); } catch (e) { console.error('[portal] encuestas:', e); }
+      try { renderLiquidaciones(); } catch (e) { console.error('[portal] liquidaciones:', e); }
       try { renderOfflineBanner(); } catch (e) {}
       try { renderSessionChip(); } catch (e) {}
       try { renderRefreshButton(); } catch (e) {}
@@ -666,6 +667,50 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
 
     /* ── Opiniones de visitas (encuestas de los visitantes, anónimas) ──
        El dueño ve las respuestas sobre su propiedad, nunca los datos de quién visitó. */
+    /* Bloque 3.A: liquidaciones de alquiler publicadas por la administración.
+   Las lee con portal_get_liquidaciones (token del portal) y las inyecta en
+   panel-propiedades. Sin publicaciones → la sección no aparece. */
+function renderLiquidaciones() {
+      if (!token) return;
+      var anchor = $('propList');
+      if (!anchor) return;
+      var old = document.getElementById('liquidacionesSection');
+      if (old) old.remove();
+      supabase.rpc('portal_get_liquidaciones', { p_token: token })
+        .then(function (result) {
+          var liqs = result && !result.error && Array.isArray(result.data) ? result.data : [];
+          if (!liqs.length) return;
+          var html = '<div id="liquidacionesSection" style="margin-top:28px;">'
+            + '<div class="section-title"><i class="fas fa-file-invoice-dollar"></i> Liquidaciones de alquiler (' + liqs.length + ')</div>'
+            + '<p style="color:var(--text-muted);font-size:12.5px;margin:0 0 14px;">Rendición mensual publicada por la administración. Tocá una liquidación para ver el detalle.</p>'
+            + liqs.map(function (l) {
+                var d = l.data || {};
+                var L = Array.isArray(d.L) ? d.L : [];
+                var T = Array.isArray(d.T) ? d.T : [];
+                var nota = d.N || '';
+                var rows = L.map(function (r) {
+                  return '<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">'
+                    + '<span>' + esc(r[0]) + (r[1] ? ' <small style="color:var(--text-muted)">' + esc(String(r[1])) + ' ' + esc(String(r[2] || '')) + '</small>' : '') + '</span>'
+                    + '<b>' + FMT_ARS.format(Math.abs(+r[3] || 0)) + '</b></div>';
+                }).join('');
+                var totals = T.map(function (r, i) {
+                  return '<div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;font-size:13px;' + (i === T.length - 1 ? 'font-weight:800;color:var(--accent);border-top:2px solid var(--border);margin-top:4px;' : 'font-weight:600;') + '">'
+                    + '<span>' + esc(r[0]) + '</span><b>' + FMT_ARS.format(Math.abs(+r[3] || 0)) + '</b></div>';
+                }).join('');
+                return '<details style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;">'
+                  + '<summary style="cursor:pointer;display:flex;justify-content:space-between;gap:10px;align-items:center;">'
+                  + '<span style="font-weight:700;">' + esc(l.label) + '</span>'
+                  + '<small style="color:var(--text-muted);">' + esc(new Date(l.published_at).toLocaleDateString('es-AR')) + '</small></summary>'
+                  + '<div style="margin-top:12px;">' + rows + totals
+                  + (nota ? '<p style="margin:12px 0 0;font-size:12.5px;color:var(--text-muted);">' + esc(nota) + '</p>' : '')
+                  + '</div></details>';
+              }).join('')
+            + '</div>';
+          anchor.insertAdjacentHTML('afterend', html);
+        })
+        .catch(function (e) { console.error('[portal] liquidaciones:', e); });
+    }
+
     function renderEncuestas() {
       if (!SURVEY_DATA || !SURVEY_DATA.length) return;
       var anchor = $('nextVisitSlot');

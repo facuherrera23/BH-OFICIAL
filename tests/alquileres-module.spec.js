@@ -83,7 +83,7 @@ test.describe('alquileres-core.js — core portado del standalone', () => {
     // (docsMes), pero ANTES de blanquear servicios y avanzar: la copia es
     // exactamente "la administración como estaba al cerrar X". Guardado por
     // el controlador (window.__ALQ_SNAPSHOT), best-effort y sin IIFE.
-    expect(core).toMatch(/if\(d>0\)\{S\.hist=S\.hist\|\|\{\};S\.hist\[ym\(\)\]=docsMes\(\);FM=null;if\(window\.__ALQ_SNAPSHOT\)window\.__ALQ_SNAPSHOT\(S\.m,S\.y\)\}/);
+    expect(core).toMatch(/if\(d>0\)\{S\.hist=S\.hist\|\|\{\};S\.hist\[ym\(\)\]=docsMes\(\);FM=null;if\(window\.__ALQ_SNAPSHOT\)window\.__ALQ_SNAPSHOT\(S\.m,S\.y\);?if\(window\.__ALQ_PUBLISH\)?/);
   });
 });
 
@@ -503,5 +503,91 @@ test.describe('Bloque 2 — KPIs en Dashboard, vencimientos y recordatorio de ci
     const m = yml.match(/NO_VERIFY=\(([^)]*)\)/); // el regex corta en el primer ')' — sin comentarios inline adentro
     expect(m, 'bloque NO_VERIFY presente').toBeTruthy();
     expect(m[1]).toContain('"alquileres-month-reminder"');
+  });
+});
+
+test.describe('Bloque 3 — Liquidaciones al Portal del Propietario', () => {
+  test('3.A migración: tabla inmutable por diseño + RPC del portal por token', () => {
+    const sql = read('supabase/migrations/20261115000003_alquileres_portal_liquidaciones.sql');
+    expect(sql).toMatch(/create table if not exists public\.alquileres_portal_liquidaciones/);
+    expect(sql).toMatch(/enable row level security/i);
+    // club service-role/definer: sin policies para authenticated ni anon
+    expect(sql).not.toMatch(/create policy/i);
+    expect(sql).toMatch(/revoke all on public\.alquileres_portal_liquidaciones from anon/i);
+    expect(sql).toMatch(/revoke all on public\.alquileres_portal_liquidaciones from authenticated/i);
+    expect(sql).toMatch(/grant all on public\.alquileres_portal_liquidaciones to service_role/i);
+    // re-publicar un mes REEMPLAZA (no duplica)
+    expect(sql).toMatch(/create unique index if not exists alq_portal_liq_owner_period_uidx/);
+    // RPC del portal: validación de token idéntica a portal_get_portal_data
+    expect(sql).toMatch(/create or replace function public\.portal_get_liquidaciones\(p_token text\)/);
+    expect(sql).toMatch(/t\.revoked_at is null/);
+    expect(sql).toMatch(/t\.expires_at >= now\(\)/);
+    // club de RPC por token: EXECUTE a anon (el propietario no está logueado)
+    expect(sql).toMatch(/grant execute on function public\.portal_get_liquidaciones\(text\) to anon/i);
+  });
+
+  test('3.A módulo: mapeo ownerKey→CRM + publicación al cerrar mes', () => {
+    const app = read('assets/js/alquileres-app.js');
+    // mapeo por CLAVE de propietario del core (own(p)), persistido en S.ownerMap
+    expect(app).toMatch(/S\.ownerMap = S\.ownerMap \|\| \{\};/);
+    expect(app).toMatch(/const k = own\(p\);/);
+    // hook del core (edición #6): el mes cerrado dispara snapshot Y publicación
+    const core = read('assets/js/alquileres-core.js');
+    expect(core).toMatch(/if\(window\.__ALQ_SNAPSHOT\)window\.__ALQ_SNAPSHOT\(S\.m,S\.y\);if\(window\.__ALQ_PUBLISH\)window\.__ALQ_PUBLISH\(S\.m,S\.y\)/);
+    // publicación: solo docs k='l' del mes cerrado con propietario vinculado
+    expect(app).toMatch(/const closedYm = cy \+ '-' \+ String\(cm \+ 1\)\.padStart\(2, '0'\);/);
+    expect(app).toMatch(/if \(d\.k !== 'l'\) continue;/);
+    // d.cod es el cod de la primera propiedad → misma clave que own()
+    expect(app).toMatch(/String\(d\.cod\)\.split\(\/\[\^0-9a-zA-Z\]\+\/\)\[0\]/);
+    // llamada a la edge function con JWT del operador
+    expect(app).toMatch(/functions\/v1\/alquileres-portal-publish/);
+    expect(app).toMatch(/'Authorization': 'Bearer ' \+ jwt/);
+    // best-effort: jamás bloquea el cierre
+    expect(app).toMatch(/async function alqPortalPublish\(cm, cy\) \{[\s\S]{0,2400}catch \(e\) \{/);
+  });
+
+  test('3.A edge function: validación de owner activo, upsert owner+periodo y emails', () => {
+    const fn = read('supabase/functions/alquileres-portal-publish/index.ts');
+    // verify_jwt ON: requireAdmin (JWT de operador activo del panel)
+    expect(fn).toMatch(/requireAdmin\(req, supabase\)/);
+    expect(fn).toMatch(/rateLimitMiddleware\('alquileres-portal-publish', req\)/);
+    // el propietario debe existir, no estar eliminado y estar activo
+    expect(fn).toMatch(/o\.deleted_at/);
+    expect(fn).toMatch(/o\.status !== 'activo'/);
+    // solo liquidaciones reales del core
+    expect(fn).toMatch(/\(it\.data as any\)\.k !== 'l'/);
+    // upsert con el conflicto owner+periodo (re-publicar reemplaza)
+    expect(fn).toMatch(/onConflict: 'owner_id,period'/);
+    // email por propietario afectado + link al portal si hay token vigente
+    expect(fn).toMatch(/alquileres_portal_liquidaciones/);
+    expect(fn).toMatch(/owner_portal_tokens/);
+    expect(fn).toMatch(/api\.brevo\.com\/v3\/smtp\/email/);
+    // auditoría de cada publicación
+    expect(fn).toMatch(/action: 'alq_portal_publish'/);
+    // NO va en NO_VERIFY (se llama CON JWT del operador)
+    const yml = read('.github/workflows/deploy.yml');
+    const m = yml.match(/NO_VERIFY=\(([^)]*)\)/);
+    expect(m, 'bloque NO_VERIFY presente').toBeTruthy();
+    expect(m[1]).not.toContain('"alquileres-portal-publish"');
+  });
+
+  test('3.A portal: sección Liquidaciones con detalle por mes', () => {
+    const portal = read('assets/js/pages/portal-propietario-page.js');
+    expect(portal).toMatch(/function renderLiquidaciones\(\)/);
+    expect(portal).toMatch(/\.rpc\('portal_get_liquidaciones', \{ p_token: token \}\)/);
+    expect(portal).toMatch(/renderLiquidaciones\(\); catch|try \{ renderLiquidaciones\(\); \} catch \(e\) \{ console\.error\('\[portal\] liquidaciones:', e\); \}/);
+    // sin publicaciones la sección no aparece (no ensucia el portal)
+    expect(portal).toMatch(/if \(!liqs\.length\) return;/);
+    // detalle con conceptos, totales y nota
+    expect(portal).toMatch(/Liquidaciones de alquiler \(/);
+    expect(portal).toMatch(/TOTAL DEDUCCIONES|FMT_ARS\.format/);
+  });
+
+  test('3.A el botón Propietarios existe en el módulo', () => {
+    const html = read('alquileres.html');
+    expect(html).toContain('alqOwnersOpen()');
+    expect(html).toContain('id="alqOwners"');
+    expect(html).toContain('id="alqOwnersList"');
+    expect(html).toContain('id="alqOwnersClose"');
   });
 });

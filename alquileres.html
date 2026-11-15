@@ -121,6 +121,7 @@ input[type=checkbox]{accent-color:var(--acc)}
 <button onclick="guardarArchivo()" title="Guardar en la nube (alquileres_state)">💾 Guardar</button><span id="est" style="font-size:12px;font-weight:700"></span>
 <button class="s" onclick="exportar()">Respaldo (.json)</button><button class="s" onclick="$('#fi').click()">Cargar datos de otro archivo</button>
 <button class="s" onclick="alqSnapsOpen()" title="Respaldos automáticos guardados al cerrar cada mes">☁ Respaldos</button>
+<button class="s" onclick="alqOwnersOpen()" title="Vincular cada propietario con su ficha del CRM para publicar liquidaciones en su portal">Propietarios</button>
 <input id="fi" type="file" accept=".json,.html" hidden="" onchange="importar(this.files[0]);this.value=''"></header>
 <div id="al"></div>
 <main><div class="card selc" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end"><div style="flex:1;min-width:240px"><label>PROPIEDAD CON LA QUE ESTÁS TRABAJANDO</label><select id="sel" onchange="elegir(this.value)"></select></div><button onclick="nueva()">+ Propiedad</button><button class="s" onclick="vista='corr';render()">Datos de la inmobiliaria</button></div><section id="v"><div class="card" style="text-align:center;color:#8E9BAE">Conectando con la base de datos…</div></section></main>
@@ -172,10 +173,24 @@ input[type=checkbox]{accent-color:var(--acc)}
  </div>
 </div>
 
+<!-- PROPIETARIOS DEL PORTAL (Bloque 3.A): vincula cada propietario de la
+     administración con su ficha del CRM (owners) para que al cerrar el mes
+     la liquidación se publique en su portal y le llegue el aviso. -->
+<div id="alqOwners" style="display:none;position:fixed;inset:0;background:rgba(5,7,10,.78);z-index:900;align-items:center;justify-content:center">
+ <div style="background:rgba(14,19,26,.97);border:1px solid rgba(255,255,255,.1);border-radius:14px;max-width:640px;width:94%;padding:22px 24px;box-shadow:0 24px 60px rgba(0,0,0,.5);max-height:84vh;display:flex;flex-direction:column">
+  <div style="display:flex;align-items:center;gap:10px">
+   <div style="font:700 17px 'Playfair Display',Georgia,serif;color:#F8FAFC">Propietarios del portal</div>
+   <button class="s" id="alqOwnersClose" style="margin-left:auto;background:transparent;color:#8E9BAE;border-color:#5b6b85">✕ Cerrar</button>
+  </div>
+  <p style="margin:8px 0 12px;font-size:12.5px;color:#8E9BAE;line-height:1.5">Vinculá cada propietario de la administración con su ficha del CRM. Al cerrar el mes, la liquidación de cada propietario vinculado se publica automáticamente en su portal y le llega el aviso por email.</p>
+  <div id="alqOwnersList" style="overflow:auto;min-height:60px"></div>
+ </div>
+</div>
+
 <script defer src="assets/vendor/supabase-js.umd.js?v=1"></script>
 <script defer src="assets/js/config.js?v=321"></script>
 <script defer src="assets/js/supabase-client.js?v=320"></script>
-<script defer src="assets/js/alquileres-core.js?v=4"></script>
-<script defer src="assets/js/alquileres-app.js?v=8"></script>
+<script defer src="assets/js/alquileres-core.js?v=7"></script>
+<script defer src="assets/js/alquileres-app.js?v=11"></script>
 
 </body>

@@ -145,6 +145,136 @@ async function alqSnapshot(cm, cy) {
 }
 window.__ALQ_SNAPSHOT = (cm, cy) => { alqSnapshot(cm, cy); };
 
+/* ---------- Toast propio (no depende del panel cuando corre standalone) ---------- */
+function alqToast(msg, ms) {
+  let t = document.getElementById('alqToastBox');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'alqToastBox';
+    t.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:1200;background:rgba(14,19,26,.97);border:1px solid rgba(31,200,195,.35);border-radius:10px;padding:11px 16px;color:#F8FAFC;font-size:13px;max-width:420px;box-shadow:0 14px 40px rgba(0,0,0,.5);line-height:1.45';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(function hideToast() { t.style.display = 'none'; }, ms || 6000);
+}
+
+/* ---------- Propietarios del portal (Bloque 3.A): mapeo ownerKey → CRM ---------- */
+async function alqOwnersOpen() {
+  const o = document.getElementById('alqOwners');
+  if (!o || !client || !alqUser || !S || !Array.isArray(S.props)) return;
+  o.style.display = 'flex';
+  const list = document.getElementById('alqOwnersList');
+  list.innerHTML = '<div style="color:#8E9BAE;font-size:13px;padding:14px 0">Cargando propietarios del CRM…</div>';
+  try {
+    const { data: owners, error } = await client
+      .from('owners')
+      .select('id, full_name')
+      .eq('status', 'activo')
+      .is('deleted_at', null)
+      .order('full_name', { ascending: true });
+    if (error) throw error;
+    const crmOwners = owners || [];
+
+    // grupos por propietario de la administración (misma clave que el core: own(p))
+    const grupos = [];
+    const seen = {};
+    for (const p of sorted()) {
+      const k = own(p);
+      if (!seen[k]) { seen[k] = { key: k, prop: p.prop || '', props: [] }; grupos.push(seen[k]); }
+      seen[k].props.push(p.cod + ' ' + (p.dir || ''));
+    }
+
+    if (!grupos.length) {
+      list.innerHTML = '<div style="color:#8E9BAE;font-size:13px;padding:14px 0">Todavía no hay propiedades en la administración.</div>';
+      return;
+    }
+    if (!crmOwners.length) {
+      list.innerHTML = '<div style="color:#FF4757;font-size:13px;padding:14px 0">No hay propietarios activos en el CRM. Cargalos primero en Propietarios y volvé acá.</div>';
+      return;
+    }
+    S.ownerMap = S.ownerMap || {};
+    list.innerHTML = grupos.map(g => {
+      const vinc = S.ownerMap[g.key] || '';
+      const opts = ['<option value="">— Sin vincular —</option>']
+        .concat(crmOwners.map(o => `<option value="${o.id}"${o.id === vinc ? ' selected' : ''}>${alqEsc(o.full_name)}</option>`))
+        .join('');
+      const estado = vinc ? '<span data-estado-chip style="color:#10B981;font-size:11.5px;font-weight:700">✓ vinculado</span>' : '<span data-estado-chip style="color:#F59E0B;font-size:11.5px;font-weight:700">sin vincular</span>';
+      return `<div style="border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 12px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+          <div style="min-width:0">
+            <div style="color:#F8FAFC;font-weight:700;font-size:13px">Propietario ${alqEsc(g.key)} · ${alqEsc(g.prop)} ${estado}</div>
+            <small style="color:#8E9BAE">${alqEsc(g.props.join(' · '))}</small>
+          </div>
+          <select data-okey="${alqEsc(g.key)}" style="width:auto;min-width:220px">${opts}</select>
+        </div>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('select[data-okey]').forEach(sel => sel.addEventListener('change', () => {
+      const k = sel.dataset.okey;
+      if (sel.value) S.ownerMap[k] = sel.value; else delete S.ownerMap[k];
+      save(); // persiste el mapeo con el estado (sync normal)
+      const chip = sel.closest('div').querySelector('[data-estado-chip]');
+      if (chip) {
+        chip.textContent = sel.value ? '✓ vinculado' : 'sin vincular';
+        chip.style.color = sel.value ? '#10B981' : '#F59E0B';
+      }
+      alqToast('Mapeo de propietarios guardado.');
+    }));
+  } catch (e) {
+    console.error('[alquileres] owners:', e);
+    list.innerHTML = '<div style="color:#FF4757;font-size:13px;padding:14px 0">No se pudieron cargar los propietarios del CRM. Revisá tu conexión y probá de nuevo.</div>';
+  }
+}
+
+/* ---------- Publicación de liquidaciones al portal (Bloque 3.A) ----------
+   El core llama window.__ALQ_PUBLISH(mesCerrado, añoCerrado) dentro de
+   mesMas(>0), justo después del snapshot: en ese punto S.hist[mesCerrado]
+   ya tiene las liquidaciones (docs k='l') y los servicios siguen intactos.
+   Publica las de los propietarios VINCULADOS (S.ownerMap) vía la edge
+   function alquileres-portal-publish (upsert owner+periodo + email).
+   Best-effort: un fallo de publicación jamás bloquea el cierre de mes. */
+async function alqPortalPublish(cm, cy) {
+  try {
+    if (!client || !alqUser || !S || !CFG.SUPABASE_URL) return;
+    const closedYm = cy + '-' + String(cm + 1).padStart(2, '0');
+    const docs = (S.hist || {})[closedYm] || [];
+    const map = S.ownerMap || {};
+    const items = [];
+    let sinMapear = 0;
+    for (const d of docs) {
+      if (d.k !== 'l') continue;
+      // d.cod es el cod de la PRIMERA propiedad del grupo → misma clave que own()
+      const okey = String(d.cod).split(/[^0-9a-zA-Z]+/)[0];
+      const oid = map[okey];
+      if (!oid) { sinMapear++; continue; }
+      items.push({ owner_id: oid, period: closedYm, label: 'Liquidación ' + MES[cm] + ' ' + cy, data: d });
+    }
+    if (!items.length) {
+      if (sinMapear) alqToast('Portal de propietarios: ' + sinMapear + ' liquidaciones sin vincular al CRM (botón "Propietarios").');
+      return;
+    }
+    const { data: sess } = await client.auth.getSession();
+    const jwt = sess && sess.session && sess.session.access_token;
+    if (!jwt) { alqToast('Portal: sesión vencida, no se publicó. Recargá el panel.'); return; }
+    const res = await fetch(CFG.SUPABASE_URL + '/functions/v1/alquileres-portal-publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + jwt, 'apikey': CFG.SUPABASE_ANON_KEY || '' },
+      body: JSON.stringify({ items, notify: true }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) { alqToast('Portal: error al publicar (' + (j.error || res.status) + '). Las liquidaciones quedan en el historial del módulo.'); return; }
+    alqToast('Portal de propietarios: ' + (j.publicadas || 0) + ' liquidaciones publicadas'
+      + (sinMapear ? ' · ' + sinMapear + ' sin vincular' : '')
+      + (Array.isArray(j.notificados) && j.notificados.length ? ' · avisos: ' + j.notificados.length : ''));
+  } catch (e) {
+    console.error('[alquileres] portal publish:', e);
+    alqToast('Portal: no se pudo publicar (revisá tu conexión). Las liquidaciones quedan en el historial.');
+  }
+}
+window.__ALQ_PUBLISH = (cm, cy) => { alqPortalPublish(cm, cy); };
+
 /* ---------- KPIs para el Dashboard del panel (Bloque 2.E + 2.D) ----------
    Se calculan con la MISMA lógica del core (calc/sorted/pagoG/listaInq —
    funciones del core accesibles desde acá) y viajan DENTRO del estado
@@ -468,6 +598,8 @@ if (OKCFG) {
   if (cOver) cOver.addEventListener('click', () => { conflictHide(); forceSave = true; syncNow(); });
   const sClose = document.getElementById('alqSnapsClose');
   if (sClose) sClose.addEventListener('click', () => { const o = document.getElementById('alqSnaps'); if (o) o.style.display = 'none'; });
+  const oClose = document.getElementById('alqOwnersClose');
+  if (oClose) oClose.addEventListener('click', () => { const o = document.getElementById('alqOwners'); if (o) o.style.display = 'none'; });
 
   /* Reconexión de red: si la carga inicial había fallado, reintentar sola. */
   window.addEventListener('online', () => { if (loadFailed && !S) init(); });
