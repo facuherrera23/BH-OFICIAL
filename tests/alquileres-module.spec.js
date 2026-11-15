@@ -188,7 +188,12 @@ test.describe('alquileres-app.js — controlador Supabase', () => {
     // Chequeo previo al upsert contra el stamp de la carga; la decisión es del
     // usuario (recargar / pisar conscientemente). Sin esto, la última pestaña
     // que guarda pisa en silencio lo guardado desde otro dispositivo.
-    expect(app).toMatch(/if \(!eRemote && remote && remote\.updated_at && rowStamp && remote\.updated_at !== rowStamp\) \{[\s\S]{0,140}conflictShow\(/);
+    // ⚠️ Comparación por INSTANTE (Date.parse), no por string: PostgREST
+    // re-formatea el timestamptz ('...+00:00' vs el '...Z' de toISOString) —
+    // comparar strings daría un falso conflicto en cada guardado propio.
+    expect(app).toMatch(/const remoteMs = remote && remote\.updated_at \? Date\.parse\(remote\.updated_at\) : NaN;/);
+    expect(app).toMatch(/if \(!eRemote && remote && !Number\.isNaN\(remoteMs\) && !Number\.isNaN\(localMs\) && remoteMs !== localMs\) \{[\s\S]{0,140}conflictShow\(/);
+    expect(app).not.toMatch(/remote\.updated_at !== rowStamp/); // el bug del string-compare no vuelve
     // nuestro propio guardado actualiza el stamp (no se auto-conflictea)
     expect(app).toMatch(/rowStamp = sentAt;/);
     // pisar conscientemente: el flag se consume en un solo save forzado

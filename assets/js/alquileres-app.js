@@ -235,14 +235,19 @@ async function syncNow() {
   // nuestra carga → otro dispositivo guardó después de nosotros. Frenar el
   // guardado y avisar. Si la verificación falla (red), seguimos: el upsert
   // mismo va a fallar si no hay conexión.
+  // ⚠️ Comparar por INSTANTE (Date.parse), nunca por string: PostgREST
+  // re-formatea el timestamptz ('...+00:00') y el toISOString que mandamos es
+  // '...Z' — un string-distinto sería un falso conflicto en cada guardado propio.
   if (!forceSave) {
     let remote = null, eRemote = null;
     try {
       const r = await client.from('alquileres_state').select('updated_at').eq('user_id', alqUser.id).maybeSingle();
       remote = r.data; eRemote = r.error;
     } catch (e) { eRemote = e; }
-    if (!eRemote && remote && remote.updated_at && rowStamp && remote.updated_at !== rowStamp) {
-      conflictShow(new Date(remote.updated_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }));
+    const remoteMs = remote && remote.updated_at ? Date.parse(remote.updated_at) : NaN;
+    const localMs = rowStamp ? Date.parse(rowStamp) : NaN;
+    if (!eRemote && remote && !Number.isNaN(remoteMs) && !Number.isNaN(localMs) && remoteMs !== localMs) {
+      conflictShow(new Date(remoteMs).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }));
       return;
     }
   } else {
@@ -397,13 +402,16 @@ if (OKCFG) {
 
   /* Conflicto al volver a la pestaña (Bloque 1.H): mientras estuvo oculta,
      otro dispositivo pudo guardar. Chequeo liviano (una lectura de updated_at);
-     si la remota es más nueva → aviso con las dos salidas. */
+     si la remota es más nueva → aviso con las dos salidas. Comparación por
+     instante (Date.parse) — ver el comentario en syncNow. */
   window.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible' || !client || !S || !alqUser || loadFailed || saving || conflictOpen) return;
     client.from('alquileres_state').select('updated_at').eq('user_id', alqUser.id).maybeSingle()
       .then(r => {
-        if (r && !r.error && r.data && r.data.updated_at && rowStamp && r.data.updated_at !== rowStamp) {
-          conflictShow(new Date(r.data.updated_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }));
+        const remoteMs = r && !r.error && r.data && r.data.updated_at ? Date.parse(r.data.updated_at) : NaN;
+        const localMs = rowStamp ? Date.parse(rowStamp) : NaN;
+        if (!Number.isNaN(remoteMs) && !Number.isNaN(localMs) && remoteMs !== localMs) {
+          conflictShow(new Date(remoteMs).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }));
         }
       })
       .catch(_ => _);
