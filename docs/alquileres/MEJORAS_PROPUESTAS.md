@@ -3,8 +3,10 @@
 > Documento para presentar al empleador. Primero el resultado de la revisión
 > técnica completa, después las mejoras propuestas ordenadas por valor.
 >
-> **Estado de implementación:** Bloque 1 (H + B + F) ✅ IMPLEMENTADO y
-> verificado en producción el 15/11/2026. Restantes pendientes de luz verde.
+> **Estado de implementación:** Bloque 1 (H + B + F) ✅ y Bloque 2 (C + E + D)
+> ✅ IMPLEMENTADOS y verificados en producción el 15/11/2026. Las tareas
+> automáticas de vencimientos (parte de D) requieren el mapeo propietario→CRM
+> y van con el Bloque 3. Restantes pendientes de luz verde.
 
 ---
 
@@ -66,26 +68,31 @@ cerramos Octubre" aunque el mes haya seguido siendo editado.
 - **Valor:** red de seguridad para datos financieros.
 - **Esfuerzo:** chico.
 
-### C. Recordatorio de cierre de mes
-Cron mensual (día 2-3): si el mes anterior no fue cerrado, genera una tarea
-para Danilo (o aviso en el digest semanal que ya llega por email).
+### C. Recordatorio de cierre de mes ✅ IMPLEMENTADO (15/11/2026)
+Cron mensual (días 2 y 3, 12:00 ART): si el mes anterior no fue cerrado en el
+módulo, envía un email al usuario del módulo (Brevo). Un solo email por mes
+(aunque el cron corra dos días).
 - **Valor:** evita que la administración se atrase sin que nadie se dé cuenta.
-- **Esfuerzo:** chico (patrón de crons ya existente).
+- **Estado:** en producción — verificado con el envío real de Octubre 2026.
 
-### D. Vencimientos de contrato visibles en el CRM
-El módulo ya calcula "próximo vencimiento de contrato". Llevar esos vencimientos
-al CRM: alerta en el Dashboard y/o tarea automática al agente a 90/60/30 días
-de vencer un contrato (renovación o aviso de desalojo).
-- **Valor:** nada de contratos que se vencen sin aviso (hoy solo se ve dentro
-  del módulo).
-- **Esfuerzo:** medio.
+### D. Vencimientos de contrato visibles en el CRM ✅ IMPLEMENTADO (15/11/2026)
+El módulo ya calcula "próximo vencimiento de contrato". Los vencimientos
+(vencidos + próximos 3 meses) se listan ahora en la tarjeta del Dashboard y el
+badge del menú los cuenta. Las tareas automáticas a 90/60/30 días quedan para
+la próxima etapa: requieren vincular cada propiedad del módulo al propietario
+del CRM (hoy son nombres en texto libre).
+- **Valor:** nada de contratos que se vencen sin aviso.
+- **Estado:** en producción (tarjeta + badge). Tareas automáticas: pendiente
+  del mapeo de propietarios.
 
-### E. KPIs de alquileres en el Dashboard del panel
-Card en el Dashboard con: cobrado / pendiente / honorarios / neto a
-propietarios del mes en curso (leído del estado, sin doble carga de datos).
+### E. KPIs de alquileres en el Dashboard del panel ✅ IMPLEMENTADO (15/11/2026)
+Card en el Dashboard con: órdenes del mes, honorarios, neto a propietarios,
+cobradas/liquidadas y el período — calculados por el módulo con su propia
+lógica de negocio y leídos por una RPC segura.
 - **Valor:** el empleador ve la salud de la administración sin entrar al
   módulo.
-- **Esfuerzo:** chico-medio.
+- **Estado:** en producción. Los KPIs aparecen después de la primera
+  sincronización del módulo.
 
 ### F. Badge real en el menú lateral
 El ítem "Alquileres" del menú muestra un "0" hardcodeado. Convertirlo en el
@@ -114,10 +121,13 @@ el que tengo en pantalla, avisar antes de pisar.
 
 ## 4. Recomendación de orden
 
-1. **Decidir lo de la sección 2** (personal vs compartido) — condiciona todo.
-2. **H** (aviso de conflicto) + **B** (snapshot al cerrar mes): protección de
-   datos, esfuerzo chico.
-3. **A** (liquidaciones al portal): la de más valor de negocio.
-4. **C, D, E, F**: visibilidad y recordatorios (cualquier orden).
+1. ~~**Decidir lo de la sección 2** (personal vs compartido)~~ — **URGENTE**:
+   el recordatorio de Octubre detectó que hoy EXISTEN dos filas activas
+   (hfacundo45 + danilo.arbo, ambas con las 10 propiedades). Son dos copias
+   que pueden divergir: definir quién es el operador único o pasar a datos
+   compartidos antes de implementar A.
+2. ~~H (aviso de conflicto) + B (snapshot al cerrar mes)~~ ✅ + ~~F (badge)~~ ✅
+3. ~~A (liquidaciones al portal)~~ — pendiente de luz verde.
+4. ~~C, D, E, F~~ ✅
 5. **G** (adjuntos a la nube): cuando se quiera usar el módulo desde más de un
    dispositivo.
