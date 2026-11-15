@@ -3,10 +3,11 @@
 > Documento para presentar al empleador. Primero el resultado de la revisión
 > técnica completa, después las mejoras propuestas ordenadas por valor.
 >
-> **Estado de implementación:** Bloque 1 (H + B + F) ✅ y Bloque 2 (C + E + D)
-> ✅ IMPLEMENTADOS y verificados en producción el 15/11/2026. Las tareas
-> automáticas de vencimientos (parte de D) requieren el mapeo propietario→CRM
-> y van con el Bloque 3. Restantes pendientes de luz verde.
+> **Estado de implementación:** Bloques 1 (H + B + F), 2 (C + E + D) y
+> 3 (A — liquidaciones al portal) ✅ IMPLEMENTADOS y verificados en
+> producción el 15/11/2026. El mapeo propietario→CRM quedó hecho (habilita
+> las tareas automáticas de vencimientos como próxima etapa). Restante:
+> G (adjuntos a Storage), pendiente de luz verde.
 
 ---
 
@@ -51,14 +52,17 @@ ve las 10 propiedades; otro usuario vería el módulo vacío.
 
 ## 3. Mejoras propuestas (ordenadas por valor)
 
-### A. Liquidaciones al Portal del Propietario ⭐ (la de más valor)
+### A. Liquidaciones al Portal del Propietario ⭐ ✅ IMPLEMENTADO (15/11/2026)
 Hoy la rendición mensual llega al propietario por WhatsApp con PDF adjunto
-manual. El portal del propietario ya existe (encuestas, documentos): agregar la
-sección **"Liquidaciones"** — cada cierre de mes publica la rendición del
-propietario en su portal y (opcional) le avisa por email.
+manual. Ahora: el operador vincula cada propietario de la administración con
+su ficha del CRM (una vez, botón "Propietarios") y al cerrar cada mes la
+liquidación se publica automáticamente en el portal de ese propietario, con
+email de aviso e historial por mes (re-publicar un mes reemplaza la versión
+anterior).
 - **Valor:** el propietario consulta su rendición cuando quiere, queda
   historial, se reduce el ida y vuelta por WhatsApp.
-- **Esfuerzo:** medio (conectar el cierre de mes con el portal existente).
+- **Estado:** en producción. Pendiente del día a día: hacer el mapeo inicial
+  de propietarios (una vez) y publicar el primer mes real.
 
 ### B. Historial de respaldos al cerrar mes
 Al cerrar un mes, guardar una copia inmutable del estado (tabla de snapshots).
