@@ -77,6 +77,14 @@ test.describe('alquileres-core.js — core portado del standalone', () => {
   test('boot final: render sólo si hay S cargado (sin blanco ni crash)', () => {
     expect(core).toContain('hh();if(S){render();tot();est();restaurarAdj()}');
   });
+
+  test('Bloque 1.B: mesMas(>0) dispara el snapshot con el mes que SE CIERRA', () => {
+    // El hook corre con S.m/S.y del mes que se cierra y S.hist ya actualizado
+    // (docsMes), pero ANTES de blanquear servicios y avanzar: la copia es
+    // exactamente "la administración como estaba al cerrar X". Guardado por
+    // el controlador (window.__ALQ_SNAPSHOT), best-effort y sin IIFE.
+    expect(core).toMatch(/if\(d>0\)\{S\.hist=S\.hist\|\|\{\};S\.hist\[ym\(\)\]=docsMes\(\);FM=null;if\(window\.__ALQ_SNAPSHOT\)window\.__ALQ_SNAPSHOT\(S\.m,S\.y\)\}/);
+  });
 });
 
 test.describe('alquileres-app.js — controlador Supabase', () => {
@@ -175,6 +183,36 @@ test.describe('alquileres-app.js — controlador Supabase', () => {
   test('flush al ocultar la pestaña (no se pierden cambios)', () => {
     expect(app).toMatch(/visibilitychange[\s\S]{0,300}syncNow\(\)/);
   });
+
+  test('Bloque 1.H: el guardado frena si la fila remota es más nueva (conflicto)', () => {
+    // Chequeo previo al upsert contra el stamp de la carga; la decisión es del
+    // usuario (recargar / pisar conscientemente). Sin esto, la última pestaña
+    // que guarda pisa en silencio lo guardado desde otro dispositivo.
+    expect(app).toMatch(/if \(!eRemote && remote && remote\.updated_at && rowStamp && remote\.updated_at !== rowStamp\) \{[\s\S]{0,140}conflictShow\(/);
+    // nuestro propio guardado actualiza el stamp (no se auto-conflictea)
+    expect(app).toMatch(/rowStamp = sentAt;/);
+    // pisar conscientemente: el flag se consume en un solo save forzado
+    expect(app).toMatch(/\} else \{\s*forceSave = false;\s*\}/);
+    // overlay con las dos salidas + estado visible en est()
+    expect(app).toMatch(/alqConflictReload[\s\S]{0,140}window\.location\.reload\(\)/);
+    expect(app).toMatch(/alqConflictOverwrite[\s\S]{0,140}forceSave = true; syncNow\(\)/);
+    expect(app).toMatch(/if \(conflictOpen\) \{ e\.textContent = '⚠ Modificada en otro dispositivo/);
+    // chequeo liviano al volver a la pestaña visible (otro dispositivo pudo guardar)
+    expect(app).toMatch(/visibilitychange[\s\S]{0,500}!== 'visible'[\s\S]{0,500}conflictShow\(/);
+  });
+
+  test('Bloque 1.B: snapshot al cierre + ventana de respaldos con restauración', () => {
+    // copia PROFUNDA inmediata: S sigue mutando (avance de mes) mientras el insert viaja
+    expect(app).toMatch(/const copy = JSON\.parse\(JSON\.stringify\(S\)\);[\s\S]{0,260}alquileres_snapshots'\)/);
+    expect(app).toMatch(/label: 'Cierre ' \+ MES\[cm\] \+ ' ' \+ cy/);
+    // best-effort: el snapshot jamás bloquea el cierre de mes
+    expect(app).toMatch(/async function alqSnapshot\(cm, cy\) \{[\s\S]{0,500}catch \(e\) \{ console\.error\('\[alquileres\] snapshot:', e\); \}\s*\}/);
+    // restauración: reemplaza S completo, fuerza el guardado y aterriza en resumen
+    expect(app).toMatch(/S = s\.state;[\s\S]{0,80}bhInitS\(S\);[\s\S]{0,160}LAST = null;/);
+    // listado acotado (30) y con escape de HTML
+    expect(app).toMatch(/\.order\('created_at', \{ ascending: false \}\)[\s\S]{0,60}\.limit\(30\)/);
+    expect(app).toMatch(/function alqEsc\(s\)/);
+  });
 });
 
 test.describe('alquileres.html — página standalone', () => {
@@ -206,6 +244,19 @@ test.describe('alquileres.html — página standalone', () => {
     expect(html).toContain('id="alqGate"');
     expect(html).toContain('id="alqGateForm"');
     expect(html).toContain('Conectando con la base de datos');
+  });
+
+  test('Bloque 1: overlays de conflicto y respaldos + botón en el header', () => {
+    // conflicto multi-dispositivo: overlay fijo con las dos salidas
+    expect(html).toContain('id="alqConflict"');
+    expect(html).toContain('id="alqConflictMsg"');
+    expect(html).toContain('id="alqConflictReload"');
+    expect(html).toContain('id="alqConflictOverwrite"');
+    // respaldos: botón del header + ventana con lista
+    expect(html).toContain('alqSnapsOpen()');
+    expect(html).toContain('id="alqSnaps"');
+    expect(html).toContain('id="alqSnapsList"');
+    expect(html).toContain('id="alqSnapsClose"');
   });
 });
 
@@ -242,6 +293,16 @@ test.describe('integración con el panel admin — iframe embebido', () => {
   test('los HTML del root referencian la versión bumped de admin-app.js', () => {
     const html = read('admin.html');
     expect(html).toMatch(/assets\/js\/admin-app\.js\?v=\d+/);
+  });
+
+  test('Bloque 1.F: badge real de Alquileres en el sidebar (desaparece en 0)', () => {
+    const app = read('assets/js/admin-app.js');
+    expect(app).toMatch(/sideBadgeAlquileres[\s\S]{0,200}alq_contracts_expiring/);
+    // sin casos → display:none (un "0" fijo era ruido; criterio del chat)
+    expect(app).toMatch(/sideBadgeAlquileres[\s\S]{0,700}style\.display = 'none'/);
+    // con casos → contador + clase ámbar + tooltip
+    expect(app).toMatch(/alqEl\.classList\.add\('nav-badge--warn'\)/);
+    expect(app).toMatch(/contratos por vencer o vencidos/);
   });
 });
 
@@ -329,5 +390,35 @@ test.describe('migraciones SQL', () => {
     // Los adjuntos (12MB) NO viajan en el estado: se restauran importando el archivo original.
     expect(sql.length, 'el seed sólo debe traer S (state), no los adjuntos').toBeLessThan(120000);
     expect(sql).not.toMatch(/\bdata:image\//);
+  });
+
+  test('Bloque 1.B: snapshots inmutables al cerrar mes (RLS propia, sin UPDATE/DELETE)', () => {
+    const sql = read('supabase/migrations/20261114000004_alquileres_snapshots.sql');
+    expect(sql).toMatch(/create table if not exists public\.alquileres_snapshots/);
+    expect(sql).toMatch(/enable row level security/i);
+    // cada usuario inserta/lee SOLO los suyos, optimizado con (select auth.uid())
+    expect(sql).toMatch(/for select[\s\S]*?using \(user_id = \(select auth\.uid\(\)\)\)/i);
+    expect(sql).toMatch(/for insert[\s\S]*?with check \(user_id = \(select auth\.uid\(\)\)\)/i);
+    // inmutables desde el cliente: sin policies de UPDATE/DELETE para authenticated
+    expect(sql).not.toMatch(/for update/i);
+    expect(sql).not.toMatch(/for delete/i);
+    expect(sql).toMatch(/revoke all on public\.alquileres_snapshots from anon/i);
+    expect(sql).toMatch(/grant select, insert on public\.alquileres_snapshots to authenticated/i);
+  });
+
+  test('Bloque 1.F: badge RPC v3 — alq_contracts_expiring con ventana -3..2 meses', () => {
+    const sql = read('supabase/migrations/20261114000005_badge_alquileres_v3.sql');
+    expect(sql).toMatch(/create or replace function public\.get_sidebar_badge_counts/);
+    expect(sql).toContain('alq_contracts_expiring');
+    // SECURITY DEFINER → el usuario se resuelve explícito (definer no pasa por RLS)
+    expect(sql).toMatch(/s\.user_id = coalesce\(p_user_id, auth\.uid\(\)\)/);
+    // guard anti-crash: props debe ser array antes de jsonb_array_elements
+    expect(sql).toMatch(/jsonb_typeof\(s\.state->'props'\) = 'array'/);
+    // semántica de alertas() del core: fin = 'YYYY-MM', d = (fy*12+fm) - (cy*12+cm) - 1
+    expect(sql).toMatch(/between -3 and 2/);
+    // el resto del contrato de la función queda intacto
+    expect(sql).toMatch(/SECURITY DEFINER/);
+    expect(sql).toMatch(/'visits_today', v_visits_today/);
+    expect(sql).toMatch(/'alq_contracts_expiring', v_alq_contracts/);
   });
 });

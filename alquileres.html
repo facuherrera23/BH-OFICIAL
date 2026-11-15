@@ -120,6 +120,7 @@ input[type=checkbox]{accent-color:var(--acc)}
 <button class="s" onclick="imprimirTodo('o')">Todas las órdenes</button><button class="s" onclick="imprimirTodo('l')">Todas las liquidaciones</button>
 <button onclick="guardarArchivo()" title="Guardar en la nube (alquileres_state)">💾 Guardar</button><span id="est" style="font-size:12px;font-weight:700"></span>
 <button class="s" onclick="exportar()">Respaldo (.json)</button><button class="s" onclick="$('#fi').click()">Cargar datos de otro archivo</button>
+<button class="s" onclick="alqSnapsOpen()" title="Respaldos automáticos guardados al cerrar cada mes">☁ Respaldos</button>
 <input id="fi" type="file" accept=".json,.html" hidden="" onchange="importar(this.files[0]);this.value=''"></header>
 <div id="al"></div>
 <main><div class="card selc" style="display:flex;gap:8px;flex-wrap:wrap;align-items:end"><div style="flex:1;min-width:240px"><label>PROPIEDAD CON LA QUE ESTÁS TRABAJANDO</label><select id="sel" onchange="elegir(this.value)"></select></div><button onclick="nueva()">+ Propiedad</button><button class="s" onclick="vista='corr';render()">Datos de la inmobiliaria</button></div><section id="v"><div class="card" style="text-align:center;color:#8E9BAE">Conectando con la base de datos…</div></section></main>
@@ -144,10 +145,37 @@ input[type=checkbox]{accent-color:var(--acc)}
  </div>
 </div>
 
+<!-- CONFLICTO MULTI-DISPOSITIVO (Bloque 1.H): otro dispositivo guardó una
+     versión más nueva de la administración. El guardado quedó frenado hasta
+     decidir: recargar (descarta cambios de esta pantalla) o pisar igual. -->
+<div id="alqConflict" style="display:none;position:fixed;inset:0;background:rgba(5,7,10,.78);z-index:900;align-items:center;justify-content:center">
+ <div style="background:rgba(14,19,26,.97);border:1px solid rgba(255,255,255,.1);border-radius:14px;max-width:460px;width:92%;padding:22px 24px;box-shadow:0 24px 60px rgba(0,0,0,.5)">
+  <div style="font:700 17px 'Playfair Display',Georgia,serif;color:#F8FAFC">Modificada desde otro dispositivo</div>
+  <p id="alqConflictMsg" style="margin:8px 0 16px;font-size:13.5px;color:#8E9BAE;line-height:1.55"></p>
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+   <button id="alqConflictReload">Recargar desde la nube</button>
+   <button id="alqConflictOverwrite" class="s" style="background:transparent;color:#F8FAFC;border-color:#5b6b85">Guardar mis cambios igual</button>
+  </div>
+ </div>
+</div>
+
+<!-- RESPALDOS POR CIERRE DE MES (Bloque 1.B): snapshots inmutables en
+     alquileres_snapshots; lista para consultar y restaurar. -->
+<div id="alqSnaps" style="display:none;position:fixed;inset:0;background:rgba(5,7,10,.78);z-index:900;align-items:center;justify-content:center">
+ <div style="background:rgba(14,19,26,.97);border:1px solid rgba(255,255,255,.1);border-radius:14px;max-width:560px;width:94%;padding:22px 24px;box-shadow:0 24px 60px rgba(0,0,0,.5);max-height:84vh;display:flex;flex-direction:column">
+  <div style="display:flex;align-items:center;gap:10px">
+   <div style="font:700 17px 'Playfair Display',Georgia,serif;color:#F8FAFC">Respaldos en la nube</div>
+   <button class="s" id="alqSnapsClose" style="margin-left:auto;background:transparent;color:#8E9BAE;border-color:#5b6b85">✕ Cerrar</button>
+  </div>
+  <p style="margin:8px 0 12px;font-size:12.5px;color:#8E9BAE;line-height:1.5">Cada vez que cerrás un mes se guarda una copia completa e inmutable de la administración. Restaurar reemplaza TODO lo que hay ahora (incluidos los meses posteriores) por el estado de ese respaldo y lo guarda en la nube.</p>
+  <div id="alqSnapsList" style="overflow:auto;min-height:60px"></div>
+ </div>
+</div>
+
 <script defer src="assets/vendor/supabase-js.umd.js?v=1"></script>
 <script defer src="assets/js/config.js?v=321"></script>
 <script defer src="assets/js/supabase-client.js?v=320"></script>
-<script defer src="assets/js/alquileres-core.js?v=2"></script>
-<script defer src="assets/js/alquileres-app.js?v=4"></script>
+<script defer src="assets/js/alquileres-core.js?v=4"></script>
+<script defer src="assets/js/alquileres-app.js?v=6"></script>
 
 </body>

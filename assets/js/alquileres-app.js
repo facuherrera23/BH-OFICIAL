@@ -32,6 +32,10 @@ let attempts = 0;
 let loadFailed = false;    // true = la carga inicial falló → sync BLOQUEADO
                            // (si arrancara vacío, el primer auto-guardado
                            // pisaría la fila real con un estado vacío)
+let rowStamp = null;       // updated_at de la fila tal como está en pantalla
+                           // (null = usuario nuevo, sin fila remota todavía)
+let conflictOpen = false;  // overlay de conflicto multi-dispositivo visible
+let forceSave = false;     // el usuario eligió pisar la versión remota
 
 /* ---------- Modo embebido (iframe del panel admin) ----------
    Cuando la página corre dentro del iframe de la section
@@ -96,6 +100,107 @@ function showRetry() {
     card.appendChild(b);
   }
 }
+
+/* ---------- Conflicto multi-dispositivo (Bloque 1.H) ----------
+   La fila en la nube tiene un updated_at más nuevo que el de nuestra carga:
+   otro dispositivo guardó después de nosotros (o mientras esta pestaña
+   estaba en segundo plano). El guardado queda frenado hasta que el usuario
+   decida: recargar desde la nube o pisar conscientemente. */
+function conflictShow(cuando) {
+  conflictOpen = true;
+  const m = document.getElementById('alqConflictMsg');
+  if (m) m.textContent = 'La administración se guardó desde otro dispositivo'
+    + (cuando ? ' el ' + cuando : '')
+    + '. Si guardás ahora, reemplazás esos cambios con los de esta pantalla. Si no, recargá para ver la versión de la nube (los cambios de acá se pierden).';
+  const o = document.getElementById('alqConflict');
+  if (o) o.style.display = 'flex';
+  est();
+}
+function conflictHide() {
+  conflictOpen = false;
+  const o = document.getElementById('alqConflict');
+  if (o) o.style.display = 'none';
+  est();
+}
+
+function alqEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+/* ---------- Snapshot inmutable al cerrar mes (Bloque 1.B) ----------
+   El core llama window.__ALQ_SNAPSHOT(mesCerrado, añoCerrado) dentro de
+   mesMas(>0), ANTES de blanquear los servicios y avanzar el mes: la copia es
+   exactamente "la administración como estaba al cerrar X". Best-effort: un
+   fallo del respaldo nunca bloquea el cierre de mes. */
+async function alqSnapshot(cm, cy) {
+  if (!client || !alqUser || !S) return;
+  try {
+    const copy = JSON.parse(JSON.stringify(S)); // copia PROFUNDA inmediata (S sigue mutando)
+    const { error } = await client.from('alquileres_snapshots').insert({
+      user_id: alqUser.id,
+      label: 'Cierre ' + MES[cm] + ' ' + cy,
+      period: cy + '-' + String(cm + 1).padStart(2, '0'),
+      state: copy,
+    });
+    if (error) console.error('[alquileres] snapshot:', error);
+  } catch (e) { console.error('[alquileres] snapshot:', e); }
+}
+window.__ALQ_SNAPSHOT = (cm, cy) => { alqSnapshot(cm, cy); };
+
+/* ---------- Ventana de respaldos: listar + restaurar ---------- */
+let alqSnapsCache = [];
+async function alqSnapsOpen() {
+  const o = document.getElementById('alqSnaps');
+  if (!o || !client || !alqUser) return;
+  o.style.display = 'flex';
+  const list = document.getElementById('alqSnapsList');
+  list.innerHTML = '<div style="color:#8E9BAE;font-size:13px;padding:14px 0">Cargando respaldos…</div>';
+  try {
+    const { data, error } = await client
+      .from('alquileres_snapshots')
+      .select('id,label,period,created_at,state')
+      .eq('user_id', alqUser.id)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (error) throw error;
+    alqSnapsCache = data || [];
+    if (!alqSnapsCache.length) {
+      list.innerHTML = '<div style="color:#8E9BAE;font-size:13px;padding:14px 0">Todavía no hay respaldos: se crean automáticamente cada vez que cerrás un mes (botón "Cerrar mes y pasar al siguiente").</div>';
+      return;
+    }
+    list.innerHTML = alqSnapsCache.map((s, i) => {
+      const kb = Math.round(JSON.stringify(s.state).length / 1024);
+      const props = (s.state && Array.isArray(s.state.props)) ? s.state.props.length : '?';
+      return '<div style="display:flex;gap:10px;align-items:center;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 12px;margin-bottom:8px">'
+        + '<div style="flex:1;min-width:0"><div style="color:#F8FAFC;font-weight:700;font-size:13.5px">' + alqEsc(s.label) + '</div>'
+        + '<small style="color:#8E9BAE">' + alqEsc(new Date(s.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })) + ' · ' + props + ' propiedades · ' + kb + ' KB</small></div>'
+        + '<button class="s" data-snap="' + i + '" style="background:transparent;color:#F8FAFC;border-color:#5b6b85">Restaurar</button></div>';
+    }).join('');
+    list.querySelectorAll('button[data-snap]').forEach(b => b.addEventListener('click', () => alqSnapsRestore(Number(b.dataset.snap))));
+  } catch (e) {
+    console.error('[alquileres] respaldos:', e);
+    list.innerHTML = '<div style="color:#FF4757;font-size:13px;padding:14px 0">No se pudieron cargar los respaldos. Revisá tu conexión y probá de nuevo.</div>';
+  }
+}
+async function alqSnapsRestore(i) {
+  const s = alqSnapsCache[i];
+  if (!s || !s.state || !Array.isArray(s.state.props)) return;
+  if (!confirm('Restaurar "' + s.label + '"?\n\nSe reemplaza TODO el estado actual por el respaldo (meses posteriores incluidos) y se guarda en la nube. Esta acción no se puede deshacer.')) return;
+  try {
+    S = s.state;
+    bhInitS(S);
+    mezclarHist();
+    HM = ym(); vista = 'res';
+    LAST = null;           // fuerza el guardado del estado restaurado
+    DIRTY = true;
+    saveError = false; attempts = 0;
+    render(); tot(); est();
+    syncNow(); // persiste el estado restaurado (con chequeo de conflicto)
+    const o = document.getElementById('alqSnaps');
+    if (o) o.style.display = 'none';
+  } catch (e) {
+    console.error('[alquileres] restaurar:', e);
+    alert('El respaldo no se pudo restaurar (estado ilegible).');
+  }
+}
 function traducirAuth(m) {
   const s = String(m || '').toLowerCase();
   if (s.includes('invalid login credentials')) return 'Correo o contraseña incorrectos.';
@@ -112,6 +217,7 @@ function est() {
   if (!client) return;
   const e = document.getElementById('est');
   if (!e) return;
+  if (conflictOpen) { e.textContent = '⚠ Modificada en otro dispositivo — decidí en el aviso'; e.style.color = '#F59E0B'; return; }
   if (saveError) { e.textContent = '⚠ Error de guardado — reintentando…'; e.style.color = '#F59E0B'; return; }
   e.textContent = DIRTY ? '● Guardando cambios…' : '✔ Guardado en la nube ' + SAVEDAT;
   e.style.color = DIRTY ? '#fca5a5' : '#86efac';
@@ -124,16 +230,37 @@ async function syncNow() {
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
   const snap = JSON.stringify(S);
   if (snap === LAST && !saveError) { est(); return; } // nada cambió desde el último persistido
+
+  // Conflicto multi-dispositivo (Bloque 1.H): la fila remota es más nueva que
+  // nuestra carga → otro dispositivo guardó después de nosotros. Frenar el
+  // guardado y avisar. Si la verificación falla (red), seguimos: el upsert
+  // mismo va a fallar si no hay conexión.
+  if (!forceSave) {
+    let remote = null, eRemote = null;
+    try {
+      const r = await client.from('alquileres_state').select('updated_at').eq('user_id', alqUser.id).maybeSingle();
+      remote = r.data; eRemote = r.error;
+    } catch (e) { eRemote = e; }
+    if (!eRemote && remote && remote.updated_at && rowStamp && remote.updated_at !== rowStamp) {
+      conflictShow(new Date(remote.updated_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }));
+      return;
+    }
+  } else {
+    forceSave = false;
+  }
+
   saving = true; savePending = false;
   try {
+    const sentAt = new Date().toISOString();
     const { error } = await client
       .from('alquileres_state')
-      .upsert({ user_id: alqUser.id, state: JSON.parse(snap), updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+      .upsert({ user_id: alqUser.id, state: JSON.parse(snap), updated_at: sentAt }, { onConflict: 'user_id' });
     if (error) throw error;
     attempts = 0; saveError = false;
     LAST = snap;
+    rowStamp = sentAt; // el stamp remoto ahora es el que acabamos de escribir
     DIRTY = JSON.stringify(S) !== LAST;
-    SAVEDAT = new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+    SAVEDAT = new Date(sentAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
     try { localStorage.setItem(dk(), JSON.stringify({ saved: Date.now(), j: snap })); } catch (_) {}
   } catch (err) {
     console.error('[alquileres] guardado:', err);
@@ -191,6 +318,8 @@ async function init() {
       mezclarHist();
       vista = S.vista || 'res';
       LAST = JSON.stringify(S);
+      rowStamp = row.updated_at || null; // base para el chequeo de conflicto
+      conflictOpen = false; forceSave = false;
       DIRTY = false;
       saveError = false;
       attempts = 0;
@@ -220,6 +349,7 @@ async function init() {
     S = { corr: { n: '', d: '', t: '', b: '', v1: 10, v2: 20, rec: 20, dAgua: 10 }, m: dd.getMonth(), y: dd.getFullYear(), vista: 'res', sel: null, props: [], hist: {}, pagos: {} };
     bhInitS(S);
     vista = 'res';
+    rowStamp = null; // sin fila remota: no hay conflicto posible en el primer guardado
   }
   loadFailed = false;
 
@@ -264,6 +394,28 @@ if (OKCFG) {
   window.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && S && DIRTY && saveTimer) { clearTimeout(saveTimer); saveTimer = null; syncNow(); }
   });
+
+  /* Conflicto al volver a la pestaña (Bloque 1.H): mientras estuvo oculta,
+     otro dispositivo pudo guardar. Chequeo liviano (una lectura de updated_at);
+     si la remota es más nueva → aviso con las dos salidas. */
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !client || !S || !alqUser || loadFailed || saving || conflictOpen) return;
+    client.from('alquileres_state').select('updated_at').eq('user_id', alqUser.id).maybeSingle()
+      .then(r => {
+        if (r && !r.error && r.data && r.data.updated_at && rowStamp && r.data.updated_at !== rowStamp) {
+          conflictShow(new Date(r.data.updated_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }));
+        }
+      })
+      .catch(_ => _);
+  });
+
+  /* Overlays: botones del conflicto y cierre de respaldos */
+  const cRel = document.getElementById('alqConflictReload');
+  if (cRel) cRel.addEventListener('click', () => { window.location.reload(); });
+  const cOver = document.getElementById('alqConflictOverwrite');
+  if (cOver) cOver.addEventListener('click', () => { conflictHide(); forceSave = true; syncNow(); });
+  const sClose = document.getElementById('alqSnapsClose');
+  if (sClose) sClose.addEventListener('click', () => { const o = document.getElementById('alqSnaps'); if (o) o.style.display = 'none'; });
 
   /* Reconexión de red: si la carga inicial había fallado, reintentar sola. */
   window.addEventListener('online', () => { if (loadFailed && !S) init(); });

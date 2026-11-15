@@ -4702,6 +4702,23 @@ async function mutate(table, fn) {
         visitsEl.style.color = overdue > 0 ? 'var(--danger)' : '';
       }
       if (tasEl) setBadgeAnimated(tasEl, counts.tasaciones || 0, '');
+      /* Bloque 1.F: badge real de Alquileres — contratos que requieren
+         atención (vencen en ≤2 meses o vencidos hace ≤3 meses, leídos del
+         estado del módulo por la RPC v3). Sin casos → el badge DESAPARECE:
+         un "0" fijo era ruido (mismo criterio que el chat). */
+      const alqEl = document.getElementById('sideBadgeAlquileres');
+      if (alqEl) {
+        const alqN = counts.alq_contracts_expiring || 0;
+        if (alqN > 0) {
+          alqEl.style.display = '';
+          alqEl.textContent = String(alqN);
+          alqEl.classList.add('nav-badge--warn');
+          alqEl.dataset.bhTip = alqN + ' contratos por vencer o vencidos — administración de alquileres';
+        } else {
+          alqEl.style.display = 'none';
+          alqEl.classList.remove('nav-badge--warn');
+        }
+      }
       /* #3: desglose en hover del badge (consume el cache de la RPC v2). */
       if (leadsEl && counts.leads != null) {
         leadsEl.dataset.bhTip = (counts.leads || 0) + ' activos' +
