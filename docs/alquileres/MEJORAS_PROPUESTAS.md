@@ -2,6 +2,9 @@
 
 > Documento para presentar al empleador. Primero el resultado de la revisión
 > técnica completa, después las mejoras propuestas ordenadas por valor.
+>
+> **Estado de implementación:** Bloque 1 (H + B + F) ✅ IMPLEMENTADO y
+> verificado en producción el 15/11/2026. Restantes pendientes de luz verde.
 
 ---
 
