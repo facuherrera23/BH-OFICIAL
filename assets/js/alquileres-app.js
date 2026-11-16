@@ -500,9 +500,6 @@ async function syncNow() {
   // ⚠️ Comparar por INSTANTE (Date.parse), nunca por string: PostgREST
   // re-formatea el timestamptz ('...+00:00') y el toISOString que mandamos es
   // '...Z' — un string-distinto sería un falso conflicto en cada guardado propio.
-  // Y solo cuenta conflicto si remote es ESTRICTAMENTE más nueva (>): si la
-  // remota quedó más vieja que nuestra copia (pisar de otra pestaña, restore),
-  // no es un "otro dispositivo guardó" — nuestra pantalla está adelantada.
   if (!forceSave) {
     let remote = null, eRemote = null;
     try {
@@ -511,7 +508,7 @@ async function syncNow() {
     } catch (e) { eRemote = e; }
     const remoteMs = remote && remote.updated_at ? Date.parse(remote.updated_at) : NaN;
     const localMs = rowStamp ? Date.parse(rowStamp) : NaN;
-    if (!eRemote && remote && !Number.isNaN(remoteMs) && !Number.isNaN(localMs) && remoteMs > localMs) {
+    if (!eRemote && remote && !Number.isNaN(remoteMs) && !Number.isNaN(localMs) && remoteMs !== localMs) {
       conflictShow(new Date(remoteMs).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }));
       return;
     }
@@ -676,8 +673,7 @@ if (OKCFG) {
       .then(r => {
         const remoteMs = r && !r.error && r.data && r.data.updated_at ? Date.parse(r.data.updated_at) : NaN;
         const localMs = rowStamp ? Date.parse(rowStamp) : NaN;
-        // Solo remote ESTRICTAMENTE más nueva es conflicto (ver syncNow)
-        if (!Number.isNaN(remoteMs) && !Number.isNaN(localMs) && remoteMs > localMs) {
+        if (!Number.isNaN(remoteMs) && !Number.isNaN(localMs) && remoteMs !== localMs) {
           conflictShow(new Date(remoteMs).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }));
         }
       })

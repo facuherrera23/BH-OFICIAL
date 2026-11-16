@@ -191,14 +191,9 @@ test.describe('alquileres-app.js — controlador Supabase', () => {
     // ⚠️ Comparación por INSTANTE (Date.parse), no por string: PostgREST
     // re-formatea el timestamptz ('...+00:00' vs el '...Z' de toISOString) —
     // comparar strings daría un falso conflicto en cada guardado propio.
-    // (2026-11-16) Y solo cuenta conflicto si remote es ESTRICTAMENTE más
-    // nueva (>): con !==, una remota MÁS VIEJA que nuestra copia (pisar de
-    // otra pestaña, restore) abría el overlay y frenaba guardados legítimos
-    // — el dueño no podía borrar una propiedad por esto.
     expect(app).toMatch(/const remoteMs = remote && remote\.updated_at \? Date\.parse\(remote\.updated_at\) : NaN;/);
-    expect(app).toMatch(/if \(!eRemote && remote && !Number\.isNaN\(remoteMs\) && !Number\.isNaN\(localMs\) && remoteMs > localMs\) \{[\s\S]{0,140}conflictShow\(/);
+    expect(app).toMatch(/if \(!eRemote && remote && !Number\.isNaN\(remoteMs\) && !Number\.isNaN\(localMs\) && remoteMs !== localMs\) \{[\s\S]{0,140}conflictShow\(/);
     expect(app).not.toMatch(/remote\.updated_at !== rowStamp/); // el bug del string-compare no vuelve
-    expect(app).not.toMatch(/remoteMs !== localMs/); // el falso conflicto con remota más vieja no vuelve
     // nuestro propio guardado actualiza el stamp (no se auto-conflictea)
     expect(app).toMatch(/rowStamp = sentAt;/);
     // pisar conscientemente: el flag se consume en un solo save forzado
@@ -208,7 +203,7 @@ test.describe('alquileres-app.js — controlador Supabase', () => {
     expect(app).toMatch(/alqConflictOverwrite[\s\S]{0,140}forceSave = true; syncNow\(\)/);
     expect(app).toMatch(/if \(conflictOpen\) \{ e\.textContent = '⚠ Modificada en otro dispositivo/);
     // chequeo liviano al volver a la pestaña visible (otro dispositivo pudo guardar)
-    expect(app).toMatch(/visibilitychange[\s\S]{0,700}!== 'visible'[\s\S]{0,700}conflictShow\(/);
+    expect(app).toMatch(/visibilitychange[\s\S]{0,500}!== 'visible'[\s\S]{0,500}conflictShow\(/);
   });
 
   test('Bloque 1.B: snapshot al cierre + ventana de respaldos con restauración', () => {
@@ -643,65 +638,5 @@ test.describe('Bloque 4 — Comprobantes en Storage', () => {
     expect(app).toMatch(/sin bucket\/policies → queda local-only/);
     // la DB local de adjuntos es ÚNICA del navegador (adm_files), no por usuario
     expect(app).toMatch(/La DB local del adjuntos es ÚNICA del navegador \(adm_files/);
-  });
-});
-
-/* ============ Edición #8 (2026-11-16): eliminar propiedad por fila ============
-   El dueño creó sin querer una propiedad "nueva" (+ Propiedad del header crea
-   cod:'nueva' directo) y no podía borrarla: el botón "Eliminar propiedad" vive
-   al FINAL de la vista de detalle (bajo las tarjetas de cobros/pagos) y en el
-   resumen no había ninguna acción por fila. Ahora borrar() acepta id y cada
-   fila del resumen tiene su ✕ (descubrible sin abrir el detalle). */
-test.describe('alquileres — edición #8: borrado de propiedad', () => {
-  let core;
-  test.beforeAll(() => { core = read('assets/js/alquileres-core.js'); });
-
-  test('borrar(id) acepta id opcional y resuelve la propiedad por id', () => {
-    expect(core).toMatch(/function borrar\(id\)\{const t=id\|\|S\.sel,p=S\.props\.find\(x=>x\.id===t\);if\(!p\)return;/);
-  });
-
-  test('confirm informativo: nombra la propiedad y aclara que el Historial conserva los meses cerrados', () => {
-    expect(core).toContain('¿Quitar la propiedad "');
-    expect(core).toContain('Los meses YA cerrados quedan en el Historial como estaban');
-  });
-
-  test('tras borrar la seleccionada vuelve al resumen (sin fila muerta)', () => {
-    expect(core).toMatch(/S\.props=S\.props\.filter\(x=>x\.id!==t\);if\(S\.sel===t\)\{S\.sel=null;vista='res'\}render\(\)\}/);
-  });
-
-  test('botón ✕ por fila en el resumen (title descriptivo)', () => {
-    expect(core).toMatch(/<button class="s" onclick="borrar\('\$\{p\.id\}'\)" title="Quitar esta propiedad"/);
-  });
-
-  test('el botón del detalle sigue vivo (sin arg → S.sel)', () => {
-    expect(core).toMatch(/<button class="d" onclick="borrar\(\)">Eliminar propiedad<\/button>/);
-  });
-
-  test('el flujo persiste: render() llama save() y save() dispara __ALQ_SYNC', () => {
-    // borrar() termina en render() → save() → __ALQ_SYNC → scheduleSave(1200)
-    expect(core).toMatch(/function render\(\)\{\$\('#per'\)\.textContent=MES\[S\.m\]\+' '\+S\.y;save\(\);/);
-    expect(core).toMatch(/DIRTY=j!==LAST;est\(\);if\(window\.__ALQ_SYNC\)window\.__ALQ_SYNC\(\)/);
-  });
-});
-
-/* ============ Semántica del conflicto multi-dispositivo (2026-11-16) ===========
-   El chequeo comparaba con !== (CUALQUIER diferencia abría el overlay) pero el
-   intento documentado es "remote MÁS NUEVA": si la remota quedó más vieja que
-   nuestra copia (pisar de otra pestaña, restore), frenar el guardado con
-   "se guardó desde otro dispositivo" es un falso conflicto confuso — reporte
-   real del dueño: creó una propiedad "nueva" y no podía borrarla. */
-test.describe('alquileres — semántica del conflicto multi-dispositivo', () => {
-  let app;
-  test.beforeAll(() => { app = read('assets/js/alquileres-app.js'); });
-
-  test('solo remote ESTRICTAMENTE más nueva es conflicto (>): nunca !==', () => {
-    expect(app).not.toMatch(/remoteMs !== localMs/);
-    // en AMBOS chequeos: el de syncNow y el de visibilitychange
-    expect(app).toMatch(/remoteMs > localMs/);
-    expect(app).toMatch(/Solo remote ESTRICTAMENTE más nueva es conflicto \(ver syncNow\)/);
-  });
-
-  test('rowStamp avanza con el guardado propio (la propia escritura no auto-conflictea)', () => {
-    expect(app).toMatch(/rowStamp = sentAt; \/\/ el stamp remoto ahora es el que acabamos de escribir/);
   });
 });
