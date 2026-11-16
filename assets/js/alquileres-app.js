@@ -279,6 +279,90 @@ async function alqPortalPublish(cm, cy) {
 }
 window.__ALQ_PUBLISH = (cm, cy) => { alqPortalPublish(cm, cy); };
 
+/* ---------- Comprobantes en Storage (Bloque 4.G) ----------
+   IndexedDB sigue siendo la caché local (offline + rendimiento); Storage es
+   la copia durable por usuario: alquileres-adj/<auth.uid()>/<adjunto>.
+   ⚠️ El NOMBRE del objeto en Storage es la CLAVE CRUDA del core (kk con sus
+   ':' — válidos en el path de Storage): ida y vuelta EXACTA sin transformación.
+   (No usar ':'→'_' — el metadata del estado guarda la clave cruda y el archivo
+   bajado con clave transformada quedaría huérfano para verAdj/CG.)
+   ⚠️ La DB local del adjuntos es ÚNICA del navegador (adm_files, decisión del
+   standalone original — NO dk()/por-usuario); la separación por usuario vive
+   en Storage con la carpeta <uid>/.
+   Convergencia bidireccional en cada apertura (y al recuperar conexión):
+   - remoto → local: baja lo que falte (verAdj funciona igual, ya que lee IndexedDB)
+   - local → remoto: sube los archivos viejos que aún no están (migración de
+     los 33 archivos históricos, una vez) y los nuevos agregados offline.
+   Un solo punto de enganche en el core: idbDo('put'/'del') dispara
+   __ALQ_ADJ_UP / __ALQ_ADJ_DEL — cubre cuotas, pagos, contratos y facturas OCR.
+   Best-effort total: si Storage no está disponible, el módulo funciona exacto
+   como antes (IndexedDB-only). */
+const ADJ_BUCKET = 'alquileres-adj';
+let adjSyncBusy = false; // pausa los hooks durante la convergencia (evita eco)
+
+async function alqAdjSync() {
+  if (adjSyncBusy || !client || !alqUser || !FID || FID === 'legacy') return;
+  adjSyncBusy = true;
+  try {
+    const bucket = client.storage.from(ADJ_BUCKET);
+    const localAll = await idbAll();
+    const localByK = new Map(localAll.map(x => [String(x.k), x.v]));
+    // listado remoto (paginado)
+    const remotos = [];
+    let offset = 0;
+    for (;;) {
+      const { data, error } = await bucket.list(FID, { limit: 100, offset });
+      if (error) return; // sin bucket/policies → queda local-only (como antes)
+      remotos.push(...(data || []));
+      if (!data || data.length < 100) break;
+      offset += 100;
+    }
+    const remotosNombres = new Set(remotos.map(o => String(o.name)));
+    let bajados = 0, subidos = 0;
+
+    // remoto → local: baja lo que falte en este navegador (con la clave cruda)
+    for (const o of remotos) {
+      if (!o.id || !o.name || localByK.has(o.name)) continue; // !o.id = carpeta
+      const { data: blob, error: gErr } = await bucket.download(FID + '/' + o.name);
+      if (gErr || !blob) continue;
+      await idbDo('put', o.name, blob); // busy flag → no re-subir
+      bajados++;
+    }
+
+    // local → remoto: archivos históricos/agregados offline que faltan en la nube
+    for (const [k, v] of localByK) {
+      if (remotosNombres.has(k)) continue;
+      if (!v) continue;
+      const { error: uErr } = await bucket.upload(FID + '/' + k, v, {
+        upsert: true, contentType: (v && v.type) || 'application/octet-stream',
+      });
+      if (!uErr) subidos++;
+    }
+
+    if (bajados || subidos) alqToast('Comprobantes sincronizados con la nube: ' + bajados + ' descargados, ' + subidos + ' subidos.');
+  } catch (e) {
+    console.error('[alquileres] adj sync:', e);
+  } finally {
+    adjSyncBusy = false;
+  }
+}
+
+/* Hooks que dispara el core en cada idbDo('put'/'del') — cubren las 4 familias
+   de adjuntos (cuotas, pagos, contrato, facturas OCR) sin tocar sus funciones. */
+window.__ALQ_ADJ_UP = (k, v) => {
+  if (adjSyncBusy || !client || !FID || FID === 'legacy' || !v) return;
+  client.storage.from(ADJ_BUCKET).upload(FID + '/' + k, v, {
+    upsert: true, contentType: (v && v.type) || 'application/octet-stream',
+  }).then(({ error }) => {
+    if (error) console.error('[alquileres] adj upload:', k, error.message);
+  });
+};
+window.__ALQ_ADJ_DEL = k => {
+  if (adjSyncBusy || !client || !FID || FID === 'legacy') return;
+  client.storage.from(ADJ_BUCKET).remove([FID + '/' + k])
+    .then(({ error }) => { if (error) console.error('[alquileres] adj delete:', k, error.message); });
+};
+
 /* ---------- KPIs para el Dashboard del panel (Bloque 2.E + 2.D) ----------
    Se calculan con la MISMA lógica del core (calc/sorted/pagoG/listaInq —
    funciones del core accesibles desde acá) y viajan DENTRO del estado
@@ -484,7 +568,7 @@ async function init() {
   if (!user) { gateShow(); return; }
 
   alqUser = user;
-  FID = user.id; // cache local por usuario (dk())
+  FID = user.id; // identidad del usuario (Storage <uid>/, mirror local dk())
 
   let row = null, err = null;
   try {
@@ -540,6 +624,7 @@ async function init() {
   render(); tot(); est();
   alqNotifyHeight();
   try { await restaurarAdj(); } catch (_) {}
+  alqAdjSync(); /* Bloque 4.G: convergencia IndexedDB ⇄ Storage (best-effort) */
 }
 
 /* ---------- Arranque ---------- */
@@ -607,6 +692,13 @@ if (OKCFG) {
 
   /* Reconexión de red: si la carga inicial había fallado, reintentar sola. */
   window.addEventListener('online', () => { if (loadFailed && !S) init(); });
+
+  /* Bloque 4.G: al recuperar conexión o volver a la pestaña, reconverger los
+     adjuntos (sube los agregados offline, baja lo que falte). */
+  window.addEventListener('online', () => { alqAdjSync(); });
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') alqAdjSync();
+  });
 
   init();
 

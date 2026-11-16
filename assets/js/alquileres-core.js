@@ -258,7 +258,7 @@ function pv(h,t){PVT=t||'';let st=document.getElementById('pgs');if(!st){st=docu
 function cerrarPv(){const e=$('#print');e.className='';e.innerHTML=''}
 let CT=null,CV=null;
 const idb=()=>new Promise((ok,no)=>{const r=indexedDB.open('adm_files',1);r.onupgradeneeded=()=>r.result.createObjectStore('f');r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
-const idbDo=async(m,k,v)=>{const d=await idb();return new Promise((ok,no)=>{const t=d.transaction('f',m=='get'?'readonly':'readwrite'),o=t.objectStore('f'),q=m=='get'?o.get(k):m=='put'?o.put(v,k):o.delete(k);t.oncomplete=()=>ok(q.result);t.onerror=()=>no(t.error)})};
+const idbDo=async(m,k,v)=>{const d=await idb();return new Promise((ok,no)=>{const t=d.transaction('f',m=='get'?'readonly':'readwrite'),o=t.objectStore('f'),q=m=='get'?o.get(k):m=='put'?o.put(v,k):o.delete(k);t.oncomplete=()=>{ok(q.result);if(m=='put'&&window.__ALQ_ADJ_UP)try{window.__ALQ_ADJ_UP(k,v)}catch(e){}if(m=='del'&&window.__ALQ_ADJ_DEL)try{window.__ALQ_ADJ_DEL(k)}catch(e){}};t.onerror=()=>no(t.error)})};
 async function adjuntarCt(f){if(!f)return;const p=cur();try{await idbDo('put',p.id,f)}catch(e){alert('No pude guardar el archivo en este navegador.');return}p.contrato=f.name;CV=null;CT=null;render();leerCt()}
 async function togCv(){const p=cur();if(CV&&CV.key==p.id){URL.revokeObjectURL(CV.url);CV=null}else{const b=await idbDo('get',p.id);if(!b){alert('No encuentro el archivo en este navegador. Volvé a adjuntarlo.');return}CV={id:p.id,key:p.id,url:URL.createObjectURL(b)}}render()}
 async function quitarCt(){if(!confirm('¿Quitar el contrato adjunto?'))return;const p=cur();await idbDo('del',p.id);p.contrato='';CV=null;CT=null;render()}

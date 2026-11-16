@@ -591,3 +591,52 @@ test.describe('Bloque 3 — Liquidaciones al Portal del Propietario', () => {
     expect(html).toContain('id="alqOwnersClose"');
   });
 });
+
+test.describe('Bloque 4 — Comprobantes en Storage', () => {
+  test('4.G migración: bucket privado con límite y RLS por carpeta de usuario', () => {
+    const sql = read('supabase/migrations/20261115000004_alquileres_adj_storage.sql');
+    // bucket privado, 20 MB por archivo
+    expect(sql).toMatch(/insert into storage\.buckets \(id, name, public, file_size_limit\)[\s\S]*'alquileres-adj'[\s\S]*false[\s\S]*20971520/);
+    // las 4 policies con el primer segmento del path = auth.uid()
+    for (const cmd of ['select', 'insert', 'update', 'delete']) {
+      expect(sql).toMatch(new RegExp(`for ${cmd}[^;]*alquileres-adj`, 'i'));
+    }
+    expect(sql).toMatch(/\(storage\.foldername\(name\)\)\[1\] = \(select auth\.uid\(\)\)::text/);
+    // insert también valida en with check (no solo using)
+    expect(sql).toMatch(/for insert[\s\S]{0,200}with check \([\s\S]*auth\.uid\(\)/i);
+  });
+
+  test('4.G core: un solo punto de enganche en idbDo (put→upload, del→remove)', () => {
+    const core = read('assets/js/alquileres-core.js');
+    // el hook vive en oncomplete — cubre las 4 familias de adjuntos con 1 edición
+    expect(core).toMatch(/t\.oncomplete=\(\)=>\{ok\(q\.result\);if\(m=='put'&&window\.__ALQ_ADJ_UP\)try\{window\.__ALQ_ADJ_UP\(k,v\)\}catch\(e\)\{\}if\(m=='del'&&window\.__ALQ_ADJ_DEL\)try\{window\.__ALQ_ADJ_DEL\(k\)\}catch\(e\)\{\}\};t\.onerror/);
+  });
+
+  test('4.G controlador: convergencia bidireccional con pausa anti-eco', () => {
+    const app = read('assets/js/alquileres-app.js');
+    expect(app).toMatch(/const ADJ_BUCKET = 'alquileres-adj';/);
+    expect(app).toMatch(/let adjSyncBusy = false;/);
+    // el NOMBRE del objeto es la CLAVE CRUDA del core (con ':'): ida y vuelta
+    // exacta — el metadata del estado guarda la clave cruda y verAdj la busca.
+    expect(app).toMatch(/bucket\.upload\(FID \+ '\/' \+ k, v,|upload\(FID \+ '\/' \+ k, v,/);
+    expect(app).toMatch(/\.remove\(\[FID \+ '\/' \+ k\]\)/);
+    expect(app).toMatch(/const \{ data: blob, error: gErr \} = await bucket\.download\(FID \+ '\/' \+ o\.name\)/);
+    // la clave local del archivo bajado = name crudo (coincide con el metadata)
+    expect(app).toMatch(/await idbDo\('put', o\.name, blob\)/);
+    // no re-subir la carpeta del propio listado (!o.id = carpeta)
+    expect(app).toMatch(/if \(!o\.id \|\| !o\.name \|\| localByK\.has\(o\.name\)\) continue;/);
+    // baja lo que falta Y sube lo que falta (migración de los archivos históricos)
+    expect(app).toMatch(/remoto → local: baja lo que falte en este navegador \(con la clave cruda\)/);
+    expect(app).toMatch(/local → remoto: archivos históricos\/agregados offline que faltan en la nube/);
+    // anti-eco: durante el sync los hooks no suben lo recién bajado
+    expect(app).toMatch(/if \(adjSyncBusy \|\| !client \|\| !FID \|\| FID === 'legacy'( \|\| !v)?\) return;\s*\n\s*client\.storage\.from\(ADJ_BUCKET\)/);
+    // corre al abrir el módulo, al recuperar conexión y al volver a la pestaña
+    expect(app).toMatch(/alqAdjSync\(\); \/\* Bloque 4\.G/);
+    expect(app).toMatch(/addEventListener\('online'[\s\S]{0,60}alqAdjSync\(\)/);
+    expect(app).toMatch(/visibilitychange[\s\S]{0,200}=== 'visible'[\s\S]{0,80}alqAdjSync\(\)/);
+    // fallback completo: sin Storage el módulo funciona como antes (local-only)
+    expect(app).toMatch(/sin bucket\/policies → queda local-only/);
+    // la DB local de adjuntos es ÚNICA del navegador (adm_files), no por usuario
+    expect(app).toMatch(/La DB local del adjuntos es ÚNICA del navegador \(adm_files/);
+  });
+});
