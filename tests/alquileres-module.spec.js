@@ -67,11 +67,19 @@ test.describe('alquileres-core.js — core portado del standalone', () => {
     expect(bloque).toMatch(/if\(d<0\)\{[\s\S]*?prevMes\(\)[\s\S]*?restaurarMes\(pk\)/);
     // la restauración mapea docs del historial → props: orden (alquiler+servicios) y cuenta (saldo)
     const iRest = core.indexOf('function restaurarMes(key)');
-    const rBloque = core.slice(iRest, iRest + 1600);
+    const rBloque = core.slice(iRest, iRest + 2000);
     expect(rBloque).toMatch(/d\.k=='o'/);
     expect(rBloque).toMatch(/d\.k=='c'/);
     expect(rBloque).toMatch(/p\.alq=/);
     expect(rBloque).toMatch(/p\.saldoAnt=/);
+    // #10: restaura monto = línea × n (servicios compartidos), lecturas luz proporcional (ka/kc/kv o reconstrucción), extras
+    expect(rBloque).toContain('function alqRestaurarSv');
+    expect(rBloque).toMatch(/o\.monto=\(.*\)\*\(o\.n/);
+    expect(rBloque).toMatch(/key=='luz'.*prop/);
+    expect(rBloque).toMatch(/o\.ka=.*o\.kc=|o\.ka.*LK\.ka.*LK\.kc/);
+    expect(rBloque).toMatch(/p\.ex=\[\]/);
+    expect(rBloque).toMatch(/p\.ex\.push/);
+    expect(rBloque).toMatch(/d\.k=='l'/);
   });
 
   test('boot final: render sólo si hay S cargado (sin blanco ni crash)', () => {

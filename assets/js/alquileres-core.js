@@ -135,10 +135,25 @@ function actualizar(){const p=cur(),x=parseFloat(prompt('% de actualización a a
 function prevMes(){let m=S.m-1,y=S.y;if(m<0){m=11;y--}return y+'-'+String(m+1).padStart(2,'0')}
 function restaurarMes(key){const docs=S.hist[key];if(!docs)return;
  for(const d of docs){const p=S.props.find(x=>String(x.cod)===String(d.cod));if(!p)continue;
-  if(d.k=='o'){const a=(d.L||[]).find(l=>/^ALQUILER/i.test(l[0]));p.alq=(a&&a[3])||'';
-   for(const l of d.L||[]){const s=SV.find(z=>String(l[0]).toLowerCase().includes(z[0]));if(s&&p.sv[s[0]])p.sv[s[0]].monto=l[3]}}
-  else if(d.k=='c'){const a=(d.L||[]).find(l=>l[0]=='SALDO ANTERIOR');if(a)p.saldoAnt=a[3];
-   for(const l of d.L||[]){const s=SV.find(z=>String(l[0]).toLowerCase().includes(z[0]));if(s&&p.sv[s[0]])p.sv[s[0]].monto=l[3]}}}}
+  if(d.k=='o'){const a=(d.L||[]).find(l=>/^ALQUILER/i.test(l[0]));p.alq=(a&&a[3])||'';p.ex=[];
+   for(const l of d.L||[]){const s=SV.find(z=>String(l[0]).toLowerCase().includes(z[0]));if(s&&p.sv[s[0]])alqRestaurarSv(p.sv[s[0]],s[0],l[3],d);
+    else if(!/^ALQUILER/i.test(l[0])){const v=+l[3]||0;p.ex.push({c:l[0],m:Math.abs(v),a:v<0?'rep':'inq'})}}}
+  else if(d.k=='c'){const a=(d.L||[]).find(l=>l[0]=='SALDO ANTERIOR');if(a)p.saldoAnt=a[3];p.ex=[];
+   for(const l of d.L||[]){const s=SV.find(z=>String(l[0]).toLowerCase().includes(z[0]));if(s&&p.sv[s[0]])alqRestaurarSv(p.sv[s[0]],s[0],l[3],d);
+    else if(l[0]!='HONORARIOS'&&l[0]!='SALDO ANTERIOR'){const v=+l[3]||0;p.ex.push({c:l[0],m:Math.abs(v),a:v<0?'dep':'inq'})}}}
+  else if(d.k=='l'){const G=sorted().filter(p=>own(p)==own({cod:d.cod}));if(G.length!=1)continue;
+   const p=G[0];
+   for(const l of d.L||[]){const v=+l[3]||0;if(v>0&&!/^ALQUILER/i.test(l[0])&&l[0]!='HONORARIOS'&&!SV.find(z=>String(l[0]).toLowerCase().includes(z[0])))p.ex.push({c:l[0],m:v,a:'prop'})}}}}
+/* edición #10: la línea del doc trae el valor POR CUOTA (monto/n) — asignar monto=línea
+   dividía dos veces (agua 42263.63 → 4.695,96). Y la luz proporcional se calcula de las
+   lecturas ((kc-ka)×kv), NO de monto: el close lleva ka=kc y el restore viejo la dejaba en $0.
+   d.LK (lecturas congeladas por snapO/snapC al cerrar) restaura exacto; sin LK (meses viejos)
+   reconstruye ka=kc−(línea/kv) — montos exactos, lecturas best-effort. */
+function alqRestaurarSv(o,key,val,d){
+ if(key=='luz'&&o.prop){const LK=d&&d.LK;
+  if(LK&&+LK.kv>0){o.ka=+LK.ka||0;o.kc=+LK.kc||0;return}
+  const kv=+o.kv||0;if(kv>0)o.ka=(+o.kc||0)-((+val||0)/kv);return}
+ o.monto=(+val||0)*(o.n||1)}
 function mesMas(d){if(d>0&&!confirm('Cerrar '+MES[S.m]+' y pasar a '+MES[(S.m+1)%12]+'.\n\n• '+MES[S.m]+' queda guardado en el Historial.\n• Se repiten los alquileres (en blanco los que hay que actualizar). Municipal y Rentas conservan su valor; el resto de los servicios queda en 0.\n• Todo queda guardado en la nube y el mes nuevo queda listo para trabajar.\n\n¿Continuar?'))return;if(d>0){S.hist=S.hist||{};S.hist[ym()]=docsMes();FM=null;if(window.__ALQ_SNAPSHOT)window.__ALQ_SNAPSHOT(S.m,S.y);if(window.__ALQ_PUBLISH)window.__ALQ_PUBLISH(S.m,S.y)};if(d<0){const pk=prevMes(),hs=S.hist&&S.hist[pk];if(hs&&!confirm('Volver a '+MES[(S.m-1+12)%12]+'.\n\nSe van a restaurar los datos guardados de ese mes (alquileres, servicios y saldos).\n\n¿Continuar?'))return;if(hs)restaurarMes(pk)}
  S.m+=d;if(S.m>11){S.m=0;S.y++}if(S.m<0){S.m=11;S.y--}
  if(d>0)for(const p of S.props){if(p.modo=='cuenta')p.saldoAnt=Math.round(calc(p).fin*100)/100;for(const k in p.sv)if(p.modo=='cuenta'||(k!='muni'&&k!='rentas'))p.sv[k].monto=0;p.sv.luz.ka=p.sv.luz.kc;p.ex=[];{const r=restoAct(p);if(r!==null&&r<=0)p.alq=''}}render();if(d>0){LAST=null;guardarArchivo()}}
@@ -175,12 +190,12 @@ const fm=()=>[MES[S.m].toUpperCase(),S.y],fill='<div class="r fill"><div></div><
 const norm=p=>p.modo!='cuenta',ym=()=>S.y+'-'+String(S.m+1).padStart(2,'0'),imp=v=>v==null||v===''?'':$$(v);
 function avisosAuto(p){if(p.noAviso||!norm(p))return[];const r=[];if(restoAct(p)===1)r.push('MES PROXIMO CORRESPONDE ACTUALIZACION DEL ALQUILER');
  if(p.fin){const[y,m,d]=p.fin.split('-').map(Number),ref=new Date(S.y,S.m,+S.corr.v1||10),dias=Math.round((new Date(y,m-1,d)-ref)/864e5);if(dias>=0&&dias<=60)r.push('EL CONTRATO DE LOCACION VENCE EL '+fd(p.fin))}return r}
-function snapO(p){const c=calc(p),C=S.corr,[mm,yy]=fm();return{k:'o',cod:p.cod,n:p.inq,p:p.dir+' ('+p.cod+')',ps:[],L:[['ALQUILER',mm,yy,+p.alq||0],...c.sv.map(x=>[x.c.toUpperCase(),mm,yy,x.m]),...c.eI.map(e=>[(e.c||'').toUpperCase(),mm,yy,+e.m||0]),...c.eR.map(e=>[(e.c||'').toUpperCase(),mm,yy,-Math.abs(+e.m||0)])],T:[],V:[['Vencimiento sin Recargo',C.v1,S.m+1,yy,c.tot],['Vencimiento Con Recargo',C.v2,S.m+1,yy,c.rec]],N:[p.notas,...avisosAuto(p)].filter(Boolean).join('\n'),std:1}}
+function snapO(p){const c=calc(p),C=S.corr,[mm,yy]=fm();const lk=p.sv.luz&&p.sv.luz.prop?{luz:{ka:+p.sv.luz.ka||0,kc:+p.sv.luz.kc||0,kv:+p.sv.luz.kv||0}}:null;return{k:'o',cod:p.cod,n:p.inq,p:p.dir+' ('+p.cod+')',ps:[],L:[['ALQUILER',mm,yy,+p.alq||0],...c.sv.map(x=>[x.c.toUpperCase(),mm,yy,x.m]),...c.eI.map(e=>[(e.c||'').toUpperCase(),mm,yy,+e.m||0]),...c.eR.map(e=>[(e.c||'').toUpperCase(),mm,yy,-Math.abs(+e.m||0)])],LK:lk,T:[],V:[['Vencimiento sin Recargo',C.v1,S.m+1,yy,c.tot],['Vencimiento Con Recargo',C.v2,S.m+1,yy,c.rec]],N:[p.notas,...avisosAuto(p)].filter(Boolean).join('\n'),std:1}}
 function snapL(o){const G=sorted().filter(p=>own(p)==o&&norm(p)),[mm,yy]=fm(),multi=G.length>1,I=[],D=[];let T=0,H=0;
  for(const p of G){const c=calc(p),s=multi?' '+p.dir.toUpperCase():'';T+=c.neto;I.push(['ALQUILER'+s,mm,yy,+p.alq||0]);c.sv.filter(x=>x.pp).forEach(x=>I.push([x.c.toUpperCase()+s,mm,yy,x.m]));H+=c.hon;c.eP.forEach(e=>D.push([(e.c||'').toUpperCase()+s,mm,yy,+e.m||0]));c.eR.forEach(e=>D.push([(e.c||'').toUpperCase()+s,mm,yy,Math.abs(+e.m||0)]))}
  D.unshift(['HONORARIOS',mm,yy,H]);const ti=I.reduce((a,x)=>a+x[3],0),td=D.reduce((a,x)=>a+x[3],0),nn0=[...new Set(G.map(p=>(p.notasL||'').trim()).filter(Boolean))].join('\n');
  return{k:'l',cod:G[0].cod,n:G[0].prop,p:'',ps:G.map(p=>p.dir+' ('+p.cod+')'),L:[...I,...D],T:[['TOTAL ALQUILERES',mm,yy,ti],['TOTAL DEDUCCIONES',mm,yy,td],['TOTAL','',yy,T]],V:[],N:nn0||`RECIBI LA SUMA DE ${$$(T)} EN CONCEPTO DE ALQUILER ${G.map(p=>p.dir.toUpperCase()).join(' / ')}`}}
-function snapC(p){const c=calc(p),[mm,yy]=fm();return{k:'c',cod:p.cod,n:p.prop,p:p.dir+' ('+p.cod+')',ps:[],L:[['SALDO ANTERIOR',mm,yy,c.ant],...c.sv.map(x=>[x.c.toUpperCase(),mm,yy,x.m]),...c.eI.map(e=>[(e.c||'GASTO').toUpperCase(),mm,yy,+e.m||0]),['HONORARIOS',mm,yy,c.hon],...c.dep.map(e=>[(e.c||'DEPOSITO').toUpperCase(),mm,yy,-(+e.m||0)])],T:[['SALDO',mm,yy,c.fin]],V:[],N:(c.fin<=0?'SALDO A FAVOR DEL CLIENTE':'SALDO A COBRAR AL CLIENTE')+': '+$$(Math.abs(c.fin))+(p.notas?'\n'+p.notas:'')}}
+function snapC(p){const c=calc(p),[mm,yy]=fm();const lk=p.sv.luz&&p.sv.luz.prop?{luz:{ka:+p.sv.luz.ka||0,kc:+p.sv.luz.kc||0,kv:+p.sv.luz.kv||0}}:null;return{k:'c',cod:p.cod,n:p.prop,p:p.dir+' ('+p.cod+')',ps:[],L:[['SALDO ANTERIOR',mm,yy,c.ant],...c.sv.map(x=>[x.c.toUpperCase(),mm,yy,x.m]),...c.eI.map(e=>[(e.c||'GASTO').toUpperCase(),mm,yy,+e.m||0]),['HONORARIOS',mm,yy,c.hon],...c.dep.map(e=>[(e.c||'DEPOSITO').toUpperCase(),mm,yy,-(+e.m||0)])],LK:lk,T:[['SALDO',mm,yy,c.fin]],V:[],N:(c.fin<=0?'SALDO A FAVOR DEL CLIENTE':'SALDO A COBRAR AL CLIENTE')+': '+$$(Math.abs(c.fin))+(p.notas?'\n'+p.notas:'')}}
 function rD(d){const C=S.corr,rows=d.L.map(l=>R4(esc(l[0]),esc(l[1]||''),esc(l[2]||''),imp(l[3]))).join(''),tot=d.T.map((t,i)=>R4(esc(t[0]),esc(t[1]||''),esc(t[2]||''),imp(t[3]),(i==0?'tt ':'')+(i==d.T.length-1?'tf':''))).join('');
  const th='<div class="r th"><div>CONCEPTOS</div><div>PERIODO</div><div>IMPORTE</div></div>';
  if(d.k=='o'){const V=d.V.map(v=>`<div class="v"><div>${esc(v[0])}</div><div>${esc(v[1]??'')}</div><div>${esc(v[2]??'')}</div><div>${esc(v[3]??'')}</div><div>${imp(v[4])}</div></div>`).join('');
