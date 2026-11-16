@@ -640,3 +640,46 @@ test.describe('Bloque 4 — Comprobantes en Storage', () => {
     expect(app).toMatch(/La DB local del adjuntos es ÚNICA del navegador \(adm_files/);
   });
 });
+
+test.describe('alquileres: auditoría 2026-11-16 (post revert del borrado por fila)', () => {
+  const read = p => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
+  let core;
+  test.beforeAll(() => { core = read('assets/js/alquileres-core.js'); });
+
+  test('edición #9: el cierre de mes NO cambia la identidad FID (carpeta de Storage)', () => {
+    // FID = user.id (init del controlador) y es la CARPETA del bucket
+    // alquileres-adj/<uid>/. El FID=nid() original del standalone (un id por
+    // archivo mensual) en el módulo corrompía la identidad tras cada cierre:
+    // el guard FID==='legacy' del controlador pasaba y el sync de adjuntos
+    // subía/listaba en una carpeta f<random> que la RLS rechaza (403) —
+    // comprobantes nuevos quedaban solo locales hasta recargar la página.
+    expect(core.includes('FID=nid()')).toBe(false);
+    expect(core.includes('FID = nid()')).toBe(false);
+    // el cierre de mes sigue forzando el guardado (LAST=null + guardarArchivo)
+    expect(core).toMatch(/if\(d>0\)\{LAST=null;guardarArchivo\(\)\}/);
+  });
+
+  test('hardening XSS: cod/dir/inq/prop/nombre de archivo escapados en render/resumen/verFX', () => {
+    // option + optgroup del selector de propiedades (render)
+    expect(core).toMatch(/<optgroup label="Propietario \$\{esc\(go\)\}: \$\{esc\(p\.prop\|\|'sin nombre'\)\}">/);
+    expect(core).toMatch(/<option value="\$\{esc\(p\.id\)\}">\$\{esc\(p\.cod\)\} · \$\{esc\(p\.dir\)\}\$\{p\.inq\?' — '\+esc\(p\.inq\):''\}<\/option>/);
+    // filas del resumen mensual
+    expect(core).toMatch(/<tr><td>\$\{esc\(p\.cod\)\} \$\{esc\(p\.dir\)\}<\/td><td>\$\{esc\(p\.inq\)\}/);
+    // nombre del archivo de factura en la tabla de facturas leídas (verFX)
+    expect(core).toMatch(/<tr><td>\$\{esc\(x\.f\)\}<\/td><td colspan="2"/);
+    expect(core).toMatch(/· \$\{esc\(x\.f\)\}<br><small>Cuenta/);
+  });
+
+  test('Bloque 1.H: la semántica del conflicto es remoteMs !== localMs (cualquier cambio remoto)', () => {
+    // Decisión de la auditoría: NO relajar a remoteMs > localMs. Tras un
+    // guardado propio el remote y rowStamp son el MISMO instante (el upsert
+    // manda updated_at y la tabla no tiene trigger que lo pise), así que !==
+    // sólo dispara cuando la fila remota cambió de verdad desde nuestro
+    // último stamp conocido — incluidas escrituras de otro dispositivo con
+    // reloj atrasado, que con > se pisarían en silencio (sobreescritura sin
+    // aviso). Cambiar a > reabriría esa ventana: el guard falla si vuelve.
+    const app = read('assets/js/alquileres-app.js');
+    expect(app).toMatch(/remoteMs !== localMs/);
+    expect(app).not.toMatch(/remoteMs > localMs|remoteMs >= localMs/);
+  });
+});
