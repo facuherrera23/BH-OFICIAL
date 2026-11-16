@@ -3,11 +3,13 @@
 > Documento para presentar al empleador. Primero el resultado de la revisión
 > técnica completa, después las mejoras propuestas ordenadas por valor.
 >
-> **Estado de implementación:** Bloques 1 (H + B + F), 2 (C + E + D) y
-> 3 (A — liquidaciones al portal) ✅ IMPLEMENTADOS y verificados en
-> producción el 15/11/2026. El mapeo propietario→CRM quedó hecho (habilita
-> las tareas automáticas de vencimientos como próxima etapa). Restante:
-> G (adjuntos a Storage), pendiente de luz verde.
+> **Estado de implementación:** Bloques 1 (H + B + F), 2 (C + E + D),
+> 3 (A — liquidaciones al portal) y 4 (G — comprobantes a Storage)
+> ✅ IMPLEMENTADOS y verificados en producción el 15/11/2026. El mapeo
+> propietario→CRM quedó hecho (habilita las tareas automáticas de
+> vencimientos como próxima etapa). No queda nada del plan original
+> en el módulo — próximas etapas posibles: tareas 90/60/30 de vencimientos
+> y la decisión pendiente del set compartido (sección 4).
 
 ---
 
@@ -105,14 +107,20 @@ contador de **contratos por vencer (60 días)**, leído del estado.
   reales).
 - **Esfuerzo:** chico.
 
-### G. Comprobantes en la nube (Supabase Storage)
+### G. Comprobantes en la nube (Supabase Storage) ✅ IMPLEMENTADO (15/11/2026)
 Los contratos/facturas adjuntos hoy viven en el navegador (IndexedDB): si se
 limpia el navegador o se cambia de máquina, se pierden y hay que re-importar
-el archivo original. Moverlos a Storage privado (carpeta por usuario, RLS).
+el archivo original. Ahora: IndexedDB queda como caché local y hay una copia
+durable en Storage privado (carpeta por usuario, RLS). Al abrir el módulo se
+convergen ambas copias automáticamente — los 33 archivos históricos se suben
+solo en la primera apertura, y de ahí en adelante cada comprobante que se
+agrega o se quita se refleja en la nube.
 - **Valor:** los comprobantes sobreviven al navegador y se ven desde
   cualquier dispositivo.
-- **Esfuerzo:** medio-alto (es el cambio más profundo de la lista; el módulo
-  ya funciona sin él, solo hay que tenerlo presente si un día se pierden).
+- **Estado:** en producción. Nota para el dueño: la primera vez que Danilo
+  (u otro operador) abra el módulo después de este deploy, la convergencia
+  subirá todos los archivos que tenía en ese navegador — puede tardar unos
+  segundos en la primera apertura.
 
 ### H. Uso desde dos dispositivos a la vez (aviso de conflicto)
 Si la administración se abre en dos máquinas, la última que guarda pisa a la
