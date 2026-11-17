@@ -91,7 +91,7 @@ test.describe('alquileres-core.js — core portado del standalone', () => {
     // (docsMes), pero ANTES de blanquear servicios y avanzar: la copia es
     // exactamente "la administración como estaba al cerrar X". Guardado por
     // el controlador (window.__ALQ_SNAPSHOT), best-effort y sin IIFE.
-    expect(core).toMatch(/S\.hist\[ym\(\)\]=docsMes\(\);FM=null;if\(window\.__ALQ_SNAPSHOT\)window\.__ALQ_SNAPSHOT\(S\.m,S\.y\);?if\(window\.__ALQ_PUBLISH\)?/);
+    expect(core).toMatch(/S\.hist\[ym\(\)\]=docsMes\(\)\}\s*S\.sig\[ym\(\)\]=firma\(S\.props\);FM=null;if\(window\.__ALQ_SNAPSHOT\)window\.__ALQ_SNAPSHOT\(S\.m,S\.y\);?if\(window\.__ALQ_PUBLISH\)?/);
   });
 
   test('edición #11 (2026-11-17): re-cerrar un mes ya cerrado avisa y respalda el historial previo', () => {
@@ -100,9 +100,41 @@ test.describe('alquileres-core.js — core portado del standalone', () => {
     // una reconstrucción más pobre (10.301 → 8.938 chars, docs de 'nueva'
     // desaparecidos). El confirm debe avisar el reemplazo y __ALQ_SNAPSHOT_PRE
     // debe correr ANTES de pisar S.hist[ym()] (best-effort, jamás bloquea).
-    expect(core).toContain('YA está en el Historial: cerrarlo de nuevo REEMPLAZA ese historial por los datos actuales');
+    expect(core).toContain('ya estaba cerrado y lo modificaste: se actualiza su historial con los datos de ahora');
+    // el historial anterior queda en Respaldos (la red de seguridad)
+    expect(core).toContain('El historial anterior queda en Respaldos (☁), así que no se pierde nada');
     // el respaldo previo va ENTRE la inicialización del hist y el docsMes() que pisa
-    expect(core).toMatch(/S\.hist=S\.hist\|\|\{\};if\(reHi&&window\.__ALQ_SNAPSHOT_PRE\)window\.__ALQ_SNAPSHOT_PRE\('Historial previo '[^;]+?\);S\.hist\[ym\(\)\]=docsMes\(\)/);
+    expect(core).toMatch(/S\.hist=S\.hist\|\|\{\};if\(!yaHist\|\|cambio\)\{if\(yaHist&&window\.__ALQ_SNAPSHOT_PRE\)window\.__ALQ_SNAPSHOT_PRE\('Historial previo '[^;]+?\);S\.hist\[ym\(\)\]=docsMes\(\)\}/);
+  });
+
+  test('re-cierre SIN cambios NO pisa el historial archivado (2026-11-17, caso del empleador)', () => {
+    // El empleador volvió de Octubre a Septiembre, cerró September de nuevo y
+    //.acceptó el aviso: el historial de Septiembre (importado, 9.237 chars) fue
+    // pisado por una reconstrucción (9.136) — se perdió la línea "NOTIFICACION:
+    // DETALLE DE SERVICIOS..." de la orden 2-0. Los importes NO se Lost.
+    // Ahora: si la firma del mes no cambió (navegar ≠ modificar), el historial
+    // NO se reescribe y NO sale el aviso.
+    expect(core).toMatch(/const yaHist=!!\(S\.hist&&S\.hist\[ym\(\)\]\),ref=S\.sig\[ym\(\)\],cambio=ref\?firma\(S\.props\)!==ref:true/);
+    expect(core).toMatch(/if\(!yaHist\|\|cambio\)\{/);
+    // la firma se registra al LLEGAR a un mes y se actualiza al cerrarlo
+    expect(core).toContain("S.sig[ym()]=firma(S.props)");
+    expect(core).toMatch(/const yk=ym\(\);if\(!S\.sig\[yk\]\)S\.sig\[yk\]=firma\(S\.props\)/);
+    // bhInitS siembra S.sig con la firma del mes actual (arranque = sin cambios)
+    expect(core).toContain('if(!s.sig)s.sig={}');
+    expect(core).toMatch(/const sk=s\.y\+'-'\+String\(\(\+s\.m\|\|0\)\+1\)\.padStart\(2,'0'\);if\(!s\.sig\[sk\]\)s\.sig\[sk\]=firma\(s\.props\|\|\[\]\)/);
+    // firma order-independent (jsonb reordena las claves al guardar)
+    expect(core).toContain("const estable=v=>{if(Array.isArray(v))return '['+v.map(estable).join(',')+']'");
+  });
+
+  test('los mensajes aclaran que NO hay que cerrar el mes para guardar (2026-11-17)', () => {
+    // El empleador preguntó: "Noviembre, como no le di cerrar se borra".
+    // Los dos confirms (cerrar / volver) lo dicen explícito.
+    expect(core).toContain('Podés volver a este mes cuando quieras: lo que cargues se guarda solo, no hace falta cerrar');
+    expect(core).toContain('No hace falta cerrar el mes para que los datos queden guardados');
+    // el botón y el hint del header lo aclaran también
+    const html = read('alquileres.html');
+    expect(html).toContain('Los datos se guardan solos al escribir: no hace falta cerrar el mes para que queden guardados');
+    expect(html).toContain('title="Guarda el mes en el Historial (documentos PDF) y pasa al siguiente. No borra nada: podés volver atrás cuando quieras."');
   });
 
   test('navegación sin pérdida (2026-11-17): el retroceso guarda el mes que se deja y restaura el destino', () => {
@@ -770,8 +802,13 @@ test.describe('alquileres — navegación sin pérdida (harness behavioral)', ()
     expect(res.novRestaurado, 'Noviembre se restaura tal como se dejó').toBe(true);
     expect(res.histOctEstable, 're-cerrar no altera el historial capturado').toBe(true);
     // 4) avisos del confirm
-    expect(res.reHiAviso).toBe(true);
+    expect(res.sinAvisoSiNoCambio, 'un re-cierre SIN cambios no debe avisar ni pisar el historial').toBe(true);
+    expect(res.avisoSiCambio, 'un re-cierre CON cambios reales debe avisar').toBe(true);
+    expect(res.avisoDiceRespaldos).toBe(true);
+    expect(res.avisoNoCierraParaGuardar, 'el confirm debe aclarar que no hace falta cerrar para guardar').toBe(true);
+    expect(res.histNovReescrito, 'con cambios reales el historial sí se actualiza').toBe(true);
     expect(res.volverAviso).toBe(true);
+    expect(res.mTrasCierreNov).toBe(11);
     // 5) cambio de año
     expect(res.yTrasAnioNuevo).toBe(2027);
     expect(res.liveAnioNuevo).toBe(true);

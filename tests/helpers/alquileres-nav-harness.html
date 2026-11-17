@@ -40,6 +40,7 @@ window.__RUN = function () {
     /* 1) adelante: cierra Octubre → Noviembre derivado en blanco */
     mesMas(1);
     out.mTrasAdelante = S.m; // 10 = Noviembre
+    const nTrasPrimerCierre = (window.__CONFIRMS || []).length;
     out.capturadoOct = !!(S.live && S.live['2026-10'] && JSON.stringify(S.live['2026-10']) === propsOct);
     out.histOct = !!(S.hist && S.hist['2026-10'] && S.hist['2026-10'].length > 0);
     out.histOct1 = JSON.stringify(S.hist['2026-10']);
@@ -59,18 +60,39 @@ window.__RUN = function () {
     out.capturadoNov = !!(S.live && S.live['2026-11'] && JSON.stringify(S.live['2026-11']) === propsNov);
     out.octRestaurado = JSON.stringify(S.props) === propsOct; // Octubre EXACTO (copia viva)
 
-    /* 3) re-cierre de Octubre → Noviembre restaurado tal como se dejó */
+    /* 3) re-cierre de Octubre SIN cambios → NO avisa y NO reescribe el historial
+       (caso real del empleador: navegó y volvió a cerrar; el historial
+       archivado se pisaba con una reconstrucción más pobre) */
     mesMas(1);
     out.mTrasReAdelante = S.m; // 10
     const pNov2 = S.props.find(x => x.cod == '2-0');
     out.novRestaurado = JSON.stringify(S.props) === propsNov
       && pNov2.sv.agua.monto === 55555.55
       && pNov2.ex.length === 1 && pNov2.ex[0].c === 'GAS NOVIEMBRE';
-    out.histOctEstable = JSON.stringify(S.hist['2026-10']) === out.histOct1; // roundtrip estable
+    out.histOctEstable = JSON.stringify(S.hist['2026-10']) === out.histOct1; // NO reescrito
+
+    /* 3b) cierre de Noviembre (primera vez) → genera su historial */
+    mesMas(1);
+    out.mTrasCierreNov = S.m; // 11 = Diciembre
+    const histNov1 = JSON.stringify(S.hist['2026-11']);
+
+    /* 3c) volvemos a Noviembre, lo MODIFICAMOS de verdad y lo re-cerramos:
+       ahí SÍ debe avisar y reescribir el historial */
+    mesMas(-1); // vuelve a Noviembre (restaurado desde S.live)
+    const pNov3 = S.props.find(x => x.cod == '2-0');
+    pNov3.sv.agua.monto = 77777; // cambio real
+    mesMas(1); // re-cierra Noviembre
 
     /* avisos del confirm */
     const conf = window.__CONFIRMS || [];
-    out.reHiAviso = conf.some(t => t.includes('YA está en el Historial'));
+    /* los 3 primeros confirms: cierre de Octubre, retroceso y RE-CIERRE de
+       Octubre (sin cambios) → ninguno debe avisar del re-cierre */
+    out.sinAvisoSiNoCambio = !conf.slice(0, nTrasPrimerCierre + 2).some(t => t.includes('ya estaba cerrado y lo modificaste'));
+    /* los confirms posteriores incluyen el re-cierre de Noviembre CON cambios */
+    out.avisoSiCambio = conf.slice(nTrasPrimerCierre + 2).some(t => t.includes('ya estaba cerrado y lo modificaste'));
+    out.avisoDiceRespaldos = conf.some(t => t.includes('queda en Respaldos'));
+    out.avisoNoCierraParaGuardar = conf.some(t => t.includes('no hace falta cerrar'));
+    out.histNovReescrito = JSON.stringify(S.hist['2026-11']) !== histNov1;
     out.volverAviso = conf.some(t => t.includes('queda guardado'));
     out.nAvisos = conf.length;
 

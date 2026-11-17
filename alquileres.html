@@ -124,7 +124,8 @@ input[type=checkbox]{accent-color:var(--acc)}
 @media print{html,body{background:#fff!important}}
 </style></head><body>
 <header><h1>Administración de alquileres</h1><button class="s btn-back-panel" onclick="location.href='admin.html'" title="Volver al panel">← Panel</button><span id="per"></span>
-<button class="s" onclick="mesMas(-1)">◀</button><button class="s" onclick="mesMas(1)">Cerrar mes y pasar al siguiente ▶</button>
+<button class="s" onclick="mesMas(-1)" title="Volver al mes anterior. Lo que cargaste queda guardado: podés ir y volver sin perder nada.">◀</button><button class="s" onclick="mesMas(1)" title="Guarda el mes en el Historial (documentos PDF) y pasa al siguiente. No borra nada: podés volver atrás cuando quieras.">Cerrar mes y pasar al siguiente ▶</button>
+<small style="flex:1 1 100%;font-size:11.5px;color:var(--mut);line-height:1.45;margin:2px 0 6px">Los datos se guardan solos al escribir: no hace falta cerrar el mes para que queden guardados. «Cerrar mes» genera el Historial (documentos PDF) del mes y pasa al siguiente — después podés volver atrás y seguir trabajando sin perder nada.</small>
 <button class="s" onclick="vista='res';render()">Resumen</button><button class="s" onclick="HM=ym();vista='hist';render()">Historial / Excel</button>
 <button class="s" onclick="imprimirTodo('o')">Todas las órdenes</button><button class="s" onclick="imprimirTodo('l')">Todas las liquidaciones</button>
 <button onclick="guardarArchivo()" title="Guardar en la nube (alquileres_state)">💾 Guardar</button><span id="est" style="font-size:12px;font-weight:700"></span>
@@ -199,7 +200,7 @@ input[type=checkbox]{accent-color:var(--acc)}
 <script defer src="assets/vendor/supabase-js.umd.js?v=1"></script>
 <script defer src="assets/js/config.js?v=321"></script>
 <script defer src="assets/js/supabase-client.js?v=325"></script>
-<script defer src="assets/js/alquileres-core.js?v=14"></script>
+<script defer src="assets/js/alquileres-core.js?v=15"></script>
 <script defer src="assets/js/alquileres-app.js?v=14"></script>
 
 </body>
