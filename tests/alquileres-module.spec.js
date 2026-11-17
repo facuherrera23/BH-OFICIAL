@@ -777,3 +777,102 @@ test.describe('alquileres — navegación sin pérdida (harness behavioral)', ()
     expect(res.liveAnioNuevo).toBe(true);
   });
 });
+
+test.describe('alquileres — comprobantes de pago (2026-11-17, pedido del dueño)', () => {
+  const read = p => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
+  let core, app;
+  test.beforeAll(() => {
+    core = read('assets/js/alquileres-core.js');
+    app = read('assets/js/alquileres-app.js');
+  });
+
+  test('familia pc:<pid>:<mes>:<uid> + metadata en el estado (p.comprobantes[mes])', () => {
+    // La clave es cruda (con ':') — es la identidad del objeto en Storage
+    // alquileres-adj/<uid>/ (ida y vuelta EXACTA, igual que pg:/f:).
+    expect(core).toMatch(/'pc:'\+p\.id\+':'\+m\+':'\+uid\(\)/);
+    // metadata mínima {k, arch, tipo} en una lista plana por mes
+    expect(core).toMatch(/l\.push\(\{k:kk,arch:f\.name,tipo:f\.type\|\|''\}\)/);
+    // el mes sale de fmv() (mismo selector FM que las facturas) y la lista
+    // se crea lazy (los estados viejos del JSONB no tienen comprobantes)
+    expect(core).toMatch(/subirComps\(fs\)\{if\(!fs\|\|!fs\.length\)return;const p=cur\(\),m=fmv\(\);p\.comprobantes=p\.comprobantes\|\|\{\};p\.comprobantes\[m\]=p\.comprobantes\[m\]\|\|\[\]/);
+    // un archivo que falla en IndexedDB NO deja metadata huérfana (continue)
+    expect(core).toMatch(/catch\(e\)\{alert\('No pude guardar el archivo en este navegador\.'\);continue\}/);
+  });
+
+  test('UI: sección "Comprobantes de pago" dentro de la card Facturas cargadas', () => {
+    expect(core).toContain('Comprobantes de pago</h4>');
+    // mismo selector de mes (usa m del IIFE de facturas) + input único id="pc"
+    expect(core).toMatch(/<input id="pc" type="file" accept="\.pdf,image\/\*" multiple hidden onchange="subirComps\(this\.files\);this\.value=''">/);
+    expect(core).toContain('Subir comprobante (PDF o imagen)');
+    expect(core).toMatch(/onclick="document\.getElementById\('pc'\)\.click\(\)"/);
+    // filas con esc() (hardening XSS — nombre de archivo de usuario)
+    expect(core).toMatch(/<b>\$\{i\+1\}<\/b> · \$\{esc\(c\.arch\)\}<\/td><td><button class="s" onclick="verComp\(\$\{i\}\)">/);
+    expect(core).toMatch(/onclick="quitarComp\(\$\{i\}\)">Quitar<\/button>/);
+    // estado vacío explicativo
+    expect(core).toContain('Sin comprobantes este mes. Podés subir PDFs o fotos');
+  });
+
+  test('visor: imagen → <img>, resto → iframe; revoca el blob URL viejo antes de reemplazar', () => {
+    // rama del visor sólo para claves pc: de la propiedad abierta
+    expect(core).toMatch(/CV&&CV\.key\.startsWith\('pc:'\+p\.id\+':'\)\?\(CV\.img\?`<img src="\$\{CV\.url\}"/);
+    expect(core).toMatch(/:`<iframe src="\$\{CV\.url\}" style="width:100%;height:640px[^`]*"><\/iframe>`\):''/);
+    // detección de imagen por el tipo REAL del blob (no confía en la metadata)
+    expect(core).toMatch(/img:\/\^image\\\/\/\.test\(b\.type\|\|''\)/);
+    // verComp: revoca el CV previo (factura/contrato/otro comprobante) ANTES de reemplazar
+    expect(core).toMatch(/verComp\(i\)\{[\s\S]{0,320}if\(CV\)URL\.revokeObjectURL\(CV\.url\);CV=\{id:p\.id,key:c\.k,url:URL\.createObjectURL\(b\),img:/);
+    // toggle y quitar cierran el visor con revocación
+    expect(core).toMatch(/if\(CV&&CV\.key==c\.k\)\{URL\.revokeObjectURL\(CV\.url\);CV=null\}/);
+  });
+
+  test('quitarComp: confirm + borrado real de IndexedDB/Storage + splice', () => {
+    expect(core).toMatch(/quitarComp\(i\)\{if\(!confirm\('¿Quitar este comprobante\?'\)\)return;const p=cur\(\),m=fmv\(\),l=\(p\.comprobantes\|\|\{\}\)\[m\]\|\|\[\],c=l\[i\];if\(!c\)return;await idbDo\('del',c\.k\);/);
+    expect(core).toMatch(/l\.splice\(i,1\);render\(\)\}/);
+  });
+
+  test('sin colisión de nombres y el hook de Storage NO filtra por prefijo', () => {
+    // las 3 funciones nuevas se declaran UNA vez y el app no las redeclara
+    for (const fn of ['subirComps', 'verComp', 'quitarComp']) {
+      const mCore = core.match(new RegExp('^async function ' + fn + '\\(', 'm'));
+      expect(mCore, fn + ' declarada en el core a columna 0').toBeTruthy();
+      expect(app).not.toMatch(new RegExp('function ' + fn + '\\('));
+    }
+    // __ALQ_ADJ_UP sube CUALQUIER clave (sin startsWith) — si alguien agrega un
+    // filtro de familias, los comprobantes pc: dejarían de viajar a Storage.
+    const iUp = app.indexOf('window.__ALQ_ADJ_UP');
+    expect(iUp).toBeGreaterThan(-1);
+    const cuerpo = app.slice(iUp, app.indexOf('window.__ALQ_ADJ_DEL', iUp));
+    expect(cuerpo).not.toMatch(/startsWith\(/);
+  });
+
+  test('behavioral (core real): subir PDF+imagen → read-back IndexedDB → visor → quitar', async ({ page }) => {
+    await page.goto('/tests/helpers/alquileres-comps-harness.html');
+    const res = await page.evaluate(() => window.__RUN());
+    expect(res.err, 'el harness no debe lanzar errores: ' + JSON.stringify(res)).toBeUndefined();
+    expect(res.ok).toBe(true);
+    // 1) subir: 2 comprobantes con metadata y claves pc:<pid>:<mes>:<uid>
+    expect(res.cantTrasSubir).toBe(2);
+    expect(res.metadatos).toEqual([
+      { arch: 'recibo.pdf', tipo: 'application/pdf' },
+      { arch: 'foto.png', tipo: 'image/png' },
+    ]);
+    expect(res.clavesConPrefijo).toBe(true);
+    // 2) read-back REAL: los blobs sobreviven a la ida y vuelta de IndexedDB
+    expect(res.pdfType).toBe('application/pdf');
+    expect(res.pdfSize).toBeGreaterThan(0);
+    expect(res.imgType).toBe('image/png');
+    // 3) visor: imagen → img, pdf → iframe (mismo CV compartido, uno a la vez)
+    expect(res.cvImg).toEqual({ key: true, img: true, tieneUrl: true });
+    expect(res.cvPdf).toEqual({ key: true, img: false });
+    // 4) toggle off
+    expect(res.cvCerrado).toBe(true);
+    // 5) scoping por mes: el comprobante subido con FM=2026-09 va a septiembre
+    expect(res.sep).toEqual(['recibo-septiembre.png']);
+    // 6) quitar: confirm, splice y borrado real de IndexedDB
+    expect(res.cantTrasQuitar).toBe(1);
+    expect(res.confirmLlamado).toBe(true);
+    expect(res.idbBorrado).toBe(true);
+    expect(res.quedo).toBe('foto.png');
+    // sin alerts inesperados (fallas silenciosas de idbDo)
+    expect(res.alerts).toEqual([]);
+  });
+});

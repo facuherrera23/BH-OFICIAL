@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>harness alquileres-comps</title>
+</head>
+<body>
+<!-- El core en carga sólo toca document.querySelector('header') (hh) -->
+<header style="height:40px"></header>
+
+<!-- Core REAL del módulo (sin app.js: no hace falta cliente Supabase) -->
+<script src="../../assets/js/alquileres-core.js"></script>
+
+<script>
+/* Override de la capa UI/archivo: las funciones de comprobantes no deben tocar
+   DOM ni descargar archivos en el harness. Function declarations: la última
+   gana (patrón del app). */
+function render() {}
+function tot() {}
+function est() {}
+function guardarArchivo() {}
+function restaurarAdj() {}
+window.confirm = (t) => { (window.__CONFIRMS = window.__CONFIRMS || []).push(String(t)); return true; };
+window.alert = (t) => { (window.__ALERTS = window.__ALERTS || []).push(String(t)); };
+
+/* Flujo behavioral de comprobantes de pago (pc:<pid>:<mes>:<uid>):
+   subir (PDF + imagen) → read-back de IndexedDB → visor (img/iframe) → quitar.
+   Corre con el SEED real del core. */
+window.__RUN = async function () {
+  const out = {};
+  try {
+    S = JSON.parse(JSON.stringify(SEED));
+    bhInitS(S);
+    S.m = 9; S.y = 2026; // Octubre
+    const p = S.props[0];
+    S.sel = p.id;
+
+    const fPdf = new File(['PDF-FAKE-CONTENT'], 'recibo.pdf', { type: 'application/pdf' });
+    const fImg = new File([new Uint8Array([137, 80, 78, 71, 13, 10])], 'foto.png', { type: 'image/png' });
+
+    /* 1) subir los dos comprobantes */
+    await subirComps([fPdf, fImg]);
+    const mes = '2026-10';
+    const list = (p.comprobantes || {})[mes] || [];
+    out.cantTrasSubir = list.length; // 2
+    out.metadatos = list.map(c => ({ arch: c.arch, tipo: c.tipo }));
+    out.clavesConPrefijo = list.every(c => typeof c.k === 'string' && c.k.indexOf('pc:' + p.id + ':' + mes + ':') === 0);
+
+    /* 2) read-back REAL de IndexedDB (ida y vuelta de archivos) */
+    const b1 = await idbDo('get', list[0].k);
+    const b2 = await idbDo('get', list[1].k);
+    out.pdfType = b1 ? b1.type : null;      // application/pdf
+    out.pdfSize = b1 ? b1.size : 0;         // > 0
+    out.imgType = b2 ? b2.type : null;      // image/png
+
+    /* 3) visor: imagen → CV.img=true, pdf → CV.img=false */
+    await verComp(1);
+    out.cvImg = CV ? { key: CV.key === list[1].k, img: CV.img, tieneUrl: !!CV.url } : null;
+    await verComp(0);
+    out.cvPdf = CV ? { key: CV.key === list[0].k, img: CV.img } : null;
+
+    /* 4) toggle off (Ver de nuevo = Ocultar) */
+    await verComp(0);
+    out.cvCerrado = CV === null;
+
+    /* 5) scoping por mes: FM apunta a otro mes → el comprobante va a ESE mes */
+    FM = '2026-09';
+    await subirComps([new File(['X'], 'recibo-septiembre.png', { type: 'image/png' })]);
+    out.sep = ((p.comprobantes || {})['2026-09'] || []).map(c => c.arch);
+    FM = null;
+
+    /* 6) quitar: confirm + idb del + splice */
+    const k1 = list[0].k;
+    await quitarComp(0);
+    out.cantTrasQuitar = list.length; // 1
+    out.confirmLlamado = (window.__CONFIRMS || []).some(t => t.indexOf('comprobante') >= 0);
+    out.idbBorrado = !(await idbDo('get', k1)); // IndexedDB get devuelve undefined para claves borradas
+    out.quedo = list[0] ? list[0].arch : null; // foto.png
+
+    out.alerts = window.__ALERTS || [];
+    out.ok = true;
+  } catch (e) {
+    out.err = (e && e.message) || String(e);
+  }
+  return out;
+};
+</script>
+</body>
+</html>
