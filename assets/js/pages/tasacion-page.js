@@ -795,6 +795,10 @@ function renderAnalisisComparativo(forPrint){
       indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
+      /* En impresión el canvas se captura al instante: con la animación por
+         defecto Chrome fotografiaba el chart a mitad de animación y el PDF
+         salía con el cuadro VACÍO. En print, sin animación = entra lleno. */
+      animation: _acForPrint ? false : undefined,
       plugins: {
         legend: { display:false },
         tooltip: {
@@ -810,7 +814,13 @@ function renderAnalisisComparativo(forPrint){
     }
   });
 }
+let _printTitlePrev = null;
 window.addEventListener('beforeprint', ()=>{
+  /* Las leyendas de encabezado de Chrome muestran document.title ("Tasación
+     Grátuita…"): en impresión se cambia a uno limpio y se restaura al salir.
+     El <title> estático queda intacto para SEO (solo cambia en runtime). */
+  _printTitlePrev = document.title;
+  document.title = 'Bienenhaus Propiedades — Análisis Comparativo de Mercado';
   renderAnalisisComparativo(true);
   /* Comparables: 3 por página (formato del estudio). El salto cae antes
      del 4º, 7º, ... comparable VISIBLE (los excluidos no ocupan lugar). */
@@ -819,6 +829,8 @@ window.addEventListener('beforeprint', ()=>{
   _markEmptyFields();
 });
 window.addEventListener('afterprint', ()=>{
+  if (_printTitlePrev !== null) document.title = _printTitlePrev;
+  _printTitlePrev = null;
   renderAnalisisComparativo(false);
   document.querySelectorAll('.comp-block.print-page-break').forEach(b => b.classList.remove('print-page-break'));
   document.querySelectorAll('.print-empty').forEach(el => el.classList.remove('print-empty'));
