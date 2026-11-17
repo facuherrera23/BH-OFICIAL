@@ -63,7 +63,7 @@ test.describe('alquileres-core.js — core portado del standalone', () => {
     // mesMas(d<0) debe consultar prevMes + restaurarMes
     const iMesMas = core.indexOf('function mesMas(d){');
     expect(iMesMas).toBeGreaterThan(-1);
-    const bloque = core.slice(iMesMas, iMesMas + 2000); // mesMas creció con las ediciones #11/#12 (aviso re-cierre + respaldo pre-restauración)
+    const bloque = core.slice(iMesMas, iMesMas + 2600); // mesMas creció con las ediciones #11/#12 + navegación sin pérdida (S.live)
     expect(bloque).toMatch(/if\(d<0\)\{[\s\S]*?prevMes\(\)[\s\S]*?restaurarMes\(pk\)/);
     // la restauración mapea docs del historial → props: orden (alquiler+servicios) y cuenta (saldo)
     const iRest = core.indexOf('function restaurarMes(key)');
@@ -105,12 +105,31 @@ test.describe('alquileres-core.js — core portado del standalone', () => {
     expect(core).toMatch(/S\.hist=S\.hist\|\|\{\};if\(reHi&&window\.__ALQ_SNAPSHOT_PRE\)window\.__ALQ_SNAPSHOT_PRE\('Historial previo '[^;]+?\);S\.hist\[ym\(\)\]=docsMes\(\)/);
   });
 
-  test('edición #12 (2026-11-17): retroceder mes avisa el descarte y respalda el mes en curso', () => {
-    // El confirm del retroceso debe advertir que lo cargado en el mes actual
-    // (todavía no cerrado) se descarta, y __ALQ_SNAPSHOT_PRE debe correr ANTES
-    // de restaurar el mes anterior (hoy eso borró el Noviembre de Danilo).
-    expect(core).toContain('NO está en el Historial y queda descartado');
-    expect(core).toMatch(/if\(hs\)\{if\(window\.__ALQ_SNAPSHOT_PRE\)window\.__ALQ_SNAPSHOT_PRE\('Antes de volver a '[^;]+?\);restaurarMes\(pk\)\}/);
+  test('navegación sin pérdida (2026-11-17): el retroceso guarda el mes que se deja y restaura el destino', () => {
+    // Incidente real: Danilo retrocedió 3 meses y perdió lo cargado en Noviembre.
+    // Ahora capturarMes() guarda SIEMPRE el mes que se deja en S.live[ym()] (copia
+    // exacta de props) ANTES de restaurar el destino; el destino se restaura de
+    // S.live primero (exacto, sin roundtrip por docs) y si no de S.hist.
+    expect(core).toContain('queda guardado: volvé cuando quieras sin perder nada');
+    expect(core).toMatch(/capturarMes\(\);[\s\S]{0,30}if\(d<0&&hs\)\{if\(hl\)S\.props=JSON\.parse\(JSON\.stringify\(S\.live\[pk\]\)\);else restaurarMes\(pk\)\}/);
+    // y el respaldo en Respaldos sigue corriendo antes de restaurar (red extra)
+    expect(core).toMatch(/if\(hs&&window\.__ALQ_SNAPSHOT_PRE\)window\.__ALQ_SNAPSHOT_PRE\('Antes de volver a '/);
+  });
+
+  test('navegación sin pérdida: helpers nextMes/capturarMes y llegada al mes con estado guardado', () => {
+    // S.live = copia exacta de props por mes visitado. La llegada (adelante) restaura
+    // la copia viva si existe; si no, deriva el mes nuevo como siempre (alquileres
+    // repetidos, muni/rentas conservan, resto en 0). El guardado ya no es sólo al
+    // cerrar: la navegación en ambas direcciones persiste.
+    expect(core).toContain('function nextMes(){let m=S.m+1,y=S.y;if(m>11){m=0;y++}return y+');
+    expect(core).toMatch(/function capturarMes\(\)\{if\(!S\)return;if\(!S\.live\)S\.live=\{\};S\.live\[ym\(\)\]=JSON\.parse\(JSON\.stringify\(S\.props\)\)\}/);
+    expect(core).toMatch(/capturarMes\(\);/);
+    expect(core).toMatch(/if\(S\.live&&S\.live\[nk\]\)S\.props=JSON\.parse\(JSON\.stringify\(S\.live\[nk\]\)\);else for\(const p of S\.props\)\{/);
+    expect(core).toMatch(/render\(\);LAST=null;guardarArchivo\(\)\}/);
+    // bhInitS semilla live={} (estados viejos del JSONB no lo tienen)
+    expect(core).toContain('if(!s.live)s.live={}');
+    // el confirm del avance avisa cuando el mes destino tiene datos guardados
+    expect(core).toContain('tiene datos guardados: al llegar se restauran tal como los dejaste (no se repiten en blanco)');
   });
 });
 
@@ -693,8 +712,12 @@ test.describe('alquileres: auditoría 2026-11-16 (post revert del borrado por fi
     // comprobantes nuevos quedaban solo locales hasta recargar la página.
     expect(core.includes('FID=nid()')).toBe(false);
     expect(core.includes('FID = nid()')).toBe(false);
-    // el cierre de mes sigue forzando el guardado (LAST=null + guardarArchivo)
-    expect(core).toMatch(/if\(d>0\)\{LAST=null;guardarArchivo\(\)\}/);
+    // el cierre de mes sigue forzando el guardado — y desde la navegación sin
+    // pérdida (2026-11-17) TAMBIÉN el retroceso: LAST=null + guardarArchivo
+    // son incondicionales al final de mesMas (el S.live del mes que se deja
+    // tiene que llegar a la nube sí o sí)
+    expect(core).toMatch(/render\(\);LAST=null;guardarArchivo\(\)\}/);
+    expect(core).not.toMatch(/if\(d>0\)\{LAST=null;guardarArchivo\(\)\}/);
   });
 
   test('hardening XSS: cod/dir/inq/prop/nombre de archivo escapados en render/resumen/verFX', () => {
@@ -719,5 +742,38 @@ test.describe('alquileres: auditoría 2026-11-16 (post revert del borrado por fi
     const app = read('assets/js/alquileres-app.js');
     expect(app).toMatch(/remoteMs !== localMs/);
     expect(app).not.toMatch(/remoteMs > localMs|remoteMs >= localMs/);
+  });
+});
+
+test.describe('alquileres — navegación sin pérdida (harness behavioral)', () => {
+  // Corre el core REAL con el SEED real (11 props) en un browser: adelante →
+  // atrás → re-cierre, el flujo exacto del incidente del 17/11. No toca DB.
+  test('adelante → atrás → adelante preserva TODO, mes por mes', async ({ page }) => {
+    await page.goto('/tests/helpers/alquileres-nav-harness.html');
+    const res = await page.evaluate(() => window.__RUN());
+    expect(res.err, 'el harness no debe lanzar errores: ' + JSON.stringify(res)).toBeUndefined();
+    expect(res.ok).toBe(true);
+    // 1) cierre de Octubre → Noviembre derivado con la semántica de siempre
+    expect(res.mTrasAdelante).toBe(10);
+    expect(res.capturadoOct, 'el mes que se cierra queda copiado EXACTO en S.live').toBe(true);
+    expect(res.histOct).toBe(true);
+    expect(res.derivNovBlanca, 'servicios no-muni quedan en 0 en el mes derivado').toBe(true);
+    expect(res.exLimpioNov, 'extras blanqueados en el mes derivado').toBe(true);
+    expect(res.muniConserva, 'impuesto municipal conserva su valor').toBe(true);
+    expect(res.luzKaKc, 'luz lleva ka=kc (lectura congelada)').toBe(true);
+    // 2) retroceso: Noviembre queda guardado y Octubre vuelve EXACTO
+    expect(res.mTrasAtras).toBe(9);
+    expect(res.capturadoNov, 'lo cargado en Noviembre queda en S.live al salir').toBe(true);
+    expect(res.octRestaurado, 'Octubre se restaura idéntico (copia viva, no roundtrip)').toBe(true);
+    // 3) re-cierre: Noviembre vuelve con TODO lo cargado (el bug de Danilo, corregido)
+    expect(res.mTrasReAdelante).toBe(10);
+    expect(res.novRestaurado, 'Noviembre se restaura tal como se dejó').toBe(true);
+    expect(res.histOctEstable, 're-cerrar no altera el historial capturado').toBe(true);
+    // 4) avisos del confirm
+    expect(res.reHiAviso).toBe(true);
+    expect(res.volverAviso).toBe(true);
+    // 5) cambio de año
+    expect(res.yTrasAnioNuevo).toBe(2027);
+    expect(res.liveAnioNuevo).toBe(true);
   });
 });
