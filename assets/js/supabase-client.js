@@ -29,13 +29,14 @@
   }
 
   /* Timeout de red: sin esto, una query colgada (IO throttled o red caída)
-     deja el panel en "Cargando…" indefinidamente. 10s es suficiente para
-     las queries del panel y corta antes de que el request se acumule.
+     deja el panel en "Cargando…" indefinidamente. 30s aborta el cuelgue
+     total y deja margen para las operaciones legitimate más pesadas
+     (los exports CSV de supervisión cargan ~35k filas de audit_log).
      No se pisa una signal que ya venga en options (abort manual). */
   const fetchWithTimeout = (url, options) => {
     const opts = Object.assign({}, options || {});
     if (!opts.signal && typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-      opts.signal = AbortSignal.timeout(10000);
+      opts.signal = AbortSignal.timeout(30000);
     }
     return fetch(url, opts);
   };
