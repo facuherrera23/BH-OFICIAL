@@ -233,7 +233,8 @@ try { var p = prefsGet(); for (var k in patch) p[k] = patch[k]; sessionStorage.s
       try { renderExclusividad(d, owner, props); } catch (e) { console.error('[portal] exclusividad:', e); }
       try { renderVisitasExtras(d, owner); } catch (e) { console.error('[portal] visitas extras:', e); }
       try { renderEncuestas(); } catch (e) { console.error('[portal] encuestas:', e); }
-      try { renderLiquidaciones(); } catch (e) { console.error('[portal] liquidaciones:', e); }
+      /* LIQUIDACIONES: deshabilitado por solicitud del dueño (2026-11-16) — la edge function y RPC siguen existiendo por si se reactiva */
+      // try { renderLiquidaciones(); } catch (e) { console.error('[portal] liquidaciones:', e); }
       try { renderOfflineBanner(); } catch (e) {}
       try { renderSessionChip(); } catch (e) {}
       try { renderRefreshButton(); } catch (e) {}
