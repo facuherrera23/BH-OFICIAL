@@ -145,6 +145,28 @@ async function alqSnapshot(cm, cy) {
 }
 window.__ALQ_SNAPSHOT = (cm, cy) => { alqSnapshot(cm, cy); };
 
+/* ---------- Respaldo ANTES de una acción destructiva (2026-11-17) ----------
+   El core lo llama en mesMas cuando va a PISAR el historial de un mes ya
+   cerrado (re-cierre) y cuando va a VOLVER ATRÁS (descarta lo cargado en el
+   mes en curso — incidente real: Danilo retrocedió 3 meses y perdió Noviembre,
+   y el re-cierre de Agosto reescribió su historial real). Inserta una copia
+   del estado COMPLETO con etiqueta explicativa: aparece en Respaldos y puede
+   restaurarse desde ahí. Best-effort: jamás bloquea la acción. */
+async function alqSnapshotPre(label) {
+  if (!client || !alqUser || !S) return;
+  try {
+    const copy = JSON.parse(JSON.stringify(S)); // copia PROFUNDA inmediata
+    const { error } = await client.from('alquileres_snapshots').insert({
+      user_id: alqUser.id,
+      label: label,
+      period: ym(),
+      state: copy,
+    });
+    if (error) console.error('[alquileres] snapshot pre:', error);
+  } catch (e) { console.error('[alquileres] snapshot pre:', e); }
+}
+window.__ALQ_SNAPSHOT_PRE = (label) => { alqSnapshotPre(label); };
+
 /* ---------- Toast propio (no depende del panel cuando corre standalone) ---------- */
 function alqToast(msg, ms) {
   let t = document.getElementById('alqToastBox');
@@ -444,6 +466,7 @@ async function alqSnapsRestore(i) {
   if (!s || !s.state || !Array.isArray(s.state.props)) return;
   if (!confirm('Restaurar "' + s.label + '"?\n\nSe reemplaza TODO el estado actual por el respaldo (meses posteriores incluidos) y se guarda en la nube. Esta acción no se puede deshacer.')) return;
   try {
+    alqSnapshotPre('Antes de restaurar ' + s.label); // copia del estado vigente antes de reemplazarlo (best-effort)
     S = s.state;
     bhInitS(S);
     mezclarHist();

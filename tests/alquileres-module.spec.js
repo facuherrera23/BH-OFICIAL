@@ -63,7 +63,7 @@ test.describe('alquileres-core.js — core portado del standalone', () => {
     // mesMas(d<0) debe consultar prevMes + restaurarMes
     const iMesMas = core.indexOf('function mesMas(d){');
     expect(iMesMas).toBeGreaterThan(-1);
-    const bloque = core.slice(iMesMas, iMesMas + 1200);
+    const bloque = core.slice(iMesMas, iMesMas + 2000); // mesMas creció con las ediciones #11/#12 (aviso re-cierre + respaldo pre-restauración)
     expect(bloque).toMatch(/if\(d<0\)\{[\s\S]*?prevMes\(\)[\s\S]*?restaurarMes\(pk\)/);
     // la restauración mapea docs del historial → props: orden (alquiler+servicios) y cuenta (saldo)
     const iRest = core.indexOf('function restaurarMes(key)');
@@ -91,7 +91,26 @@ test.describe('alquileres-core.js — core portado del standalone', () => {
     // (docsMes), pero ANTES de blanquear servicios y avanzar: la copia es
     // exactamente "la administración como estaba al cerrar X". Guardado por
     // el controlador (window.__ALQ_SNAPSHOT), best-effort y sin IIFE.
-    expect(core).toMatch(/if\(d>0\)\{S\.hist=S\.hist\|\|\{\};S\.hist\[ym\(\)\]=docsMes\(\);FM=null;if\(window\.__ALQ_SNAPSHOT\)window\.__ALQ_SNAPSHOT\(S\.m,S\.y\);?if\(window\.__ALQ_PUBLISH\)?/);
+    expect(core).toMatch(/S\.hist\[ym\(\)\]=docsMes\(\);FM=null;if\(window\.__ALQ_SNAPSHOT\)window\.__ALQ_SNAPSHOT\(S\.m,S\.y\);?if\(window\.__ALQ_PUBLISH\)?/);
+  });
+
+  test('edición #11 (2026-11-17): re-cerrar un mes ya cerrado avisa y respalda el historial previo', () => {
+    // Incidente real: Danilo retrocedió a Agosto y lo re-cerró → el historial
+    // REAL de Agosto (importado del standalone) fue reemplazado sin aviso por
+    // una reconstrucción más pobre (10.301 → 8.938 chars, docs de 'nueva'
+    // desaparecidos). El confirm debe avisar el reemplazo y __ALQ_SNAPSHOT_PRE
+    // debe correr ANTES de pisar S.hist[ym()] (best-effort, jamás bloquea).
+    expect(core).toContain('YA está en el Historial: cerrarlo de nuevo REEMPLAZA ese historial por los datos actuales');
+    // el respaldo previo va ENTRE la inicialización del hist y el docsMes() que pisa
+    expect(core).toMatch(/S\.hist=S\.hist\|\|\{\};if\(reHi&&window\.__ALQ_SNAPSHOT_PRE\)window\.__ALQ_SNAPSHOT_PRE\('Historial previo '[^;]+?\);S\.hist\[ym\(\)\]=docsMes\(\)/);
+  });
+
+  test('edición #12 (2026-11-17): retroceder mes avisa el descarte y respalda el mes en curso', () => {
+    // El confirm del retroceso debe advertir que lo cargado en el mes actual
+    // (todavía no cerrado) se descarta, y __ALQ_SNAPSHOT_PRE debe correr ANTES
+    // de restaurar el mes anterior (hoy eso borró el Noviembre de Danilo).
+    expect(core).toContain('NO está en el Historial y queda descartado');
+    expect(core).toMatch(/if\(hs\)\{if\(window\.__ALQ_SNAPSHOT_PRE\)window\.__ALQ_SNAPSHOT_PRE\('Antes de volver a '[^;]+?\);restaurarMes\(pk\)\}/);
   });
 });
 
@@ -105,6 +124,17 @@ test.describe('alquileres-app.js — controlador Supabase', () => {
   test('TOP-LEVEL sin IIFE (comparte scope léxico con el core)', () => {
     expect(app.includes("(function ()")).toBe(false);
     expect(app.includes("(() => {")).toBe(false);
+  });
+
+  test('el hook __ALQ_SNAPSHOT_PRE existe en el controlador (best-effort, sin IIFE)', () => {
+    expect(app).toContain('async function alqSnapshotPre(label)');
+    expect(app).toContain('window.__ALQ_SNAPSHOT_PRE = (label) => { alqSnapshotPre(label); };');
+    // inserta en alquileres_snapshots con copia profunda (el estado sigue mutando)
+    expect(app).toMatch(/alquileres_snapshots'\)\.insert\(\{[\s\S]*?user_id: alqUser\.id,[\s\S]*?label: label,[\s\S]*?state: copy/);
+  });
+
+  test('restaurar snapshot respalda el estado vigente antes de reemplazarlo', () => {
+    expect(app).toMatch(/alqSnapshotPre\('Antes de restaurar '[\s\S]*?S = s\.state;/);
   });
 
   test('NO redeclara constantes/lets del core (SyntaxError en carga)', () => {
