@@ -77,6 +77,17 @@ window.__RUN = async function () {
     out.idbBorrado = !(await idbDo('get', k1)); // IndexedDB get devuelve undefined para claves borradas
     out.quedo = list[0] ? list[0].arch : null; // foto.png
 
+    /* 7) render real de la ficha: el template de la card NO debe dejar basura
+       textual (bug real: un '})()}' sin cerrar se imprimía en pantalla). */
+    const html = ficha();
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    out.sinBasura = html.indexOf('})()}') < 0;
+    out.inputPc = tmp.querySelectorAll('#pc').length;      // 1 (input único)
+    out.botonSubir = Array.prototype.some.call(tmp.querySelectorAll('button'), b => b.textContent.indexOf('Subir comprobante') >= 0);
+    out.duoCards = tmp.querySelectorAll('.duo > .card').length; // 2 (facturas | comprobantes)
+    out.tituloComps = !!tmp.querySelector('.duo .card h3:nth-child(1)') && (tmp.querySelectorAll('.duo .card h3')[1] || {}).textContent === 'Comprobantes de pago';
+
     out.alerts = window.__ALERTS || [];
     out.ok = true;
   } catch (e) {

@@ -110,6 +110,15 @@ input[type=checkbox]{accent-color:var(--acc)}
 #lista button{border-radius:10px}
 #lista button:hover{border-color:var(--acc)}
 #lista button.on{border-color:var(--acc);box-shadow:inset 3px 0 var(--acc);background:rgba(31,200,195,.08)}
+/* Facturas (izquierda) + Comprobantes de pago (derecha) lado a lado.
+   En pantallas angostas (celular / panel angosto) se apilan en una columna. */
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;margin-bottom:12px}
+.duo>.card{margin-bottom:0;min-width:0}
+/* nombres de archivo largos: parten por palabra (no a media palabra) y los
+   botones de la fila no se parten */
+.duo .t td:first-child{overflow-wrap:break-word}
+.duo .t td:last-child{white-space:nowrap;width:1%}
+@media(max-width:900px){.duo{grid-template-columns:1fr}}
 /* preview de impresión: backdrop dark (antes #6b7280 — rompía la identidad) */
 #print.on{background:#0A0D12}
 @media print{html,body{background:#fff!important}}
@@ -190,7 +199,7 @@ input[type=checkbox]{accent-color:var(--acc)}
 <script defer src="assets/vendor/supabase-js.umd.js?v=1"></script>
 <script defer src="assets/js/config.js?v=321"></script>
 <script defer src="assets/js/supabase-client.js?v=325"></script>
-<script defer src="assets/js/alquileres-core.js?v=13"></script>
+<script defer src="assets/js/alquileres-core.js?v=14"></script>
 <script defer src="assets/js/alquileres-app.js?v=14"></script>
 
 </body>

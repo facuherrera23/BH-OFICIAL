@@ -799,17 +799,37 @@ test.describe('alquileres — comprobantes de pago (2026-11-17, pedido del dueñ
     expect(core).toMatch(/catch\(e\)\{alert\('No pude guardar el archivo en este navegador\.'\);continue\}/);
   });
 
-  test('UI: sección "Comprobantes de pago" dentro de la card Facturas cargadas', () => {
-    expect(core).toContain('Comprobantes de pago</h4>');
-    // mismo selector de mes (usa m del IIFE de facturas) + input único id="pc"
+  test('UI: card propia "Comprobantes de pago" al lado de Facturas cargadas', () => {
+    // Layout pedido por el dueño: las dos cards van lado a lado (grid .duo),
+    // "Comprobantes de pago" a la DERECHA de "Facturas cargadas".
+    expect(core).toContain('<div class="duo"><div class="card"><h3>Facturas cargadas</h3>');
+    expect(core).toContain('</div><div class="card"><h3>Comprobantes de pago</h3>');
+    // la card de comprobantes tiene su propio selector de mes (mismo FM)
+    expect(core).toMatch(/<h3>Comprobantes de pago<\/h3>\$\{\(\(\)=>\{const ms=mesesDoc\(p\),m=fmv\(\),cs=\(p\.comprobantes\|\|\{\}\)\[m\]\|\|\[\];return`<div style="max-width:260px;margin-bottom:8px"><label>Mes<\/label><select onchange="FM=this\.value;CV=null;render\(\)">/);
+    // mismo input único id="pc" (accept PDF + imágenes, multiple)
     expect(core).toMatch(/<input id="pc" type="file" accept="\.pdf,image\/\*" multiple hidden onchange="subirComps\(this\.files\);this\.value=''">/);
     expect(core).toContain('Subir comprobante (PDF o imagen)');
-    expect(core).toMatch(/onclick="document\.getElementById\('pc'\)\.click\(\)"/);
     // filas con esc() (hardening XSS — nombre de archivo de usuario)
     expect(core).toMatch(/<b>\$\{i\+1\}<\/b> · \$\{esc\(c\.arch\)\}<\/td><td><button class="s" onclick="verComp\(\$\{i\}\)">/);
     expect(core).toMatch(/onclick="quitarComp\(\$\{i\}\)">Quitar<\/button>/);
     // estado vacío explicativo
     expect(core).toContain('Sin comprobantes este mes. Podés subir PDFs o fotos');
+    // el template de la card debe cerrar BIEN: un '})()}' sin cerrar se
+    // imprimía literal en pantalla (bug encontrado por el screenshot).
+    expect(core).not.toMatch(/<\/small>'\}\)\(\)\}/);
+    expect(core).toMatch(/<\/small>'\}<p class="ac"/);
+  });
+
+  test('layout: grid .duo (2 columnas, responsive) en la CSS de alquileres.html', () => {
+    const html = read('alquileres.html');
+    expect(html).toMatch(/\.duo\{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;margin-bottom:12px\}/);
+    // en pantallas angostas se apila en una columna
+    expect(html).toMatch(/@media\(max-width:900px\)\{\.duo\{grid-template-columns:1fr\}\}/);
+    // las cards del grid no acumulan margin (el gap ya separa)
+    expect(html).toMatch(/\.duo>\.card\{margin-bottom:0;min-width:0\}/);
+    // el listado de meses es el MISMO en las dos cards (unión facturas+comprobantes)
+    expect(core).toMatch(/function mesesDoc\(p\)\{return\[\.\.\.new Set\(\[ym\(\),\.\.\.Object\.keys\(p\.facturas\|\|\{\}\),\.\.\.Object\.keys\(p\.comprobantes\|\|\{\}\)\]\)\]\.sort\(\)\.reverse\(\)\}/);
+    expect(core).toContain('const ms=mesesDoc(p),m=fmv(),fs=');
   });
 
   test('visor: imagen → <img>, resto → iframe; revoca el blob URL viejo antes de reemplazar', () => {
@@ -872,6 +892,12 @@ test.describe('alquileres — comprobantes de pago (2026-11-17, pedido del dueñ
     expect(res.confirmLlamado).toBe(true);
     expect(res.idbBorrado).toBe(true);
     expect(res.quedo).toBe('foto.png');
+    // 7) render de la ficha: sin basura textual, input único, botón y 2 cards
+    expect(res.sinBasura, 'la ficha no debe imprimir basura de template').toBe(true);
+    expect(res.inputPc).toBe(1);
+    expect(res.botonSubir).toBe(true);
+    expect(res.duoCards).toBe(2);
+    expect(res.tituloComps).toBe(true);
     // sin alerts inesperados (fallas silenciosas de idbDo)
     expect(res.alerts).toEqual([]);
   });
