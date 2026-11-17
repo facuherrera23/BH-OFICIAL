@@ -2146,6 +2146,10 @@ function esc(s) {
       const chartYear = _chartYear ?? now.getFullYear();
       const chartYearStart = new Date(chartYear, 0, 1).toISOString();
       const chartYearEnd = new Date(chartYear + 1, 0, 1).toISOString();
+      /* OJO con .limit() acá: estas filas alimentan los KPIs (volumen de cartera
+         = SUM(price_usd) de TODAS las props) y los widgets (renderDashLeads,
+         renderZoneProgress). Un tope trunca en silencio los KPI y la lista.
+         La optimización es el select explícito de columnas, no el recorte. */
       const [propsRes, leadsRes, visitsRes, agentsRes, salesRes, chartLeadsRes] = await Promise.all([
         client.from('properties').select('price_usd, price_currency, zone, status, is_published, created_at, updated_at, agent_id').is('deleted_at', null),
         client.from('leads').select('id, stage, created_at, full_name, budget_usd, assigned_to').is('deleted_at', null).gte('created_at', yearStart),

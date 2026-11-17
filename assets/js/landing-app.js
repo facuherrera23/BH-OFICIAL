@@ -1039,7 +1039,11 @@ function renderSocialLinks(social) {
     try {
       const { data, error } = await window.supabaseClient
         .from('properties')
-        .select('*')
+        /* Columnas explícitas (la tabla tiene ~50). Incluye TODAS las que lee
+           el render: la card usa image_urls, price_usd, price_currency,
+           featured y los flags; el modal de detalle usa status, rooms,
+           year_built y video_url. */
+        .select('id, title, property_code, status, property_type, zone, address, price_usd, price_currency, rooms, bedrooms, bathrooms, area_m2, garage_spaces, year_built, image_urls, video_url, featured, is_retasada, is_oportunidad, description, created_at')
         .eq('is_published', true)
         .order('created_at', { ascending: false });
 
@@ -1445,9 +1449,10 @@ function renderSocialLinks(social) {
     try {
       const { data, error } = await window.supabaseClient
         .from('agents')
-        .select('*')
+        .select('id, full_name, matricula, photo_url, bio, specialties, phone, email')
         .eq('status', 'activo')
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .limit(50);
 
       if (error) throw error;
 
@@ -1584,7 +1589,8 @@ function renderSocialLinks(social) {
     try {
       const { data, error } = await window.supabaseClient
         .from('site_content')
-        .select('*');
+        .select('section_key, content')
+        .limit(50);
 
       if (error) throw error;
 

@@ -28,5 +28,27 @@
     return;
   }
 
-  window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  /* Timeout de red: sin esto, una query colgada (IO throttled o red caída)
+     deja el panel en "Cargando…" indefinidamente. 10s es suficiente para
+     las queries del panel y corta antes de que el request se acumule.
+     No se pisa una signal que ya venga en options (abort manual). */
+  const fetchWithTimeout = (url, options) => {
+    const opts = Object.assign({}, options || {});
+    if (!opts.signal && typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+      opts.signal = AbortSignal.timeout(10000);
+    }
+    return fetch(url, opts);
+  };
+
+  window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    db: { schema: 'public' },
+    global: {
+      fetch: fetchWithTimeout
+    },
+    realtime: {
+      /* Sin tope, ML puede disparar ráfagas de miles de eventos y el canal
+         se satura. 10/s alcanza para refrescar el panel con debounce. */
+      params: { eventsPerSecond: 10 }
+    }
+  });
 })();
