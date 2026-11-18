@@ -33,20 +33,21 @@
 15. [Encuesta de Visita — HOJA DE VISITA](#-encuesta-de-visita--hoja-de-visita)
 16. [Tasaciones (ACM)](#-tasaciones-acm)
 17. [Comisiones y liquidaciones](#-comisiones-y-liquidaciones)
-18. [Integración Mercado Libre](#-integración-mercado-libre)
-19. [Chat omnicanal (Zernio)](#-chat-omnicanal-zernio)
-20. [Centro de Supervisión](#-centro-de-supervisión)
-21. [Edge Functions](#-edge-functions)
-22. [Migraciones](#-migraciones)
-23. [Flujos end-to-end](#-flujos-end-to-end)
-24. [Patrones técnicos](#-patrones-técnicos)
-25. [Deploy](#-deploy)
-26. [Testing y CI](#-testing-y-ci)
-27. [Convenciones de desarrollo](#-convenciones-de-desarrollo)
-28. [Deudas técnicas y roadmap](#-deudas-técnicas-y-roadmap)
-29. [ADRs](#-adrs-architecture-decision-records)
-30. [Documentación complementaria](#-documentación-complementaria)
-31. [Changelog](#-changelog)
+18. [Administración de Alquileres](#-administración-de-alquileres-módulo-alquileres)
+19. [Integración Mercado Libre](#-integración-mercado-libre)
+20. [Chat omnicanal (Zernio)](#-chat-omnicanal-zernio)
+21. [Centro de Supervisión](#-centro-de-supervisión)
+22. [Edge Functions](#-edge-functions)
+23. [Migraciones](#-migraciones)
+24. [Flujos end-to-end](#-flujos-end-to-end)
+25. [Patrones técnicos](#-patrones-técnicos)
+26. [Deploy](#-deploy)
+27. [Testing y CI](#-testing-y-ci)
+28. [Convenciones de desarrollo](#-convenciones-de-desarrollo)
+29. [Deudas técnicas y roadmap](#-deudas-técnicas-y-roadmap)
+30. [ADRs](#-adrs-architecture-decision-records)
+31. [Documentación complementaria](#-documentación-complementaria)
+32. [Changelog](#-changelog)
 
 ---
 
@@ -1008,6 +1009,189 @@ flowchart LR
 
 ---
 
+## 🏘️ Administración de Alquileres (módulo ALQUILERES)
+
+> Puerto fiel del standalone del dueño ("Administración de alquileres", un HTML de 12 MB con datos reales) al panel, con backend en Supabase. **No es un módulo `admin-*.js`**: es una página propia embebida en un `iframe` + un controlador propio. Revisión original: `docs/alquileres/MEJORAS_PROPUESTAS.md` (14/11/2026). Auditoría completa: 18/11/2026 (ver "Auditoría" más abajo).
+
+### Qué hace
+
+Administración mensual de una cartera de alquileres: **órdenes de pago al inquilino**, **liquidaciones al propietario**, **rendiciones de cuenta**, **cobro y liquidación** (con pago parcial), **facturas por OCR**, **contratos por OCR**, **Excel por mes**, **PDF por WhatsApp**, **historial mes a mes**, **respaldos en la nube**, **publicación de liquidaciones en el Portal del Propietario**, **KPIs en el Dashboard** y **recordatorio automático de cierre de mes**.
+
+### Arquitectura: 2 scripts clásicos, sin build step
+
+| Archivo | Rol | Tamaño |
+|---|---|---|
+| `assets/js/alquileres-core.js` | **Core original** del standalone: UI, cálculos, PDF/Excel, OCR, WhatsApp, IndexedDB. Prácticamente intacto (9 ediciones quirúrgicas documentadas abajo) | 196 KB · 373 líneas (líneas muy largas) |
+| `assets/js/alquileres-app.js` | **Controlador Supabase**: carga/guardado en la nube, conflictos, snapshots, KPIs, adjuntos⇄Storage, portal del propietario, login | 37 KB · 737 líneas |
+| `alquileres.html` | Shell: CSP propia, retheme dark, gate de login, overlays (conflicto / respaldos / propietarios), header | 20 KB · 206 líneas |
+| `tests/alquileres-module.spec.js` | 73 guards estáticos + 2 behaviorales | 59 KB |
+
+**Reglas duras (por qué están así):**
+
+- **Ambos scripts son TOP-LEVEL, sin IIFE, a propósito**: el controlador comparte el *scope léxico* global del core para asignar sus `let` (`S`, `FID`, `vista`, `DIRTY`, `LAST`, `SAVEDAT`) y llamar `bhInitS/render/tot/restaurarAdj`. **Sólo `est()` y `guardarArchivo()` se re-declaran** (function declarations: la última gana y pisa la del core). **Cualquier otro nombre repetido = SyntaxError en carga y el módulo queda en blanco.** Guard: `tests/alquileres-module.spec.js` ("NO redeclara constantes/lets del core" + compilación conjunta en `vm`).
+- **Orden de scripts**: `supabase-js.umd.js` → `config.js` → `supabase-client.js` → `alquileres-core.js` → `alquileres-app.js`. El core **no** puede tocar la nube: usa los hooks `window.__ALQ_*` que define el controlador (`__ALQ_SYNC`, `__ALQ_SNAPSHOT`, `__ALQ_SNAPSHOT_PRE`, `__ALQ_PUBLISH`, `__ALQ_ADJ_UP/DEL`).
+- **Embedido por `iframe` same-origin** (`admin.html` → `<section class="tab-module" id="tab-alquileres">` → `<iframe id="alqFrame" data-src="alquileres.html">`): `navigateTo` hace **lazy-load** (el `src` se setea sólo en el primer ingreso → después el iframe conserva mes y vista entre cambios de tab). La altura la reporta el propio módulo con `ResizeObserver` → `postMessage {type:'bh-alq-height'}`; el host valida `e.origin === location.origin` **y** `e.source === alqFrame.contentWindow`, con clamp mínimo de 520 px (+12). Sin scroll interno: el admin crece y el sidebar queda siempre visible.
+- **Identidad visual**: bloque `RE-THEME` al final del `<style>` de `alquileres.html` (gana por cascada) con los tokens del panel (`--ink:#F8FAFC`, `--bg:#05070A`, `--acc:#1FC8C3`) + los que el core consume (`--ok`, `--warn-bg`, `--soft`…). Los documentos imprimibles (`.pg/.dc/.hd/.r/.v`) están hardcoded en blanco/#000 → el retheme **no** los toca; `@media print{html,body{background:#fff!important}}` se repite al final.
+- **CSP propia**: `script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com` (pdf.js + ExcelJS), `worker-src 'self' blob:` (worker de pdf.js), `frame-src blob: data:` (visores), `img-src 'self' data: blob:`, `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdnjs.cloudflare.com`, fuentes de Google.
+
+### Flujo de datos (ciclo completo)
+
+```
+core (edición) → save() → localStorage[adm3_<uid>] + hook __ALQ_SYNC()
+   → controlador: debounce 1.2 s → syncNow()
+       → calcula S.kpis (lógica del core) → chequeo de conflicto (1 SELECT)
+       → UPSERT alquileres_state (state = JSONB completo, updated_at del cliente)
+       → error → backoff 3s×intentos (5) → reintento lento permanente cada 30 s
+Cierre de mes (mesMas(+1)) → docsMes() → S.hist[mes] → S.sig[mes]
+   → __ALQ_SNAPSHOT  → INSERT alquileres_snapshots ("Cierre <mes> <año>")
+   → __ALQ_PUBLISH   → POST alquileres-portal-publish (JWT) → tabla + email al propietario
+Adjuntos → IndexedDB (adm_files) → hook __ALQ_ADJ_UP/DEL → Storage alquileres-adj/<uid>/
+```
+
+### Modelo de datos (Supabase)
+
+| Objeto | Forma | RLS / permisos | Nota |
+|---|---|---|---|
+| `alquileres_state` | **1 fila por usuario** (`user_id` PK → `auth.users`), `state jsonb` con todo el módulo | RLS ON, policy `own state` `for all to authenticated` con `user_id = (select auth.uid())`; `revoke all from anon` | El estado completo (props, `hist`, `live`, `pagos`, `sig`, `kpis`, `ownerMap`) vive en **un solo JSONB**. `updated_at` lo manda **el cliente** (no hay trigger que lo pise) |
+| `alquileres_snapshots` | Respaldo inmutable por cierre/acción riesgosa (`label`, `period`, `state jsonb`) | RLS ON, policies **sólo SELECT + INSERT** propias; **sin UPDATE/DELETE** → inmutable desde el cliente | Índice `(user_id, created_at desc)`. Sin política de purga (ver auditoría) |
+| `alquileres_portal_liquidaciones` | Liquidación publicada al portal (`owner_id`, `period`, `label`, `data jsonb`, `published_by`) | RLS ON **sin policies**; `revoke all` a anon y authenticated; sólo `service_role` | `UNIQUE(owner_id, period)` → re-publicar un mes reemplaza la versión anterior |
+| Bucket `alquileres-adj` | **Privado**, 20 MB por archivo, `alquileres-adj/<auth.uid()>/<clave>` | 4 policies (select/insert/update/delete) con `(storage.foldername(name))[1] = (select auth.uid())::text` | El **nombre del objeto es la clave cruda** del core (con `:`) — ida y vuelta exacta con IndexedDB |
+| `alquileres_dashboard_kpis()` | RPC `SECURITY DEFINER`, `search_path=''` | `revoke` a public/anon; `execute` a authenticated + service_role | Devuelve la fila **no vacía** más reciente (`props>0` + `kpis` presentes) |
+| `portal_get_liquidaciones(p_token)` | RPC `SECURITY DEFINER`, `search_path=''` | `execute` a **anon** (el propietario no está logueado) + authenticated + service_role | Misma validación de token que `portal_get_portal_data` (revocado/expirado → `NULL`) |
+| `get_sidebar_badge_counts(p_user_id)` | RPC v3 (`SECURITY DEFINER`, `search_path=public`) | `execute` a authenticated | Agrega `alq_contracts_expiring` (contratos que vencen en ≤2 meses o vencidos hace ≤3) |
+
+### El cierre de mes: la regla de la firma
+
+El botón "Cerrar mes y pasar al siguiente" **genera el Historial del mes** (los documentos PDF) y avanza. **No borra nada**: lo que se carga se guarda solo, se puede volver atrás y seguir trabajando.
+
+**Regla de oro (fix 17/11/2026, caso real del empleador):** el Historial archivado **sólo se reescribe si el mes realmente cambió**.
+
+- Cada mes tiene una **firma** (`firma(props)`: hash *order-independent* — el jsonb reordena las claves al guardar) guardada en `S.sig = {'YYYY-MM': firma}`.
+- La firma se registra **al llegar** a un mes y se actualiza **al cerrarlo**. `bhInitS` siembra la del mes actual (arrancar = sin cambios).
+- Al cerrar: `yaHist` = ¿ya estaba en el Historial? · `cambio` = ¿la firma difiere de la guardada? → **se reescribe el Historial sólo si `!yaHist || cambio`**, y el aviso de "ya estaba cerrado" sale **sólo si `cambio`**.
+- Si hubo cambios reales, el Historial anterior queda en **Respaldos (☁)** (`__ALQ_SNAPSHOT_PRE('Historial previo …')`) antes de pisarlo.
+- **No hace falta cerrar el mes para que los datos queden guardados** (lo dice el confirm de cierre, el de retroceso y un hint fijo en el header).
+
+### Navegación entre meses sin pérdida (`S.live`)
+
+- `S.live = {'YYYY-MM': props}` guarda la **copia EXACTA** de los props de cada mes visitado (viaja en el mismo JSONB, sin migración).
+- `capturarMes()` corre en **toda** navegación efectiva (después de los confirm, antes de tocar los props): el mes que se deja queda guardado sí o sí, en cualquier dirección.
+- Al llegar a un mes: primero `S.live` (copia exacta, sin roundtrip), si no `S.hist` (`restaurarMes`), si no la derivación de siempre (alquileres repetidos; municipal y rentas conservan su valor; el resto de servicios en 0; luz `ka=kc`; extras vacíos).
+- `S.pagos` es un **mapa global por mes** (`S.pagos['YYYY-MM']['inq:<cod>']`) → los pagos sobreviven a la navegación.
+
+### Adjuntos: IndexedDB ⇄ Storage (convergencia bidireccional)
+
+- **IndexedDB** (`adm_files`, store `f`) = caché local (offline + rendimiento). La DB local es **única del navegador** (decisión del standalone: **no** es `dk()`/por usuario); la separación por usuario vive en Storage con la carpeta `<uid>/`.
+- **Storage** (`alquileres-adj/<uid>/`) = copia durable. Un único punto de enganche: `idbDo('put'/'del')` dispara `__ALQ_ADJ_UP` / `__ALQ_ADJ_DEL` → cubren **todas** las familias (cuotas `pg:`, pagos `pg:`, contrato `p.id`, facturas OCR `f:`, comprobantes `pc:`) sin tocar sus funciones.
+- En cada apertura (y al recuperar conexión o volver a la pestaña) corre `alqAdjSync()`: baja lo que falta (remoto→local) y sube lo que quedó local (local→remoto, incluye la migración de los 33 archivos históricos). Pausa anti-eco con `adjSyncBusy`.
+- **Best-effort total**: sin bucket/policies/red el módulo funciona **igual que antes** (local-only) y sólo loguea `[alquileres] adj …`.
+- Familias de claves: `pg:<mes>:<cod>[:<uid>]` (pagos) · `f:<propId>:<mes>:<tipo>` (facturas) · `pc:<propId>:<mes>:<uid>` (comprobantes de pago, 17/11) · `<propId>` (contrato).
+
+### Documentos que produce
+
+| Documento | Qué es |
+|---|---|
+| Orden de pago (`k='o'`) | Lo que paga el inquilino: alquiler + servicios + extras, con vencimientos (sin/con recargo) y notas |
+| Liquidación (`k='l'`) | Lo que se le liquida al propietario, agrupada por **carpeta** (`own(p)` = prefijo del código: `5-0/5-1/5-2` → carpeta `5`) |
+| Rendición de cuenta (`k='c'`) | Para propiedades en modo `cuenta` (impuestos con saldo a cuenta del cliente) |
+| Excel por mes | `excelMes(k)` con ExcelJS desde cdnjs (primera vez necesita internet) |
+| WhatsApp | PDF + mensaje pre-armado (`navigator.share` con archivos; fallback al portapapeles/descarga) |
+| Vista de impresión | `.pg` A4 (210×296 mm) con `@page margin:0`; `.pg.land` apaisado |
+
+### Integraciones con el resto del CRM
+
+| Integración | Cómo |
+|---|---|
+| **KPIs en el Dashboard** | El módulo calcula los KPIs con **su propia lógica de negocio** (`alqKpisCompute()` usa `calc/sorted/pagoG/listaInq/own` del core — cero duplicación) y los persiste en `S.kpis`; el Dashboard los lee por la RPC `alquileres_dashboard_kpis()` → tarjeta `#alqDashPanel` (órdenes · honorarios · neto · cobradas/liquidadas · vencimientos + botón "Abrir módulo") |
+| **Badge del menú** | `get_sidebar_badge_counts` v3 → `alq_contracts_expiring`; con 0 el badge **desaparece** (mismo criterio que el chat) |
+| **Portal del Propietario** | Botón "Propietarios" → mapea `ownerKey` (carpeta) → `owners.id` del CRM; al cerrar el mes, `__ALQ_PUBLISH` publica la liquidación (`k='l'`) de cada propietario **vinculado** vía la edge function + email Brevo con link al portal (si hay token vigente). El portal la muestra en la sección "Liquidaciones de alquiler" (`renderLiquidaciones()` → RPC por token) |
+| **Recordatorio de cierre** | Cron los días **2 y 3** de cada mes, 12:00 ART → email "no cerraste <mes>" al usuario del módulo (1 por mes, dedupe por `audit_log`) |
+| **Dueño del contrato → propietario del CRM** | La clave del mapeo es la **carpeta**, no el código de la doc: el doc `k='l'` trae el `cod` de la **primera** propiedad del grupo → hay que derivar la clave con el mismo `split(/[^0-9a-zA-Z]+/)[0]` que usa `own(p)` |
+
+### Edge Functions y cron
+
+| Función | `verify_jwt` | Auth | Rol |
+|---|---|---|---|
+| `alquileres-month-reminder` | **OFF** (está en `NO_VERIFY` de `deploy.yml`) | `x-sync-secret` contra `zernio_config(key='sync_secret')` (patrón del fix 20261015000004; **nunca** `current_setting('app.settings.*')`, que es NULL en este proyecto) o `Authorization` | Avisa por Brevo a los usuarios con `props>0` cuyo mes anterior **no** está en `state.hist`; dedupe por `audit_log` (`action='alq_month_reminder'`) |
+| `alquileres-portal-publish` | **ON** (la llama el operador con su JWT) | `requireAdmin` + rate limit 10/min | Valida owner existente/activo/no eliminado + período `YYYY-MM` + `data.k === 'l'`; upsert `owner_id,period`; audit `alq_portal_publish`; email Brevo con link al portal; tope 50 items por llamada |
+
+Cron: `alquileres-month-reminder` — `'0 15 2,3 * *'` (jobid 34, activo). **Primera corrida real: 2/12/2026** (se creó el 15/11).
+
+### Migraciones del módulo
+
+| Migración | Qué hace |
+|---|---|
+| `20261114000001_alquileres_state.sql` | Tabla `alquileres_state` + RLS + policy `own state` + `revoke` a anon |
+| `20261114000002_alquileres_state_seed.sql` | Seed del estado real (lookup **por email**, `ON CONFLICT DO NOTHING` → inocuo en un proyecto fresco; **sin adjuntos**) |
+| `20261114000003_alquileres_state_policy_select.sql` | Fix advisor `auth_rls_initplan`: `auth.uid()` envuelto en `(select …)` |
+| `20261114000004_alquileres_snapshots.sql` | Tabla de respaldos inmutables (RLS select+insert propias, sin update/delete) |
+| `20261114000005_badge_alquileres_v3.sql` | `get_sidebar_badge_counts` v3 con `alq_contracts_expiring` |
+| `20261115000001_alquileres_dashboard_kpis.sql` | RPC `alquileres_dashboard_kpis()` (`SECURITY DEFINER`, `search_path=''`) |
+| `20261115000002_alquileres_month_reminder_cron.sql` | Cron del recordatorio (URL hardcodeada + `x-sync-secret` de `zernio_config`) |
+| `20261115000003_alquileres_portal_liquidaciones.sql` | Tabla de liquidaciones publicadas + RPC `portal_get_liquidaciones(p_token)` |
+| `20261115000004_alquileres_adj_storage.sql` | Bucket privado `alquileres-adj` + 4 policies por carpeta de usuario |
+
+### Las 9 ediciones quirúrgicas del core (historial)
+
+1. `EMB=null` (sin estado embebido en el HTML) + cero referencias a `#datos`.
+2. `save()` con hook `if(window.__ALQ_SYNC)window.__ALQ_SYNC()` + guard `if(!S)return`.
+3. Boot final `if(S){render();tot();est();restaurarAdj()}` (sin `S` no renderiza → sin pantalla en blanco).
+4. `mesMas(d<0)` restaura el mes anterior desde el Historial (**bug fix del dueño**).
+5. `mesMas(>0)` dispara `__ALQ_SNAPSHOT(S.m,S.y)` al cerrar.
+6. `mesMas(>0)` dispara `__ALQ_PUBLISH(S.m,S.y)` al cerrar (liquidaciones al portal).
+7. `idbDo` dispara `__ALQ_ADJ_UP` / `__ALQ_ADJ_DEL` (adjuntos a Storage).
+8. `mesMas(>0)` ya **no** cambia `FID` (edición #9: `FID=nid()` rompía la carpeta de Storage tras cada cierre).
+9. `mesMas` con `S.live` + `capturarMes()` (navegación sin pérdida) y la **firma por mes** (`S.sig`) que impide pisar el Historial sin cambios.
+
+### Operación: qué tiene que hacer el dueño
+
+1. **Abrir el módulo** desde el panel (Panel → Alquileres). La sesión es la del admin; si no hay sesión, aparece el gate de login.
+2. **Cargar los datos de la inmobiliaria** ("Datos de la inmobiliaria" → salen en los PDF: nombre, dirección, teléfono/mail, CBU, vencimientos, recargo %).
+3. **Cargar las propiedades** (+ Propiedad) y, si quiere, importar el archivo original desde **"Cargar datos de otro archivo"** (el HTML de 12 MB con datos de clientes está **fuera del repo** — `.gitignore`).
+4. **Vincular los propietarios** con el CRM (botón "Propietarios") → habilita la publicación automática de liquidaciones en sus portales.
+5. **Cerrar el mes** cuando termine (genera el Historial + respaldo + publicación al portal). Antes de eso, los datos ya están guardados.
+6. **Los comprobantes** (contratos, facturas, pagos) se suben solos a la nube: la primera apertura sube los archivos históricos y después cada agregado/quitado se refleja.
+
+### Decisión pendiente: ¿personal o compartido?
+
+Hoy **cada usuario del panel tiene su propia administración** (una fila por usuario, aislada por RLS). Consecuencias conocidas:
+
+- El **badge** de contratos por vencer usa `coalesce(p_user_id, auth.uid())` → cada uno ve el suyo ✓.
+- La **tarjeta de KPIs del Dashboard** usa "la fila no vacía más reciente" → con dos administradores reales, **la tarjeta puede alternar** entre ambas administraciones según quién guardó por último. Es el único punto que hoy asume "un solo operador".
+- El **recordatorio por email** avisa a **todo** usuario con `props>0` (incluye filas de prueba).
+
+Decidir: (a) un solo operador (borrar las filas de prueba) o (b) set compartido con permisos por rol (cambia la tabla, la RLS y la RPC de KPIs).
+
+### Auditoría 2026-11-18 — hallazgos
+
+> Auditoría de **sólo lectura** (código + repo + base de producción + advisor). **No se modificó código** en esta revisión. Severidad: **P1** urgente · **P2** importante · **P3** medio · **P4** menor.
+
+| # | Sev | Hallazgo | Evidencia | Recomendación |
+|---|---|---|---|---|
+| 1 | **P2** | **La fila de prueba `hfacundo45@gmail.com` recibe los recordatorios de cierre de mes** (tiene `props>0` → el cron la trata como administración activa) | `audit_log`: 2 `alq_month_reminder` (15/11) — uno por usuario | Decisión del dueño: borrar la fila de prueba o marcarla para que el cron la ignore |
+| 2 | **P2** | **La tarjeta de KPIs del Dashboard muestra "la fila que guardó último"** → con 2 operadores la tarjeta alterna entre administraciones | `alquileres_dashboard_kpis()` = `order by updated_at desc limit 1` | Resolver antes la decisión "personal vs compartido" (sección anterior) |
+| 3 | **P2** | **`importar()` ("Cargar datos de otro archivo") reemplaza el estado SIN respaldo previo** — a diferencia de "Restaurar respaldo", que sí llama `__ALQ_SNAPSHOT_PRE` | `alquileres-core.js:210-215` (sin hook de snapshot) | Agregar `__ALQ_SNAPSHOT_PRE('Antes de importar …')` antes del `S = …` |
+| 4 | **P3** | **El GRANT de `alquileres_snapshots` a `authenticated` incluye UPDATE y DELETE** (`relacl = authenticated=arwdDxtm`), contradiciendo el comentario de la migración ("sin UPDATE/DELETE"). **No es explotable**: no hay policy de UPDATE/DELETE → la RLS bloquea toda fila | `pg_class.relacl` en producción vs `20261114000004` | Hardening: `revoke update, delete on public.alquileres_snapshots from authenticated` |
+| 5 | **P3** | **`alquileres_snapshots` no tiene política de purga** — 12 respaldos / 1,34 MB en un día; ~100 KB por cierre | `count(*)` y `sum(length(state))` en producción | Retención (p. ej. conservar los 20 últimos por usuario) |
+| 6 | **P3** | **XSS self-inflicted en los "Ítems extra"**: el concepto (`p.ex[].c`) se inyecta en un atributo **sin `esc()`** → un valor con `"` rompe el atributo. Es la misma clase que se endureció en 4 puntos el 16/11; este quedó fuera | `alquileres-core.js:115` → `value="${e.c}"` | `esc(e.c)` (y revisar `p.ult`, concatenado sin escapar en la línea 118) |
+| 7 | **P3** | **El módulo no detecta una versión vieja cargada** (el panel admin sí lo hace con `checkStaleBuild`). Una pestaña abierta antes de un deploy conserva el core viejo — fue justo lo que podía volver a pisar el Historial hoy | `alquileres.html` no compara su `?v=` con producción; `admin-app.js:1336` sí lo hace | Banner/toast al abrir si el build no es el de producción |
+| 8 | **P3** | **El estado JSONB crece sin límite**: ya va en **133 KB** por fila (`props` ~60-70 KB × `live` por mes + `hist` + `kpis`); cada guardado re-serializa y re-escribe **todo** (y el chequeo de conflicto suma 1 SELECT) | `length(state::text)` en producción | A medio plazo: `live` con tope (p. ej. últimos N meses) y/o comprimir `hist` |
+| 9 | **P3** | **El mirror en `localStorage` es el estado completo** (`adm3_<uid>`) en cada `save()`; con 133 KB + adjuntos puede acercarse al límite de 5-10 MB por origen. El `try/catch` lo silencia → si falla, se pierde el **espejo local** (no la nube) | `alquileres-core.js:29` | Aceptable hoy; vale la pena medirlo si el estado sigue creciendo |
+| 10 | **P4** | `firma()` usa dos acumuladores de 32 bits (no es criptográfico): una colisión haría que un cambio real no se detecte | `alquileres-core.js:168` | Riesgo muy bajo (hash doble + longitud); documentar, no cambiar |
+| 11 | **P4** | Fila vacía `helmutscheibengraf@yahoo.com.ar` (0 props, 320 B) creada al abrir el módulo; la RPC de KPIs la filtra, pero la fila existe | `alquileres_state` en producción | Limpieza estética |
+| 12 | **P4** | El recordatorio considera "cerrado" = la clave existe en `state.hist`; un mes cerrado y **modificado** después no vuelve a avisar | `alquileres-month-reminder/index.ts:135` | Decisión consciente; hoy el aviso es orientativo, no de control |
+
+**Verificado sin hallazgos:** RLS y permisos de las 3 tablas (anon sin acceso en todas; `alquileres_portal_liquidaciones` sólo `service_role`), las 4 policies de Storage por carpeta, `verify_jwt` de las 2 edge functions vs `deploy.yml`, el cron (jobid 34, activo, URL hardcodeada + `x-sync-secret`), el `search_path` de las 3 RPC, el CSP de `alquileres.html` contra todo lo que el core carga (pdf.js, ExcelJS, worker, blob, fuentes), el orden de scripts, el lazy-load del iframe y la validación del `postMessage`, el `.gitignore` del HTML de 12 MB con datos de clientes (**no está en el repo**) y las 9 ediciones del core.
+
+### Testing
+
+- `tests/alquileres-module.spec.js` → **73 tests** (estáticos + 2 behaviorales con el core real en `vm`/navegador).
+- Harnesses: `tests/helpers/alquileres-nav-harness.html` (navegación adelante→atrás→re-cierre con y sin cambios, Dic→Ene) y `tests/helpers/alquileres-comps-harness.html` (subir PDF+imagen → IndexedDB → visor → quitar → render sin basura textual).
+- Suite completa del proyecto: **685 passed, 0 failed** (17/11/2026).
+- Guardas que no se pueden aflojar sin romper el módulo: anti-IIFE, colisión de nombres, retheme (sin colores claros en el core), `@media print` en blanco, CSP, orden de scripts, RLS/policies, `NO_VERIFY` de la función del cron, semántica del conflicto (`remoteMs !== localMs`), y la regla de la firma (re-cierre sin cambios **no** pisa el Historial).
+
+---
+
 ## 🛒 Integración Mercado Libre
 
 1. **Conexión OAuth 2.0** → `mlConnect` (tab Portales). **La suscripción de notificaciones se configura en el gestor de aplicaciones de ML** (applications.mercadolibre.com.ar → editar la app → callback URL `${SUPABASE_URL}/functions/v1/ml-webhook` + tópico **VIS Leads**): ML retiró el registro por API (`POST /users/{id}/topics/{topic}` responde 404). Los tópicos `questions`/`items` NO traen consultas de inmuebles.
@@ -1410,6 +1594,8 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 | `usd_rate` sin uso en tarjetas del landing | Feature | Conectar `fmtARS` cuando se necesite |
 | Advisor: `pg_net`/`pg_trgm` en schema `public` | Info | Requeridas por Edge Functions / búsqueda trigram |
 | Advisor: 4 tablas RLS sin policies (`ml_oauth_states`, `rela_tokens`, `rela_webhook_events`, `zernio_webhook_events`) | Intencional | Solo `service_role` |
+| **ALQUILERES — 12 hallazgos de la auditoría 2026-11-18** (ver la sección del módulo) | Varios | Abiertos: **P2** (3) — la fila de prueba `hfacundo45` recibe los recordatorios de cierre; la tarjeta de KPIs del Dashboard muestra "la fila que guardó último"; `importar()` reemplaza el estado sin respaldo previo. **P3** (6) — GRANT de UPDATE/DELETE a `authenticated` en `alquileres_snapshots` (bloqueado por RLS, hardening pendiente); sin purga de snapshots; `p.ex[].c` sin `esc()` (XSS self-inflicted); sin detección de build viejo; el JSONB del estado ya va en 133 KB sin tope; el espejo de `localStorage` es el estado completo. **P4** (3) — hash no criptográfico de la firma; fila vacía de un usuario; el recordatorio no re-avisa de un mes cerrado y modificado. **Resuelto hoy**: el re-cierre sin cambios ya no pisa el Historial (`S.sig`) |
+| **ALQUILERES — decisión "personal vs compartido"** | Producto / arquitectura | Abierta desde el 14/11: hoy cada usuario tiene su propia administración (1 fila por usuario). El badge ya es por-usuario, pero la tarjeta de KPIs del Dashboard usa "la fila no vacía más reciente" → con 2 operadores puede alternar. Decidir: un solo operador (limpiar filas de prueba) o set compartido con permisos por rol |
 
 ---
 
@@ -1452,6 +1638,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 | Documento | Contenido |
 |---|---|
 | [`docs/audit/AUDITORIA_COMPLETA_2026-10-15.md`](docs/audit/AUDITORIA_COMPLETA_2026-10-15.md) | **Auditoría completa del proyecto** (score 79/100 con desglose por dimensión, hallazgos P1/P2/P3 y roadmap priorizado) |
+| [`docs/alquileres/MEJORAS_PROPUESTAS.md`](docs/alquileres/MEJORAS_PROPUESTAS.md) | **Módulo de Alquileres**: revisión técnica del 14/11/2026 + las 8 mejoras propuestas (A–H) y su estado de implementación. La referencia completa del módulo está en la [sección del README](#-administración-de-alquileres-módulo-alquileres) |
 | [`docs/audit/AUDITORIA_YOUTUBE_50_MEJORAS_2026-10-30.md`](docs/audit/AUDITORIA_YOUTUBE_50_MEJORAS_2026-10-30.md) | **Auditoría de las 50 mejoras del módulo Contenido/YouTube** (Studio v2, comentarios, analítica, canal público, cola de publicación) |
 | [`docs/CIERRE_PROYECTO_2026-10.md`](docs/CIERRE_PROYECTO_2026-10.md) | **Cierre del proyecto para el dueño**: entregables, cómo usar cada módulo nuevo y pendientes que solo él puede resolver |
 | [`docs/GUIA_ENCUESTA_VISITA.md`](docs/GUIA_ENCUESTA_VISITA.md) | Guía de uso de la Encuesta de Visita (HOJA DE VISITA) para el equipo |
@@ -1469,6 +1656,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 
 | Fecha | Versión | Cambios |
 |---|---|---|
+| 2026-11-18 | — | **Alquileres: auditoría completa del módulo + documentación total en el README** (revisión de **sólo lectura**: código, repo, base de producción, advisor y edge functions — **sin tocar código**). **Se agrega la sección completa "🏘️ Administración de Alquileres" al README** (antes sólo existía en el changelog): qué hace, arquitectura de los 2 scripts (core + controlador, sin IIFE, hooks `window.__ALQ_*`), flujo de datos completo, modelo de datos (3 tablas + bucket + 3 RPC con su RLS y sus permisos), la **regla de la firma** del cierre de mes, la navegación sin pérdida (`S.live`), la convergencia IndexedDB⇄Storage, los documentos que produce (orden/liquidación/rendición/Excel/WhatsApp), las 4 integraciones con el CRM (KPIs del Dashboard, badge, Portal del Propietario, recordatorio por email), las 2 edge functions + el cron, las 9 migraciones, **las 9 ediciones quirúrgicas del core**, la guía de operación para el dueño, la decisión pendiente "personal vs compartido" y los **12 hallazgos** con severidad/evidencia/recomendación. **Datos verificados en producción (18/11)**: 3 filas en `alquileres_state` (danilo.arbo: 10 props, 10 meses de hist, 133 KB, `kpis`+`ownerMap`; hfacundo45: fila de prueba con 1 prop; helmutscheibengraf: fila vacía) · 12 snapshots / 1,34 MB · Storage: 69 objetos / 20,6 MB / 1 carpeta · audit: 16 `alq_portal_publish` + 2 `alq_month_reminder` · RPC de KPIs: órdenes $3.546.913,60 · honorarios $329.108,81 · neto $3.208.978,05 · 8/9 cobradas · 9/9 liquidadas · 2 vencimientos (30/11/2026) · badge: 2. **Hallazgos abiertos**: **P2** (3) la fila de prueba `hfacundo45` recibe los recordatorios de cierre (tiene `props>0`); la tarjeta de KPIs del Dashboard muestra "la fila que guardó último" (con 2 operadores puede alternar); `importar()` reemplaza el estado **sin** respaldo previo (a diferencia de "Restaurar respaldo"). **P3** (6) el GRANT de UPDATE/DELETE a `authenticated` en `alquileres_snapshots` contradice la migración (no explotable: no hay policy → la RLS bloquea toda fila); `alquileres_snapshots` sin purga; `p.ex[].c` (concepto de los ítems extra) inyectado en un atributo **sin `esc()`** → XSS self-inflicted (misma clase que se endureció en 4 puntos el 16/11; este quedó fuera); el módulo no detecta un build viejo cargado (el panel admin sí lo hace con `checkStaleBuild`) → una pestaña vieja conserva el core previo; el JSONB del estado ya va en 133 KB sin tope; el espejo de `localStorage` es el estado completo. **P4** (3) hash de la firma no criptográfico; fila vacía de un usuario; el recordatorio no re-avisa de un mes cerrado y modificado. **Verificado SIN hallazgos**: RLS/permisos de las 3 tablas, 4 policies de Storage por carpeta, `verify_jwt` de las 2 funciones vs `deploy.yml`, cron (jobid 34, URL hardcodeada + `x-sync-secret`), `search_path` de las 3 RPC, CSP vs pdf.js/ExcelJS/worker/blob/fuentes, orden de scripts, lazy-load del iframe + validación del `postMessage`, `.gitignore` del HTML de 12 MB con datos de clientes (**no está en el repo**) y las 9 ediciones del core. Además se actualiza el índice (18 → 32), la tabla de deudas técnicas y el roadmap con los 12 hallazgos y la decisión pendiente |
 | 2026-11-17 (5) | — | **Alquileres: el cierre de mes ya NO pisa el historial, y los mensajes se entendieron** (caso real reportado por el empleador: volvió de Octubre a Septiembre, presionó "Cerrar mes" y ACEPTÓ el aviso "Septiembre YA está en el Historial: cerrarlo de nuevo REEMPLAZA ese historial…"). **Forensics (SQL, sólo lectura)**: el historial de Septiembre fue pisado — 9.237 → 9.136 chars (16 docs en ambos); el diff exacto muestra que **los importes NO se perdieron** (las líneas `L` de las órdenes 2-0 y 2-1 son idénticas byte a byte) — lo que cambió fue el campo **N (notas)** de la orden **2-0**: el original tenía `NOTIFICACION: DETALLE DE SERVICIOS POR CONSUMO SE PAGA A MES VENCIDO` + el texto de actualización acumulado (FEB→MAY, 11,94 %) y quedó el actual (JUN→SEP, 7,52 %). El original quedó a salvo en el snapshot "Historial previo Septiembre 2026" (`831a9ffe`). **Causa raíz**: `mesMas(>0)` reescribía `S.hist[ym()]=docsMes()` siempre que el mes ya estuviera en el Historial, aunque nadie lo hubiera modificado (navegar ≠ modificar) → el historial archivado (importado del standalone, más rico) se degradaba. **Fix**: firma del mes `S.sig = {'YYYY-MM': firma}` (hash **order-independent** — el jsonb reordena las claves al guardar), registrada **al llegar** al mes y actualizada **al cerrarlo** → el historial se reescribe **sólo si el mes realmente cambió** (`!yaHist || cambio`), y el aviso de "ya estaba cerrado" sale **sólo si hubo cambios reales**. **Textos reescritos**: fuera la palabra "REEMPLAZA" y el ⚠ → "• Septiembre ya estaba cerrado y lo modificaste: se actualiza su historial con los datos de ahora. El historial anterior queda en Respaldos (☁), así que no se pierde nada."; el cierre y el retroceso ahora aclaran "**lo que cargues se guarda solo, no hace falta cerrar**" (el empleador preguntaba si Noviembre se borraba al no cerrarlo) + hint visible en el header. Tests: guard de la edición #11 actualizado + 3 guards nuevos + el harness behavioral cubre los DOS casos (re-cierre sin cambios → no avisa y `S.hist` queda idéntico; con cambios → avisa y reescribe) — 73 passed en el módulo |
 | 2026-11-17 (4) | — | **Alquileres: "Comprobantes de pago" como card propia a la DERECHA de "Facturas cargadas"** (pedido del dueño: "al lado, a la derecha, que se vea bien"). Las dos cards van en un wrapper `<div class="duo">` — **grid de 2 columnas** (`gap:12px`, `align-items:start`) que en pantallas angostas (`max-width:900px`) se apila en 1 columna. La card de comprobantes tiene **su propio selector de mes** (mismo `FM`) con el listado compartido vía helper `mesesDoc(p)` = unión de `ym()` + meses con facturas + meses con comprobantes. CSS: los nombres de archivo largos parten por palabra (`overflow-wrap:break-word`) y los botones de la fila no (`white-space:nowrap;width:1%` → el nombre toma todo el ancho). **Bug encontrado y corregido por screenshot (no por los tests)**: el template de la card quedaba con el literal sin cerrar y se imprimía `})()}` como texto en pantalla bajo la tabla — corregido y blindado con un guard nuevo (el harness behavioral ahora renderiza `ficha()` y falla si aparece cualquier basura textual). Verificado con screenshot real: 2 columnas de 698px en escritorio, 1 columna en 700px, sin overflow horizontal. Tests: +1 guard estático y nuevas aserciones en el behavioral (71 passed en el módulo) |
 | 2026-11-17 (3) | — | **Alquileres: comprobantes de pago (PDF o imagen) al lado de Facturas cargadas** (pedido del dueño). Nueva familia de claves **`pc:<pid>:<mes>:<uid>`** (sin colisión con `pg:` pagos de inquilinos / `f:` facturas / contrato) — los archivos van a IndexedDB y viajan a Storage `alquileres-adj/<uid>/` por los hooks `__ALQ_ADJ_UP/__ALQ_ADJ_DEL` **sin tocar el controlador** (no filtran por prefijo; guard en el spec). **Metadata en el estado**: `p.comprobantes = {'YYYY-MM': [{k, arch, tipo}]}` — lista plana por mes, múltiples archivos, lazy (`p.comprobantes||{}`) para estados viejos; viaja en el JSONB **sin migración**. **UI**: sección "Comprobantes de pago" dentro de la card "Facturas cargadas", mismo selector de mes `FM` (subir con FM en otro mes va a ESE mes), botón "Subir comprobante (PDF o imagen)" (`input id="pc"`, `accept=".pdf,image/*"` multiple), filas con `esc(c.arch)`. **Visor** comparte `CV` con contrato/facturas: imagen → `<img>` (decidido por el tipo REAL del blob, no la metadata), resto → `<iframe>`; **revoca el blob URL viejo antes de reemplazar**. `quitarComp`: confirm + borrado real de IndexedDB y Storage (hook `__ALQ_ADJ_DEL`) + splice. NO afecta totales ni liquidaciones (respaldo del operador). Tests: 5 guards estáticos + 1 behavioral (`tests/helpers/alquileres-comps-harness.html`, core real: subir PDF+imagen → read-back IndexedDB → visor → scoping por mes → quitar; gotcha: IndexedDB `get` de clave borrada devuelve `undefined`, no `null`) — 70 passed en el spec del módulo |
