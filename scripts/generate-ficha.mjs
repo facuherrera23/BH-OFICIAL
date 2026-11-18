@@ -3,7 +3,9 @@
 // También regenera sitemap.xml (home + legales + fichas publicadas) y
 // reconcilia fichas huérfanas de propiedades despublicadas.
 // Se corre en CI (workflow ficha-generate.yml) con SUPABASE_URL y SERVICE_KEY/ANON_KEY.
-import { writeFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readdirSync, rmSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import { splitChannelVideos } from './channel-privacy.mjs';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -11,6 +13,30 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANO
 const onlyCode = process.env.ONLY_CODE || '';
 const SITE_URL = 'https://bienenhaus.com.ar';
 const WHATSAPP_CANONICAL = '5493516379651';
+
+/* Cache busters de los assets que carga la ficha.
+   POR QUÉ (2026-11-18): Cloudflare sirve los .js con `cache-control: max-age=14400`
+   (4 horas) y las fichas los cargaban SIN `?v=` → un fix en tracking.js no
+   llegaba a las 27 fichas hasta 4 h después. El resto del sitio versiona con
+   `?v=N`; acá se versiona con el HASH del contenido (sha1 recortado), que no
+   depende de que alguien se acuerde de subir el número a mano: si el archivo
+   no cambió, la URL no cambia (y el workflow no commitea 27 fichas por nada).
+   El ?v= del resto del sitio y éste son independientes: cada uno invalida su
+   propio asset.
+   REPO_ROOT: el CI corre el generador desde la raíz del repo (cwd). Se puede
+   forzar con la env REPO_ROOT si se corre desde otro lado. */
+const REPO_ROOT = process.env.REPO_ROOT || process.cwd();
+function assetVersion(relPath) {
+  try {
+    const buf = readFileSync(join(REPO_ROOT, relPath));
+    return createHash('sha1').update(buf).digest('hex').slice(0, 8);
+  } catch (_) {
+    return '1';
+  }
+}
+const V_TRACKING = assetVersion('assets/js/tracking.js');
+const V_HANDOFF = assetVersion('assets/js/wa-handoff.js');
+const V_ANALYTICS = assetVersion('assets/js/analytics.js');
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
   console.error('Faltan SUPABASE_URL / SUPABASE_SERVICE_KEY (o ANON para lectura pública)');
@@ -612,9 +638,9 @@ ${jsonLdVideoText ? `<script type="application/ld+json">${jsonLdVideoText}</scri
     });
   })();
   </script>
-  <script src="../assets/js/tracking.js" defer></script>
-  <script src="../assets/js/wa-handoff.js" defer></script>
-  <script src="../assets/js/analytics.js" defer></script>
+  <script src="../assets/js/tracking.js?v=${V_TRACKING}" defer></script>
+  <script src="../assets/js/wa-handoff.js?v=${V_HANDOFF}" defer></script>
+  <script src="../assets/js/analytics.js?v=${V_ANALYTICS}" defer></script>
 </body>
 </html>`;
 }

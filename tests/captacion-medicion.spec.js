@@ -189,6 +189,20 @@ test.describe('handoff de WhatsApp (1 campo → lead → chat)', () => {
     expect(linea).toContain('https://*.supabase.co');
   });
 
+  test('las fichas versionan sus assets con ?v= (Cloudflare cachea los .js 4 horas)', () => {
+    // Cloudflare sirve los .js con `cache-control: max-age=14400` → sin ?v=
+    // un fix en tracking.js NO llegaba a las 27 fichas hasta 4 h después.
+    // El generador versiona con el hash del contenido (no con un N a mano).
+    expect(generateFicha).toContain("assetVersion('assets/js/tracking.js')");
+    expect(generateFicha).toContain("assetVersion('assets/js/wa-handoff.js')");
+    expect(generateFicha).toContain("assetVersion('assets/js/analytics.js')");
+    expect(generateFicha).toContain('../assets/js/tracking.js?v=${V_TRACKING}');
+    expect(generateFicha).toContain('../assets/js/wa-handoff.js?v=${V_HANDOFF}');
+    expect(generateFicha).toContain('../assets/js/analytics.js?v=${V_ANALYTICS}');
+    // Y el hash sale del contenido real (sha1 recortado), no de un contador.
+    expect(generateFicha).toContain("createHash('sha1')");
+  });
+
   test('el "wa_click" no se trackea dos veces (handoff + landing/ficha)', () => {
     expect(handoffJs).toContain('data-bh-wa-tracked');
     expect(generateFicha).toContain('data-bh-wa-tracked');

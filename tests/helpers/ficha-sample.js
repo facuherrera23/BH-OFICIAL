@@ -49,6 +49,11 @@ function buildSample() {
     const target = mod.startsWith('.') ? path.join(ROOT, 'scripts', mod) : mod;
     return 'const {' + names + '} = require(' + JSON.stringify(target) + ');';
   });
+  /* Default imports (import x from 'mod') → const x = require('mod') */
+  src = src.replace(/import\s+([A-Za-z_$][\w$]*)\s+from\s+'([^']+)';/g, (_m, name, mod) => {
+    const target = mod.startsWith('.') ? path.join(ROOT, 'scripts', mod) : mod;
+    return 'const ' + name + ' = require(' + JSON.stringify(target) + ');';
+  });
   /* main() real exige SUPABASE_URL + red: se la quita (TODO el bloque final,
      no solo la primera línea — el catch cierra en otra línea). */
   src = src.replace(/main\(\)\.catch\([\s\S]*$/, '');
@@ -57,7 +62,13 @@ function buildSample() {
   const sandbox = {
     console,
     require,
-    process: { env: { SUPABASE_URL: 'https://test.supabase.co', SUPABASE_SERVICE_KEY: 'test' }, exit: () => {} },
+    process: {
+      env: { SUPABASE_URL: 'https://test.supabase.co', SUPABASE_SERVICE_KEY: 'test' },
+      // cwd() → la raíz del repo: el generador calcula el REPO_ROOT con
+      // process.cwd() para leer los assets y versionarlos con su hash.
+      cwd: () => ROOT,
+      exit: () => {},
+    },
     fetch: async () => ({ ok: false, status: 500, json: async () => [], text: async () => '' }),
     mkdirSync: () => {},
     readdirSync: () => [],

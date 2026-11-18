@@ -28,26 +28,27 @@
 10. [Seguridad](#-seguridad)
 11. [Panel administrativo (14 módulos)](#-panel-administrativo-14-módulos)
 12. [Landing pública](#-landing-pública)
-13. [Portal del Propietario](#-portal-del-propietario)
-14. [Confirmación de visitas](#-confirmación-de-visitas)
-15. [Encuesta de Visita — HOJA DE VISITA](#-encuesta-de-visita--hoja-de-visita)
-16. [Tasaciones (ACM)](#-tasaciones-acm)
-17. [Comisiones y liquidaciones](#-comisiones-y-liquidaciones)
-18. [Administración de Alquileres](#-administración-de-alquileres-módulo-alquileres)
-19. [Integración Mercado Libre](#-integración-mercado-libre)
-20. [Chat omnicanal (Zernio)](#-chat-omnicanal-zernio)
-21. [Centro de Supervisión](#-centro-de-supervisión)
-22. [Edge Functions](#-edge-functions)
-23. [Migraciones](#-migraciones)
-24. [Flujos end-to-end](#-flujos-end-to-end)
-25. [Patrones técnicos](#-patrones-técnicos)
-26. [Deploy](#-deploy)
-27. [Testing y CI](#-testing-y-ci)
-28. [Convenciones de desarrollo](#-convenciones-de-desarrollo)
-29. [Deudas técnicas y roadmap](#-deudas-técnicas-y-roadmap)
-30. [ADRs](#-adrs-architecture-decision-records)
-31. [Documentación complementaria](#-documentación-complementaria)
-32. [Changelog](#-changelog)
+13. [Captación y medición del sitio](#-captación-y-medición-del-sitio)
+14. [Portal del Propietario](#-portal-del-propietario)
+15. [Confirmación de visitas](#-confirmación-de-visitas)
+16. [Encuesta de Visita — HOJA DE VISITA](#-encuesta-de-visita--hoja-de-visita)
+17. [Tasaciones (ACM)](#-tasaciones-acm)
+18. [Comisiones y liquidaciones](#-comisiones-y-liquidaciones)
+19. [Administración de Alquileres](#-administración-de-alquileres-módulo-alquileres)
+20. [Integración Mercado Libre](#-integración-mercado-libre)
+21. [Chat omnicanal (Zernio)](#-chat-omnicanal-zernio)
+22. [Centro de Supervisión](#-centro-de-supervisión)
+23. [Edge Functions](#-edge-functions)
+24. [Migraciones](#-migraciones)
+25. [Flujos end-to-end](#-flujos-end-to-end)
+26. [Patrones técnicos](#-patrones-técnicos)
+27. [Deploy](#-deploy)
+28. [Testing y CI](#-testing-y-ci)
+29. [Convenciones de desarrollo](#-convenciones-de-desarrollo)
+30. [Deudas técnicas y roadmap](#-deudas-técnicas-y-roadmap)
+31. [ADRs](#-adrs-architecture-decision-records)
+32. [Documentación complementaria](#-documentación-complementaria)
+33. [Changelog](#-changelog)
 
 ---
 
@@ -529,6 +530,7 @@ erDiagram
 | `lavoz_config` | Config de Clasificados La Voz: días (10/30), mapa de tipos y de barrios/ciudades, contacto del aviso |
 | `lavoz_listings` | Avisos de Clasificados La Voz (estado `draft`/`ready`/`published`/`expired`/`failed`, URL, plan, payload, vencimiento) |
 | `property_sequences` | Secuencia de códigos de propiedad (solo `service_role`) |
+| `page_events` | **Medición first-party del sitio** (18/11/2026): evento, ruta, página, código de propiedad, origen, referrer, UTMs y `session_id` (UUID de sesión, no una persona). **Sin** IP, user-agent, email ni teléfono. RLS ON **sin policies**: escribe sólo `service_role` (la edge function `track-event`), lee sólo la RPC `bh_web_metrics` |
 
 #### 🎨 CMS y configuración
 
@@ -594,6 +596,9 @@ erDiagram
 | Triggers `BEFORE INSERT` en chat | Auto-asignan `broker_id` |
 | `set_property_code` / `generate_property_code` | Código secuencial de propiedad |
 | `get_sidebar_badge_counts` (RPC, SECURITY DEFINER) | Contadores del sidebar respetando RLS |
+| `bh_captacion_status()` (RPC, SECURITY DEFINER, `search_path=''`) | Estado de captación de los 3 canales (ML / RELA / web): consultas reales, avisos bloqueados, leads y días de silencio. Sólo `authenticated`/`service_role` |
+| `bh_check_captacion_health(p_umbral, p_horas)` (RPC, SECURITY DEFINER, `search_path=''`) | Escribe/auto-resuelve la alarma de captación en `supervision_alerts`. **Sólo `service_role`** (la llama el cron) |
+| `bh_web_metrics(p_dias)` (RPC, SECURITY DEFINER, `search_path=''`) | Métricas del sitio (vistas, clics de WhatsApp, formularios, tasa, top páginas). Sólo `authenticated`/`service_role` |
 | `count_pending_visits_for_lead`, `is_super_admin` | Helpers de negocio y permisos |
 
 ### Vistas (`security_invoker = true`)
@@ -606,6 +611,7 @@ erDiagram
 |---|---|
 | `properties` | Lectura pública de las publicadas (`TO public`); escritura autenticada |
 | `leads` | `INSERT` anónimo solo con `source IN ('landing_page','newsletter')` |
+| `page_events` | RLS ON **sin policies**: `revoke all` a `anon`/`authenticated`; sólo `service_role` inserta (edge function `track-event`). La lectura va por la RPC `bh_web_metrics` |
 | `visits` | `SELECT/UPDATE` anónimo por `confirmation_token`; resto vía JOIN `agents.profile_id = auth.uid()` |
 | `visit_surveys` | `SELECT` a authenticated; `INSERT/UPDATE` solo agente del lead o super_admin; público **solo** vía RPC por token (ver sección Encuesta) |
 | `owners` | `SELECT` super_admin/broker; `INSERT/UPDATE/DELETE` solo super_admin |
@@ -897,6 +903,58 @@ Consume `site_content` y `portal_settings` desde `landing-app.js`.
 - Imágenes con Cloudinary (`f_auto,q_auto`) y lazy loading.
 - Mobile-first con menú móvil y botón flotante de WhatsApp.
 - SEO completo (meta, Open Graph, `schema.org`, sitemap, robots).
+
+---
+
+## 📈 Captación y medición del sitio
+
+Frente abierto el **18/11/2026** después de una auditoría de fondo: el sitio **no tenía medición** y **todo el contacto se perdía en el chat de WhatsApp**. Se implementaron tres piezas.
+
+### 1. Medición first-party (`page_events`)
+
+GA4 y Clarity sólo cargan con consentimiento `'all'` → casi ninguna visita se veía y `bhTrack()` era un no-op. Ahora hay medición propia, **sin cookies y sin PII**.
+
+| Pieza | Detalle |
+|---|---|
+| Tabla `page_events` | `id, event, path, page, property_code, origin, referrer, utm_source, utm_campaign, session_id, created_at`. **Sin** IP, user-agent, email ni teléfono |
+| Edge Function `track-event` | Pública (`verify_jwt` OFF). **Whitelist** de 17 eventos, rate limit 60/min, rechaza cualquier evento inventado (400) |
+| Cliente `assets/js/tracking.js` | Sin cookies. `session_id` = UUID en `sessionStorage` (se borra al cerrar la pestaña). **Opt-out** con `bh_track_optout` + botón "No medirme" en el pie |
+| RPC `bh_web_metrics(p_dias)` | `SECURITY DEFINER`, `search_path=''`, sólo `authenticated`/`service_role`. Devuelve vistas 7/30 d, clics de WhatsApp, forms iniciados/enviados, tasa, top páginas y conteo por evento |
+| Panel "Métricas del sitio" | Portales → 7/30 días, con el desglose por evento y las páginas más vistas |
+
+- El beacon va como **`text/plain`** a propósito: `application/json` dispara preflight y, mientras la función no exista (404 del gateway con `ACAO:*`), rompe la CORS en la consola del visitante.
+- `sendBeacon` (fire-and-forget) en vez de `fetch`: un 404/5xx **no aparece como error de consola** y el evento no depende de que la página siga viva.
+- Está cargado en `index.html`, `canal.html`, `tasacion.html`, `politica-de-privacidad.html` y **todas las fichas** (generadas por `scripts/generate-ficha.mjs`).
+
+### 2. Handoff de WhatsApp (1 campo → lead → chat)
+
+Antes: las 27 fichas tenían **1 link a `wa.me`, 0 teléfono y 0 formulario** → ni un lead. Ahora todo click a WhatsApp pasa por `assets/js/wa-handoff.js`:
+
+1. Modal propio (`<dialog>`) con **un solo campo** (teléfono) + checkbox de privacidad.
+2. Al confirmar: `POST contact-submit` con `kind:'whatsapp'` → crea el lead (`source='whatsapp'`, propiedad resuelta por código `DA-P0002`, SLA de primer contacto) y **después** abre el chat precargado.
+3. **"Prefiero no dejar mis datos"** → abre el chat igual, sin registrar. **La conversión nunca se frena.**
+4. El chat se abre **antes** del POST (si no, el popup blocker lo mata) y, si el POST falla, el chat sigue abierto: perder el lead es mejor que perder la consulta.
+
+`contact-submit` con `kind:'whatsapp'` **no exige email** (el teléfono alcanza), **exige `consent:true`** y normaliza el teléfono a formato internacional (`549…`).
+
+### 3. Estado de captación (alarma propia)
+
+| Pieza | Detalle |
+|---|---|
+| RPC `bh_captacion_status()` | Lectura del estado de los 3 canales: **ML** (consultas reales, no "conectado"), **RELA** (avisos bloqueados/publicados) y **web** (leads + silencio) |
+| RPC `bh_check_captacion_health(p_umbral, p_horas)` | Escribe la alarma en `supervision_alerts` (patrón `bh_check_io_budget`): `SECURITY DEFINER`, `search_path=''`, **sólo `service_role`**, auto-resolve cuando el canal vuelve |
+| Cron `bh-captacion-health-hourly` | `'20 * * * *'` — corre cada hora |
+| Panel "Estado de captación" | Portales → los 3 canales con su estado y la última consulta |
+
+**Dato real del 18/11/2026** (corrige el "landing 0/mes" que estaba en el README):
+
+| Fuente | Leads activos | Nota |
+|---|---|---|
+| `ml` | 44 | 17 en 30 días · **las consultas volvieron a entrar el 18/11** (la alarma `ml_sin_consultas` se auto-resolvió) |
+| `gvamax` | 33 | **NO son de la landing**: import de GVAmax del 26/9 mal etiquetado como `landing_page` → re-etiquetados (registro de reversión en `docs/auditoria/leads-gvamax-relabel-20261118.json`, sin PII) |
+| `manual` | 13 | |
+| `rela_zonaprop` | 11 | Altas manuales: **RELA nunca tuvo callback configurado** (0 eventos históricos) y sus 18 avisos están bloqueados por falta de pack/créditos |
+| `landing_page` | **1** | El único lead real de la web (3/11/2026) en 12 semanas |
 
 ---
 
@@ -1306,7 +1364,7 @@ npm run lavoz:estado   # sólo lectura: la cola de avisos en la terminal
 
 ### Funciones versionadas en el repo (48) y estado de deploy
 
-**Estado verificado contra producción el 2026-11-11**: 64 funciones deployables en el repo (`supabase/functions/*` con `index.ts`) + `tmp-gen-jwt` y `cta-test`, leftovers de debug que viven **solo en el dashboard** como stubs 410 y deben borrarse manualmente. El CI deploya todas las del repo en cada push a `main` con el mapa `verify_jwt` de `deploy.yml`; solo `convert-image` queda en `EXCLUDED_FUNCTIONS` (nunca se deploya desde CI). **Guard global**: `tests/functions-deploy.spec.js` falla si una función queda excluida sin motivo documentado, si una función llamada sin JWT (cron/trigger/webhook/callback/pre-login) falta en `NO_VERIFY`, o si alguna de las dos listas tiene nombres zombie.
+**Estado verificado contra producción el 2026-11-11**: 65 funciones deployables en el repo (`supabase/functions/*` con `index.ts`) + `tmp-gen-jwt` y `cta-test`, leftovers de debug que viven **solo en el dashboard** como stubs 410 y deben borrarse manualmente. El CI deploya todas las del repo en cada push a `main` con el mapa `verify_jwt` de `deploy.yml`; solo `convert-image` queda en `EXCLUDED_FUNCTIONS` (nunca se deploya desde CI). **Guard global**: `tests/functions-deploy.spec.js` falla si una función queda excluida sin motivo documentado, si una función llamada sin JWT (cron/trigger/webhook/callback/pre-login) falta en `NO_VERIFY`, o si alguna de las dos listas tiene nombres zombie.
 
 | Función | JWT | Propósito |
 |---|---|---|
@@ -1325,6 +1383,7 @@ npm run lavoz:estado   # sólo lectura: la cola de avisos en la terminal
 | `monthly_commission_liquidation` · `trigger_commission_on_close` | OFF (cron/evento) | Liquidación mensual y comisión al cerrar |
 | `cron_exclusivity_renewals` · `owner-tasks-reminder` · `visits-process-reminders` | OFF (cron) | Recordatorios de exclusividades, tareas y visitas. ⚠️ La función `visits-reminders` es huérfana (el cron del mismo nombre llama a `visits-process-reminders`) — borrado manual pendiente |
 | `notify-new-lead` | OFF (trigger SQL) | Email de lead nuevo al agente (Brevo). La llama el trigger `notify_new_lead()` sobre `leads` via pg_net, sin JWT — con verify_jwt ON la plataforma responde 401 y los emails mueren en silencio (drift repo↔producción alineado 2026-11-11) |
+| `track-event` | OFF (pública, pre-login) | **Medición first-party del sitio** (18/11/2026): recibe los eventos de `assets/js/tracking.js` (whitelist de 17 eventos, rate limit 60/min, sin IP ni PII) y los escribe en `page_events`. **Sin JWT a propósito**: la llama el visitante anónimo; con verify_jwt ON el gateway responde 401 y el sitio vuelve a quedar sin medición, en silencio |
 | `rela-callbacks` · `rela-sync` · `rela-proxy` | mixto | Integración RELA (OAuth, sync, proxy de publicación) |
 | `lavoz-proxy` | ON | Clasificados La Voz — publicación **asistida**: arma el aviso (texto + fotos con la portada primero) y trackea estado/vencimiento (La Voz no tiene API) |
 | `supervision-api` | OFF (valida super_admin dentro) | API externa del Centro de Supervisión (rate limit 60/min) |
@@ -1337,7 +1396,7 @@ npm run lavoz:estado   # sólo lectura: la cola de avisos en la terminal
 
 ### Crons activos verificados (2026-11-11, `pg_cron`)
 
-`backup-snapshot-daily` (07:00 UTC) · `evaluate-supervision-rules` (cada 5 min) · `supervision-anomalies-15min` · `supervision-baselines-hourly` · `supervision-digest-weekly` (lunes 11:00 UTC) · `purge-supervision-daily` · `purge-rate-limit-logs` · `ml-sync-every-5-min` · `ml-questions-sweep` (cada 10 min) · `ml-vis-sweep-every-30-min` (cada 30 min, red de seguridad de leads ML) · `ml-webhook-events-purge-daily` · `exclusive-expiry-alert-daily` · `zernio-sync-every-2-min` · `visits-reminders` (cron → llama a la función `visits-process-reminders`) · `owner-tasks-reminder` (cada 15 min) · `survey-reminders-daily` (15:00 UTC) · `crm-followup-alerts` · `crm-overdue-visits` (hourly) · `crm-stale-leads` (lunes) · `monthly-commission-liquidation` (día 1, 02:00 UTC). **20 jobs, todos activos** — los 10 HTTP tienen su target en `NO_VERIFY` de `deploy.yml` con headers correctos.
+`backup-snapshot-daily` (07:00 UTC) · `evaluate-supervision-rules` (cada 5 min) · `supervision-anomalies-15min` · `supervision-baselines-hourly` · `supervision-digest-weekly` (lunes 11:00 UTC) · `purge-supervision-daily` · `purge-rate-limit-logs` · `ml-sync-every-5-min` · `ml-questions-sweep` (cada 10 min) · `ml-vis-sweep-every-30-min` (cada 30 min, red de seguridad de leads ML) · `ml-webhook-events-purge-daily` · `exclusive-expiry-alert-daily` · `zernio-sync-every-2-min` · `visits-reminders` (cron → llama a la función `visits-process-reminders`) · `owner-tasks-reminder` (cada 15 min) · `survey-reminders-daily` (15:00 UTC) · `crm-followup-alerts` · `crm-overdue-visits` (hourly) · `crm-stale-leads` (lunes) · `monthly-commission-liquidation` (día 1, 02:00 UTC) · **`bh-captacion-health-hourly` (`'20 * * * *'`)** — alarma de captación (ML/RELA/web) con auto-resolve. **21 jobs, todos activos** — los 10 HTTP tienen su target en `NO_VERIFY` de `deploy.yml` con headers correctos.
 
 > ⚠️ **Patrón obligatorio en crons con `net.http_post`** (fix 2026-10-15, migración `20261015000004`): URL **hardcodeada** + auth por `x-sync-secret` leído de `zernio_config(key='sync_secret')` en runtime. `current_setting('app.settings.*')` es NULL en este proyecto y rompió 4 crons en total (ml-questions-sweep 2026-10-08, digest semanal con 401 silencioso, owner-tasks-reminder con 3.999 fallos, monthly-commission en no-op). Verificar la entrega con la respuesta real en `net._http_response`, no con el estado del cron (el SQL solo encola el request).
 
@@ -1387,6 +1446,11 @@ npm run lavoz:estado   # sólo lectura: la cola de avisos en la terminal
 | `20261016000004_owner_notifications_legal` | Trail legal de notificaciones a propietarios (tabla `owner_notifications`) para la notificación de exclusividad |
 | `20261016000005_leads_consent_at` | Columna `consent_at` en leads — consentimiento Ley 25.326 rastreado desde el formulario del landing |
 | `20261017000001_sidebar_badge_counts_v2` | RPC `get_sidebar_badge_counts` v2: TODOS los badges del sidebar en una sola llamada (leads 24h, tareas vencidas leads/owners/total, chat unread, propiedades estancadas con la lógica del dashboard, salud ML, visitas hoy ART). SECURITY DEFINER, EXECUTE authenticated-only |
+| `20261118000003_captacion_health.sql` | **Estado de captación** (Fase 1): RPC `bh_captacion_status()` (lectura, authenticated+service_role) + RPC `bh_check_captacion_health(p_umbral, p_horas)` (`SECURITY DEFINER`, `search_path=''`, sólo service_role) + cron `bh-captacion-health-hourly` (`'20 * * * *'`) |
+| `20261118000004_captacion_health_fix.sql` | **Fix de tipos** de la 003 (ya aplicada → migración nueva): `to_char(text, …)` daba ERROR 42883 |
+| `20261118000005_page_events.sql` | **Medición first-party** (Fase 2): tabla `page_events` (RLS ON sin policies, sólo service_role) + RPC `bh_web_metrics(p_dias)` (`SECURITY DEFINER`, `search_path=''`, authenticated+service_role) |
+| `20261118000006_web_metrics_days_fix.sql` | **Fix del clamp de días**: la 005 escribía `GREATEST(LEAST(x,1),90)` → siempre 90 días, ignorando el parámetro |
+| `20261118000007_web_metrics_event_filter_fix.sql` | **Fix del filtro de evento**: el `FROM` de la agregación filtraba por `event='page_view'` → los contadores de WhatsApp y formularios daban **siempre 0** |
 
 > ⚠️ **Drift conocido (auditoría 2026-10-15)**: la publicación realtime de `lead_properties`, `lead_tasks`, `lead_activities` y `owner_tasks` se aplicó directo en producción vía MCP **sin archivo de migración** (el cambio está activo y verificado en `supabase_realtime`, pero no es reproducible desde el repo). Pendiente: crear la migración equivalente para que un rebuild desde cero quede idéntico.
 
@@ -1606,7 +1670,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 | Notificaciones push reales (Web Push / VAPID) | Futuro | Service Worker pendiente |
 | `usd_rate` sin uso en tarjetas del landing | Feature | Conectar `fmtARS` cuando se necesite |
 | Advisor: `pg_net`/`pg_trgm` en schema `public` | Info | Requeridas por Edge Functions / búsqueda trigram |
-| Advisor: 4 tablas RLS sin policies (`ml_oauth_states`, `rela_tokens`, `rela_webhook_events`, `zernio_webhook_events`) | Intencional | Solo `service_role` |
+| Advisor: **19 tablas RLS sin policies** (club service_role: `ml_oauth_states`, `rela_tokens`, `rela_webhook_events`, `zernio_webhook_events`, `zernio_config`, `ml_webhook_events`, `property_sequences`, las 4 `*_archive` de logs, `bh_io_samples`, `alquileres_portal_liquidaciones`, `alquileres_snapshots_archive`, las 7 particiones de `audit_log`, `audit_log_default` y **`page_events`**) | Intencional | Sólo `service_role`. Las tablas de archivo y las de auditoría por partición están bloqueadas a propósito; `page_events` escribe sólo la edge function `track-event` y se lee por la RPC `bh_web_metrics` |
 | **ALQUILERES — 12 hallazgos de la auditoría 2026-11-18** (ver la sección del módulo) | Varios | **9 RESUELTOS** el 18/11: (P2) la fila de prueba deja de recibir recordatorios y de tapar los KPIs (criterio "administración activa" = `props` + `corr.n`); `importar()` ahora deja respaldo previo; (P3) `revoke update, delete` a `authenticated` en `alquileres_snapshots`; purga de snapshots **archivando antes de borrar** (cron diario); `esc()` en el concepto de los ítems extra y en `p.ult`; detección de build viejo con banner "Recargar ahora"; espejo de `localStorage` liviano. **3 siguen abiertos a propósito**: podar `S.live` automáticamente (perdería las copias exactas de los meses que el dueño pidió conservar), hash no criptográfico de la firma (riesgo muy bajo) y el recordatorio que no re-avisa de un mes cerrado y modificado (el aviso es orientativo, no de control). **PENDIENTE DE OK DEL DUEÑO**: borrar la fila vacía de `helmutscheibengraf@yahoo.com.ar` y la fila de prueba de `hfacundo45@gmail.com` (ya neutralizadas por el criterio nuevo; no se borra data sin aprobación) |
 | **ALQUILERES — decisión "personal vs compartido"** | Producto / arquitectura | Abierta desde el 14/11: hoy cada usuario tiene su propia administración (1 fila por usuario). El badge ya es por-usuario, pero la tarjeta de KPIs del Dashboard usa "la fila no vacía más reciente" → con 2 operadores puede alternar. Decidir: un solo operador (limpiar filas de prueba) o set compartido con permisos por rol |
 
@@ -1669,6 +1733,7 @@ La suite E2E corre **en modo lectura** contra producción (RLS protege las escri
 
 | Fecha | Versión | Cambios |
 |---|---|---|
+| 2026-11-18 (3) | — | **Captación: el sitio deja de perder el tráfico y el contacto en WhatsApp** (Fases 1 y 2 de un frente nuevo, con auditoría de fondo previa). **Diagnóstico (lo importante: el dato de partida era FALSO)**: el README decía "landing 0/mes"; en realidad los 34 leads con `source='landing_page'` eran **35 filas importadas de GVAmax el 26/9 mal etiquetadas** — el lead real de la web es **1 en 12 semanas** (3/11/2026). Sin tráfico indexado (`site:bienenhaus.com.ar` → 0 resultados; la home no enlaza las fichas en HTML estático → 27 huérfanas para el crawler) y **sin medición** (GA4/Clarity sólo con consentimiento `'all'` → `bhTrack` era un no-op). Y lo peor: las 27 fichas tenían **1 link a `wa.me`, 0 teléfono y 0 formulario** → todo el contacto se perdía en el chat. **Fase 1 — estado de captación**: RPC `bh_captacion_status()` (ML/RELA/web: consultas reales, no "conectado"), RPC `bh_check_captacion_health()` (`SECURITY DEFINER`, `search_path=''`, sólo `service_role`, auto-resolve) + cron `bh-captacion-health-hourly` (`'20 * * * *'`) + panel en Portales. La alarma real `ml_sin_consultas` (severity high) se abrió el 18/11 y **se auto-resolvió el mismo día** (volvieron las consultas de ML: 17 leads en 30 días, último 18/11 10:21). **Fase 2 — medición first-party**: tabla `page_events` (RLS ON sin policies, sólo `service_role`; **sin** IP, user-agent, email ni teléfono), edge function pública `track-event` (whitelist de 17 eventos, rate limit 60/min, rechaza eventos inventados con 400), cliente `assets/js/tracking.js` (sin cookies, `session_id` UUID en `sessionStorage`, opt-out `bh_track_optout` + botón "No medirme" en el pie), RPC `bh_web_metrics(p_dias)` y panel "Métricas del sitio" (7/30 días). **Handoff de WhatsApp**: `assets/js/wa-handoff.js` — modal con **1 campo** (teléfono) + consentimiento → lead (`source='whatsapp'`, propiedad resuelta por código `DA-P0002`) → chat precargado; con **"Prefiero no dejar mis datos"** que sigue al chat sin registrar (**la conversión nunca se frena**); el chat se abre **antes** del POST (popup blocker). `contact-submit` acepta `kind:'whatsapp'` (no exige email, exige `consent:true`). **Re-etiquetado GVAmax** (autorizado): 35 leads `landing_page` → `gvamax` (33 activos + 2 en papelera); **nada se borró**; registro de reversión (sólo IDs, sin PII) en `docs/auditoria/leads-gvamax-relabel-20261118.json`. **Bugs propios detectados al verificar en producción** (los 3 van en migraciones nuevas — una migración aplicada NO se edita): el clamp de días de `bh_web_metrics` estaba al revés (`GREATEST(LEAST(x,1),90)` → siempre 90 días, `20261118000006`) y su `FROM` filtraba por `event='page_view'` → los contadores de WhatsApp y formularios daban **siempre 0** (`20261118000007`). **Aviso de privacidad** actualizado (sección 7 "Medición propia" + 7 bis del handoff). **Tests**: `tests/captacion-medicion.spec.js` (22), `tests/captacion-panel.spec.js` (10), `tests/wa-handoff.spec.js` (9 behavioral + estáticos) → suite completa **733 passed, 0 failed, 3 skipped**. **Pendiente del dueño**: activar el beacon de Cloudflare Web Analytics (la CSP ya lo permite) y revisar el panel de ML |
 | 2026-11-18 (2) | — | **Alquileres: los 12 hallazgos de la auditoría quedan corregidos** (el mismo día de la auditoría; el README ya tenía el detalle de cada uno). **P2** — (1) el recordatorio de cierre y la tarjeta de KPIs del Dashboard ahora exigen una **administración real** (`props>0` **AND** `state->'corr'->>'n'`): la fila de prueba `hfacundo45` deja de recibir emails y no puede tapar los KPIs del operador (criterio aplicado en la edge function `alquileres-month-reminder` y en la RPC `alquileres_dashboard_kpis`, esta última en la migración nueva `20261118000002`; **no se borró ninguna fila** — nada se borra sin OK del dueño). (2) `importar()` ("Cargar datos de otro archivo") ahora deja un **respaldo previo** (`__ALQ_SNAPSHOT_PRE('Antes de importar …')`) antes de reemplazar el estado, en las dos ramas (`.html` y `.json`); el hook pasó a **devolver la promesa** (antes la descartaba) y el estado importado se normaliza con `bhInitS(S)`. **P3** — (3) `revoke update, delete` a `authenticated` en `alquileres_snapshots`: el ACL real pasó de `arwdDxtm` a `arDxtm` (no era explotable —no había policy de UPDATE/DELETE y la RLS bloqueaba toda fila— pero el ACL no coincidía con la intención de la migración). (4) **Retención de respaldos**: función `bh_archive_alquileres_snapshots(p_keep=30, p_max_age_days=180)` (`SECURITY DEFINER`, `search_path=''`, sólo `service_role`) + tabla espejo `alquileres_snapshots_archive` (RLS ON sin policies, club service_role) + cron `bh-alquileres-snapshots-retention` (`'15 11 * * *'`, jobid 39): **archiva antes de borrar** (copia primero, borrado después — misma doctrina que las tablas de log del proyecto) y conserva los 30 respaldos más recientes por usuario. (5) **XSS**: `esc(e.c)` en el input del ítem extra y `esc(p.ult)` en "Última actualización" (misma clase que se endureció en 4 puntos el 16/11). (6) **Detección de build viejo**: `alqCheckStaleBuild()` compara el `?v=` del core cargado con el que sirve producción (fetch sin caché) y muestra un banner con botón "Recargar ahora" — el panel admin ya lo hacía; el módulo no. (7) **Espejo de `localStorage` liviano**: pasa de guardar el estado completo (133 KB escritos de forma síncrona en cada edición) a un marcador `{saved, kb, props}`; en el módulo el estado autoritativo vive en la nube y los respaldos en `alquileres_snapshots` (el único lector del espejo completo era el standalone del dueño, que tiene su propia copia del core). **Sin cambios de UI** salvo el banner nuevo. **Verificado en producción**: 2 migraciones aplicadas vía MCP (`20261118000001_alquileres_snapshots_hardening_retention`, `20261118000002_alquileres_dashboard_kpis_active_admin`) · `has_table_privilege`: authenticated UPDATE/DELETE en snapshots = **false**, SELECT/INSERT = **true**, `anon` sin acceso a nada · RPC de KPIs → fila de `danilo.arbo@gmail.com` (neto $4.020.856,22) · filtro "administración activa": danilo **true**, hfacundo45 **false**, helmutscheibengraf **false** · función de retención ejecutada: 0 purgados (nada tiene 180 días), 12 respaldos intactos · cron jobid 39 activo · advisor sin regresiones (anon-SECDEF **16**, `search_path_mutable` **0**, `rls_enabled_no_policy` **18** = 17 + 1 intencional) · **80 tests** del módulo en verde + suite completa **692 passed, 0 failed**. **Gotcha encontrada al aplicar**: con `CREATE OR REPLACE` + argumentos por defecto, Postgres **no** crea la firma corta `(integer)` — los `revoke/grant` van contra `(integer, integer)`. **3 hallazgos quedan abiertos a propósito** (poda de `S.live`, hash no criptográfico, recordatorio que no re-avisa de un mes ya cerrado y modificado) + el borrado de las 2 filas huérfanas, que espera OK del dueño |
 | 2026-11-18 | — | **Alquileres: auditoría completa del módulo + documentación total en el README** (revisión de **sólo lectura**: código, repo, base de producción, advisor y edge functions — **sin tocar código**). **Se agrega la sección completa "🏘️ Administración de Alquileres" al README** (antes sólo existía en el changelog): qué hace, arquitectura de los 2 scripts (core + controlador, sin IIFE, hooks `window.__ALQ_*`), flujo de datos completo, modelo de datos (3 tablas + bucket + 3 RPC con su RLS y sus permisos), la **regla de la firma** del cierre de mes, la navegación sin pérdida (`S.live`), la convergencia IndexedDB⇄Storage, los documentos que produce (orden/liquidación/rendición/Excel/WhatsApp), las 4 integraciones con el CRM (KPIs del Dashboard, badge, Portal del Propietario, recordatorio por email), las 2 edge functions + el cron, las 9 migraciones, **las 9 ediciones quirúrgicas del core**, la guía de operación para el dueño, la decisión pendiente "personal vs compartido" y los **12 hallazgos** con severidad/evidencia/recomendación. **Datos verificados en producción (18/11)**: 3 filas en `alquileres_state` (danilo.arbo: 10 props, 10 meses de hist, 133 KB, `kpis`+`ownerMap`; hfacundo45: fila de prueba con 1 prop; helmutscheibengraf: fila vacía) · 12 snapshots / 1,34 MB · Storage: 69 objetos / 20,6 MB / 1 carpeta · audit: 16 `alq_portal_publish` + 2 `alq_month_reminder` · RPC de KPIs: órdenes $3.546.913,60 · honorarios $329.108,81 · neto $3.208.978,05 · 8/9 cobradas · 9/9 liquidadas · 2 vencimientos (30/11/2026) · badge: 2. **Hallazgos abiertos**: **P2** (3) la fila de prueba `hfacundo45` recibe los recordatorios de cierre (tiene `props>0`); la tarjeta de KPIs del Dashboard muestra "la fila que guardó último" (con 2 operadores puede alternar); `importar()` reemplaza el estado **sin** respaldo previo (a diferencia de "Restaurar respaldo"). **P3** (6) el GRANT de UPDATE/DELETE a `authenticated` en `alquileres_snapshots` contradice la migración (no explotable: no hay policy → la RLS bloquea toda fila); `alquileres_snapshots` sin purga; `p.ex[].c` (concepto de los ítems extra) inyectado en un atributo **sin `esc()`** → XSS self-inflicted (misma clase que se endureció en 4 puntos el 16/11; este quedó fuera); el módulo no detecta un build viejo cargado (el panel admin sí lo hace con `checkStaleBuild`) → una pestaña vieja conserva el core previo; el JSONB del estado ya va en 133 KB sin tope; el espejo de `localStorage` es el estado completo. **P4** (3) hash de la firma no criptográfico; fila vacía de un usuario; el recordatorio no re-avisa de un mes cerrado y modificado. **Verificado SIN hallazgos**: RLS/permisos de las 3 tablas, 4 policies de Storage por carpeta, `verify_jwt` de las 2 funciones vs `deploy.yml`, cron (jobid 34, URL hardcodeada + `x-sync-secret`), `search_path` de las 3 RPC, CSP vs pdf.js/ExcelJS/worker/blob/fuentes, orden de scripts, lazy-load del iframe + validación del `postMessage`, `.gitignore` del HTML de 12 MB con datos de clientes (**no está en el repo**) y las 9 ediciones del core. Además se actualiza el índice (18 → 32), la tabla de deudas técnicas y el roadmap con los 12 hallazgos y la decisión pendiente |
 | 2026-11-17 (5) | — | **Alquileres: el cierre de mes ya NO pisa el historial, y los mensajes se entendieron** (caso real reportado por el empleador: volvió de Octubre a Septiembre, presionó "Cerrar mes" y ACEPTÓ el aviso "Septiembre YA está en el Historial: cerrarlo de nuevo REEMPLAZA ese historial…"). **Forensics (SQL, sólo lectura)**: el historial de Septiembre fue pisado — 9.237 → 9.136 chars (16 docs en ambos); el diff exacto muestra que **los importes NO se perdieron** (las líneas `L` de las órdenes 2-0 y 2-1 son idénticas byte a byte) — lo que cambió fue el campo **N (notas)** de la orden **2-0**: el original tenía `NOTIFICACION: DETALLE DE SERVICIOS POR CONSUMO SE PAGA A MES VENCIDO` + el texto de actualización acumulado (FEB→MAY, 11,94 %) y quedó el actual (JUN→SEP, 7,52 %). El original quedó a salvo en el snapshot "Historial previo Septiembre 2026" (`831a9ffe`). **Causa raíz**: `mesMas(>0)` reescribía `S.hist[ym()]=docsMes()` siempre que el mes ya estuviera en el Historial, aunque nadie lo hubiera modificado (navegar ≠ modificar) → el historial archivado (importado del standalone, más rico) se degradaba. **Fix**: firma del mes `S.sig = {'YYYY-MM': firma}` (hash **order-independent** — el jsonb reordena las claves al guardar), registrada **al llegar** al mes y actualizada **al cerrarlo** → el historial se reescribe **sólo si el mes realmente cambió** (`!yaHist || cambio`), y el aviso de "ya estaba cerrado" sale **sólo si hubo cambios reales**. **Textos reescritos**: fuera la palabra "REEMPLAZA" y el ⚠ → "• Septiembre ya estaba cerrado y lo modificaste: se actualiza su historial con los datos de ahora. El historial anterior queda en Respaldos (☁), así que no se pierde nada."; el cierre y el retroceso ahora aclaran "**lo que cargues se guarda solo, no hace falta cerrar**" (el empleador preguntaba si Noviembre se borraba al no cerrarlo) + hint visible en el header. Tests: guard de la edición #11 actualizado + 3 guards nuevos + el harness behavioral cubre los DOS casos (re-cierre sin cambios → no avisa y `S.hist` queda idéntico; con cambios → avisa y reescribe) — 73 passed en el módulo |
