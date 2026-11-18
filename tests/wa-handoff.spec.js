@@ -152,6 +152,9 @@ test.describe('handoff de WhatsApp — comportamiento', () => {
       await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
     });
     await page.addInitScript(() => {
+      // Los tests corren en localhost → el tracking no mide en local (para no
+      // ensuciar la medición de producción). Este test SÍ quiere medir.
+      window.BH_TRACKING_ALLOW_LOCAL = true;
       window.__opened = [];
       window.open = (url) => { window.__opened.push(url); return {}; };
     });

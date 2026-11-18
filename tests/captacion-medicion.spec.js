@@ -126,6 +126,19 @@ test.describe('medición first-party (Fase 2)', () => {
     expect(bloque).not.toMatch(/email|phone|nombre|full_name/i);
   });
 
+  test('tracking.js NO mide en localhost (los tests ensuciaban la medición real)', () => {
+    // Los tests de Playwright del repo corren en http://localhost:8788 → el
+    // beacon mandaba sus eventos a la función REAL de producción: el primer
+    // día llenó page_events con 392 eventos de test (132 "visitas" a la
+    // landing, 68 "clics a WhatsApp") → el panel mostraba datos FALSOS.
+    expect(trackingJs).toContain('function isLocalHost()');
+    expect(trackingJs).toContain('function trackingAllowed()');
+    expect(trackingJs).toContain('BH_TRACKING_ALLOW_LOCAL');
+    // Y el envío pasa por trackingAllowed (no sólo por el opt-out).
+    const send = trackingJs.slice(trackingJs.indexOf('function send(event, params)'));
+    expect(send.slice(0, 200)).toContain('if (!trackingAllowed()) return;');
+  });
+
   test('el panel de métricas existe en el admin y llama a bh_web_metrics', () => {
     expect(adminHtml).toContain('id="webMetricsPanel"');
     expect(adminHtml).toContain('id="webMetricsPanelBody"');

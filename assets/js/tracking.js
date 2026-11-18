@@ -35,6 +35,32 @@
     try { return localStorage.getItem(OPT_OUT_KEY) === '1'; } catch (_) { return false; }
   }
 
+  /* -----------------------------------------------------------
+     ¿Estamos en un entorno local?
+     POR QUÉ (18/11/2026): los tests de Playwright del repo corren
+     contra `http://localhost:8788` → el beacon mandaba los eventos
+     de los tests a la función REAL de producción y `page_events` se
+     llenó de basura (392 eventos de test en el primer día: 132
+     "visitas" a la landing, 68 "clics a WhatsApp" que en realidad
+     eran clics del test). Con esos números el panel de métricas
+     muestra datos FALSOS → el mismo error que se acaba de corregir
+     con el "landing 0/mes".
+     En local no se mide nada. Para poder probar el tracking en
+     local se pone `window.BH_TRACKING_ALLOW_LOCAL = true` antes de
+     que cargue este script (lo usa tests/wa-handoff.spec.js).
+     ----------------------------------------------------------- */
+  function isLocalHost() {
+    var h = String(location.hostname || '').toLowerCase();
+    return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h === '[::1]'
+      || h === '0.0.0.0' || /\.local$/.test(h) || /\.localhost$/.test(h);
+  }
+
+  function trackingAllowed() {
+    if (optedOut()) return false;
+    if (isLocalHost() && !window.BH_TRACKING_ALLOW_LOCAL) return false;
+    return true;
+  }
+
   function sessionId() {
     try {
       var sid = sessionStorage.getItem(SID_KEY);
@@ -97,7 +123,7 @@
   }
 
   function send(event, params) {
-    if (optedOut()) return;
+    if (!trackingAllowed()) return;
     try {
       var body = JSON.stringify(buildPayload(event, params));
       /* sendBeacon (fire-and-forget) es el mecanismo estándar para
@@ -178,7 +204,7 @@
 
   /* page_view: una vez por carga de página. */
   function trackPageView() {
-    if (optedOut()) return;
+    if (!trackingAllowed()) return;
     send('page_view', { page: inferPage(location.pathname || '/') });
   }
 
