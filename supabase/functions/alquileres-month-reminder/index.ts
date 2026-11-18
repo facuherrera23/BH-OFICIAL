@@ -122,7 +122,12 @@ Deno.serve(async (req: Request) => {
     const monthStart = currentMonthStartIso();
 
     /* Usuarios con administración activa (props) a quienes falta cerrar el
-       mes previo. Service role: atraviesa el RLS de alquileres_state. */
+       mes previo. Service role: atraviesa el RLS de alquileres_state.
+       ⚠️ "Administración activa" = tiene propiedades Y los datos de la
+       inmobiliaria cargados (state->'corr'->'n'). Sin este criterio, una fila
+       de PRUEBA (o un usuario que abrió el módulo pero no cargó nada) recibía
+       el recordatorio igual — y el dueño recibía emails por filas que no
+       existen (hallazgo de la auditoría 2026-11-18). */
     const { data: rows, error: rowsErr } = await supabase
       .from("alquileres_state")
       .select("user_id, state, updated_at");
@@ -131,12 +136,20 @@ Deno.serve(async (req: Request) => {
     const pendientes = (rows || []).filter((r: any) => {
       const st = r.state || {};
       if (!Array.isArray(st.props) || st.props.length === 0) return false;
+      const nombre = String((st.corr || {}).n || "").trim();
+      if (!nombre) return false; // administración no configurada → no es una administración real
       const hist = st.hist || {};
       return !hist[prevYm]; // el mes previo no fue cerrado
     });
 
     if (!pendientes.length) {
-      return jsonResponse(200, { checked: (rows || []).length, pendientes: 0, reminded: 0, month: prevYm }, req);
+      return jsonResponse(200, {
+        checked: (rows || []).length,
+        pendientes: 0,
+        reminded: 0,
+        month: prevYm,
+        detalle: 'sin administración activa pendiente de cerrar ' + prevYm,
+      }, req);
     }
 
     /* Dedupe: un solo recordatorio por mes (el cron corre los días 2 y 3). */

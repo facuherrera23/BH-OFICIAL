@@ -179,7 +179,10 @@ test.describe('alquileres-app.js — controlador Supabase', () => {
 
   test('el hook __ALQ_SNAPSHOT_PRE existe en el controlador (best-effort, sin IIFE)', () => {
     expect(app).toContain('async function alqSnapshotPre(label)');
-    expect(app).toContain('window.__ALQ_SNAPSHOT_PRE = (label) => { alqSnapshotPre(label); };');
+    // 2026-11-18: DEVUELVE la promesa (el core la espera con `await` antes de
+    // reemplazar el estado al importar un archivo → el respaldo queda en la
+    // nube ANTES del cambio). La forma anterior (sin return) no servía.
+    expect(app).toContain('window.__ALQ_SNAPSHOT_PRE = (label) => alqSnapshotPre(label);');
     // inserta en alquileres_snapshots con copia profunda (el estado sigue mutando)
     expect(app).toMatch(/alquileres_snapshots'\)\.insert\(\{[\s\S]*?user_id: alqUser\.id,[\s\S]*?label: label,[\s\S]*?state: copy/);
   });
@@ -569,6 +572,11 @@ test.describe('Bloque 2 — KPIs en Dashboard, vencimientos y recordatorio de ci
     // detección: hist sin la clave 'YYYY-MM' del mes previo + props activas
     expect(fn).toMatch(/!Array\.isArray\(st\.props\) \|\| st\.props\.length === 0/);
     expect(fn).toMatch(/!hist\[prevYm\]/);
+    // 2026-11-18 (auditoría): "administración activa" = props + datos de la
+    // inmobiliaria cargados (state->'corr'->'n'). Sin esto, la fila de PRUEBA
+    // (1 prop '001', sin corr) recibía el recordatorio igual.
+    expect(fn).toMatch(/const nombre = String\(\(st\.corr \|\| \{\}\)\.n \|\| ""\)\.trim\(\)/);
+    expect(fn).toMatch(/if \(!nombre\) return false;/);
     // dedupe: un solo email por mes vía audit_log
     expect(fn).toMatch(/\.eq\("action", "alq_month_reminder"\)/);
     expect(fn).toMatch(/\.gte\("created_at", monthStart\)/);
@@ -774,6 +782,118 @@ test.describe('alquileres: auditoría 2026-11-16 (post revert del borrado por fi
     const app = read('assets/js/alquileres-app.js');
     expect(app).toMatch(/remoteMs !== localMs/);
     expect(app).not.toMatch(/remoteMs > localMs|remoteMs >= localMs/);
+  });
+});
+
+test.describe('alquileres: auditoría 2026-11-18 (fixes de los 12 hallazgos)', () => {
+  let core, app, snapSql;
+  test.beforeAll(() => {
+    core = read('assets/js/alquileres-core.js');
+    app = read('assets/js/alquileres-app.js');
+    snapSql = read('supabase/migrations/20261118000001_alquileres_snapshots_hardening_retention.sql');
+  });
+
+  test('P3 #6: el concepto de los ítems extra y "última actualización" van escapados', () => {
+    // p.ex[].c se inyectaba en un atributo SIN esc() → un valor con " rompía
+    // el atributo (misma clase que se endureció en 4 puntos el 16/11).
+    expect(core).toMatch(/data-p="ex\.\$\{i\}\.c" value="\$\{esc\(e\.c\)\}"/);
+    expect(core).not.toMatch(/data-p="ex\.\$\{i\}\.c" value="\$\{e\.c\}"/);
+    // p.ult (concatenado en texto) también va escapado
+    expect(core).toMatch(/Última actualización: '\+esc\(p\.ult\)/);
+    expect(core).not.toMatch(/Última actualización: '\+p\.ult/);
+  });
+
+  test('P2 #3: importar() deja un RESPALDO previo antes de reemplazar el estado', () => {
+    // Antes pisaba el estado sin red de seguridad (a diferencia de "Restaurar
+    // respaldo", que sí llama __ALQ_SNAPSHOT_PRE).
+    expect(core).toMatch(/if\(window\.__ALQ_SNAPSHOT_PRE\)try\{await window\.__ALQ_SNAPSHOT_PRE\('Antes de importar '\+f\.name\)\}catch\(e\)\{\}/);
+    // en las DOS ramas: archivo .html embebido y archivo .json
+    const ocurrencias = (core.match(/Antes de importar /g) || []).length;
+    expect(ocurrencias, 'el respaldo previo debe estar en ambas ramas del import').toBeGreaterThanOrEqual(2);
+    // el import normaliza el estado importado (bhInitS) como el resto del módulo
+    expect(core).toMatch(/S\.props=S\.props\.map\(P\);bhInitS\(S\);mezclarHist\(\)/);
+    // bhInitS debe ser tolerante: el JSON importado puede no traer `corr`
+    // (si no, s.corr.dAgua reventaba al importar).
+    expect(core).toMatch(/function bhInitS\(s\)\{s\.props=s\.props\.map\(P\);s\.corr=s\.corr\|\|\{\};/);
+  });
+
+  test('P3 #9: el espejo de localStorage es LIVIANO (no el estado completo)', () => {
+    // Antes: 133 KB escritos de forma SÍNCRONA en cada edición (cuota 5-10 MB
+    // por origen) y el try/catch lo silenciaba.
+    expect(core).toMatch(/localStorage\.setItem\(dk\(\),JSON\.stringify\(\{saved:Date\.now\(\),kb:Math\.round\(j\.length\/1024\),props:/);
+    expect(core).not.toMatch(/localStorage\.setItem\(dk\(\),JSON\.stringify\(\{saved:Date\.now\(\),j\}\)\)/);
+    // el controlador escribe el mismo espejo liviano
+    expect(app).toMatch(/localStorage\.setItem\(dk\(\), JSON\.stringify\(\{ saved: Date\.now\(\), kb: Math\.round\(snap\.length \/ 1024\), props:/);
+    expect(app).not.toMatch(/localStorage\.setItem\(dk\(\), JSON\.stringify\(\{ saved: Date\.now\(\), j: snap \}\)\)/);
+  });
+
+  test('P3 #7: el módulo detecta un BUILD VIEJO cargado (banner + recarga)', () => {
+    // El panel admin lo hace con checkStaleBuild(); el módulo no → una pestaña
+    // vieja conservaba el core previo (el comportamiento que pisaba el
+    // Historial antes del fix de la firma).
+    expect(app).toMatch(/async function alqCheckStaleBuild\(\)/);
+    expect(app).toMatch(/alquileres-core\\\.js/);
+    expect(app).toMatch(/cache: 'no-store'/);
+    expect(app).toMatch(/function alqStaleBanner\(curV, newV\)/);
+    expect(app).toMatch(/Hay una versión nueva del módulo de alquileres/);
+    expect(app).toMatch(/Recargar ahora/);
+    expect(app).toMatch(/window\.location\.reload\(\)/);
+    // se llama en el boot
+    expect(app).toMatch(/alqCheckStaleBuild\(\);/);
+    // sin IIFE (el guard anti-IIFE del módulo lo mataría)
+    expect(app.includes('(() => {')).toBe(false);
+  });
+
+  test('P3 #4: UPDATE/DELETE de snapshots revocados a authenticated (inmutables)', () => {
+    // El GRANT implícito de Supabase dejaba arwdDxtm; la intención de la
+    // migración 20261114000004 era "sin UPDATE/DELETE" (no explotable: no hay
+    // policies → la RLS bloquea toda fila, pero el ACL no coincidía).
+    expect(snapSql).toMatch(/revoke update, delete on public\.alquileres_snapshots from authenticated;/i);
+  });
+
+  test('P3 #5: retención de snapshots — ARCHIVA antes de borrar (nada se borra sin copia)', () => {
+    // tabla espejo de archivo, RLS ON sin policies (club service_role)
+    expect(snapSql).toMatch(/create table if not exists public\.alquileres_snapshots_archive/);
+    expect(snapSql).toMatch(/alter table public\.alquileres_snapshots_archive enable row level security/i);
+    expect(snapSql).toMatch(/revoke all on public\.alquileres_snapshots_archive from anon/i);
+    expect(snapSql).toMatch(/revoke all on public\.alquileres_snapshots_archive from authenticated/i);
+    expect(snapSql).toMatch(/grant all on public\.alquileres_snapshots_archive to service_role/i);
+    // función SECDEF con search_path vacío y sólo service_role
+    expect(snapSql).toMatch(/create or replace function public\.bh_archive_alquileres_snapshots\(/);
+    expect(snapSql).toMatch(/security definer/i);
+    expect(snapSql).toMatch(/set search_path to ''/i);
+    expect(snapSql).toMatch(/revoke all on function public\.bh_archive_alquileres_snapshots\(integer, integer\) from public/i);
+    expect(snapSql).toMatch(/revoke all on function public\.bh_archive_alquileres_snapshots\(integer, integer\) from authenticated/i);
+    expect(snapSql).toMatch(/grant execute on function public\.bh_archive_alquileres_snapshots\(integer, integer\) to service_role/i);
+    // COPIA antes del DELETE (el orden importa: si se invierte, se pierde data)
+    const ins = snapSql.indexOf('insert into public.alquileres_snapshots_archive');
+    const del = snapSql.indexOf('delete from public.alquileres_snapshots');
+    expect(ins, 'debe archivar antes de borrar').toBeGreaterThan(-1);
+    expect(del, 'debe borrar de la tabla operativa').toBeGreaterThan(-1);
+    expect(ins, 'el INSERT en el archivo tiene que ir ANTES del DELETE').toBeLessThan(del);
+    // doble condición: antigüedad + fuera de los p_keep más recientes por usuario
+    expect(snapSql).toMatch(/s\.created_at < now\(\) - make_interval\(days => greatest\(p_max_age_days, 0\)\)/);
+    expect(snapSql).toMatch(/limit greatest\(p_keep, 0\)/);
+    // cron diario junto con las demás retenciones
+    expect(snapSql).toMatch(/cron\.schedule\(\s*'bh-alquileres-snapshots-retention',\s*'15 11 \* \* \*'/);
+  });
+
+  test('P2 #1 y #2: "administración activa" = props + datos de la inmobiliaria (corr.n)', () => {
+    // Sin este criterio, la fila de PRUEBA (1 prop '001', sin corr) recibía
+    // los recordatorios de cierre y podía tapar los KPIs del operador real.
+    const fn = read('supabase/functions/alquileres-month-reminder/index.ts');
+    expect(fn).toMatch(/\(st\.corr \|\| \{\}\)\.n/);
+    // La RPC se corrige en una migración NUEVA (20261118000002): la 20261115000001
+    // ya está aplicada en producción → editarla no llegaría a prod.
+    const sql = read('supabase/migrations/20261118000002_alquileres_dashboard_kpis_active_admin.sql');
+    expect(sql).toMatch(/create or replace function public\.alquileres_dashboard_kpis\(\)/);
+    expect(sql).toMatch(/s\.state->'corr'->>'n'/);
+    expect(sql).toMatch(/coalesce\(btrim\(s\.state->'corr'->>'n'\), ''\) <> ''/);
+    // desempate determinista ante updated_at empatado
+    expect(sql).toMatch(/order by s\.updated_at desc nulls last, s\.user_id/i);
+    // los permisos no cambian (idem)
+    expect(sql).toMatch(/revoke all on function public\.alquileres_dashboard_kpis\(\) from anon/i);
+    expect(sql).toMatch(/grant execute on function public\.alquileres_dashboard_kpis\(\) to authenticated/i);
   });
 });
 

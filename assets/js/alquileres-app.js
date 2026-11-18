@@ -165,7 +165,47 @@ async function alqSnapshotPre(label) {
     if (error) console.error('[alquileres] snapshot pre:', error);
   } catch (e) { console.error('[alquileres] snapshot pre:', e); }
 }
-window.__ALQ_SNAPSHOT_PRE = (label) => { alqSnapshotPre(label); };
+/* El hook DEVUELVE la promesa (2026-11-18): el core lo espera con `await`
+   antes de reemplazar el estado (importar un archivo), para que el respaldo
+   previo esté en la nube ANTES de que el estado cambie. */
+window.__ALQ_SNAPSHOT_PRE = (label) => alqSnapshotPre(label);
+
+/* ---------- Detección de build viejo (2026-11-18) ----------
+   El panel admin tiene checkStaleBuild(); el módulo no. Una pestaña abierta
+   antes de un deploy sigue con el core viejo en memoria → puede repetir el
+   comportamiento viejo (caso real 17/11: la versión previa pisaba el
+   Historial). Compara el ?v= del core cargado contra el que sirve
+   producción (mismo origen, sin caché) y avisa con un banner + recarga.
+   Silencioso si no hay red o si el HTML no se puede leer. */
+async function alqCheckStaleBuild() {
+  try {
+    const tag = document.querySelector('script[src*="alquileres-core.js"]');
+    if (!tag) return;
+    const curV = (tag.getAttribute('src') || '').match(/[?&]v=(\d+)/);
+    if (!curV) return;
+    const res = await fetch('alquileres.html?stale=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const html = await res.text();
+    const newV = html.match(/alquileres-core\.js\?v=(\d+)/);
+    if (!newV || newV[1] === curV[1]) return;
+    alqStaleBanner(curV[1], newV[1]);
+  } catch (_) { /* sin red: no se avisa, no se rompe nada */ }
+}
+function alqStaleBanner(curV, newV) {
+  if (document.getElementById('alqStale')) return;
+  const d = document.createElement('div');
+  d.id = 'alqStale';
+  d.style.cssText = 'position:sticky;top:0;z-index:1100;background:#7A2E1D;color:#fff;padding:10px 14px;display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;font-size:13px;font-weight:700;border-bottom:1px solid rgba(255,255,255,.15)';
+  const t = document.createElement('span');
+  t.textContent = 'Hay una versión nueva del módulo de alquileres (v' + newV + ' · esta pestaña tiene la v' + curV + '). Recargá antes de seguir trabajando.';
+  const b = document.createElement('button');
+  b.textContent = 'Recargar ahora';
+  b.style.cssText = 'background:#fff;color:#7A2E1D;border:0;border-radius:9999px;padding:7px 16px;font-weight:700;cursor:pointer;font-family:inherit';
+  b.addEventListener('click', () => { window.location.reload(); });
+  d.appendChild(t); d.appendChild(b);
+  document.body.insertBefore(d, document.body.firstChild);
+  alqNotifyHeight();
+}
 
 /* ---------- Toast propio (no depende del panel cuando corre standalone) ---------- */
 function alqToast(msg, ms) {
@@ -551,7 +591,7 @@ async function syncNow() {
     rowStamp = sentAt; // el stamp remoto ahora es el que acabamos de escribir
     DIRTY = JSON.stringify(S) !== LAST;
     SAVEDAT = new Date(sentAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
-    try { localStorage.setItem(dk(), JSON.stringify({ saved: Date.now(), j: snap })); } catch (_) {}
+    try { localStorage.setItem(dk(), JSON.stringify({ saved: Date.now(), kb: Math.round(snap.length / 1024), props: Array.isArray(S.props) ? S.props.length : 0 })); } catch (_) {}
   } catch (err) {
     console.error('[alquileres] guardado:', err);
     saveError = true;
@@ -724,6 +764,10 @@ if (OKCFG) {
   });
 
   init();
+
+  /* Build viejo: si producción ya sirve otra versión del core, esta pestaña
+     lo avisa (y ofrece recargar) en vez de seguir con el comportamiento viejo. */
+  alqCheckStaleBuild();
 
   /* Diagnóstico si la librería no cargó (vendor roto, etc.) */
   setTimeout(function check() {
