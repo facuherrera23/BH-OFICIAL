@@ -1378,7 +1378,27 @@
 <i class="fas fa-arrows-rotate">
 </i> Sincronizar Todo</button>
 </div>        <div class="portals-grid" id="portalsContainer">
-</div>        <div id="relaPortalPanel">
+</div>        <div class="glass-panel" id="captacionPanel" style="margin-top:16px;">
+      <h3 class="panel-title" style="font-size:16px; margin-bottom:4px;">Estado de captación</h3>
+      <p style="color:var(--text-muted); font-size:12px; margin-bottom:10px;">¿Entran consultas de verdad? Última consulta recibida por canal (no solo "conectado").</p>
+      <div id="captacionPanelBody">
+        <p style="font-size:12px; color:var(--text-dim);">Cargando estado de los canales…</p>
+      </div>
+    </div>        <div class="glass-panel" id="webMetricsPanel" style="margin-top:16px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div>
+          <h3 class="panel-title" style="font-size:16px; margin-bottom:4px;">Métricas del sitio</h3>
+          <p style="color:var(--text-muted); font-size:12px;">Tráfico y conversiones medidas por nosotros (sin cookies, sin PII).</p>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button type="button" class="btn-action" data-web-metrics="7" style="font-size:12px;">7 días</button>
+          <button type="button" class="btn-action" data-web-metrics="30" style="font-size:12px;">30 días</button>
+        </div>
+      </div>
+      <div id="webMetricsPanelBody">
+        <p style="font-size:12px; color:var(--text-dim);">Cargando métricas del sitio…</p>
+      </div>
+    </div>        <div id="relaPortalPanel">
 </div>
 <div id="lavozPortalPanel">
 </div>
@@ -3576,7 +3596,7 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 <script defer src="assets/js/yt-seo-score.js?v=3"></script>
 <script defer src="assets/js/social-inbox.js?v=3"></script>
 <script defer src="assets/js/admin-contenido.js?v=25"></script>
-<script defer src="assets/js/admin-portales.js?v=26"></script>
+<script defer src="assets/js/admin-portales.js?v=28"></script>
 <script defer src="assets/js/admin-tasaciones.js?v=12"></script>
 <script defer src="assets/js/admin-supervision-panel.js?v=4"></script>
 <script defer src="assets/js/admin-ficha.js?v=2"></script>

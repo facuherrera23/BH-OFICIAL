@@ -177,10 +177,183 @@
       </div>`;
     }).join('');
 
+    loadCaptacionPanel();
+    loadWebMetricsPanel();
     loadRelaPanel();
     loadLavozPanel();
     loadSyncHistory();
     loadMlQuestionsPanel();
+  }
+
+  /* ------------------------------------------------
+     ESTADO DE CAPTACIÓN (RPC bh_captacion_status)
+     Por qué existe (auditoría 18/11/2026): el panel decía
+     "Mercado Libre · Conectado · 25 avisos activos" mientras ML llevaba
+     7 DÍAS sin entregar una sola consulta (0 eventos vis_leads). El dueño
+     no tenía forma de enterarse: faltaba el dato "¿entran consultas?".
+     Este panel muestra, por canal, publicaciones/leads y la fecha de la
+     ÚLTIMA consulta (con los días de silencio).
+     ------------------------------------------------ */
+  const CAPTACION_ESTADOS = {
+    ok:                 { color: 'var(--success)', label: 'Trayendo consultas' },
+    sin_consultas:      { color: 'var(--danger)',  label: 'Sin consultas' },
+    sin_callbacks:      { color: 'var(--danger)',  label: 'Sin callbacks' },
+    avisos_bloqueados:  { color: 'var(--warning)', label: 'Avisos bloqueados' },
+    sin_publicaciones:  { color: 'var(--warning)', label: 'Sin publicaciones' },
+    sin_avisos:         { color: 'var(--warning)', label: 'Sin avisos' },
+    sin_captura:        { color: 'var(--warning)', label: 'Sin capturas' },
+  };
+
+  function captacionFecha(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '—' : d.toLocaleString('es-AR');
+  }
+
+  function captacionFila(ch, d) {
+    const est = CAPTACION_ESTADOS[d.estado] || { color: 'var(--text-dim)', label: d.estado || '—' };
+    const ultimo = d.ultimo_lead
+      ? `${captacionFecha(d.ultimo_lead)} (hace ${d.silencio_dias ?? 0} d)`
+      : 'nunca';
+    let metricas = '';
+    let hint = '';
+    if (ch.key === 'ml') {
+      metricas = `${d.publicaciones_activas} publicaciones activas · ${d.leads_7d} consultas (7 d) · ${d.leads_30d} (30 d)`;
+      hint = d.estado === 'sin_consultas'
+        ? 'Las publicaciones están activas pero no entra ninguna consulta: revisá que tengan stock y que el tópico VIS Leads siga habilitado en el gestor de aplicaciones de ML.'
+        : (d.estado === 'sin_publicaciones' ? 'No hay publicaciones activas en Mercado Libre.' : '');
+    } else if (ch.key === 'rela') {
+      metricas = `${d.avisos_publicados} avisos publicados · ${d.avisos_bloqueados} bloqueados · ${d.leads_7d} leads (7 d) · ${d.leads_30d} (30 d)`;
+      hint = d.estado === 'avisos_bloqueados'
+        ? 'Los avisos están bloqueados (falta el pack/créditos de producción en QuintoAndar). Mientras tanto, las consultas de RELA entran a mano.'
+        : (d.estado === 'sin_callbacks'
+          ? 'Hay avisos publicados pero no llega ningún callback: el endpoint de callbacks puede no estar configurado en el panel de RELA.'
+          : '');
+    } else {
+      metricas = `${d.leads_7d} leads (7 d) · ${d.leads_30d} (30 d)`;
+      hint = d.estado === 'sin_captura'
+        ? 'El sitio todavía no tiene medición de tráfico (GA4/Clarity solo cargan con consentimiento): no se sabe si entra gente ni cuánto.'
+        : '';
+    }
+    const hintHtml = hint
+      ? `<p style="font-size:11px; color:var(--text-muted); margin:6px 0 0; line-height:1.45;">${esc(hint)}</p>`
+      : '';
+    return `
+      <div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:12px 0; border-bottom:1px solid var(--line);">
+        <i class="${ch.icon}" style="font-size:15px; color:var(--text-muted); width:22px; text-align:center;"></i>
+        <div style="flex:1; min-width:220px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <strong style="font-size:13px; color:#fff;">${esc(ch.label)}</strong>
+            <span style="font-size:10px; padding:2px 8px; border-radius:999px; background:${est.color}22; color:${est.color}; font-weight:600;">${esc(est.label)}</span>
+          </div>
+          <p style="font-size:11px; color:var(--text-dim); margin:4px 0 0;">${esc(metricas)}</p>
+          <p style="font-size:11px; color:var(--text-muted); margin:2px 0 0;">Último lead: ${esc(ultimo)}</p>
+          ${hintHtml}
+        </div>
+      </div>`;
+  }
+
+  async function loadCaptacionPanel() {
+    const el = $('#captacionPanelBody');
+    if (!el || !window.supabaseClient) return;
+    const { data, error } = await window.supabaseClient.rpc('bh_captacion_status');
+    if (error) {
+      logWarn('captacion: error leyendo el estado: ' + error.message);
+      el.innerHTML = '<p style="font-size:12px; color:var(--text-dim);">No se pudo leer el estado de captación.</p>';
+      return;
+    }
+    const st = data || {};
+    const canales = [
+      { key: 'ml', label: 'Mercado Libre', icon: 'fas fa-shopping-cart' },
+      { key: 'rela', label: 'RELA / ZonaProp', icon: 'fas fa-building' },
+      { key: 'web', label: 'Web (landing + fichas)', icon: 'fas fa-globe' },
+    ];
+    el.innerHTML = canales.map(c => captacionFila(c, st[c.key] || {})).join('');
+  }
+
+  /* ------------------------------------------------
+     MÉTRICAS WEB (RPC bh_web_metrics)
+     Por qué existe (auditoría 18/11/2026): el sitio no tenía NINGÚN dato
+     de tráfico. GA4/Clarity solo cargan con consentimiento 'all' → casi
+     ninguna visita se veía y 'bhTrack' era un no-op. Ahora hay medición
+     first-party propia (tabla page_events, sin cookies ni PII): vistas,
+     clicks a WhatsApp, formularios y las páginas más vistas.
+     ------------------------------------------------ */
+  let WEB_METRICAS_DIAS = 7;
+
+  function webMetricaCard(label, valor, extra) {
+    return `
+      <div style="flex:1; min-width:120px; padding:12px 14px; border-radius:12px; background:rgba(255,255,255,.03); border:1px solid var(--line);">
+        <div style="font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-dim);">${esc(label)}</div>
+        <div style="font-size:22px; font-weight:700; color:#fff; margin-top:4px; line-height:1;">${esc(valor)}</div>
+        ${extra ? `<div style="font-size:10.5px; color:var(--text-muted); margin-top:4px;">${esc(extra)}</div>` : ''}
+      </div>`;
+  }
+
+  async function loadWebMetricsPanel(dias) {
+    const el = $('#webMetricsPanelBody');
+    if (!el || !window.supabaseClient) return;
+    const d = dias || WEB_METRICAS_DIAS;
+    const { data, error } = await window.supabaseClient.rpc('bh_web_metrics', { p_dias: d });
+    if (error) {
+      logWarn('web metrics: error leyendo métricas: ' + error.message);
+      el.innerHTML = '<p style="font-size:12px; color:var(--text-dim);">No se pudieron leer las métricas del sitio.</p>';
+      return;
+    }
+    const m = data || {};
+    const top = Array.isArray(m.top_paginas) ? m.top_paginas : [];
+    const eventos = Array.isArray(m.por_evento) ? m.por_evento : [];
+    const diasTxt = d === 7 ? '7 días' : `${d} días`;
+
+    const eventosHtml = eventos.length
+      ? eventos.map(ev => `<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:999px;background:rgba(255,255,255,.05);font-size:11px;color:var(--text-muted);">${esc(ev.event)} <b style="color:#fff;">${esc(ev.n)}</b></span>`).join('')
+      : '<span style="font-size:11.5px;color:var(--text-dim);">Sin eventos registrados todavía.</span>';
+
+    const topHtml = top.length
+      ? `<table style="width:100%; border-collapse:collapse; font-size:12px; margin-top:8px;">
+          <tbody>${top.map(p => `
+            <tr style="border-bottom:1px solid var(--line);">
+              <td style="padding:6px 0; color:var(--text-muted);">${esc(p.path)}</td>
+              <td style="padding:6px 0; text-align:right; color:#fff; font-weight:600;">${esc(p.vistas)}</td>
+            </tr>`).join('')}</tbody>
+        </table>`
+      : '<p style="font-size:11.5px;color:var(--text-dim);margin-top:8px;">Sin páginas vistas registradas todavía.</p>';
+
+    el.innerHTML = `
+      <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+        ${webMetricaCard('Vistas', m.vistas_7d ?? 0, `últimos ${diasTxt}`)}
+        ${webMetricaCard('Clicks WhatsApp', m.wa_clicks_7d ?? 0, `últimos ${diasTxt}`)}
+        ${webMetricaCard('Formularios', `${m.form_starts_7d ?? 0} / ${m.form_submits_7d ?? 0}`, 'iniciados / enviados (7 d)')}
+        ${webMetricaCard('Leads web', m.leads_web_7d ?? 0, `${m.leads_web_30d ?? 0} en 30 días`)}
+        ${webMetricaCard('Tasa de envío', `${m.tasa_form_7d ?? 0}%`, 'envíos / vistas (7 d)')}
+      </div>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:4px;">
+        <span style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em;">Eventos (${esc(diasTxt)})</span>
+        ${eventosHtml}
+      </div>
+      <div style="margin-top:12px;">
+        <span style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em;">Páginas más vistas</span>
+        ${topHtml}
+      </div>
+      <p style="font-size:11px; color:var(--text-muted); margin:12px 0 0; line-height:1.5;">
+        Medición propia sin cookies: no guardamos IP, email ni nombre. Cada visita genera un identificador de sesión que se borra al cerrar la pestaña.
+        El visitante puede pedir que no lo midamos desde el pie del sitio.
+      </p>`;
+  }
+
+  const webMetricsPanelEl = $('#webMetricsPanel');
+  if (webMetricsPanelEl && !webMetricsPanelEl.dataset.metricsBound) {
+    webMetricsPanelEl.dataset.metricsBound = '1';
+    webMetricsPanelEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-web-metrics]');
+      if (!btn) return;
+      const d = parseInt(btn.dataset.webMetrics, 10) || 7;
+      WEB_METRICAS_DIAS = d;
+      webMetricsPanelEl.querySelectorAll('[data-web-metrics]').forEach(b => {
+        b.style.opacity = (b === btn) ? '1' : '0.6';
+      });
+      loadWebMetricsPanel(d);
+    });
   }
 
   async function loadMlQuestionsPanel() {

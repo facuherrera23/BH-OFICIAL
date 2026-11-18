@@ -85,6 +85,7 @@ const CALLED_WITHOUT_JWT = [
   // — Endpoints pre-login (visitante anónimo) —
   { fn: 'contact-submit', caller: 'form de contacto del landing' },
   { fn: 'tasacion-submit', caller: 'solicitud de tasación pública' },
+  { fn: 'track-event', caller: 'assets/js/tracking.js (medición first-party del sitio, sin cookies)' },
   // — Consumidores externos que no pueden mandar JWT —
   { fn: 'ics-feed', caller: 'suscripción de calendario externa (Google/Apple/Outlook via ?token=)' },
   // — Webhooks externos (la red externa no manda JWT) —

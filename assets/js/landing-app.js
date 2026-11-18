@@ -337,13 +337,17 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
     if (btn) openPropertyModal(btn.dataset.propertyId);
   });
 
-  /* CONVERSIÓN 2026-10-26: tracking delegado de clicks de WhatsApp y links
-     a fichas. bhTrack es no-op sin consentimiento, así que esto no hace
-     nada para usuarios que no aceptaron cookies. */
+  /* CONVERSIÓN 2026-10-26 / 2026-11-18: tracking de clicks de WhatsApp y
+     links a fichas.
+     - 2026-11-18: el click a WhatsApp ahora pasa por el HANDOFF
+       (assets/js/wa-handoff.js): pide 1 dato (teléfono), crea el lead con
+       origen 'whatsapp' y después abre el chat. Ese script trackea el
+       'wa_click' una sola vez (marca data-bh-wa-tracked) → acá no se
+       vuelve a trackear, o se duplicaría el evento. */
   document.addEventListener('click', (e) => {
     if (typeof window.bhTrack !== 'function') return;
     const wa = e.target.closest('a[href*="wa.me"]');
-    if (wa) {
+    if (wa && !wa.hasAttribute('data-bh-wa-tracked')) {
       const origin = wa.id === 'propertyWhatsAppCta'
         ? 'modal_propiedad'
         : (wa.classList.contains('whatsapp-float') ? 'boton_flotante' : 'sitio');

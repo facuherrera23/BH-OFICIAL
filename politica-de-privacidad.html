@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Política de Privacidad | Bienenhaus Propiedades</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.cloudinary.com https://res.cloudinary.com;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' https://*.supabase.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.cloudinary.com https://res.cloudinary.com;">
   <style>
     :root { --bg: #05070A; --card: rgba(255,255,255,0.03); --line: rgba(255,255,255,0.08); --accent: #1FC8C3; --text: #F8FAFC; --text-dim: #CBD5E1; --text-muted: #8E9BAE; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -40,7 +40,7 @@
     </a>
 
     <h1>Política de Privacidad</h1>
-    <div class="meta">Última actualización: octubre de 2026 · Córdoba, Argentina</div>
+    <div class="meta">Última actualización: noviembre de 2026 · Córdoba, Argentina</div>
 
     <h2>1. Responsable del tratamiento</h2>
     <p><strong>Bienenhaus Propiedades</strong> — CPI 1834 — Córdoba, Argentina.<br>
@@ -87,11 +87,20 @@
     <h2>7. Cookies y analítica</h2>
     <p>El sitio utiliza los siguientes mecanismos de medición:</p>
     <ul>
+      <li><strong>Medición propia (Bienenhaus):</strong> registramos de forma agregada qué páginas se ven y qué acciones se hacen (por ejemplo, hacer clic en el botón de WhatsApp o enviar el formulario). <strong>No usamos cookies</strong>, no guardamos tu dirección IP, tu nombre, tu email ni tu teléfono en esa medición, ni leemos huellas del navegador. Cada visita genera un identificador de sesión que se borra al cerrar la pestaña y que sirve únicamente para contar sesiones, no para identificarte. Podés desactivarla con el botón "No medirme" de esta página.</li>
       <li><strong>Cloudflare Web Analytics:</strong> mide el tráfico de forma agregada y anónima, sin cookies de identificación personal.</li>
       <li><strong>Google Analytics 4:</strong> cookie <code>_ga</code> para distinguir usuarios. <strong>Solo se carga si aceptás las cookies</strong> en el banner.</li>
       <li><strong>Microsoft Clarity:</strong> cookies <code>_clck</code> y <code>_clsk</code> para análisis de comportamiento. <strong>Solo se carga si aceptás las cookies</strong> en el banner.</li>
     </ul>
     <p>Podés rechazar las cookies no esenciales en el banner que aparece al visitar el sitio, y cambiar tu decisión en cualquier momento borrando el almacenamiento local de tu navegador.</p>
+    <div class="legal-note">
+      <strong>Medición desactivada:</strong>
+      <button type="button" data-bh-track-optout style="margin-left:8px;padding:8px 16px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--accent);font-size:13px;cursor:pointer;font-family:inherit;">No medirme</button>
+      <div style="margin-top:8px;font-size:12.5px;">Con este botón dejás de registrar tus visitas en nuestro sistema de medición. Podés volver a activarla cuando quieras.</div>
+    </div>
+
+    <h2>7 bis. Cuando nos dejás tu teléfono para escribirte por WhatsApp</h2>
+    <p>Si hacés clic en "Consultar por WhatsApp" en una ficha o en el sitio, te mostramos un paso opcional para dejar tu teléfono. Si lo dejás, lo guardamos en nuestro CRM (sistema de gestión de clientes) junto con la página desde la que consultaste y la propiedad que te interesa, para poder responderte. Ese teléfono <strong>no</strong> se guarda en la medición del sitio ni se comparte con terceros. Podés pedir su eliminación escribiendo a <a href="mailto:bienenhaus.propiedades@gmail.com">bienenhaus.propiedades@gmail.com</a>. Si preferís no dejar tus datos, podés seguir escribiendo por WhatsApp sin registrarlas.</p>
 
     <h2>8. Tus derechos (Ley 25.326)</h2>
     <p>Podés ejercer tus derechos de <strong>acceso, rectificación, actualización y supresión</strong> de tus datos personales escribiendo a <a href="mailto:bienenhaus.propiedades@gmail.com">bienenhaus.propiedades@gmail.com</a>. Respondemos en un plazo razonable. La Ley 25.326 establece en su art. 14 que el titular puede solicitar la supresión de sus datos cuando sean innecesarios para el fin para el cual fueron recolectados. La Agencia de Acceso a la Información Pública (AAIP) es el órgano de control.</p>
@@ -120,7 +129,7 @@
     <p>Protegemos tus datos personales con las siguientes medidas técnicas:</p>
     <ul>
       <li><strong>Encriptación en tránsito:</strong> todo el tráfico del sitio usa HTTPS/TLS 1.2+.</li>
-      <li><strong>Control de acceso granular (RLS):</strong> las 63 tablas de la base de datos tienen políticas de seguridad que restringen qué datos puede ver cada tipo de usuario (anónimo, autenticado, administrador).</li>
+      <li><strong>Control de acceso granular (RLS):</strong> todas las tablas de la base de datos tienen políticas de seguridad que restringen qué datos puede ver cada tipo de usuario (anónimo, autenticado, administrador).</li>
       <li><strong>Autenticación obligatoria:</strong> el panel administrativo exige usuario y contraseña; no hay acceso sin sesión.</li>
       <li><strong>Rate limiting:</strong> los formularios públicos tienen límites de frecuencia (5 envíos/hora por IP) y honeypot anti-bots.</li>
       <li><strong>Tokens con expiración:</strong> el portal del propietario usa enlaces temporales que expiran automáticamente.</li>
@@ -138,5 +147,6 @@
 
     Volver al inicio</a>
   </div>
+  <script src="/assets/js/tracking.js?v=1" defer></script>
 </body>
 </html>

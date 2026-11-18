@@ -203,6 +203,10 @@ jobs:
           # Apple Calendar y Outlook piden la URL con ?token= y no pueden
           # mandar JWT; con verify_jwt ON la agenda de cada broker muere
           # en silencio (401 al refrescar la suscripción).
+          # track-event: medición first-party del sitio (sin cookies) — la
+          # llama el visitante anónimo desde assets/js/tracking.js; con
+          # verify_jwt ON el gateway responde 401 y no se registra ningún
+          # evento (el sitio volvería a quedar sin medición, en silencio).
           NO_VERIFY=(
             "backup-snapshot"
             "check-password-hash"
@@ -238,6 +242,7 @@ jobs:
             "supervision-notifications"
             "supervision-notify"
             "tasacion-submit"
+            "track-event"
             "trigger_commission_on_close"
             "visits-process-reminders"
             "alquileres-month-reminder"

@@ -57,6 +57,7 @@ export const RATE_LIMIT_CONFIG = {
     'social-comments': { requests: 30, windowMs: 60_000 }, // 30/min - bandeja FB/IG + leads
     'social-webhook-meta': { requests: 120, windowMs: 60_000 }, // 120/min - webhook Meta (ráfagas de página)
     'alquileres-portal-publish': { requests: 10, windowMs: 60_000 }, // 10/min - publicación de liquidaciones al portal (cierre de mes)
+    'track-event': { requests: 60, windowMs: 60_000 }, // 60/min - eventos del sitio (first-party, sin cookies)
 } as const;
 
 export type RateLimitFnName = keyof typeof RATE_LIMIT_CONFIG;

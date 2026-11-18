@@ -93,6 +93,14 @@
   };
 
   window.bhTrack = function (name, params) {
+    /* PRIMERO-PARTY (sin cookies) — SIEMPRE, salvo opt-out.
+       Es la única medición que funciona sin consentimiento de cookies:
+       el sitio estaba sin ningún dato de tráfico (auditoría 18/11/2026).
+       `tracking.js` es opcional: si no está, esto es un no-op seguro. */
+    try {
+      if (typeof window.bhTrackFirst === 'function') window.bhTrackFirst(name, params);
+    } catch (_) { /* no-op */ }
+    /* GA4 + Clarity: SOLO con consentimiento 'all' (AAIP). */
     try {
       if (typeof window.gtag === 'function') window.gtag('event', name, params || {});
       if (typeof window.clarity === 'function') window.clarity('event', name);

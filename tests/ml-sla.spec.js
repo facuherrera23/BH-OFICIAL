@@ -77,8 +77,11 @@ test.describe('SLA de primer contacto — leads de Mercado Libre', () => {
     expect((tasacionSrc.match(calls) || []).length).toBe(2);
     expect(tasacionSrc).toContain("channelLabel: 'tasación web'");
     // contact-submit: dup + lead nuevo (newsletter NO: es suscriptor, no lead).
+    // 2026-11-18: el canal es dinámico —'web' para el formulario del landing y
+    // 'whatsapp' para el handoff (click en WhatsApp → lead). Los dos caminos
+    // (dup y lead nuevo) arrancan el SLA igual.
     expect((contactSrc.match(calls) || []).length).toBe(2);
-    expect(contactSrc).toContain("channelLabel: 'web'");
+    expect(contactSrc).toContain("channelLabel: isHandoff ? 'whatsapp' : 'web'");
     // social-youtube-comments: dup + lead nuevo.
     expect((ytCommentsSrc.match(calls) || []).length).toBe(2);
     expect(ytCommentsSrc).toContain("channelLabel: 'YouTube'");

@@ -21,7 +21,7 @@ type OperationType = 'compra' | 'venta' | 'alquiler';
 type PropertyType = 'casa' | 'departamento' | 'terreno' | 'local' | 'oficina' | 'galpon' | 'quinta' | 'ph' | 'otro';
 
 interface ContactPayload {
-  kind?: 'contact' | 'newsletter';
+  kind?: 'contact' | 'newsletter' | 'whatsapp';
   name?: string;
   email?: string;
   phone?: string;
@@ -31,8 +31,12 @@ interface ContactPayload {
   budget_usd?: number | string | null;
   property_type?: string;
   property_id?: string;
+  property_code?: string;   // código de la ficha (DA-P0002) → se resuelve a UUID
   tipo_cliente?: string;
   operation_type?: string;
+  page?: string;            // landing | ficha | tasacion
+  path?: string;            // ruta del sitio (sin query)
+  consent?: boolean;        // handoff de WhatsApp:checkbox de privacidad
   utm_source?: string;
   utm_campaign?: string;
   website?: string; // honeypot: si viene con contenido, es un bot
@@ -88,19 +92,58 @@ Deno.serve(async (req: Request) => {
   const whatsapp = clip(String(payload.whatsapp ?? ''), 40);
   const message = clip(String(payload.message ?? ''));
 
-  if (!email || !EMAIL_RE.test(email)) return jsonResponse(400, { error: 'Email inválido' }, req);
+  /* ------------------------------------------------------------------
+     HANDOFF DE WHATSAPP (2026-11-18) — el cambio más grande del sitio:
+     antes, TODO el contacto de la web se perdía en el chat de WhatsApp
+     (las fichas tenían 1 link a wa.me, 0 teléfono y 0 formulario → ni un
+     lead). Ahora el click a WhatsApp pide UN dato (el teléfono), crea el
+     lead en el CRM con origen + propiedad, y después abre el chat.
+
+     Diferencias con el formulario del landing:
+       · NO exige email (el visitante dejó su teléfono: con eso alcanza).
+       · NO exige nombre ni mensaje (se generan si no vienen).
+       · EXIGE consentimiento explícito (checkbox de privacidad).
+       · El origen es 'whatsapp' (NO 'landing_page') → el embudo por
+         fuente separa "mandó el formulario" de "pidió que le escribamos".
+     ------------------------------------------------------------------ */
+  const isHandoff = payload.kind === 'whatsapp';
+  if (isHandoff) {
+    if (payload.consent !== true) {
+      return jsonResponse(400, { error: 'Necesitamos tu consentimiento para guardarte el teléfono.' }, req);
+    }
+    const telDigits = (phone || whatsapp).replace(/\D/g, '');
+    if (telDigits.length < 8) {
+      return jsonResponse(400, { error: 'Escribí un teléfono válido (mínimo 8 dígitos).' }, req);
+    }
+  }
+
   const isNewsletter = payload.kind === 'newsletter';
-  if (!isNewsletter) {
+  if (!isNewsletter && !isHandoff) {
+    if (!email || !EMAIL_RE.test(email)) return jsonResponse(400, { error: 'Email inválido' }, req);
     if (!name) return jsonResponse(400, { error: 'Falta el nombre' }, req);
     if (!message) return jsonResponse(400, { error: 'Falta el mensaje' }, req);
+  }
+  if (isHandoff && email && !EMAIL_RE.test(email)) {
+    // En el handoff el email es opcional: si viene roto se ignora, no se
+    // rechaza la consulta (el teléfono es el dato que importa).
   }
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
+  /* En el handoff el visitante puede mandar el teléfono en cualquiera de los
+     dos campos → se unifica para que el dedup y el SLA works igual. */
+  const telHandoff = isHandoff ? (phone || whatsapp) : phone;
+  const waHandoff = isHandoff ? (phone || whatsapp) : whatsapp;
+
+  /* Código de la ficha → UUID de la propiedad (server-side: el cliente solo
+     conoce el código DA-P0002, que es lo que ve en la URL). */
+  const codeRaw = clip(String(payload.property_code ?? ''), 20).toUpperCase();
+  const propertyCode = /^[A-Z]{2}-P[0-9]{4}$/.test(codeRaw) ? codeRaw : null;
+
   // --- Dedup: misma persona consultando de nuevo en 60 días ---
   const dupFilters: string[] = [];
-  const digits = phone.replace(/\D/g, '');
-  const wdigits = whatsapp.replace(/\D/g, '');
+  const digits = telHandoff.replace(/\D/g, '');
+  const wdigits = waHandoff.replace(/\D/g, '');
   if (digits.length >= 6) dupFilters.push(`phone.ilike.%${digits.slice(-8)}%`);
   if (wdigits.length >= 6 && wdigits !== digits) dupFilters.push(`whatsapp.ilike.%${wdigits.slice(-8)}%`);
   if (email) dupFilters.push(`email.ilike.${email}`);
@@ -119,12 +162,12 @@ Deno.serve(async (req: Request) => {
         await supabase.from('lead_activities').insert([{
           lead_id: dup.id,
           activity_type: 'note',
-          title: 'Nueva consulta desde la web (lead existente)',
-          description: message,
+          title: isHandoff ? 'Consulta por WhatsApp (lead existente)' : 'Nueva consulta desde la web (lead existente)',
+          description: message || `Consulta por WhatsApp${propertyCode ? ` · ${propertyCode}` : ''}`,
         }]);
         /* SLA de primer contacto: si el lead existente nunca fue contactado,
            esta nueva consulta arranca (o reconfirma) el reloj. */
-        await ensureFirstContactTask(supabase, dup.id, { channelLabel: 'web' });
+        await ensureFirstContactTask(supabase, dup.id, { channelLabel: isHandoff ? 'whatsapp' : 'web' });
       }
       return jsonResponse(200, { ok: true, duplicate: true }, req);
     }
@@ -162,23 +205,54 @@ Deno.serve(async (req: Request) => {
     ? payload.property_id
     : null;
 
+  /* Si vino el código de la ficha pero no el UUID → se resuelve acá (service
+     role): el cliente (ficha) solo conoce el código que está en la URL. */
+  let linkedPropertyId = propertyId;
+  if (!linkedPropertyId && propertyCode) {
+    const { data: prop } = await supabase
+      .from('properties')
+      .select('id')
+      .eq('property_code', propertyCode)
+      .is('deleted_at', null)
+      .limit(1)
+      .maybeSingle();
+    if (prop && prop.id) linkedPropertyId = prop.id;
+  }
+
+  /* Notas del handoff: si el visitante no escribió nada, se arma una línea
+     con el origen (ficha + código / ruta) → el agente sabe de dónde vino. */
+  const pageRaw = clip(String(payload.page ?? ''), 20);
+  const pathRaw = clip(String(payload.path ?? ''), 200);
+  let notes = message;
+  if (isHandoff) {
+    const bits: string[] = [];
+    if (propertyCode) bits.push(`Propiedad ${propertyCode}`);
+    if (pageRaw) bits.push(`Origen: ${pageRaw}`);
+    if (pathRaw) bits.push(pathRaw);
+    const extra = bits.length ? ` · ${bits.join(' · ')}` : '';
+    notes = message
+      ? `${message}${extra}`
+      : `Consulta por WhatsApp${extra}`;
+  }
+
   const record = {
-    full_name: name,
-    email,
-    phone: phone || null,
-    whatsapp: whatsapp || null,
-    notes: message,
+    full_name: isHandoff ? (name || 'Consulta WhatsApp') : name,
+    email: email && EMAIL_RE.test(email) ? email : null,
+    phone: telHandoff || null,
+    whatsapp: waHandoff || null,
+    notes,
     preferred_zone: clip(String(payload.zone ?? ''), 120) || null,
     budget_usd: isFinite(budget) && budget > 0 ? budget : null,
     preferred_type: inList(payload.property_type, PROPERTY_TYPES),
     tipo_cliente: inList(payload.tipo_cliente, TIPOS_CLIENTE),
     operation_type: inList(payload.operation_type, OPERATIONS),
-    property_id: propertyId,
-    source: 'landing_page',
+    property_id: linkedPropertyId,
+    source: isHandoff ? 'whatsapp' : 'landing_page',
     stage: 'nuevo',
     /* FIX LEGAL 2026-10-23: registrar el timestamp del consentimiento del
        checkbox de privacidad (Ley 25.326 art. 5 — prueba de consentimiento).
-       El landing ya envía el checkbox required; esto lo persiste. */
+       El landing ya envía el checkbox required; esto lo persiste.
+       En el handoff el consentimiento es OBLIGATORIO (se validó arriba). */
     consent_at: new Date().toISOString(),
     utm_source: clip(String(payload.utm_source ?? ''), 120) || null,
     utm_campaign: clip(String(payload.utm_campaign ?? ''), 120) || null,
@@ -194,7 +268,10 @@ Deno.serve(async (req: Request) => {
      tarea "Primer contacto" en la Agenda + next_followup_at. Sin teléfono
      pero con email, la tarea sale con contact_type='email'. */
   if (newLead.id) {
-    await ensureFirstContactTask(supabase, newLead.id, { channelLabel: 'web' });
+    await ensureFirstContactTask(supabase, newLead.id, {
+      channelLabel: isHandoff ? 'whatsapp' : 'web',
+      phone: telHandoff || null,
+    });
   }
 
   return jsonResponse(200, { ok: true }, req);
