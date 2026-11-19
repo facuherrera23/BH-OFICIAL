@@ -268,10 +268,17 @@ test.describe('Contenido/YouTube — mejoras del lote', () => {
   });
 
   test('los filtros de vistas y antigüedad acotan la grilla', async ({ page }) => {
+    /* Fechas RELATIVAS al momento del test: el filtro de antigüedad del Studio
+       compara `published_at` contra `Date.now() - N días`. Con fechas fijas el
+       test se rompía solo al paso del tiempo (la fecha del fixture quedó
+       fuera de la ventana de 30 días) — un fallo date-dependent, no del
+       módulo. */
+    const hace5 = new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString();
+    const hace120 = new Date(Date.now() - 120 * 24 * 3600 * 1000).toISOString();
     await boot(page, {
       videos: [
-        { ...VIDEO, id: 'vid-a', title: 'Con muchas vistas', views: 15000 },
-        { ...VIDEO, id: 'vid-b', title: 'Sin vistas', views: 0, published_at: '2026-08-01T10:00:00Z' },
+        { ...VIDEO, id: 'vid-a', title: 'Con muchas vistas', views: 15000, published_at: hace5 },
+        { ...VIDEO, id: 'vid-b', title: 'Sin vistas', views: 0, published_at: hace120 },
       ],
     });
     await page.click('#contenidoSubTabs button[data-sub="studio"]');
