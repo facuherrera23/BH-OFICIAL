@@ -36,7 +36,12 @@ test.describe('Fichas indexables + sitemap', () => {
     expect(parsed.url).toContain('/fichas/');
   });
 
-  test('index.html: rotación consistente de teléfono/WhatsApp por visita', async ({ page }) => {
+  test('index.html: rotación de WhatsApp por visita + link de llamada SIEMPRE canónico', async ({ page }) => {
+    /* Fijamos la variante A/B para que el test NO dependa del azar:
+       la rotación se elige al azar en la primera visita (localStorage). */
+    await page.addInitScript(() => {
+      try { localStorage.setItem('bh_phone_variant', '1'); } catch (_) {}
+    });
     await page.goto('/index.html');
     const console = trackConsoleErrors(page);
     await expect(page.locator('#propertyGrid [data-property-id]').first()).toBeVisible({ timeout: 20000 });
@@ -47,21 +52,34 @@ test.describe('Fichas indexables + sitemap', () => {
       const digits = (s) => String(s || '').split('?')[0].replace(/[^0-9]/g, '');
       const wa = document.querySelector('a[href*="wa.me"]')?.getAttribute('href') || '';
       const waFloat = document.querySelector('.whatsapp-float')?.getAttribute('href') || '';
-      const contactPhone = document.querySelector('.contact-phone')?.textContent || '';
-      const footerPhone = document.querySelector('.footer-phone')?.textContent || '';
+      const contact = document.querySelector('.contact-phone');
+      const footer = document.querySelector('.footer-phone');
       return {
         wa: digits(wa),
         waFloat: digits(waFloat),
-        contact: digits(contactPhone).replace(/^54/, '54'),
-        footer: digits(footerPhone).replace(/^54/, '54'),
+        contact: digits(contact?.textContent || ''),
+        contactHref: contact?.getAttribute('href') || '',
+        footer: digits(footer?.textContent || ''),
+        footerHref: footer?.getAttribute('href') || '',
       };
     });
 
+    /* WhatsApp: rota entre los 2 números configurados, pero todos los links
+       de WhatsApp de la página apuntan al MISMO (el de la visita). */
     const valid = PHONES.includes(state.wa);
     expect(valid, `wa.me apunta a un número no configurado: ${state.wa}`).toBe(true);
     expect(state.waFloat).toBe(state.wa);
-    expect(state.contact).toBe(state.wa);
-    expect(state.footer).toBe(state.wa);
+    expect(state.wa).toBe(PHONES[1]);   // variant 1 fijado arriba
+
+    /* El link de llamada NO rota (2026-11-18, Fase 3 SEO): el teléfono
+       visible es siempre el canónico para que el texto coincida con el href
+       y Google muestre "Llamar" en el rich result. La rotación A/B es SÓLO
+       para WhatsApp. */
+    const CANONICO = PHONES[0];
+    expect(state.contact).toBe(CANONICO);
+    expect(state.footer).toBe(CANONICO);
+    expect(state.contactHref).toBe('tel:+' + CANONICO);
+    expect(state.footerHref).toBe('tel:+' + CANONICO);
     console.assertClean();
   });
 
