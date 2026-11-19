@@ -35,6 +35,9 @@ jobs:
           # property_code — lo consume el catálogo público (badge "Tour").
           # assets/data/canal-videos.json: índice público del canal
           # (canal.html) — si se agrega otro archivo generado, sumarlo acá.
-          git add fichas/ sitemap.xml assets/data/property-videos.json assets/data/canal-videos.json
+          # propiedades.html: hub estático de propiedades (HTML real con un
+          # <a href> por ficha) — es el enlace que el crawler puede recorrer
+          # sin ejecutar JS. SIN esto el hub nunca se publicaba.
+          git add fichas/ sitemap.xml propiedades.html assets/data/property-videos.json assets/data/canal-videos.json
           git diff --cached --quiet && echo "sin cambios" || git commit -m "chore(fichas): regenerar paginas de propiedades + sitemap [skip ci-pages]"
           git push

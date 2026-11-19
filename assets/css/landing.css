@@ -359,6 +359,15 @@ section[id], main[id], footer[id] { scroll-margin-top: var(--navbar-height); }
   display: grid; grid-template-columns: 1fr auto; gap: 40px;
   align-items: flex-end; margin-bottom: 50px;
 }
+/* CTA del catálogo: link al hub estático (/propiedades.html) + botón de contacto.
+   El link existe para el crawler: el catálogo de la home se arma por JS, así que
+   sin este <a href> en el HTML inicial no había NI UN link a las fichas. */
+.catalog-cta-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+.catalog-link-all {
+  font-size: 13px; font-weight: 600; color: var(--accent); text-decoration: none;
+  display: inline-flex; align-items: center; gap: 7px;
+}
+.catalog-link-all:hover { opacity: 0.85; }
 .catalog-label {
   font-size: 13px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
   color: var(--accent); display: block; margin-bottom: 12px;
@@ -719,6 +728,10 @@ section[id], main[id], footer[id] { scroll-margin-top: var(--navbar-height); }
 }
 .contact-info-item .label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-tertiary); }
 .contact-info-item .value { font-size: 14px; color: #fff; font-weight: 500; }
+/* El teléfono es un <a href="tel:..."> (para que Google muestre "Llamar" y el
+   móvil lo abra): sin esto heredaba el subrayado azul por defecto del <a>. */
+.contact-info-item a.value { text-decoration: none; }
+.contact-info-item a.value:hover { color: var(--accent); }
 
 .contact-response {
   margin-top: 24px; padding: 20px; background: rgba(31, 200, 195, 0.05);
@@ -865,6 +878,10 @@ section[id], main[id], footer[id] { scroll-margin-top: var(--navbar-height); }
 .footer-col ul li a:hover { color: var(--accent); }
 .footer-contact-item { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 13px; color: var(--text-secondary); }
 .footer-contact-item i { color: var(--accent); }
+/* Teléfono del footer como <a href="tel:..."> (mismo número canónico que el
+   JSON-LD). El texto NO lo cambia la rotación A/B (eso es sólo WhatsApp). */
+.footer-contact-item a { color: inherit; text-decoration: none; }
+.footer-contact-item a:hover { color: var(--accent); }
 
 .footer-newsletter-title { font-family: var(--font-heading); font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 6px; }
 .footer-newsletter-text { font-size: 13px; color: var(--text-tertiary); margin-bottom: 14px; }

@@ -626,8 +626,19 @@ const _arsFormatter = new Intl.NumberFormat('es-AR', { style: 'currency', curren
       const qi = a.href.indexOf('?');
       a.href = 'https://wa.me/' + phone.wa + (qi === -1 ? '' : a.href.slice(qi));
     });
-    document.querySelectorAll('.contact-phone').forEach(el => { el.textContent = phone.display; });
-    document.querySelectorAll('.footer-phone').forEach(el => { el.textContent = phone.display; });
+    document.querySelectorAll('.contact-phone').forEach(el => {
+      /* 2026-11-18: el teléfono es un <a href="tel:+5493516379651"> (link de
+         llamada real, para que Google muestre "Llamar"). La rotación A/B es
+         sólo para WhatsApp → en un link tel: NO se toca el texto, o quedaría
+         desincronizado del href (texto "+54 9 3512 00-1437" con href del
+         canónico). */
+      if (el.tagName === 'A' && String(el.getAttribute('href') || '').startsWith('tel:')) return;
+      el.textContent = phone.display;
+    });
+    document.querySelectorAll('.footer-phone').forEach(el => {
+      if (el.tagName === 'A' && String(el.getAttribute('href') || '').startsWith('tel:')) return;
+      el.textContent = phone.display;
+    });
     const phoneInput = document.getElementById('telefono');
     if (phoneInput) phoneInput.placeholder = phone.display;
   }
@@ -1679,14 +1690,32 @@ function renderSocialLinks(social) {
     document.querySelectorAll('.contact-info-item').forEach(item => {
       if (item.querySelector(iconClass)) {
         const val = item.querySelector('.value');
-        if (val) val.textContent = value;
+        if (val) {
+          val.textContent = value;
+          /* El teléfono es un <a href="tel:..."> (para que Google muestre
+             "Llamar"). Si el CMS cambia el número, el href se actualiza con
+             él → texto y href nunca quedan desincronizados. */
+          if (iconClass === '.fa-phone') {
+            const href = telHref(value);
+            if (href && val.tagName === 'A') val.setAttribute('href', href);
+          }
+        }
       }
     });
-    document.querySelectorAll('.footer-contact-item').forEach(item => {
-      if (item.querySelector(iconClass)) {
-        item.innerHTML = '<i class="' + escAttr(fasClass) + '"></i> ' + esc(value);
-      }
-    });
+    /* El bloque del footer lo reconstruye el CMS → se delega en
+       setFooterValue (que arma el link de llamada). */
+    setFooterValue(iconClass, value);
+  }
+
+  /* href de llamada a partir del teléfono del CMS.
+     Acepta "+54 9 3516 37-9651", "5493516379651", "(0351) 123-4567".
+     Si no hay un teléfono válido → '' (no se arma un link roto). */
+  function telHref(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const digits = raw.replace(/[^\d]/g, '');
+    if (digits.length < 8) return '';
+    return raw.charAt(0) === '+' ? 'tel:+' + digits : 'tel:' + digits;
   }
 
   const FOOTER_SPAN_CLASS = {
@@ -1702,7 +1731,16 @@ function renderSocialLinks(social) {
     const spanClass = FOOTER_SPAN_CLASS[iconClass] || 'footer-contact-value';
     document.querySelectorAll('.footer-contact-item').forEach(item => {
       if (item.querySelector(iconClass)) {
-        item.innerHTML = '<i class="' + escAttr(fasClass) + '"></i> <span class="' + escAttr(spanClass) + '">' + esc(value) + '</span>';
+        /* El teléfono del footer también es un link de llamada: el CMS
+           reconstruye este bloque (innerHTML) → si fuera un <span>, el
+           <a href="tel:"> del HTML inicial se perdía y el texto quedaba a
+           merced de la rotación A/B (número ≠ href). */
+        if (iconClass === '.fa-phone') {
+          const href = telHref(value) || 'tel:+5493516379651';
+          item.innerHTML = '<i class="' + escAttr(fasClass) + '"></i> <a class="' + escAttr(spanClass) + '" href="' + escAttr(href) + '">' + esc(value) + '</a>';
+        } else {
+          item.innerHTML = '<i class="' + escAttr(fasClass) + '"></i> <span class="' + escAttr(spanClass) + '">' + esc(value) + '</span>';
+        }
       }
     });
   }

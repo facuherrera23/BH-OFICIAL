@@ -13,6 +13,13 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANO
 const onlyCode = process.env.ONLY_CODE || '';
 const SITE_URL = 'https://bienenhaus.com.ar';
 const WHATSAPP_CANONICAL = '5493516379651';
+/* Teléfono visible (tel:) — el MISMO canónico que ya está en el JSON-LD de
+   la home y de las fichas ('+54-9-3516-37-9651'). La rotación A/B de 2 números
+   es sólo para WhatsApp: el link de llamada va siempre al canónico para que
+   el texto y el href coincidan (y Google pueda mostrar "Llamar" en el
+   rich result). 2026-11-18: las fichas tenían 0 links tel:. */
+const PHONE_TEL = '+5493516379651';
+const PHONE_DISPLAY = '+54 9 3516 37-9651';
 
 /* Cache busters de los assets que carga la ficha.
    POR QUÉ (2026-11-18): Cloudflare sirve los .js con `cache-control: max-age=14400`
@@ -494,6 +501,7 @@ ${jsonLdVideoText ? `<script type="application/ld+json">${jsonLdVideoText}</scri
       </div>
       <div class="cta-row">
         <a class="cta" href="https://wa.me/${WHATSAPP_CANONICAL}?text=${waText}" target="_blank" rel="noopener"><i class="fab fa-whatsapp" aria-hidden="true"></i>Consultar por WhatsApp</a>
+        <a class="cta cta--outline" href="tel:${PHONE_TEL}"><i class="fas fa-phone" aria-hidden="true"></i>${PHONE_DISPLAY}</a>
         <button type="button" class="cta cta--outline" data-copy="${esc(fichaUrl)}"><i class="fas fa-link" aria-hidden="true"></i><span>Copiar link</span></button>
         <button type="button" class="cta cta--outline" id="btnPrint"><i class="fas fa-file-pdf" aria-hidden="true"></i>Descargar PDF</button>
         <a class="cta cta--outline" href="${SITE_URL}/#prop=${encodeURIComponent(code)}" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i>Ver en el sitio</a>
@@ -512,7 +520,13 @@ ${jsonLdVideoText ? `<script type="application/ld+json">${jsonLdVideoText}</scri
   </main>
   <footer class="foot">
     <div class="foot-brand"><b>BIENENHAUS</b> PROPIEDADES</div>
-    <div class="foot-meta">CPI 1834 · <a href="${SITE_URL}/" rel="noopener">bienenhaus.com.ar</a> · <a href="${SITE_URL}/politica-de-privacidad.html" rel="noopener">Privacidad</a> · <button type="button" data-bh-track-optout style="background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;text-decoration:underline;border-bottom:1px solid rgba(148,163,184,0.4);">No medirme</button></div>
+    <div class="foot-meta">
+      <a href="tel:${PHONE_TEL}">${PHONE_DISPLAY}</a> ·
+      <a href="${SITE_URL}/propiedades.html" rel="noopener">Todas las propiedades</a> ·
+      <a href="${SITE_URL}/" rel="noopener">bienenhaus.com.ar</a> ·
+      <a href="${SITE_URL}/politica-de-privacidad.html" rel="noopener">Privacidad</a> ·
+      <button type="button" data-bh-track-optout style="background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;text-decoration:underline;border-bottom:1px solid rgba(148,163,184,0.4);">No medirme</button>
+    </div>
   </footer>
   <dialog id="lb" class="lb">
     <img id="lbImg" alt="">
@@ -645,20 +659,314 @@ ${jsonLdVideoText ? `<script type="application/ld+json">${jsonLdVideoText}</scri
 </html>`;
 }
 
+/* ============================================================
+   HUB ESTÁTICO DE PROPIEDADES → /propiedades.html
+   ------------------------------------------------------------
+   POR QUÉ (2026-11-18, Fase 3 SEO): la home arma el catálogo por
+   JS → el HTML inicial no tenía NI UN link a las fichas (0 de 27),
+   así que un crawler que no ejecuta JS no descubría nada y las
+   fichas quedaban huérfanas para el link juice interno. Google las
+   encontraba sólo por el sitemap (tarde y sin prioridad).
+
+   Esta página es HTML REAL generado en CI (mismo generador, misma
+   fuente de verdad = la DB): las 27 fichas enlazadas con <a href>,
+   agrupadas por zona. El hub además funciona como "landing por
+   zona" (cada zona es una sección con id + ancla) y como página
+   ligera para quien no quiere el catálogo con JS.
+
+   Se regenera con las fichas: si se despublica una propiedad,
+   desaparece del hub en la misma corrida (no queda desactualizado).
+   ============================================================ */
+function slugifyZone(s) {
+  return String(s || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'sin-zona';
+}
+
+function buildIndexHtml(props) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const cards = props.map((p) => {
+    const imgs = (p.image_urls || []).filter((u) => /^https?:\/\//.test(u));
+    const img = imgs[0] || '';
+    const currency = p.price_currency === 'ARS' ? 'ARS' : 'USD';
+    const price = p.price_usd
+      ? `${currency === 'ARS' ? '$' : 'USD'} ${Number(p.price_usd).toLocaleString('es-AR')}`
+      : 'Consultar';
+    const sup = p.surface_total && p.surface_total > 0 ? p.surface_total : (p.area_m2 ?? null);
+    const tipo = TYPE_LABELS[p.property_type] || p.property_type || 'Propiedad';
+    const estado = STATUS_LABELS[p.status] || '';
+    return {
+      code: p.property_code,
+      url: `${SITE_URL}/fichas/${p.property_code}.html`,
+      title: String(p.title || '').trim(),
+      zone: (p.zone || '').trim(),
+      img, price, sup, tipo, estado,
+    };
+  });
+
+  /* Agrupar por zona (el patrón de búsqueda real: "propiedades en <zona>") */
+  const porZona = new Map();
+  for (const c of cards) {
+    const z = c.zone || 'Otras zonas';
+    if (!porZona.has(z)) porZona.set(z, []);
+    porZona.get(z).push(c);
+  }
+  const zonas = [...porZona.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'es'));
+  const totalVenta = cards.filter((c) => c.estado === 'Venta').length;
+  const totalAlquiler = cards.filter((c) => c.estado === 'Alquiler').length;
+
+  const title = `Propiedades en venta y alquiler en Córdoba | ${cards.length} propiedades | Bienenhaus`;
+  const description = `Catálogo completo de Bienenhaus Propiedades en Córdoba: ${cards.length} propiedades en venta y alquiler${totalAlquiler ? ` (${totalAlquiler} en alquiler)` : ''}, con fotos, superficies y precios. Consultá sin compromiso por WhatsApp o por teléfono.`;
+  const pageUrl = `${SITE_URL}/propiedades.html`;
+
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: 'Propiedades de Bienenhaus en Córdoba',
+    url: pageUrl,
+    numberOfItems: cards.length,
+    itemListElement: cards.map((c, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      url: c.url,
+      name: c.title,
+    })),
+  };
+  const jsonLdBreadcrumb = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Inicio', item: `${SITE_URL}/` },
+      { '@type': 'ListItem', position: 2, name: 'Propiedades', item: pageUrl },
+    ],
+  };
+  const jsonLdText = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
+  const jsonLdBreadcrumbText = JSON.stringify(jsonLdBreadcrumb).replace(/</g, '\\u003c');
+
+  const zonasNav = zonas.map(([z, cs]) =>
+    `<a href="#zona-${esc(slugifyZone(z))}">${esc(z)} <span>(${cs.length})</span></a>`).join('');
+
+  const zonasHtml = zonas.map(([z, cs]) => `
+    <section class="zone" id="zona-${esc(slugifyZone(z))}">
+      <h2 class="zone-title">${esc(z)} <span class="zone-count">${cs.length} ${cs.length === 1 ? 'propiedad' : 'propiedades'}</span></h2>
+      <div class="grid">
+        ${cs.map((c) => `
+        <article class="card">
+          <a class="card-link" href="${esc(c.url)}">
+            <div class="card-img">
+              ${c.img ? `<img src="${esc(c.img)}" alt="${esc(c.title)}" loading="lazy">` : '<div class="card-img-empty"><i class="fas fa-image" aria-hidden="true"></i></div>'}
+              ${c.estado ? `<span class="card-badge">${esc(c.estado)}</span>` : ''}
+            </div>
+            <div class="card-body">
+              <h3 class="card-title">${esc(c.title)}</h3>
+              <p class="card-meta">${esc(c.tipo)}${c.zone ? ` · ${esc(c.zone)}` : ''}${c.sup ? ` · ${esc(String(c.sup))} m²` : ''}</p>
+              <p class="card-price">${esc(c.price)}</p>
+              <span class="card-cta">Ver ficha <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
+            </div>
+          </a>
+        </article>`).join('')}
+      </div>
+    </section>`).join('');
+
+  const waText = encodeURIComponent('Hola, vi el catálogo de propiedades en bienenhaus.com.ar y me gustaría recibir información');
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src https: data:; font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src https://*.supabase.co https://www.google-analytics.com https://*.analytics.google.com https://stats.g.doubleclick.net https://www.clarity.ms https://*.clarity.ms https://c.bing.com; frame-src https://www.openstreetmap.org https://www.youtube-nocookie.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(description)}">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+<link rel="canonical" href="${esc(pageUrl)}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Bienenhaus Propiedades">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(description)}">
+<meta property="og:url" content="${esc(pageUrl)}">
+<meta property="og:image" content="https://bienenhaus.com.ar/og-image.jpg">
+<meta property="og:image:secure_url" content="https://bienenhaus.com.ar/og-image.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="es_AR">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(title)}">
+<meta name="twitter:description" content="${esc(description)}">
+<meta name="twitter:image" content="https://bienenhaus.com.ar/og-image.jpg">
+<script type="application/ld+json">${jsonLdText}</script>
+<script type="application/ld+json">${jsonLdBreadcrumbText}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  :root {
+    --bg: #05070A; --card: rgba(14,19,26,.85); --card2: #0b1017; --line: rgba(255,255,255,.09);
+    --acc: #1FC8C3; --acc-d: #13a6a2; --text: #F8FAFC; --text2: #94A3B8; --mut: #64748B;
+    --font: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --serif: 'Playfair Display', Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:var(--font); line-height:1.6; -webkit-font-smoothing:antialiased; }
+  a { color:inherit; }
+  .wrap { max-width:1180px; margin:0 auto; padding:0 22px; }
+  header.top { border-bottom:1px solid var(--line); background:rgba(5,7,10,.92); position:sticky; top:0; z-index:10; backdrop-filter:blur(10px); }
+  .top-in { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:14px 0; }
+  .brand { font-family:var(--serif); font-weight:700; letter-spacing:.5px; text-decoration:none; font-size:17px; }
+  .brand span { color:var(--acc); }
+  .top-nav { display:flex; align-items:center; gap:18px; font-size:13.5px; flex-wrap:wrap; }
+  .top-nav a { color:var(--text2); text-decoration:none; }
+  .top-nav a:hover { color:var(--acc); }
+  .top-tel { color:var(--acc) !important; font-weight:600; white-space:nowrap; }
+  main { padding:44px 0 70px; }
+  h1 { font-family:var(--serif); font-size:clamp(30px,5vw,46px); line-height:1.15; margin:0 0 14px; font-weight:700; }
+  h1 em { font-style:normal; color:var(--acc); }
+  .lead { color:var(--text2); max-width:70ch; font-size:15.5px; margin:0 0 26px; }
+  .stats { display:flex; gap:10px; flex-wrap:wrap; margin:0 0 26px; }
+  .stat { border:1px solid var(--line); background:var(--card); border-radius:999px; padding:7px 15px; font-size:13px; color:var(--text2); }
+  .stat b { color:var(--text); }
+  .zones-nav { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 40px; padding:16px; border:1px solid var(--line); background:var(--card); border-radius:16px; }
+  .zones-nav a { font-size:13px; color:var(--text2); text-decoration:none; border:1px solid var(--line); padding:6px 12px; border-radius:999px; }
+  .zones-nav a:hover { color:var(--acc); border-color:var(--acc); }
+  .zones-nav span { color:var(--mut); }
+  .zone { margin:0 0 46px; scroll-margin-top:90px; }
+  .zone-title { font-family:var(--serif); font-size:25px; margin:0 0 18px; display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  .zone-count { font-family:var(--font); font-size:12.5px; color:var(--mut); font-weight:500; letter-spacing:.4px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:20px; }
+  .card { border:1px solid var(--line); background:var(--card); border-radius:18px; overflow:hidden; transition:transform .18s ease, border-color .18s ease; }
+  .card:hover { transform:translateY(-3px); border-color:rgba(31,200,195,.45); }
+  .card-link { text-decoration:none; display:block; }
+  .card-img { position:relative; aspect-ratio:4/3; background:var(--card2); }
+  .card-img img { width:100%; height:100%; object-fit:cover; display:block; }
+  .card-img-empty { width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:var(--mut); font-size:26px; }
+  .card-badge { position:absolute; top:12px; left:12px; background:rgba(5,7,10,.82); border:1px solid var(--acc); color:var(--acc); font-size:11px; font-weight:700; letter-spacing:.8px; padding:4px 10px; border-radius:999px; text-transform:uppercase; }
+  .card-body { padding:15px 17px 18px; }
+  .card-title { font-size:15.5px; margin:0 0 6px; font-weight:600; line-height:1.35; }
+  .card-meta { margin:0 0 10px; font-size:12.5px; color:var(--mut); }
+  .card-price { margin:0 0 12px; font-size:17px; font-weight:700; color:var(--acc); font-family:var(--serif); }
+  .card-cta { font-size:12.5px; color:var(--text2); font-weight:600; }
+  .card:hover .card-cta { color:var(--acc); }
+  .cta-strip { border:1px solid var(--line); background:var(--card); border-radius:20px; padding:28px; display:flex; justify-content:space-between; align-items:center; gap:22px; flex-wrap:wrap; margin-top:14px; }
+  .cta-strip h2 { font-family:var(--serif); font-size:23px; margin:0 0 6px; }
+  .cta-strip p { margin:0; color:var(--text2); font-size:14px; }
+  .cta-row { display:flex; gap:10px; flex-wrap:wrap; }
+  .cta { display:inline-flex; align-items:center; gap:9px; padding:13px 22px; border-radius:999px; background:linear-gradient(135deg,var(--acc),var(--acc-d)); color:#04161a; text-decoration:none; font-weight:700; font-size:14px; border:1px solid transparent; }
+  .cta--outline { background:transparent; color:var(--text); border-color:var(--line); }
+  .cta--outline:hover { border-color:var(--acc); color:var(--acc); }
+  .cta--wa { background:#25D366; color:#04220f; }
+  footer.foot { border-top:1px solid var(--line); padding:26px 0 40px; color:var(--mut); font-size:12.5px; }
+  .foot-meta { display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+  .foot-meta a { color:var(--text2); text-decoration:none; }
+  .foot-meta a:hover { color:var(--acc); }
+  .foot-brand { font-family:var(--serif); color:var(--text); letter-spacing:.6px; margin-bottom:10px; }
+  .optout { background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;text-decoration:underline;border-bottom:1px solid rgba(148,163,184,.4); }
+  @media (max-width:640px) {
+    .grid { grid-template-columns:1fr; }
+    .cta-strip { padding:22px; }
+    .top-nav { gap:12px; font-size:12.5px; }
+  }
+  @media print {
+    html, body { background:#fff !important; color:#000 !important; }
+    .top-in, .zones-nav, .cta-strip, footer.foot { display:none; }
+    .card { break-inside:avoid; border-color:#ddd; background:#fff; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="${SITE_URL}/">BIENENHAUS <span>PROPIEDADES</span></a>
+    <nav class="top-nav">
+      <a href="${SITE_URL}/">Inicio</a>
+      <a href="#zonas">Zonas</a>
+      <a href="${SITE_URL}/tasacion.html">Pedí tu tasación</a>
+      <a class="top-tel" href="tel:${PHONE_TEL}"><i class="fas fa-phone" aria-hidden="true"></i> ${PHONE_DISPLAY}</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+  <h1>Propiedades en venta y alquiler en <em>Córdoba</em></h1>
+  <p class="lead">Catálogo completo de Bienenhaus Propiedades: ${cards.length} propiedades publicadas con fotos, superficies y precios. Cada ficha tiene la descripción completa, la ubicación en el mapa y el contacto directo del asesor.</p>
+  <div class="stats">
+    <span class="stat"><b>${cards.length}</b> propiedades</span>
+    <span class="stat"><b>${zonas.length}</b> zonas</span>
+    ${totalVenta ? `<span class="stat"><b>${totalVenta}</b> en venta</span>` : ''}
+    ${totalAlquiler ? `<span class="stat"><b>${totalAlquiler}</b> en alquiler</span>` : ''}
+  </div>
+  <nav class="zones-nav" id="zonas" aria-label="Zonas">${zonasNav}</nav>
+  ${zonasHtml}
+  <div class="cta-strip">
+    <div>
+      <h2>¿Buscás algo puntual?</h2>
+      <p>Decinos zona, tipo y presupuesto: te mandamos las opciones que mejor encajan por WhatsApp o por teléfono.</p>
+    </div>
+    <div class="cta-row">
+      <a class="cta cta--wa" href="https://wa.me/${WHATSAPP_CANONICAL}?text=${waText}" target="_blank" rel="noopener"><i class="fab fa-whatsapp" aria-hidden="true"></i>Escribinos</a>
+      <a class="cta cta--outline" href="tel:${PHONE_TEL}"><i class="fas fa-phone" aria-hidden="true"></i>Llamar</a>
+      <a class="cta cta--outline" href="${SITE_URL}/tasacion.html">Pedí una tasación</a>
+    </div>
+  </div>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-brand"><b>BIENENHAUS</b> PROPIEDADES</div>
+    <div class="foot-meta">
+      <a href="tel:${PHONE_TEL}">${PHONE_DISPLAY}</a> ·
+      <a href="${SITE_URL}/" rel="noopener">Inicio</a> ·
+      <a href="${SITE_URL}/tasacion.html" rel="noopener">Tasación</a> ·
+      <a href="${SITE_URL}/politica-de-privacidad.html" rel="noopener">Privacidad</a> ·
+      <a href="${SITE_URL}/terminos-y-condiciones.html" rel="noopener">Términos</a> ·
+      <button type="button" class="optout" data-bh-track-optout>No medirme</button>
+    </div>
+  </div>
+</footer>
+<script>
+  /* El handoff (wa-handoff.js) intercepta los clicks a wa.me y trackea el
+     'wa_click' una sola vez (marca data-bh-wa-tracked) → este listener no
+     lo vuelve a trackear; sólo cubre el caso de escape hatch (data-bh-wa=off). */
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[href*="wa.me"]');
+    if (a && !a.hasAttribute('data-bh-wa-tracked') && typeof window.bhTrack === 'function') {
+      window.bhTrack('wa_click', { origin: 'sitio' });
+    }
+  });
+</script>
+<script src="assets/js/tracking.js?v=${V_TRACKING}" defer></script>
+<script src="assets/js/wa-handoff.js?v=${V_HANDOFF}" defer></script>
+<script src="assets/js/analytics.js?v=${V_ANALYTICS}" defer></script>
+</body>
+</html>`;
+}
+
 function buildSitemap(props) {
   const today = new Date().toISOString().slice(0, 10);
+  /* lastmod REAL por ficha (updated_at de la propiedad). Antes era la fecha
+     de generación para las 32 URLs → Google lo ignora (cambia siempre y no
+     dice nada). Con la fecha real, Google puede reindexar sólo lo que cambió. */
+  const lastmodOf = (p) => {
+    const d = p && p.updated_at ? String(p.updated_at) : '';
+    return /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(0, 10) : today;
+  };
   const urls = [
-    { loc: `${SITE_URL}/`, changefreq: 'daily', priority: '1.0' },
-    { loc: `${SITE_URL}/tasacion.html`, changefreq: 'monthly', priority: '0.9' },
+    { loc: `${SITE_URL}/`, changefreq: 'daily', priority: '1.0', lastmod: today },
+    /* Hub estático de propiedades: HTML real con las 27 fichas enlazadas.
+       Es el enlace que el crawler puede recorrer sin ejecutar JS. */
+    { loc: `${SITE_URL}/propiedades.html`, changefreq: 'daily', priority: '0.9', lastmod: today },
+    { loc: `${SITE_URL}/tasacion.html`, changefreq: 'monthly', priority: '0.9', lastmod: today },
     /* Página pública del canal de YouTube (#50). */
-    { loc: `${SITE_URL}/canal.html`, changefreq: 'weekly', priority: '0.7' },
-    { loc: `${SITE_URL}/politica-de-privacidad.html`, changefreq: 'yearly', priority: '0.3' },
-    { loc: `${SITE_URL}/terminos-y-condiciones.html`, changefreq: 'yearly', priority: '0.3' },
-    ...props.map((p) => ({ loc: `${SITE_URL}/fichas/${p.property_code}.html`, changefreq: 'weekly', priority: '0.8' })),
+    { loc: `${SITE_URL}/canal.html`, changefreq: 'weekly', priority: '0.7', lastmod: today },
+    { loc: `${SITE_URL}/politica-de-privacidad.html`, changefreq: 'yearly', priority: '0.3', lastmod: today },
+    { loc: `${SITE_URL}/terminos-y-condiciones.html`, changefreq: 'yearly', priority: '0.3', lastmod: today },
+    ...props.map((p) => ({
+      loc: `${SITE_URL}/fichas/${p.property_code}.html`,
+      changefreq: 'weekly', priority: '0.8', lastmod: lastmodOf(p),
+    })),
   ];
   const body = urls.map((u) => `  <url>
     <loc>${u.loc}</loc>
-    <lastmod>${today}</lastmod>
+    <lastmod>${u.lastmod}</lastmod>
     <changefreq>${u.changefreq}</changefreq>
     <priority>${u.priority}</priority>
   </url>`).join('\n');
@@ -768,7 +1076,7 @@ async function loadChannelVideos(propsById) {
 
 async function main() {
   const url = new URL(`${SUPABASE_URL}/rest/v1/properties`);
-  url.searchParams.set('select', 'id,property_code,title,description,property_type,status,zone,address,price_usd,price_currency,area_m2,surface_covered,surface_total,rooms,bedrooms,bathrooms,garage_spaces,year_built,latitude,longitude,image_urls,agents(full_name,phone,photo_url)');
+  url.searchParams.set('select', 'id,property_code,title,description,property_type,status,zone,address,price_usd,price_currency,area_m2,surface_covered,surface_total,rooms,bedrooms,bathrooms,garage_spaces,year_built,latitude,longitude,image_urls,updated_at,agents(full_name,phone,photo_url)');
   url.searchParams.set('is_published', 'eq.true');
   url.searchParams.set('deleted_at', 'is.null');
   if (onlyCode) url.searchParams.set('property_code', `eq.${onlyCode}`);
@@ -818,6 +1126,11 @@ async function main() {
   if (!onlyCode) {
     writeFileSync('sitemap.xml', buildSitemap(published), 'utf8');
     console.log(`sitemap.xml actualizado (${published.length} fichas)`);
+    /* Hub estático de propiedades: HTML real con todas las fichas enlazadas.
+       Sin esto la home NO tenía ni un link a las fichas (el catálogo es JS)
+       y un crawler sin JS no descubría nada. */
+    writeFileSync('propiedades.html', buildIndexHtml(published), 'utf8');
+    console.log(`propiedades.html actualizado (${published.length} propiedades)`);
     /* Índice de tours para el catálogo público (badge "Tour" en las cards). */
     mkdirSync('assets/data', { recursive: true });
     writeFileSync('assets/data/property-videos.json', JSON.stringify(videoIndex, null, 2) + '\n', 'utf8');

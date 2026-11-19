@@ -77,12 +77,64 @@ function buildSample() {
     URL, Date, JSON, Math, Set, Map, Number, String, Boolean, Array, Object, encodeURIComponent,
   };
   vm.createContext(sandbox);
-  vm.runInContext(src + '\n;globalThis.__buildHtml = buildHtml;', sandbox, { filename: 'generate-ficha.mjs' });
+  vm.runInContext(src + '\n;globalThis.__buildHtml = buildHtml; globalThis.__buildIndexHtml = buildIndexHtml; globalThis.__buildSitemap = buildSitemap; globalThis.__slugifyZone = slugifyZone;', sandbox, { filename: 'generate-ficha.mjs' });
   const buildHtml = sandbox.__buildHtml;
+  const buildIndexHtml = sandbox.__buildIndexHtml;
+  const buildSitemap = sandbox.__buildSitemap;
+  const slugifyZone = sandbox.__slugifyZone;
+
+  /* Segunda propiedad de muestra (otra zona) → el hub agrupa por zona. */
+  const mock2 = {
+    ...MOCK_PROPERTY,
+    id: 'prop-test-2',
+    property_code: 'ML-TEST2',
+    title: 'Lote en El Cedrón',
+    zone: 'El Cedrón',
+    property_type: 'terreno',
+    status: 'venta',
+    price_usd: 45000,
+    bedrooms: 0,
+    rooms: 0,
+    updated_at: '2026-11-10T12:00:00+00:00',
+  };
+  const mock3 = {
+    ...MOCK_PROPERTY,
+    id: 'prop-test-3',
+    property_code: 'ML-TEST3',
+    title: 'Casa en Nueva Córdoba',
+    zone: 'Nueva Córdoba',
+    property_type: 'casa',
+    status: 'alquiler',
+    price_usd: 90000,
+    price_currency: 'USD',
+    updated_at: '2026-11-15T08:30:00+00:00',
+  };
+  /* Cuarta: otra de El Cedrón → esa zona concentra 2 de 4 (en producción 12
+     de 27) y por eso va primera en el hub. */
+  const mock4 = {
+    ...MOCK_PROPERTY,
+    id: 'prop-test-4',
+    property_code: 'ML-TEST4',
+    title: 'Lote en El Cedrón',
+    zone: 'El Cedrón',
+    property_type: 'terreno',
+    status: 'venta',
+    price_usd: 32000,
+    bedrooms: 0,
+    rooms: 0,
+    updated_at: '2026-11-12T09:00:00+00:00',
+  };
+  const muestra = [MOCK_PROPERTY, mock2, mock3, mock4];
 
   return {
     withVideo: buildHtml(MOCK_PROPERTY, [MOCK_PROPERTY], { 'prop-test-1': MOCK_VIDEO }),
     withoutVideo: buildHtml(MOCK_PROPERTY, [MOCK_PROPERTY], {}),
+    /* Hub estático /propiedades.html (Fase 3 SEO) */
+    index: buildIndexHtml(muestra),
+    /* Sitemap con lastmod real por ficha */
+    sitemap: buildSitemap(muestra),
+    slugifyZone,
+    props: muestra,
   };
 }
 
