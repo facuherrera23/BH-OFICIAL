@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src https: data:; font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src https://www.google-analytics.com https://*.analytics.google.com https://stats.g.doubleclick.net https://www.clarity.ms https://*.clarity.ms https://c.bing.com; frame-src https://www.openstreetmap.org https://www.youtube-nocookie.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; img-src https: data:; font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src https://*.supabase.co https://www.google-analytics.com https://*.analytics.google.com https://stats.g.doubleclick.net https://www.clarity.ms https://*.clarity.ms https://c.bing.com; frame-src https://www.openstreetmap.org https://www.youtube-nocookie.com; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>Casa en Venta de 2 Dor Villa Azalais | Bienenhaus Propiedades · DA-P0007</title>
 <meta name="description" content="Oportunidad Villa Azalais Gran Terreno Casa y Departamento a Reciclar ¡Atención Inversores y Desarrollistas! Presentamos una propiedad con un potencial…">
 <link rel="canonical" href="https://bienenhaus.com.ar/fichas/DA-P0007.html">
@@ -274,7 +274,7 @@ CPI. 1834</p>
   </main>
   <footer class="foot">
     <div class="foot-brand"><b>BIENENHAUS</b> PROPIEDADES</div>
-    <div class="foot-meta">CPI 1834 · <a href="https://bienenhaus.com.ar/" rel="noopener">bienenhaus.com.ar</a></div>
+    <div class="foot-meta">CPI 1834 · <a href="https://bienenhaus.com.ar/" rel="noopener">bienenhaus.com.ar</a> · <a href="https://bienenhaus.com.ar/politica-de-privacidad.html" rel="noopener">Privacidad</a> · <button type="button" data-bh-track-optout style="background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;text-decoration:underline;border-bottom:1px solid rgba(148,163,184,0.4);">No medirme</button></div>
   </footer>
   <dialog id="lb" class="lb">
     <img id="lbImg" alt="">
@@ -382,17 +382,22 @@ CPI. 1834</p>
         copyIt.setAttribute('data-copy', withParams);
       }
     }
-    /* CONVERSIÓN 2026-10-26: medir clicks de WhatsApp desde la ficha —
-       es EL evento de conversión de estas páginas. bhTrack es no-op
-       sin consentimiento (analytics.js no carga gtag). */
+    /* CONVERSIÓN 2026-10-26 / 2026-11-18: medir clicks de WhatsApp desde la ficha —
+       es EL evento de conversión de estas páginas.
+       2026-11-18: el click ahora pasa por el HANDOFF (wa-handoff.js): pide 1
+       dato (teléfono), crea el lead con origen 'whatsapp' + esta propiedad y
+       después abre el chat. Ese script trackea el 'wa_click' una sola vez
+       (marca data-bh-wa-tracked) → acá no se vuelve a trackear. */
     document.addEventListener('click', function (e) {
       var a = e.target.closest && e.target.closest('a[href*="wa.me"]');
-      if (a && typeof window.bhTrack === 'function') {
+      if (a && !a.hasAttribute('data-bh-wa-tracked') && typeof window.bhTrack === 'function') {
         window.bhTrack('wa_click', { origin: 'ficha', property_code: 'DA-P0007' });
       }
     });
   })();
   </script>
-  <script src="../assets/js/analytics.js" defer></script>
+  <script src="../assets/js/tracking.js?v=0bb85129" defer></script>
+  <script src="../assets/js/wa-handoff.js?v=2113f6f4" defer></script>
+  <script src="../assets/js/analytics.js?v=0f402ae5" defer></script>
 </body>
 </html>
