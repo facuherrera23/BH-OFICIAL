@@ -146,6 +146,49 @@ test.describe('SEO estático — teléfono visible (tel:)', () => {
   });
 });
 
+test.describe('SEO estático — Cloudflare Web Analytics (CSP)', () => {
+  /* El beacon de Cloudflare (static.cloudflareinsights.com/beacon.min.js) lo
+     inyecta Cloudflare en TODAS las páginas. Si la CSP no lo permite en
+     script-src, el navegador lo bloquea con un error de consola y la
+     medición NO existe en esa página (silenciosamente). Antes: la home,
+     canal, encuesta, confirmar-visita, portal y admin lo permitían, pero
+     las 27 fichas y el hub NO → se perdía la medición justo en las páginas
+     que más tráfico reciben. */
+  const cspDe = (html) => {
+    const m = html.match(/Content-Security-Policy[^>]*content="([^"]+)"/);
+    return m ? m[1] : '';
+  };
+
+  test('la ficha permite el beacon de Cloudflare Insights (script-src + connect-src)', () => {
+    const { withoutVideo } = buildSample();
+    const csp = cspDe(withoutVideo);
+    expect(csp).toContain('https://static.cloudflareinsights.com');
+    const scriptSrc = csp.match(/script-src[^;]*/)?.[0] || '';
+    expect(scriptSrc).toContain('https://static.cloudflareinsights.com');
+    const connectSrc = csp.match(/connect-src[^;]*/)?.[0] || '';
+    expect(connectSrc).toContain('https://static.cloudflareinsights.com');
+    expect(connectSrc).toContain('https://api.cloudflareinsights.com');
+  });
+
+  test('el hub permite el beacon de Cloudflare Insights (script-src + connect-src)', () => {
+    const { index } = buildSample();
+    const csp = cspDe(index);
+    const scriptSrc = csp.match(/script-src[^;]*/)?.[0] || '';
+    expect(scriptSrc).toContain('https://static.cloudflareinsights.com');
+    const connectSrc = csp.match(/connect-src[^;]*/)?.[0] || '';
+    expect(connectSrc).toContain('https://static.cloudflareinsights.com');
+    expect(connectSrc).toContain('https://api.cloudflareinsights.com');
+  });
+
+  test('la home ya lo permitía (referencia: el hub y las fichas copian su forma)', () => {
+    const csp = cspDe(indexHtml);
+    const scriptSrc = csp.match(/script-src[^;]*/)?.[0] || '';
+    const connectSrc = csp.match(/connect-src[^;]*/)?.[0] || '';
+    expect(scriptSrc).toContain('https://static.cloudflareinsights.com');
+    expect(connectSrc).toContain('https://api.cloudflareinsights.com');
+  });
+});
+
 test.describe('SEO estático — sitemap', () => {
   test('el sitemap incluye el hub con prioridad alta', () => {
     const { sitemap } = buildSample();
