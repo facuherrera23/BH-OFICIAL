@@ -953,7 +953,24 @@ test.describe('alquileres — comprobantes de pago (2026-11-17, pedido del dueñ
     // se crea lazy (los estados viejos del JSONB no tienen comprobantes)
     expect(core).toMatch(/subirComps\(fs\)\{if\(!fs\|\|!fs\.length\)return;const p=cur\(\),m=fmv\(\);p\.comprobantes=p\.comprobantes\|\|\{\};p\.comprobantes\[m\]=p\.comprobantes\[m\]\|\|\[\]/);
     // un archivo que falla en IndexedDB NO deja metadata huérfana (continue)
-    expect(core).toMatch(/catch\(e\)\{alert\('No pude guardar el archivo en este navegador\.'\);continue\}/);
+    expect(core).toMatch(/catch\(e\)\{errs\+\+;continue\}/);
+  });
+
+  test('REGRESIÓN 19/11: subida de VARIOS comprobantes en una operación (bug del empleador)', () => {
+    /* El input#pc tiene `multiple`, pero el onchange limpiaba el input con
+       value='' → eso VACÍA el FileList (es una lista VIVA) mientras el for..of
+       estaba suspendido en el await de IndexedDB → el loop terminaba después
+       del PRIMER archivo. El Update complained: "sólo se puede subir uno a
+       la vez". Fix: copiar el listado a un array real ANTES de cualquier
+       await (mismo criterio que cargarAgua, que recibe [...this.files]). */
+    expect(core).toMatch(/const arr=Array\.from\(fs\);/);
+    expect(core).toMatch(/for\(const f of arr\)/);
+    // el onchange pasa un array real (igual que las facturas: cargarAgua([...this.files]))
+    expect(core).toMatch(/onchange="subirComps\(\[\.\.\.this\.files\]\);this\.value=''"/);
+    // los errores se avisan UNA vez (con N archivos, N alerts saturaban la pantalla)
+    expect(core).toMatch(/if\(errs\)alert\(errs==1\?/);
+    // NO debe quedar el alert por archivo (el que rompía la pantalla)
+    expect(core).not.toMatch(/catch\(e\)\{alert\('No pude guardar el archivo en este navegador\.'\);continue\}/);
   });
 
   test('UI: card propia "Comprobantes de pago" al lado de Facturas cargadas', () => {
@@ -964,8 +981,9 @@ test.describe('alquileres — comprobantes de pago (2026-11-17, pedido del dueñ
     // la card de comprobantes tiene su propio selector de mes (mismo FM)
     expect(core).toMatch(/<h3>Comprobantes de pago<\/h3>\$\{\(\(\)=>\{const ms=mesesDoc\(p\),m=fmv\(\),cs=\(p\.comprobantes\|\|\{\}\)\[m\]\|\|\[\];return`<div style="max-width:260px;margin-bottom:8px"><label>Mes<\/label><select onchange="FM=this\.value;CV=null;render\(\)">/);
     // mismo input único id="pc" (accept PDF + imágenes, multiple)
-    expect(core).toMatch(/<input id="pc" type="file" accept="\.pdf,image\/\*" multiple hidden onchange="subirComps\(this\.files\);this\.value=''">/);
-    expect(core).toContain('Subir comprobante (PDF o imagen)');
+    expect(core).toMatch(/<input id="pc" type="file" accept="\.pdf,image\/\*" multiple hidden onchange="subirComps\(\[\.\.\.this\.files\]\);this\.value=''">/);
+    // el botón dice que se pueden elegir varios (el empleador lo pidió)
+    expect(core).toContain('Subir comprobantes (PDF o imagen, varios a la vez)');
     // filas con esc() (hardening XSS — nombre de archivo de usuario)
     expect(core).toMatch(/<b>\$\{i\+1\}<\/b> · \$\{esc\(c\.arch\)\}<\/td><td><button class="s" onclick="verComp\(\$\{i\}\)">/);
     expect(core).toMatch(/onclick="quitarComp\(\$\{i\}\)">Quitar<\/button>/);
@@ -1055,6 +1073,13 @@ test.describe('alquileres — comprobantes de pago (2026-11-17, pedido del dueñ
     expect(res.botonSubir).toBe(true);
     expect(res.duoCards).toBe(2);
     expect(res.tituloComps).toBe(true);
+    // 8) REGRESIÓN: el flujo REAL del input (FileList vivo + value='')
+    //    guarda TODOS los archivos elegidos en una sola operación.
+    expect(res.inputMultiple, 'el input#pc debe seguir con multiple').toBe(true);
+    expect(res.filesElegidos).toBe(3);
+    expect(res.guardadosEnUnaOperacion, 'con 3 archivos elegidos se deben guardar 3 (bug: se guardaba 1)').toBe(3);
+    expect(res.nombresEnUnaOperacion).toEqual(['lote-1.pdf', 'lote-2.pdf', 'lote-3.png']);
+    expect(res.idaYVuelta, 'los 3 blobs tienen que estar en IndexedDB').toBe(true);
     // sin alerts inesperados (fallas silenciosas de idbDo)
     expect(res.alerts).toEqual([]);
   });

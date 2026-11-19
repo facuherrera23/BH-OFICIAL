@@ -88,6 +88,37 @@ window.__RUN = async function () {
     out.duoCards = tmp.querySelectorAll('.duo > .card').length; // 2 (facturas | comprobantes)
     out.tituloComps = !!tmp.querySelector('.duo .card h3:nth-child(1)') && (tmp.querySelectorAll('.duo .card h3')[1] || {}).textContent === 'Comprobantes de pago';
 
+    /* 8) REGRESIÓN 19/11/2026 (pedido del empleador): el flujo REAL del input
+       —FileList VIVO + el value='' del onchange— tiene que guardar TODOS los
+       archivos elegidos en una sola operación. Antes se guardaba sólo el
+       PRIMERO: el value='' vaciaba el FileList mientras el for..of estaba
+       suspendido en el await de IndexedDB. Este paso usa el input real con un
+       DataTransfer (NO un array) → es el flujo que dispara el bug.
+       Se hace en un mes aparte (FM=2026-11) para no mezclar con los pasos
+       anteriores. */
+    const cont = document.createElement('div');
+    cont.innerHTML = ficha();
+    document.body.appendChild(cont);
+    const inp = cont.querySelector('#pc');
+    out.inputMultiple = !!(inp && inp.multiple);
+    FM = '2026-11';
+    const dt = new DataTransfer();
+    dt.items.add(new File(['A'], 'lote-1.pdf', { type: 'application/pdf' }));
+    dt.items.add(new File(['B'], 'lote-2.pdf', { type: 'application/pdf' }));
+    dt.items.add(new File(['C'], 'lote-3.png', { type: 'image/png' }));
+    inp.files = dt.files;
+    out.filesElegidos = inp.files.length;
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 600));
+    const lote = (p.comprobantes || {})['2026-11'] || [];
+    out.guardadosEnUnaOperacion = lote.length;            // 3 (NO 1)
+    out.nombresEnUnaOperacion = lote.map(c => c.arch);
+    /* read-back real de los 3 en IndexedDB (no sólo la metadata) */
+    const r1 = lote[0] ? await idbDo('get', lote[0].k) : null;
+    const r3 = lote[2] ? await idbDo('get', lote[2].k) : null;
+    out.idaYVuelta = !!(r1 && r3 && r1.size > 0 && r3.size > 0);
+    FM = null;
+
     out.alerts = window.__ALERTS || [];
     out.ok = true;
   } catch (e) {
