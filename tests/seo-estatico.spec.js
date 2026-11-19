@@ -168,6 +168,10 @@ test.describe('SEO estático — Cloudflare Web Analytics (CSP)', () => {
     const connectSrc = csp.match(/connect-src[^;]*/)?.[0] || '';
     expect(connectSrc).toContain('https://static.cloudflareinsights.com');
     expect(connectSrc).toContain('https://api.cloudflareinsights.com');
+    /* El beacon NO postea a api.cloudflareinsights.com: postea a
+       /cdn-cgi/rum en el MISMO origen (bienenhaus.com.ar) → sin 'self' en
+       connect-src el POST se bloquea y la medición no llega. */
+    expect(connectSrc).toContain("'self'");
   });
 
   test('el hub permite el beacon de Cloudflare Insights (script-src + connect-src)', () => {
@@ -178,6 +182,7 @@ test.describe('SEO estático — Cloudflare Web Analytics (CSP)', () => {
     const connectSrc = csp.match(/connect-src[^;]*/)?.[0] || '';
     expect(connectSrc).toContain('https://static.cloudflareinsights.com');
     expect(connectSrc).toContain('https://api.cloudflareinsights.com');
+    expect(connectSrc).toContain("'self'");
   });
 
   test('la home ya lo permitía (referencia: el hub y las fichas copian su forma)', () => {
