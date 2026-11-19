@@ -2880,10 +2880,30 @@ function esc(s) {
   on($('#btnNewLead'), 'click', () => {
     editingLeadId = null;
     $('#leadForm')?.reset();
-    // Recargar brokers disponibles
+    // Recargar brokers y propiedades disponibles
     loadAgentSelect($('#leadBrokerSelect'));
+    loadPropertySelect($('#leadPropertySelect'));
     openModal('leadModal');
   });
+
+  /* Vincula la propiedad elegida al alta/edición del lead. El campo directo
+     `leads.property_id` es la "propiedad principal"; `lead_properties` es la
+     relación completa que consume el panel del CRM (KPIs, match, timeline).
+     Best-effort: si RLS/red rechaza la tabla puente, el lead ya quedó guardado
+     con la propiedad principal y el panel la sigue mostrando. */
+  async function linkLeadProperty(leadId, propertyId) {
+    if (!leadId || !propertyId) return;
+    try {
+      await mutate('lead_properties', async () => {
+        const { error } = await window.supabaseClient
+          .from('lead_properties')
+          .upsert([{ lead_id: leadId, property_id: propertyId }], { onConflict: 'lead_id,property_id', ignoreDuplicates: true });
+        if (error) throw error;
+      });
+    } catch (e) {
+      console.warn('[lead-property-link]', e.message);
+    }
+  }
 
   on($('#leadForm'), 'submit', async (e) => {
     e.preventDefault();
@@ -2909,7 +2929,9 @@ function esc(s) {
         preferred_zone: validated.preferred_zone,
         notes: validated.notes,
         source: validated.source,
-        property_id: validated.property_id,
+        // El select viene vacío cuando no se elige propiedad: enviar null
+        // explícito para que la edición pueda limpiar la propiedad principal.
+        property_id: validated.property_id ?? null,
         assigned_to: validated.assigned_to,
         preferred_rooms: validated.preferred_rooms,
         tipo_cliente: validated.tipo_cliente,
@@ -2983,6 +3005,7 @@ function esc(s) {
                 const { error } = await window.supabaseClient.from('leads').update({ deleted_at: null, ...data }).eq('id', r2.data.id);
                 if (error) throw error;
               });
+              await linkLeadProperty(r2.data.id, data.property_id);
               showToast('Lead recuperado y actualizado', 'success');
               closeModal('leadModal');
               loadCRM();
@@ -2997,6 +3020,7 @@ function esc(s) {
 
 
       }
+      let savedLeadId = editingLeadId;
       if (editingLeadId) {
         await mutate('leads', async () => {
           const { error } = await window.supabaseClient.from('leads').update(data).eq('id', editingLeadId);
@@ -3004,12 +3028,15 @@ function esc(s) {
         });
         showToast('Lead actualizado', 'success');
       } else {
-        await mutate('leads', async () => {
-          const { error } = await window.supabaseClient.from('leads').insert([data]);
+        const inserted = await mutate('leads', async () => {
+          const { data: row, error } = await window.supabaseClient.from('leads').insert([data]).select('id').single();
           if (error) throw error;
+          return row;
         });
+        savedLeadId = inserted?.id || null;
         showToast('Lead registrado', 'success');
       }
+      await linkLeadProperty(savedLeadId, data.property_id);
 
       closeModal('leadModal');
       loadCRM(); // delega en el nuevo módulo si está cargado
@@ -3036,6 +3063,7 @@ function esc(s) {
       if (!form) return;
 
       await loadAgentSelect($('#leadBrokerSelect'), lead.assigned_to);
+      await loadPropertySelect($('#leadPropertySelect'), lead.property_id || '');
       /* setF defensivo: el form actual puede no tener todos los campos heredados */
       const setF = (name, val) => { const el = form.elements[name]; if (el) el.value = val; };
       setF('full_name', lead.full_name || '');
@@ -3673,6 +3701,7 @@ window.exportAnomaliesCSV = async function() {
           editingLeadId = null;
           $('#leadForm')?.reset();
           loadAgentSelect($('#leadBrokerSelect'));
+          loadPropertySelect($('#leadPropertySelect'));
           openModal('leadModal');
           break;
         case 'openVisitModal':
