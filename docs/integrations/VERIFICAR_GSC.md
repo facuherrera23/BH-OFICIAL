@@ -68,8 +68,7 @@ vez de adivinar.
 
 - [ ] Verificar el dominio en GSC (este documento).
 - [ ] Enviar el sitemap.
-- [ ] Activar **Cloudflare Web Analytics** (la CSP de todas las páginas ya lo
-      permite: `static.cloudflareinsights.com`; falta el beacon con el token).
+- [x] ~~Activar Cloudflare Web Analytics~~ → **ya está activo** (verificado el 19/11/2026: el beacon carga y postea a `/cdn-cgi/rum` sin errores de CSP). La CSP de las fichas y del hub era lo único que lo bloqueaba → ya está corregido.
 - [ ] Opcional: **Bing Webmaster Tools** (importa el sitio a Bing y de ahí a
       los buscadores de IA).
 - [ ] Decidir si se habilita `Google-Extended` en Cloudflare (hoy está en
