@@ -40,6 +40,19 @@ var ORIGINS = ['landing_page','newsletter','manual','landing','ml','rela_zonapro
 var ORIGIN_LABELS = { manual:'Manual', landing_page:'Landing web', landing:'Landing (legado)', newsletter:'Newsletter', ml:'Mercado Libre', rela_zonaprop:'ZonaProp (RELA)', lavoz:'Clasificados La Voz', youtube:'YouTube', facebook:'Facebook', instagram:'Instagram', tiktok:'TikTok', gvamax:'Gvamax (import)', chat:'Chat', referido:'Referido', tasacion:'Tasación', walkin:'Visita en persona', contacto:'Contacto', propiedad:'Propiedad', whatsapp:'WhatsApp', web:'Web' };
 var TIPO_CLIENTE_OPTS = ['propietario','comprador','inversor','inquilino'];
 var OPERATION_OPTS = ['compra','venta','alquiler'];
+/* Un solo dato cargado: tipo_cliente manda, operation_type se deriva.
+   Mismo mapa en admin-app.js y admin-propiedades.js (guard en tests). */
+var TIPO_CLIENTE_OPERATION = { propietario:'venta', comprador:'compra', inversor:'compra', inquilino:'alquiler' };
+var OPERATION_TIPO_CLIENTES = { compra:['comprador','inversor'], venta:['propietario'], alquiler:['inquilino'] };
+function operationFromTipoCliente(tipo) { return TIPO_CLIENTE_OPERATION[tipo] || null; }
+function leadOperation(lead) { return (lead && (lead.operation_type || operationFromTipoCliente(lead.tipo_cliente))) || ''; }
+/* Filtro por operación con fallback: si operation_type es NULL (44 leads
+   reales), se usa el tipo de cliente. Si está cargado, manda él. */
+function operationFilter(op) {
+  return ['operation_type.eq.' + op].concat((OPERATION_TIPO_CLIENTES[op] || []).map(function (t) {
+    return 'and(operation_type.is.null,tipo_cliente.eq.' + t + ')';
+  })).join(',');
+}
 
 var PAGE_SIZE = 25;
 var _page = 1, _totalPages = 1, _totalRows = 0;
@@ -221,7 +234,7 @@ function applyBaseFilters(q) {
      fuerza source='ml' y el select de origen no aplica (si el usuario cambia el
      origen a mano, el chip se apaga — ver el listener del select). */
   var or = $id('crmOriginFilter'); if (or && or.value && !_mlUntouchedFilter) q = q.eq('source', or.value);
-  var tp = $id('crmTipoOperacionFilter'); if (tp && tp.value) q = q.eq('operation_type', tp.value);
+  var tp = $id('crmTipoOperacionFilter'); if (tp && tp.value) q = q.or(operationFilter(tp.value));
   var ag = $id('crmAgentFilter');
   if (ag && ag.value === '__none__') q = q.is('assigned_to', null);
   else if (ag && ag.value) q = q.eq('assigned_to', ag.value);
@@ -1683,7 +1696,7 @@ function computePropertyMatches(lead, allProps, linkedPropIds) {
   var type = lead.preferred_type || '';
   var rooms = lead.preferred_rooms || null;
   var budget = Number(lead.budget_usd) || null;
-  var opType = lead.operation_type || '';
+  var opType = leadOperation(lead);
   /* Sin preferencias cargadas → no hay match posible */
   if (!zone && !type && !rooms && !budget) return [];
 
@@ -2192,7 +2205,7 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks
           '</div>' +
           '<div class="crm-side-field-row">' +
             '<div class="crm-side-field"><span class="crm-side-field-label">Origen</span><select class="crm-field-input crm-field-input--select" id="crmDtlOrigin">' + oopts + '</select></div>' +
-            '<div class="crm-side-field"><span class="crm-side-field-label">Tipo cliente</span><select class="crm-field-input crm-field-input--select" id="crmDtlTipoCliente"><option value="">&#8212;</option>' + tcOpts + '</select></div>' +
+            '<div class="crm-side-field"><span class="crm-side-field-label" title="La operación (compra/venta/alquiler) se completa sola según el tipo">Tipo cliente / operación</span><select class="crm-field-input crm-field-input--select" id="crmDtlTipoCliente"><option value="">&#8212;</option>' + tcOpts + '</select></div>' +
           '</div>' +
           '<div class="crm-side-field-row">' +
             '<div class="crm-side-field"><span class="crm-side-field-label">Agente</span><select class="crm-field-input crm-field-input--select" id="crmDtlAgent"><option value="">Sin agente</option>' + aopts + '</select></div>' +
@@ -2326,7 +2339,7 @@ function bindSideSave(lead, panel) {
   if (!btn) return;
   var originalStage = lead.stage || 'nuevo';
   btn.addEventListener('click', async function () {
-    var d = collectSideForm(panel);
+    var d = collectSideForm(panel, lead);
     if (!d.full_name) { toast('El nombre es obligatorio.', 'error'); return; }
     var stageChanged = d.stage && normalizeStage(d.stage) !== normalizeStage(originalStage);
     var lostDetailToSave = null;
@@ -2405,8 +2418,9 @@ function bindSideSave(lead, panel) {
   });
 }
 
-function collectSideForm(panel) {
+function collectSideForm(panel, lead) {
   function v(id) { var el = panel.querySelector('#' + id); return el ? (el.value.trim() || null) : null; }
+  var tipo = v('crmDtlTipoCliente');
   return {
     full_name: v('crmDtlName'),
     email: v('crmDtlEmail'),
@@ -2415,7 +2429,10 @@ function collectSideForm(panel) {
     preferred_contact_method: v('crmDtlPrefContact'),
     stage: v('crmDtlStatus'),
     source: v('crmDtlOrigin'),
-    tipo_cliente: v('crmDtlTipoCliente'),
+    tipo_cliente: tipo,
+    /* Un solo campo editable: la operación se deriva del tipo. Si no hay tipo,
+       se conserva la operación vieja para no pisar datos heredados. */
+    operation_type: tipo ? operationFromTipoCliente(tipo) : ((lead && lead.operation_type) || null),
     assigned_to: v('crmDtlAgent') || null,
     notes: v('crmDtlNotes')
   };

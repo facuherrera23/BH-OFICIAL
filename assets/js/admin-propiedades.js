@@ -9,6 +9,10 @@
   /* ------------------------------------------------
      5. PROPERTIES CRUD
      ------------------------------------------------ */
+  /* Un solo dato en el alta (tipo_cliente) y la operación se deriva.
+     Igual mapa en admin-app.js / admin-crm.js (guard en tests). */
+  const TIPO_CLIENTE_OPERATION = { propietario: 'venta', comprador: 'compra', inversor: 'compra', inquilino: 'alquiler' };
+
   const PROP_STATUS_META = {
     venta: { label: 'Venta', bg: 'rgba(31,200,195,0.15)', color: 'var(--accent)' },
     alquiler: { label: 'Alquiler', bg: 'rgba(245,158,11,0.15)', color: 'var(--warning)' },
@@ -1835,7 +1839,7 @@
       /* Fetch propiedad + leads activos */
       const [propRes, leadsRes] = await Promise.all([
         client.from('properties').select('id, title, property_code, zone, property_type, rooms, price_usd, price_currency, status, address').eq('id', propertyId).single(),
-        client.from('leads').select('id, full_name, phone, whatsapp, email, preferred_zone, preferred_type, preferred_rooms, budget_usd, operation_type, stage, lead_score').is('deleted_at', null).not('stage', 'in', '("cerrado_ganado","cerrado_perdido")').limit(100)
+        client.from('leads').select('id, full_name, phone, whatsapp, email, preferred_zone, preferred_type, preferred_rooms, budget_usd, tipo_cliente, operation_type, stage, lead_score').is('deleted_at', null).not('stage', 'in', '("cerrado_ganado","cerrado_perdido")').limit(100)
       ]);
       if (propRes.error) throw propRes.error;
       const prop = propRes.data;
@@ -1861,8 +1865,9 @@
         }
         if (l.preferred_type && prop.property_type && l.preferred_type === prop.property_type) { score += 20; reasons.push('Tipo correcto'); }
         if (l.preferred_rooms && prop.rooms && Math.abs(prop.rooms - l.preferred_rooms) <= 1) { score += 20; reasons.push('Ambientes'); }
-        if (l.operation_type === 'compra' && prop.status !== 'venta') return null;
-        if (l.operation_type === 'alquiler' && prop.status !== 'alquiler') return null;
+        const op = l.operation_type || TIPO_CLIENTE_OPERATION[l.tipo_cliente] || '';
+        if (op === 'compra' && prop.status !== 'venta') return null;
+        if (op === 'alquiler' && prop.status !== 'alquiler') return null;
         if (score < 20) return null;
         const wa = l.whatsapp || l.phone || '';
         if (!wa || wa.replace(/\D/g, '').length < 8) return null;

@@ -222,6 +222,19 @@ function esc(s) {
     notes: z.string().max(2000).optional().nullable(),
   });
 
+  /* Un solo dato cargado: TIPO de cliente manda y la OPERACIÓN se deriva.
+     Los leads viejos que sólo tenían operation_type se conservan (no se
+     borra nada). Mismo mapa en admin-crm.js y admin-propiedades.js —
+     guard: tests/lead-cliente-operacion.spec.js. */
+  const TIPO_CLIENTE_OPERATION = { propietario: 'venta', comprador: 'compra', inversor: 'compra', inquilino: 'alquiler' };
+  const OPERATION_TIPO_CLIENTES = { compra: ['comprador', 'inversor'], venta: ['propietario'], alquiler: ['inquilino'] };
+  const operationFromTipoCliente = tipo => TIPO_CLIENTE_OPERATION[tipo] || null;
+  /* Los filtros heredados por operación también encuentran leads que nunca
+     cargaron operation_type: si está NULL, se cae al tipo de cliente. */
+  const operationFilter = op => ['operation_type.eq.' + op]
+    .concat((OPERATION_TIPO_CLIENTES[op] || []).map(t => 'and(operation_type.is.null,tipo_cliente.eq.' + t + ')'))
+    .join(',');
+
   // Visit validation
   const VisitSchema = z.object({
     lead_id: z.preprocess(v => (v === '' || v == null ? null : v), z.string().uuid('ID de lead inválido').optional().nullable()),
@@ -2935,7 +2948,11 @@ function esc(s) {
         assigned_to: validated.assigned_to,
         preferred_rooms: validated.preferred_rooms,
         tipo_cliente: validated.tipo_cliente,
-        operation_type: validated.operation_type,
+        /* Un solo campo visible: si eligió tipo se deriva la operación; si no,
+           se preserva la operation_type legacy (campo oculto del formulario). */
+        operation_type: validated.tipo_cliente
+          ? operationFromTipoCliente(validated.tipo_cliente)
+          : (validated.operation_type ?? null),
       };
       const nextFollowRaw = String(formData.get('next_followup_at') || '').trim();
       if (nextFollowRaw) {
@@ -3079,6 +3096,8 @@ function esc(s) {
       setF('source', lead.source || 'manual');
       setF('assigned_to', lead.assigned_to || '');
       setF('property_id', lead.property_id || '');
+      setF('tipo_cliente', lead.tipo_cliente || '');
+      setF('operation_type', lead.operation_type || '');
       const nextFollowInput = form.elements.next_followup_at;
       if (nextFollowInput) {
         if (lead.next_followup_at) {
@@ -3453,7 +3472,7 @@ function esc(s) {
     const orSel = document.getElementById('crmOriginFilter');
     if (orSel && orSel.value) q = q.eq('source', orSel.value);
     const tpSel = document.getElementById('crmTipoOperacionFilter');
-    if (tpSel && tpSel.value) q = q.eq('operation_type', tpSel.value);
+    if (tpSel && tpSel.value) q = q.or(operationFilter(tpSel.value));
     const agSel = document.getElementById('crmAgentFilter');
     if (agSel && agSel.value === '__none__') q = q.is('assigned_to', null);
     else if (agSel && agSel.value) q = q.eq('assigned_to', agSel.value);
@@ -3461,7 +3480,7 @@ function esc(s) {
     if (error) { showToast('Error exportando: ' + error.message, 'error'); return; }
     const headers = ['Nombre', 'Email', 'Teléfono', 'WhatsApp', 'Estado', 'Origen', 'Tipo cliente', 'Operación', 'Presupuesto USD', 'Zona preferida', 'Notas', 'Fecha alta'];
     const rows = (data || []).map(function(l) {
-      return [l.full_name, l.email, l.phone, l.whatsapp, l.stage, l.source, l.tipo_cliente, l.operation_type, l.budget_usd, l.preferred_zone, l.notes, l.created_at];
+      return [l.full_name, l.email, l.phone, l.whatsapp, l.stage, l.source, l.tipo_cliente, l.operation_type || operationFromTipoCliente(l.tipo_cliente) || '', l.budget_usd, l.preferred_zone, l.notes, l.created_at];
     });
     const date = new Date().toISOString().slice(0, 10);
     downloadCSV('leads-' + date + '.csv', rows, headers);
