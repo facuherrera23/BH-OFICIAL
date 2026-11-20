@@ -15,6 +15,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { checkRateLimit } from '../_shared/rate-limit.ts';
+import { ingestRelaContact } from '../_shared/rela-leads.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY') ?? '';
@@ -152,176 +153,19 @@ async function processEvent(
   // CREDITO y desconocidos: sólo se persisten (se analizan desde el panel).
 }
 
-/* ---------------- Dedup de leads (patrón ML, portado 2026-10-29) ----------------
-   La misma persona puede escribir varias veces (o por varias propiedades):
-   queda en UN solo lead de source='rela_zonaprop'. La consolidación rellena
-   campos vacíos, vincula la propiedad adicional vía lead_properties y traza
-   cada mensaje en notes (anti-duplicado por subcadena). Nunca consolida sobre
-   leads terminales (cerrado_ganado/cerrado_perdido — labels REALES del enum
-   lead_stage: un label inventado explota el filtro con 22P02 en runtime y la
-   consolidación muere en silencio; guard: tests/stage-enum-contract.spec.js). */
-const RELA_TERMINAL_STAGES_EXCL = '("cerrado_ganado","cerrado_perdido")';
-const RELA_ANON_NAME = 'Contacto RELA (anónimo)';
-
-async function findConsolidableRelaLead(
-  supabase: ReturnType<typeof createClient>,
-  email: string | null,
-  phone: string | null,
-) {
-  const filters: string[] = [];
-  if (email) filters.push(`email.eq.${email}`);
-  const digits = (phone || '').replace(/\D/g, '');
-  if (digits.length >= 10) filters.push(`phone.ilike.%${digits.slice(-10)}%`);
-  if (!filters.length) return null;
-  const { data, error } = await supabase
-    .from('leads')
-    .select('id, full_name, email, phone, whatsapp, notes, stage, property_id')
-    .eq('source', 'rela_zonaprop')
-    .is('deleted_at', null)
-    .not('stage', 'in', RELA_TERMINAL_STAGES_EXCL)
-    .or(filters.join(','))
-    .order('created_at', { ascending: true }) /* el lead canónico es el primero */
-    .limit(1)
-    .maybeSingle();
-  if (error) console.error('[rela-callbacks] findConsolidableRelaLead query error', error);
-  return data ?? null;
-}
-
-async function mergeRelaEventIntoLead(
-  supabase: ReturnType<typeof createClient>,
-  leadId: string,
-  opts: {
-    email: string | null; phone: string | null; name: string | null;
-    propertyId: string | null; noteLabel: string; noteText: string; propertyContext: string;
-  },
-) {
-  const { data: lead } = await supabase
-    .from('leads')
-    .select('id, full_name, email, phone, whatsapp, notes, property_id')
-    .eq('id', leadId)
-    .maybeSingle();
-  if (!lead) return false;
-
-  const patch: Record<string, string> = {};
-  if (!lead.email && opts.email) patch.email = opts.email;
-  if (!lead.phone && opts.phone) patch.phone = opts.phone;
-  if (!lead.whatsapp && opts.phone) patch.whatsapp = opts.phone;
-  if ((lead.full_name || '').startsWith('Contacto RELA') && opts.name) patch.full_name = opts.name;
-
-  const pieces: string[] = [];
-  const labelLine = `[${opts.noteLabel}] ${opts.noteText || ''}`.trim();
-  if (labelLine.length > opts.noteLabel.length + 2) pieces.push(labelLine);
-  if (opts.propertyContext) pieces.push(opts.propertyContext.trim());
-  const extra = pieces.filter(Boolean).join('\n');
-  const notes = (lead.notes as string) || '';
-  if (extra && !notes.includes(extra.substring(0, 60))) {
-    patch.notes = notes ? notes + '\n' + extra : extra;
-  }
-
-  if (Object.keys(patch).length) {
-    await supabase.from('leads').update(patch).eq('id', leadId);
-  }
-
-  /* Propiedad adicional: la misma persona contactó otra publicación — queda
-     vinculada al MISMO lead (no se crea otra fila en la tabla leads). */
-  if (opts.propertyId && opts.propertyId !== lead.property_id) {
-    const { data: link } = await supabase
-      .from('lead_properties')
-      .select('lead_id, property_id')
-      .eq('lead_id', leadId)
-      .eq('property_id', opts.propertyId)
-      .maybeSingle();
-    if (!link) {
-      await supabase.from('lead_properties').insert({
-        lead_id: leadId,
-        property_id: opts.propertyId,
-        created_at: new Date().toISOString(),
-      });
-    }
-  }
-  return true;
-}
-
 async function handleContact(
   supabase: ReturnType<typeof createClient>,
   body: Record<string, unknown>,
   eventRowId: string,
 ): Promise<void> {
-  const referencia = String(body.referencia ?? body.reference ?? '');
-
-  let propertyId: string | null = null;
-  let agentId: string | null = null;
-  if (referencia) {
-    const { data: listing } = await supabase
-      .from('rela_listings')
-      .select('property_id')
-      .eq('codigo_aviso', referencia)
-      .maybeSingle();
-    propertyId = listing?.property_id ?? null;
-    if (propertyId) {
-      const { data: prop } = await supabase
-        .from('properties')
-        .select('agent_id')
-        .eq('id', propertyId)
-        .maybeSingle();
-      agentId = (prop?.agent_id as string | undefined) ?? null;
-    } else {
-      // Fallback: RELA reporta la clave interna del panel (codigoAviso = property_code)
-      // incluso si el aviso aún no figura en rela_listings.
-      const { data: prop } = await supabase
-        .from('properties')
-        .select('id, agent_id')
-        .eq('property_code', referencia)
-        .is('deleted_at', null)
-        .maybeSingle();
-      propertyId = prop?.id ?? null;
-      agentId = (prop?.agent_id as string | undefined) ?? null;
-    }
-  }
-
-  const email = String(body.email ?? body.mail ?? '').trim().toLowerCase() || null;
-  const phone = String(body.telefono ?? body.phone ?? body.celular ?? '').trim() || null;
-  const mensaje = String(body.mensaje ?? body.message ?? body.comentarios ?? '').trim() || null;
-  const nombre = String(body.nombre ?? body.name ?? '').trim() || '';
-  const hasIdentity = !!(nombre || email || phone);
-  const contactLabel = 'Contacto Zonaprop · RELA';
-  const propContext = referencia ? `\nAviso Zonaprop: ${referencia}` : '';
-
-  /* Regla del dueño (igual que ML 2026-10-26): toda consulta entra al CRM.
-     Con identidad, se consolida en el lead existente de esa persona (nunca
-     duplica); sin identidad, la fila queda como anónima para trabajarla. */
-  if (hasIdentity) {
-    const existing = await findConsolidableRelaLead(supabase, email, phone);
-    if (existing) {
-      await mergeRelaEventIntoLead(supabase, existing.id, {
-        email,
-        phone,
-        name: nombre || null,
-        propertyId,
-        noteLabel: contactLabel,
-        noteText: mensaje || 'Interesado vía contacto de Zonaprop',
-        propertyContext: propContext,
-      });
-      await supabase.from('rela_webhook_events').update({ lead_id: existing.id }).eq('id', eventRowId);
-      return;
-    }
-  }
-
-  const { data: lead, error } = await supabase
-    .from('leads')
-    .insert({
-      full_name: nombre || RELA_ANON_NAME,
-      email,
-      phone,
-      notes: `[${contactLabel}] ${mensaje || 'Interesado vía contacto de Zonaprop'}${propContext}`,
-      source: 'rela_zonaprop',
-      stage: 'nuevo',
-      property_id: propertyId,
-      assigned_to: agentId ?? undefined,
-    })
-    .select('id')
-    .single();
-
-  if (error) throw error;
-  await supabase.from('rela_webhook_events').update({ lead_id: lead.id }).eq('id', eventRowId);
+  const referencia = String(body.referencia ?? body.reference ?? body.codigoAviso ?? '');
+  const r = await ingestRelaContact(supabase, {
+    nombre: String(body.nombre ?? body.name ?? ''),
+    email: String(body.email ?? body.mail ?? ''),
+    phone: String(body.telefono ?? body.phone ?? body.celular ?? ''),
+    mensaje: String(body.mensaje ?? body.message ?? body.comentarios ?? ''),
+    referencia,
+    idAvisoNavplat: (body.idNavplat ?? body.idAvisoNavplat) as number | string | null | undefined,
+  });
+  await supabase.from('rela_webhook_events').update({ lead_id: r.lead_id }).eq('id', eventRowId);
 }

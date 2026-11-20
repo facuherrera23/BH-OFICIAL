@@ -27,9 +27,22 @@ const LABELS_REALES = new Set([
 const TERMINALES = ['cerrado_ganado', 'cerrado_perdido'];
 
 // Los archivos que consolidan leads con exclusión de stages terminales.
+// `fuentes` permite seguir el motor cuando se refactoriza a _shared: el guard
+// tiene que auditar el código EJECUTADO, no el lugar donde históricamente vivió
+// (2026-11-19: rela-callbacks pasó a importar ingestRelaContact del shared y
+// la constante/función ahora están en _shared/rela-leads.ts — sin duplicar).
 const ARCHIVOS = [
-  'supabase/functions/ml-webhook/index.ts',      // ML_TERMINAL_STAGES_EXCL
-  'supabase/functions/rela-callbacks/index.ts',  // RELA_TERMINAL_STAGES_EXCL
+  {
+    archivo: 'supabase/functions/ml-webhook/index.ts', // ML_TERMINAL_STAGES_EXCL
+    fuentes: ['supabase/functions/ml-webhook/index.ts'],
+  },
+  {
+    archivo: 'supabase/functions/rela-callbacks/index.ts', // RELA_TERMINAL_STAGES_EXCL
+    fuentes: [
+      'supabase/functions/rela-callbacks/index.ts',
+      'supabase/functions/_shared/rela-leads.ts',
+    ],
+  },
 ];
 
 function labelsDeConstante(src, nombreConstante) {
@@ -40,11 +53,14 @@ function labelsDeConstante(src, nombreConstante) {
 }
 
 test.describe('enum lead_stage — labels usados por el código existen en la DB', () => {
-  for (const archivo of ARCHIVOS) {
+  for (const entry of ARCHIVOS) {
+    const { archivo } = entry;
     const modulo = path.basename(path.dirname(archivo));
+    const src = entry.fuentes
+      .map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8'))
+      .join('\n');
 
     test(`${modulo}: su _STAGES_EXCL sólo usa labels reales del enum`, () => {
-      const src = fs.readFileSync(path.join(ROOT, archivo), 'utf8');
       const nombre = src.match(/const (\w+_STAGES_EXCL)\s*=/);
       expect(nombre, 'el archivo debe definir una constante *_STAGES_EXCL').toBeTruthy();
       const labels = labelsDeConstante(src, nombre[1]);
@@ -59,10 +75,12 @@ test.describe('enum lead_stage — labels usados por el código existen en la DB
     });
 
     test(`${modulo}: la consolidación de leads NO ignora el error de la query`, () => {
-      const src = fs.readFileSync(path.join(ROOT, archivo), 'utf8');
       const ini = src.indexOf('function findConsolidable');
       expect(ini, 'debe existir findConsolidable*Lead').toBeGreaterThan(-1);
-      const fin = src.indexOf('}', src.indexOf('return data ?? null', ini));
+      const ret = src.indexOf('return (data ?? null)', ini) >= 0
+        ? src.indexOf('return (data ?? null)', ini)
+        : src.indexOf('return data ?? null', ini);
+      const fin = src.indexOf('}', ret);
       const bloque = src.slice(ini, fin + 1);
       expect(bloque, 'la query de consolidación debe destruturar { data, error }')
         .toMatch(/const \{ data, error \} = await supabase/);

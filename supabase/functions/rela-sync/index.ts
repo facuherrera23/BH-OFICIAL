@@ -1,5 +1,7 @@
 // ============================================================
 // rela-sync — Reconciliación programada (cron / invocación manual)
+// 0) Polling de CONTACTOS: GET /v1/inmobiliarias/{codigo}/mensajes → leads.
+//    Es la única captación viva mientras los callbacks estén denied.
 // 1) Por cada listing PUBLISHED/UPDATE_PENDING: consulta el aviso en
 //    RELA y alinea remote_status.
 // 2) Recalcula el hash del payload: si la propiedad cambió y el aviso
@@ -13,6 +15,12 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { loadRelaEnv, RelaClient } from '../_shared/rela.ts';
 import { BhProperty, hashPayload, mapPropertyToRela, validateForRela } from '../_shared/rela.mapper.ts';
+import { pullRelaContacts } from '../_shared/rela-leads.ts';
+
+type ListingRow = {
+  id: string; property_id: string; codigo_aviso: string;
+  status: string; payload_hash: string | null;
+};
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY') ?? '';
@@ -39,14 +47,16 @@ Deno.serve(async (req: Request) => {
   if (req.headers.get('x-sync-secret') !== secret) {
     return json({ error: 'no autorizado' }, 401);
   }
+  const body = await req.json().catch(() => ({})) as Record<string, unknown>;
 
   const { data: cfgRow } = await supabase.from('rela_config').select('*').eq('id', true).maybeSingle();
   if (!cfgRow?.codigo_inmobiliaria) {
     return json({ ok: false, skipped: true, reason: 'rela_config incompleta' });
   }
-  if (cfgRow.dry_run) {
-    return json({ ok: true, skipped: true, reason: 'DRY_RUN activo — no se consulta la API' });
-  }
+  /* DRY_RUN aplica SOLO a publicar avisos (gasta créditos). La lectura de
+     contactos es gratuita y hoy es la ÚNICA vía viva de captación: el alta
+     de callbacks en QuintoAndar responde 500 "Access is denied". Por eso el
+     polling corre aunque dry_run siga activo. */
 
   const env = loadRelaEnv();
   if (!env) return json({ ok: false, skipped: true, reason: 'sin credenciales RELA' });
@@ -54,14 +64,29 @@ Deno.serve(async (req: Request) => {
   env.role = cfgRow.role || env.role;
   const client = new RelaClient(supabase, env);
 
-  const { data: listings } = await supabase
-    .from('rela_listings')
-    .select('id, property_id, codigo_aviso, status, payload_hash')
-    .in('status', ['PUBLISHED', 'UPDATE_PENDING', 'ERROR']);
+  /* Captación: polling de contactos de ZonaProp. Es la vía viva hoy — los
+     callbacks no se pueden registrar (500 Access is denied del lado de
+     QuintoAndar). `preview` clasifica sin escribir, para importar el
+     histórico con OK del dueño. */
+  const contactDays = Math.max(1, Math.min(365, Number(body.days ?? 2) || 2));
+  const contacts = await pullRelaContacts(
+    supabase, client, cfgRow.codigo_inmobiliaria, contactDays, body.preview === true,
+  );
+
+  /* El DRY_RUN sigue frenando la RECONCILIACIÓN de avisos (no gasta nada,
+     pero no hay listings publicados mientras tanto). */
+  let listings: ListingRow[] = [];
+  if (!cfgRow.dry_run) {
+    const { data: rows } = await supabase
+      .from('rela_listings')
+      .select('id, property_id, codigo_aviso, status, payload_hash')
+      .in('status', ['PUBLISHED', 'UPDATE_PENDING', 'ERROR']);
+    listings = (rows ?? []) as ListingRow[];
+  }
 
   const results: Array<Record<string, unknown>> = [];
 
-  for (const l of listings || []) {
+  for (const l of listings) {
     const entry: Record<string, unknown> = { codigo_aviso: l.codigo_aviso };
     try {
       // 1) Estado remoto
@@ -120,6 +145,15 @@ Deno.serve(async (req: Request) => {
     results.push(entry);
   }
 
-  await supabase.from('rela_config').update({ last_sync_at: new Date().toISOString() }).eq('id', true);
-  return json({ ok: true, processed: results.length, results });
+  await supabase.from('rela_config').update({
+    last_sync_at: new Date().toISOString(),
+    ...(contacts.preview ? {} : { last_error: null }),
+  }).eq('id', true);
+  return json({
+    ok: true,
+    contacts,
+    processed: results.length,
+    results,
+    ...(cfgRow.dry_run ? { skipped: 'DRY_RUN: avisos no reconciliados (contactos sí importados)' } : {}),
+  });
 });

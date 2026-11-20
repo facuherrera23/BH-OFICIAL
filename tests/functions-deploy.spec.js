@@ -97,6 +97,7 @@ const CALLED_WITHOUT_JWT = [
   { fn: 'ml-callback', caller: 'callback OAuth de Mercado Libre' },
   { fn: 'ml-oauth', caller: 'inicio OAuth de Mercado Libre' },
   { fn: 'rela-callbacks', caller: 'callback OAuth de RELA/ZonaProp' },
+  { fn: 'rela-sync', caller: 'cron rela-contacts-poll (sin JWT, x-sync-secret)' },
   { fn: 'social-auth-facebook', caller: 'callback OAuth de Meta' },
   { fn: 'social-auth-instagram', caller: 'callback OAuth de Meta' },
   { fn: 'social-auth-tiktok', caller: 'callback OAuth de TikTok' },

@@ -1066,16 +1066,18 @@ try {
     if (/→\s*409\b/.test(raw)) return 'ZonaProp todavía no vinculó esta cuenta a la integración (pendiente de QuintoAndar).';
     return raw;
   }
-  async function relaApiCall(action, body = {}) {
+  /* `fn` permite llamar también a rela-contacts (función propia: el proxy
+     no empaqueta _shared y la lógica de captación NO se duplica). */
+  async function relaApiCall(action, body = {}, fn = 'rela-proxy') {
     const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (!session) throw new Error('No hay sesión activa');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ML_API_TIMEOUT_MS);
     try {
-      const res = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/rela-proxy`, {
+      const res = await fetch(`${window.BH_CONFIG.SUPABASE_URL}/functions/v1/${fn}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({ action, ...body }),
+        body: JSON.stringify({ ...(action ? { action } : {}), ...body }),
         signal: controller.signal,
       });
       if (!res.ok) {
@@ -1150,6 +1152,7 @@ try {
             <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" data-action="relaPreflight"><i class="fas fa-clipboard-check"></i> Validar todos</button>
             <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" data-action="relaSyncCatalogs"><i class="fas fa-rotate"></i> Catálogos</button>
             <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" data-action="relaReconcile"><i class="fas fa-arrows-rotate"></i> Reconciliar</button>
+            <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" data-action="relaPullContacts" title="Traer consultas de ZonaProp al CRM (gratis: no gasta créditos)"><i class="fas fa-user-plus"></i> Traer contactos</button>
             <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" data-action="openRelaConfig"><i class="fas fa-cog"></i> Configurar</button>
           </div>
         </div>
@@ -1181,6 +1184,7 @@ try {
         </div>
         ${status?.last_error ? `<div style="margin-top:12px; font-size:12px; color:var(--danger);">Último error: ${esc(status.last_error)}</div>` : ''}
         <div id="relaPreflightResult" style="margin-top:12px;"></div>
+        <div id="relaContactsResult" style="margin-top:12px;"></div>
         ${events.length ? `
           <details style="margin-top:14px;">
             <summary style="cursor:pointer; font-size:12px; color:var(--text-dim);">Últimos eventos de callback (${events.length})</summary>
@@ -1233,6 +1237,74 @@ try {
     } catch (err) {
       if (box) box.innerHTML = `<div style="font-size:12px; color:var(--danger);">No se pudo validar: ${esc(err.message)}</div>`;
       showToast('Error validando RELA: ' + err.message, 'error');
+    }
+  };
+
+  /* Captación ZonaProp → CRM. Los callbacks siguen denied del lado de
+     QuintoAndar, así que las consultas entran por polling del endpoint
+     /mensajes (lectura gratuita). El botón SIEMPRE muestra primero un
+     preview: nadie crea leads ni consolida historiales sin ver el impacto. */
+  const RELA_CONTACT_DAYS = 30;
+
+  function relaContactsSummary(res, titulo) {
+    const d = res.detalle || [];
+    const filas = d.slice(0, 20).map((m) => {
+      const fecha = m.fecha ? new Date(Number(m.fecha)).toLocaleDateString('es-AR') : '—';
+      return '<div style="padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05); font-size:11px;">' +
+        '<strong>' + esc(m.nombre || 'Sin nombre') + '</strong> · ' + esc(m.email || 'sin email') +
+        ' · aviso ' + esc(m.aviso || '—') + ' · ' + esc(fecha) + '</div>';
+    }).join('');
+    const resto = d.length > 20 ? '<div style="font-size:11px; color:var(--text-dim); margin-top:4px;">y ' + (d.length - 20) + ' contactos más…</div>' : '';
+    return '<div style="background:rgba(59,130,246,0.06); border:1px solid rgba(59,130,246,0.2); border-radius:10px; padding:12px;">' +
+      '<div style="font-size:12px; color:#fff; font-weight:600; margin-bottom:6px;">' + titulo + '</div>' +
+      '<div style="font-size:12px; color:var(--text-dim); margin-bottom:8px;">' +
+        '<strong style="color:#4ade80;">' + (res.nuevos ?? 0) + ' nuevos</strong> · ' +
+        (res.consolidados ?? 0) + ' consolidados · ' +
+        (res.duplicados ?? 0) + ' ya importados · ' +
+        '<span style="color:' + ((res.errores ?? 0) ? 'var(--danger)' : 'var(--text-dim)') + ';">' + (res.errores ?? 0) + ' errores</span>' +
+        ' (últimos ' + (res.dias ?? RELA_CONTACT_DAYS) + ' días)' +
+      '</div>' + filas + resto +
+      (res.preview && (res.nuevos || res.consolidados)
+        ? '<button class="btn-action" style="margin-top:10px; font-size:11px;" data-action="relaImportContacts"><i class="fas fa-download"></i> Importar ahora</button>'
+        : '') +
+      '</div>';
+  }
+
+  window.adminApp.relaPullContacts = async function () {
+    if (!['super_admin', 'broker'].includes(currentProfile?.role)) { showToast('Solo super_admin o broker pueden traer contactos de RELA', 'error'); return; }
+    const box = $('#relaContactsResult');
+    if (box) box.innerHTML = '<div style="font-size:12px; color:var(--text-dim);">Consultando contactos de ZonaProp (preview, sin escribir)…</div>';
+    try {
+      const res = await relaApiCall(null, { preview: true, days: RELA_CONTACT_DAYS }, 'rela-contacts');
+      if (box) box.innerHTML = relaContactsSummary(res, 'Vista previa — no se creó ningún lead todavía');
+      showToast(`RELA: ${res.total ?? 0} contactos, ${res.nuevos ?? 0} nuevos y ${res.consolidados ?? 0} para consolidar`, 'info');
+    } catch (err) {
+      if (box) box.innerHTML = '<div style="font-size:12px; color:var(--danger);">No se pudieron consultar los contactos: ' + esc(err.message) + '</div>';
+      showToast('Error consultando contactos RELA: ' + err.message, 'error');
+    }
+  };
+
+  window.adminApp.relaImportContacts = async function () {
+    if (!['super_admin', 'broker'].includes(currentProfile?.role)) { showToast('Solo super_admin o broker pueden importar contactos de RELA', 'error'); return; }
+    if (!(await showConfirmDialog({
+      title: 'Importar contactos de ZonaProp',
+      message: 'Se crearán leads nuevos y se consolidarán los que ya existan (sin borrar nada). ¿Continuar?',
+      icon: 'fas fa-user-plus',
+      confirmText: 'Importar ahora',
+    }))) return;
+    const box = $('#relaContactsResult');
+    if (box) box.innerHTML = '<div style="font-size:12px; color:var(--text-dim);">Importando contactos…</div>';
+    try {
+      const res = await relaApiCall(null, { preview: false, days: RELA_CONTACT_DAYS }, 'rela-contacts');
+      /* Refrescamos primero: loadRelaPanel() reconstruye el HTML y se llevaría
+         por delante el resumen si lo escribiéramos antes. */
+      await loadRelaPanel();
+      const refreshed = $('#relaContactsResult');
+      if (refreshed) refreshed.innerHTML = relaContactsSummary(res, 'Importación terminada');
+      showToast(`RELA: ${res.nuevos ?? 0} leads nuevos, ${res.consolidados ?? 0} consolidados`, 'success');
+    } catch (err) {
+      if (box) box.innerHTML = '<div style="font-size:12px; color:var(--danger);">No se pudo importar: ' + esc(err.message) + '</div>';
+      showToast('Error importando contactos RELA: ' + err.message, 'error');
     }
   };
 
