@@ -19,7 +19,7 @@
   `20260902000004` y `20260902000005`): `audit_trigger_fn` rompía TODO insert en tablas
   auditadas (leads incluidos) por cast `name→text`, y `audit_log_integrity_fn` rompía todo
   insert en `audit_log` por `search_path=''` sin tablas calificadas.
-- Único bloqueo pendiente: el sandbox no tiene créditos (`ERR-0501`), pedido por email a QuintoAndar.
+- ~~Único bloqueo pendiente: el sandbox no tiene créditos (`ERR-0501`), pedido por email a QuintoAndar.~~ **RESUELTO 2026-11-19**: `GET /disponibilidad` devuelve 200 con `SIMPLE:11` + `DESTACADO:2` = 13 créditos (ver "Estado 2026-11-19" más abajo).
 - Pruebas con usuario real (JWT de panel): `status`, `dry_run` sobre propiedad real, `publish`
   end-to-end (la API creó el aviso, lo procesó y devolvió `ERR-0501`; BH persistió listing
   con `status=ERROR`, `id_aviso_navplat` y warnings), `reconcile` (devolvió estado remoto
@@ -372,6 +372,48 @@ Las **5 bloqueadas** son todas por **3 zonas sin `idUbicacion` en RELA**
   2036-08-28) es **de sandbox** y sirve para consultar catálogos sin exponerlo
   (se lee desde la base, nunca sale a la red del cliente).
 
+### Estado 2026-11-19 — vinculación REAL verificada + captación por polling
+
+**Lo que el dueño vio como "no está vinculada" NO era un problema de
+credenciales: la inmobiliaria SÍ está vinculada.** Sondeo real desde la DB con
+el token de `rela_tokens` (2026-11-19):
+
+- `GET /v1/inmobiliarias` → **200, `total: 1`** → "Bienenhaus Propiedades",
+  `id=30662083`, `bloqueada:false` (antes daba `total:0` → el binding roto del
+  9/11 ya se resolvió del lado de QuintoAndar).
+- `GET /v1/inmobiliarias/30662083/disponibilidad` → **200** (antes 409) →
+  `SIMPLE:11`, `DESTACADO:2`, `HOME:0` → **13 créditos disponibles**. Ya no
+  aplica el bloqueo "sin pack" del ticket SP-61526.
+- Swagger oficial bajado y parseado: **55 paths**. Confirmados los endpoints
+  de captación (`GET /v1/inmobiliarias/{codigo}/mensajes`,
+  `GET/POST /v1/inmobiliarias/{codigo}/contactos/{idContacto}`) y de callbacks.
+
+**"No trae leads" (causa raíz)**: los callbacks NO se pueden registrar —
+`PUT /v1/configuracion/callbacks` responde **500 `{"code":"error_inesperado",
+"message":"Access is denied"}`** (permiso de administración de la integración
+del lado de QuintoAndar; el botón de la API no basta). Como el webhook nunca se
+registró, NUNCA llegó un evento. La vía viva es **`GET /mensajes`**, que sí
+responde: rango `20261020..20261119` → **200, `total: 16`**.
+
+Fix (commit `3ad7ebf`, deploy 19/11): un motor compartido
+`_shared/rela-leads.ts` (dedupe, merge y preview) alimenta a
+`rela-callbacks` (si algún día se habilitan), `rela-sync` (cron cada 10 min,
+`rela-contacts-poll`) y `rela-contacts` (botón del panel). El botón **siempre**
+corre `preview` primero y muestra cuántos contactos son nuevos / consolidables
+/ duplicados; la importación exige confirmación explícita. `dry_run` sigue
+bloqueando la PUBLICACIÓN (gasta créditos), NO la lectura gratuita de
+contactos. `rela-contacts` exige JWT + rol `super_admin`/`broker`; `rela-sync`
+es sin JWT con `x-sync-secret` (en `NO_VERIFY` del CI).
+
+**"No puedo publicar" (causa raíz)**: en la DB hay **18 listings, 0 con
+`id_aviso_navplat`, 0 PUBLICADAS, 0 eventos** — las 18 filas en `BLOCKED` son
+**stale** del estado anterior del 7/11 (no hay Avísos reales creados). Antes de
+publicar: (a) el dueño decide el `contacto_telefono` (hoy `null`, RELA lo
+exige); (b) correr **Validar todos** con los 13 créditos disponibles; (c)
+publicar **1 aviso de prueba** y verificarlo en ZonaProp; (d) recién entonces
+sacar `dry_run`. **Credenciales de producción todavía no hace falta pedirlas
+para las pruebas**: la sandbox volvió y es espejo de producción.
+
 ### Estado 2026-11-09 — mapeo de zonas COMPLETADO + causa raíz aclarada
 
 - **✅ Mapeo terminado**: la sandbox volvió (HTTP 200) y se caminó el árbol desde
@@ -399,15 +441,18 @@ Las **5 bloqueadas** son todas por **3 zonas sin `idUbicacion` en RELA**
   nuevo al ticket.
 - Config BH pendiente: `contacto_telefono` (RELA lo exige; hoy `null`).
 
-### Pendientes (en orden)
+### Pendientes (en orden — actualizado 2026-11-19)
 
-1. **QuintoAndar destrabe el binding** (`GET /v1/inmobiliarias/30662083/disponibilidad`
-   → 409 "no pertenece a la integracion 20354"; `GET /v1/inmobiliarias` → `{"total":0}`).
-   Verificación: botón **Stock** del panel → 200 = binding OK.
-2. **Pedir credenciales de producción** + confirmar la base URL de producción
-   y el `role` (`zp`).
+1. ~~**QuintoAndar destrabe el binding**~~ **✅ RESUELTO**: `GET /v1/inmobiliarias`
+   → 200 `total:1`, `/disponibilidad` → 200 con 13 créditos (ver Estado
+   2026-11-19). Verificación rápida: botón **Stock** del panel.
+2. ~~**Pedir credenciales de producción**~~ **NO BLOQUEANTE**: la sandbox está
+   viva y es espejo de producción; se necesitan sólo para publicar en el sitio
+   real (decisión comercial del dueño).
 3. **Pedir permiso de administración de la integración** para
    `GET/PUT /v1/configuracion/callbacks` (hoy responde 500 "Access is denied").
+   **NO BLOQUEANTE para captar leads**: el polling `/mensajes` ya funciona y el
+   botón "Traer contactos" corre cada 10 min vía cron.
 4. ~~**Mapear las 3 zonas** que faltan (5 avisos = 5/32 = 16 % de la cola)~~
    **✅ HECHO 2026-11-09** (ver "Estado 2026-11-09" arriba): los 3 nombres no
    existen en el catálogo (39 barrios de VC Paz) y se aplicó `sin_equivalencia`
