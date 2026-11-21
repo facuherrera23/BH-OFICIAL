@@ -67,11 +67,23 @@ Deno.serve(async (req: Request) => {
   /* Captación: polling de contactos de ZonaProp. Es la vía viva hoy — los
      callbacks no se pueden registrar (500 Access is denied del lado de
      QuintoAndar). `preview` clasifica sin escribir, para importar el
-     histórico con OK del dueño. */
+     histórico con OK del dueño.
+     FAIL-SOFT: la API de sandbox cae seguido (HTTP 521 de Cloudflare,
+     incidente 2026-11-21). Un 521 NO debe tumbar toda la función con 500:
+     el cron seguiría reintentando cada 10 min sin traza accionable. Se
+     devuelve `degraded:true` con el motivo para que se vea en logs/panel. */
   const contactDays = Math.max(1, Math.min(365, Number(body.days ?? 2) || 2));
-  const contacts = await pullRelaContacts(
-    supabase, client, cfgRow.codigo_inmobiliaria, contactDays, body.preview === true,
-  );
+  type ContactsResult = Awaited<ReturnType<typeof pullRelaContacts>>;
+  let contacts: ContactsResult | null = null;
+  let contactsError: string | null = null;
+  try {
+    contacts = await pullRelaContacts(
+      supabase, client, cfgRow.codigo_inmobiliaria, contactDays, body.preview === true,
+    );
+  } catch (err) {
+    contactsError = String((err as Error)?.message ?? err).slice(0, 500);
+    console.error('[rela-sync] polling de contactos falló (API RELA caída?)', contactsError);
+  }
 
   /* El DRY_RUN sigue frenando la RECONCILIACIÓN de avisos (no gasta nada,
      pero no hay listings publicados mientras tanto). */
@@ -147,11 +159,14 @@ Deno.serve(async (req: Request) => {
 
   await supabase.from('rela_config').update({
     last_sync_at: new Date().toISOString(),
-    ...(contacts.preview ? {} : { last_error: null }),
+    ...(contacts && !contacts.preview ? { last_error: null } : {}),
+    ...(contactsError ? { last_error: contactsError } : {}),
   }).eq('id', true);
   return json({
     ok: true,
-    contacts,
+    ...(contactsError
+      ? { degraded: true, contacts_error: contactsError }
+      : { contacts }),
     processed: results.length,
     results,
     ...(cfgRow.dry_run ? { skipped: 'DRY_RUN: avisos no reconciliados (contactos sí importados)' } : {}),

@@ -56,6 +56,22 @@ test.describe('RELA — captación de contactos por polling', () => {
     expect(SYNC).toContain('skipped:');
   });
 
+  test('un 521 de la API NO tumba el cron: degrada con traza accionable', () => {
+    // Incidente real 2026-11-21: api-zp-sandbox-open.navent.com respondió
+    // 521 (Cloudflare "Web server is down") y rela-sync devolvió 500 en cada
+    // corrida del cron, sin dejar last_error ni motivo en el response.
+    const bloque = SYNC.slice(SYNC.indexOf('const contactDays'), SYNC.indexOf('/* El DRY_RUN'));
+    expect(bloque).toContain('try {');
+    expect(bloque).toContain('} catch (err) {');
+    expect(bloque).toContain('contactsError');
+    expect(bloque).toContain('console.error(');
+    expect(SYNC).toContain('degraded: true');
+    expect(SYNC).toContain('contacts_error: contactsError');
+    expect(SYNC).toContain('...(contactsError ? { last_error: contactsError } : {})');
+    // El success path NO puede perder el resumen de contactos.
+    expect(SYNC).toContain(': { contacts })');
+  });
+
   test('callback y polling comparten el mismo motor de leads', () => {
     expect(CALLBACKS).toContain('ingestRelaContact');
     expect(CALLBACKS).toContain("from '../_shared/rela-leads.ts'");
