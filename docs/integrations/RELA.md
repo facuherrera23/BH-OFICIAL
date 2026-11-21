@@ -372,6 +372,32 @@ Las **5 bloqueadas** son todas por **3 zonas sin `idUbicacion` en RELA**
   2036-08-28) es **de sandbox** y sirve para consultar catálogos sin exponerlo
   (se lee desde la base, nunca sale a la red del cliente).
 
+### Estado 2026-11-21 — captación YA operativa; publicación espera la API
+
+- **✅ El cron capturó su primer lead real**: `rela-contacts-poll` (jobid 41)
+  corre cada 10 min con `status='succeeded'` y creó el lead **Cata Diaz**
+  (20/11 23:20 UTC, email + teléfono, `source='rela_zonaprop'`) — pasamos de
+  11 a **12 leads**. La causes raíz ("no trae leads") quedó resuelta: ya no
+  dependemos de los callbacks denegados.
+- **✅ `contacto_telefono` cargado**: `+5493516379651` (decisión del dueño,
+  el canónico del sitio/JSON-LD). Ya no bloquea la publicación.
+- **⚠️ API sandbox caída de nuevo (HTTP 521)**: `api-zp-sandbox-open.navent.com`
+  responde 521 "Web server is down" de Cloudflare (verificado 21/11 22:08 UTC
+  por `net.http_get`, por `net.http_post` a `rela-sync` y en los logs de la
+  edge function). Por eso **no se pudo correr el preview de los 16 contactos
+  históricos ni publicar el aviso de prueba** (ambos autorizados por el dueño).
+  No es un bug de BH: es la misma caída intermitente del 7/11 que se resolvió
+  sola el 9/11. Reintentar cuando vuelva: `GET /` → 200.
+- **Fix derivado** (commit `28fe5d8`): un 521 ya NO tumba `rela-sync` con 500
+  en cada corrida del cron. Ahora envuelve el polling en `try/catch`, guarda
+  `last_error` con el motivo y responde `degraded:true` + `contacts_error`.
+  Antes el cron parecía "succeeded" (pg_net reporta el SELECT, no la respuesta
+  HTTP) mientras la function moría en silencio cada 10 minutos.
+- **Pendiente en cuanto vuelva la API**: (1) `preview` de 30 días → mostrar el
+  split nuevos/consolidados/duplicados; (2) importar con OK explícito;
+  (3) publicar **1 aviso de prueba** con el teléfono ya cargado y verificarlo
+  en ZonaProp; (4) recién ahí sacar `dry_run`.
+
 ### Estado 2026-11-19 — vinculación REAL verificada + captación por polling
 
 **Lo que el dueño vio como "no está vinculada" NO era un problema de
