@@ -24,6 +24,7 @@ const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf8');
 
 const mig = read('supabase', 'migrations', '20261118000003_captacion_health.sql');
 const fix = read('supabase', 'migrations', '20261118000004_captacion_health_fix.sql');
+const apiAlert = read('supabase', 'migrations', '20261122000001_rela_api_health_alert.sql');
 const portales = read('assets', 'js', 'admin-portales.js');
 const html = read('admin.html');
 
@@ -101,5 +102,39 @@ test.describe('estado de captación (Fase 1)', () => {
     expect(mig).toMatch(/count\(\*\)/);
     expect(mig).toMatch(/max\(received_at\)/);
     expect(mig).toMatch(/max\(created_at\)/);
+  });
+});
+
+test.describe('alarma de API RELA caída (2026-11-22)', () => {
+  test('la alarma abre desde last_error del cron fail-soft y se cierra sola', () => {
+    expect(apiAlert).toContain("'rela_api_down'");
+    expect(apiAlert).toMatch(/SELECT last_error, last_sync_at, base_url[\s\S]*?FROM public\.rela_config WHERE id = true/);
+    expect(apiAlert).toMatch(/IF v_rela_api_error IS NOT NULL THEN/);
+    expect(apiAlert).toMatch(/ELSIF v_open_alert > 0 THEN[\s\S]*?'rela_api_down' AND status = 'open'/);
+    expect(apiAlert).toContain('Auto-resuelto: la API de RELA volvió a responder.');
+  });
+
+  test('no agrega cron ni edge function: reutiliza bh-captacion-health-hourly', () => {
+    expect(apiAlert).not.toMatch(/cron\.schedule|NO_VERIFY|Deno\.serve/);
+    expect(mig).toContain("'bh-captacion-health-hourly'");
+  });
+
+  test('mantiene la firma y los permisos de la función (anon/authenticated NO)', () => {
+    expect(apiAlert).toMatch(/bh_check_captacion_health\(\s*p_ml_horas_sin_consultas integer DEFAULT 48,\s*p_rela_dias_sin_callbacks integer DEFAULT 7\s*\)/);
+    expect(apiAlert).toMatch(/SECURITY DEFINER\s+SET search_path = ''/);
+    expect(apiAlert).toContain(
+      "REVOKE ALL ON FUNCTION public.bh_check_captacion_health(integer, integer) FROM PUBLIC, anon, authenticated"
+    );
+    expect(apiAlert).toContain(
+      "GRANT EXECUTE ON FUNCTION public.bh_check_captacion_health(integer, integer) TO service_role"
+    );
+  });
+
+  test('la alarma es de portales, severidad high y no expone credenciales', () => {
+    const bloque = apiAlert.slice(apiAlert.indexOf('-- ---------- RELA API caída'), apiAlert.indexOf('RETURN jsonb_build_object'));
+    expect(bloque).toContain("'portales'");
+    expect(bloque).toContain("'high'");
+    expect(bloque).not.toMatch(/client_secret|access_token|RELA_CLIENT_/i);
+    expect(bloque).toMatch(/left\(v_rela_api_error, 500\)/);
   });
 });

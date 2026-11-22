@@ -1,115 +1,93 @@
-# Email para QuintoAndar — integración RELA (ZonaProp)
+# Email de seguimiento a QuintoAndar — RELA (ZonaProp)
 
-> **Para:** integracion@ar.quintoandar.com
-> **Asunto:** Bienenhaus Propiedades — re-vinculación de la inmobiliaria 30662083 y solicitud de credenciales de producción
+> **Hilo:** responder/reenviar en `SP-61526` a `jira@navent.atlassian.net`
+> **Copia:** `integracion@ar.quintoandar.com`
+> **Asunto (exacto, para no romper el hilo):** `SP-61526 Fwd: Solicitud de información para integración con Zonaprop`
 >
-> Copiar desde "---" hasta el final. Los datos técnicos van en código para que
-> los puedan copiar sin errores.
+> Motivo: el correo técnico del 9/11 lleva **13 días sin respuesta**. El 13/11
+> el dueño también consultó por otra vía (Atención Inmobiliarias de ZonaProp,
+> hilo `GDrTQktEG1-2BXaUo9-RvRI`) y tampoco obtuvo respuesta: Carla es Customer
+> Service y derivó el tema a ejecutiva de cuentas, no a integraciones.
+>
+> **Firma: Facundo Herrera Orquera** (responsable de la integración), no el titular.
+> Copiar desde "---" hasta el final.
 
 ---
 
-Hola, equipo de integraciones de QuintoAndar:
+Hola Bryan / equipo de integraciones de QuintoAndar:
 
-Somos **Bienenhaus Propiedades**, una inmobiliaria de Córdoba (Argentina). Estamos
-integrados con la API de **Open RELA** desde agosto de 2026 y necesitamos ayuda
-para destrabar la publicación de nuestros avisos.
+Les escribo como continuación del ticket **SP-61526** (correo enviado el 9/11 a
+esta dirección, con copia a integracion@ar.quintoandar.com). Llevamos 13 días
+sin respuesta y necesitamos destrabar la integración de nuestro CRM propio con
+ZonaProp. Somos **Bienenhaus Propiedades**, inmobiliaria de Córdoba, Argentina.
 
-**Nuestros datos:**
+**Datos de la integración:**
 
 | Dato | Valor |
 |---|---|
 | Inmobiliaria | Bienenhaus Propiedades |
-| `codigoInmobiliaria` | `30662083` (ambiente sandbox) |
+| `codigoInmobiliaria` | `30662083` |
 | Integración RELA | `20354` |
-| Plan contratado | `SIMPLE` |
-| Ambiente | Sandbox (pruebas) → necesitamos pasar a producción |
+| `role` | `zp` |
+| Ambiente actual | Sandbox (`https://api-zp-sandbox-open.navent.com`) |
 
-## Lo que ya tenemos listo
+## Lo que ya está resuelto (no hace falta que lo revisen)
 
-- Los 27 avisos están completos y validados (precio, fotos, descripción, tipo
-  de inmueble, superficie y zona con su código RELA).
-- La integración técnica está funcionando: los catálogos de RELA se leen bien
-  con nuestro token y los avisos se arman con el formato que pide la API.
-- El paso de avisos está medido y funciona (creamos un aviso de prueba el
-  31/08 y la API lo procesó correctamente).
-- Tenemos listo el endpoint que recibe las consultas de los interestedos para
-  que entren directamente a nuestro CRM.
+- **Vinculación:** `GET /v1/inmobiliarias` → 200, `total: 1`, inmobiliaria
+  `30662083`, `bloqueada: false`. `GET /v1/inmobiliarias/30662083/disponibilidad`
+  → 200 con `SIMPLE: 11`, `DESTACADO: 2`, `HOME: 0` (13 créditos en sandbox).
+- **Catálogo/zonas:** las 3 zonas que no figuraban (Loma del Tigre, La Alfonsina
+  y San Javier del Lago) se mapearon a Villa Carlos Paz con el barrio real en la
+  descripción. Ya no necesitamos los `idUbicacion`.
+- **Captación de consultas:** como no pudimos registrar callbacks, pasamos a
+  `GET /v1/inmobiliarias/30662083/mensajes` (polling cada 10 min). Ya trajo
+  contactos reales al CRM. El teléfono de contacto del aviso es
+  `+5493516379651`.
 
-## Lo que necesitamos (4 puntos concretos)
+## Lo que necesitamos (4 puntos)
 
-**1. Re-vincular la inmobiliaria `30662083` a nuestra integración `20354`.**
+**1. La API de sandbox está caída (HTTP 521).**
 
-Hoy, al consultar el estado de la inmobiliaria, la API responde:
+`https://api-zp-sandbox-open.navent.com` responde **521 "Web server is down"**
+incluso en la raíz. Ya pasó del 7 al 9/11 y volvió el 21/11; hoy sigue caída
+(verificado el 22/11). ¿Hay una fecha estimada de restablecimiento o un host
+alternativo de sandbox? Sin esto no podemos correr el alta de los avisos ni
+confirmar el aviso de prueba que tenemos autorizado.
 
-```
-GET /v1/inmobiliarias/30662083/disponibilidad
-→ 409 "La inmobiliaria [30662083] no pertenece a la integracion [20354]"
+**2. Permiso para configurar callbacks.**
 
-GET /v1/inmobiliarias
-→ {"total":0}
-```
+`PUT /v1/configuracion/callbacks` responde
+`500 {"code":"error_inesperado","message":"Access is denied"}`.
 
-El 31/08 esto funcionaba (la API rechazaba los avisos por falta de créditos del
-plan, no por vínculo). Por lo que entendimos, la vinculación se perdió o nunca
-se completó para el ambiente sandbox. ¿Nos pueden re-vincular la inmobiliaria
-`30662083` a la integración `20354`? Nos sirve en cualquiera de los dos
-ambientes, en el que esté disponible antes.
-
-**2. Permiso para administrar las notificaciones (callbacks).**
-
-Necesitamos registrar a dónde la API nos avisa de las consultas de los
-interesados. Al intentar ver la configuración actual, la API responde:
-
-```
-GET /v1/configuracion/callbacks
-→ 500 "Access is denied"
-```
-
-¿Nos pueden habilitar ese permiso para la integración `20354`? La URL que
-queremos registrar es:
+¿Pueden habilitar el permiso de administración de callbacks para la integración
+`20354`? La URL a registrar es:
 
 ```
 https://rnldqiwwzhjnurkguihu.supabase.co/functions/v1/rela-callbacks
 ```
 
+Si el polling es la vía que recomiendan, también nos sirve que lo confirmen por
+escrito para dejar de pedirlo.
+
 **3. Credenciales del ambiente de producción.**
 
-Para publicar de verdad necesitamos el `client_id` y el `client_secret` de
-producción (los de sandbox no sirven en el endpoint de producción: responden
-`invalid_token`). ¿Nos los pueden enviar?
+Necesitamos `client_id` y `client_secret` de producción. Los de sandbox darían
+`invalid_token` en `https://api-zp-open.navent.com` (host que sí responde).
+¿Es ese el endpoint correcto y el `role` sigue siendo `zp`?
 
-El host que estamos usando como referencia para el endpoint de producción es
-`https://api-zp-open.navent.com` (responde `invalid_token` sin credenciales, o
-sea que existe). Por favor confirmen si es el correcto y si el parámetro
-`role` sigue siendo `zp`.
+**4. Pack/créditos de producción.**
 
-**4. Tres zonas que no encontramos en el catálogo de ubicaciones.**
+En el mensaje del 10/9 nos indicaron que la cuenta no tenía créditos en
+producción y que Sandbox era espejo de producción. Hoy sandbox muestra 13
+créditos, pero para publicar en el sitio real necesitamos saber si el pack ya
+está activo y cuántos avisos permite.
 
-Para 5 de nuestros avisos (Loma Del Tigre, La Alfonsina y San Javier del
-Lago, todos en Córdoba) no encontramos el código de ubicación en el catálogo.
-Son barrios/parajes que la API no nos devuelve al sincronizar. ¿Nos pueden
-pasar el `idUbicacion` de estas tres zonas, o confirmar si tienen un
-equivalente dentro de la localidad?
+En cuanto tengamos API + credenciales, publicamos **un solo aviso de prueba** y
+les confirmamos el resultado antes de seguir con el resto del inventario.
 
-| Zona | Avisos |
-|---|---|
-| Loma Del Tigre | DA-P0001, DA-P0013 |
-| La Alfonsina | DA-P0015, DA-P0016 |
-| San Javier del Lago | DA-P0026 |
+Quedamos atentos a su respuesta. Si necesitan algún dato adicional, decinoslo.
 
-## Una consulta aparte
+¡Muchas gracias!
 
-Desde el **7 de noviembre** la API de sandbox
-(`https://api-zp-sandbox-open.navent.com`) responde **HTTP 521** en todas las
-rutas, incluso en la raíz. Entendemos que puede ser una caída programada, pero
-queríamos confirmar si hay una fecha estimada de vuelta, porque sin el catálogo
-de ubicaciones no podemos completar el alta de los 5 avisos que faltan.
-
-Quedamos a la espera de su confirmación. Si necesitan que probemos algo en
-particular, o que completemos algún dato de la solicitud de integración,
-decinoslo y lo hacemos.
-
-¡Muchas gracias por la ayuda!
-
-**Bienenhaus Propiedades**
-Córdoba, Argentina
+**Facundo Herrera Orquera**
+Bienenhaus Propiedades — Córdoba, Argentina

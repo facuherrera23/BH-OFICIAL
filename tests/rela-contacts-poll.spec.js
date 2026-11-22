@@ -125,4 +125,22 @@ test.describe('RELA — captación de contactos por polling', () => {
     const APP = read('assets', 'js', 'admin-app.js');
     expect(APP).toContain("window.adminApp[btn.dataset.action]");
   });
+
+  test('el paso a producción está preparado por escrito, sin credenciales en el repo', () => {
+    const docs = read('docs', 'integrations', 'RELA.md');
+    const email = read('docs', 'integrations', 'RELA-EMAIL-QUINTOANDAR.md');
+    const checklist = docs.slice(docs.indexOf('### Checklist: pasar RELA a producción'), docs.indexOf('## Arquitectura'));
+    expect(checklist).toContain('RELA_BASE_URL=https://api-zp-open.navent.com');
+    expect(checklist).toContain('RELA_CLIENT_SECRET');
+    expect(checklist).toContain("update rela_config set base_url='https://api-zp-open.navent.com'");
+    expect(checklist).toContain('dry_run');
+    // El secreto nunca va al repo: sólo el placeholder del comando.
+    expect(checklist).not.toMatch(/client_secret\s*[:=]\s*['"][A-Za-z0-9_-]{16,}/);
+    // El reclamo actual pide fecha de vuelta del 521, callbacks y pack/créditos.
+    expect(email).toContain('SP-61526');
+    expect(email).toContain('integracion@ar.quintoandar.com');
+    expect(email).toContain('Access is denied');
+    expect(email).toContain('521');
+    expect(email).toContain('Facundo Herrera Orquera');
+  });
 });

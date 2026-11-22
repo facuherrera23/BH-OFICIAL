@@ -30,6 +30,59 @@
   creado pero sin créditos; se persiste crudo en `remote_status`.
 - Planes existentes: `SIMPLE`, `HOME`, `DESTACADO`, `GRATIS`, `EXCLUSIVE`, `EXCLUSIVE_II`, `ALQUILER_SIMPLE` y variantes `DESARROLLOS_*`. Operaciones: `VENTA`, `ALQUILER`, `ALQUILER_TEMPORAL`. Monedas: `USD`, `ARS`.
 
+## Estado 2026-11-22 — API caída, monitor propio y salida a producción preparada
+
+- **API sandbox: HTTP 521 otra vez** (verificado con `net.http_get` a `/` y en
+  `rela_config.last_error` a las 10:10 UTC). El host de **producción**
+  (`https://api-zp-open.navent.com`) sí responde 200 en `/`, pero el token de
+  sandbox da `invalid_token` ahí: los tokens son por ambiente. Token local
+  vigente hasta 2036 → descartado como causa.
+- **No se puede "levantar" la API desde BH**: el 521 es infraestructura de
+  Navent/Cloudflare. La palanca es el ticket **SP-61526** (13 días sin respuesta
+  del 9/11), ahora con un correo de seguimiento listo en
+  [`RELA-EMAIL-QUINTOANDAR.md`](./RELA-EMAIL-QUINTOANDAR.md) que pide: fecha de
+  vuelta del sandbox, permiso de callbacks, credenciales de producción y
+  confirmación de pack/créditos.
+- **✅ Monitor automático**: migración `20261122000001_rela_api_health_alert.sql`
+  extendió `bh_check_captacion_health()` con la alarma **`rela_api_down`**. Se
+  abre cuando `rela_config.last_error` está presente (el cron fail-soft la
+  escribe en cada 521) y **se auto-resuelve** cuando `rela-sync` la limpia tras
+  una corrida exitosa. Usa el cron existente `bh-captacion-health-hourly` (`:20`),
+  sin nueva edge function ni nuevo cron. Verificado en producción: al invocar la
+  función se abrió 1 alerta `high` con el 521 en la descripción; permisos
+  anon ✗ / authenticated ✗ / service_role ✓. El **auto-cierre** se verificó con
+  un probe en transacción (simuló `last_error=NULL` → `alerts_resolved=1`,
+  hace rollback) sin tocar la alerta real, que sigue abierta.
+- **Preparado el cambio a producción** (sin ejecutar: faltan credenciales): ver
+  checklist abajo. `dry_run` sigue en `true` y `callbacks_enabled` en `false`.
+
+### Checklist: pasar RELA a producción (preparado, NO ejecutado)
+
+Requiere que QuintoAndar envíe `client_id`/`client_secret` de producción y
+confirme el pack. Orden estricto:
+
+1. Setear secrets de la edge function (uno por línea, **nunca commitearlos**):
+
+   ```bash
+   supabase secrets set \
+     RELA_CLIENT_ID=<id_produccion> \
+     RELA_CLIENT_SECRET=<secret_produccion> \
+     RELA_BASE_URL=https://api-zp-open.navent.com \
+     RELA_ROLE=zp --project-ref rnldqiwwzhjnurkguihu
+   ```
+
+2. Confirmar el login con esos secrets antes de tocar la config (un 401 acá
+   significa que las credenciales no son de producción).
+3. Apuntar la config: `update rela_config set base_url='https://api-zp-open.navent.com', role='zp' where id=true;`
+   El token cacheado en `rela_tokens` es de sandbox: el cliente RELA re-hace el
+   login ante `invalid_token` y lo reemplaza. **No borrar la fila a mano.**
+4. Verificar con `rela_portal_status()` y el botón **Stock** del panel (debe
+   mostrar créditos de producción, no los 13 del sandbox).
+5. Recién entonces, con OK del dueño: correr `preview` de contactos, publicar
+   **1 aviso de prueba** y verificarlo en ZonaProp. Sacar `dry_run` después.
+6. Si la API de producción tampoco habilita callbacks, el polling `/mensajes`
+   sigue siendo la vía de captación (no depende del ambiente).
+
 ## Arquitectura
 
 RELA vive como integración desacoplada: no comparte código con Mercado Libre
@@ -530,8 +583,10 @@ para las pruebas**: la sandbox volvió y es espejo de producción.
 
 Texto completo (copiar y pegar): **[`RELA-EMAIL-QUINTOANDAR.md`](./RELA-EMAIL-QUINTOANDAR.md)**
 
-- Destinatario: **integracion@ar.quintoandar.com**
-- Asunto: **Bienenhaus Propiedades — re-vinculación de la inmobiliaria 30662083 y solicitud de credenciales de producción**
+- Responder en el hilo **SP-61526**: `jira@navent.atlassian.net`, copia
+  `integracion@ar.quintoandar.com`.
+- Asunto (exacto, no cambiar): **SP-61526 Fwd: Solicitud de información para integración con Zonaprop**
+- Firma: **Facundo Herrera Orquera** (responsable de integración).
 
 ---
 
