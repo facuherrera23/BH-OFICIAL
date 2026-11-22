@@ -1703,10 +1703,10 @@ try {
           <div style="margin-bottom:14px;">${filas}</div>
           <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:6px;">Ficha completa (copiá y pegá en el formulario)</label>
           <textarea id="lavozFicha" rows="8" readonly style="width:100%;background:rgba(0,0,0,0.28);border:1px solid var(--border-subtle);border-radius:10px;color:var(--text-secondary);font-size:11.5px;padding:10px;font-family:ui-monospace,Menlo,Consolas,monospace;">${esc(r.ficha || '')}</textarea>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center;">
-            <button type="button" class="btn-action" style="padding:6px 11px;font-size:11px;" data-lavoz-copy-ficha><i class="fas fa-clipboard"></i> Copiar ficha</button>
-            <button type="button" class="btn-action" style="padding:6px 11px;font-size:11px;" data-lavoz-copy-desc><i class="fas fa-align-left"></i> Copiar descripción</button>
-            <button type="button" class="btn-action" style="padding:6px 11px;font-size:11px;" data-lavoz-zip><i class="fas fa-file-zipper"></i> Descargar fotos</button>
+          <div class="lavoz-modal-quick-actions">
+            <button type="button" class="btn-outline btn-compact" data-lavoz-copy-ficha><i class="fas fa-clipboard"></i><span>Copiar ficha</span></button>
+            <button type="button" class="btn-outline btn-compact" data-lavoz-copy-desc><i class="fas fa-align-left"></i><span>Copiar descripción</span></button>
+            <button type="button" class="btn-outline btn-compact" data-lavoz-zip><i class="fas fa-file-zipper"></i><span>Descargar fotos</span></button>
           </div>
           <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07);">
             ${r.status === 'published'

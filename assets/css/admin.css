@@ -3424,6 +3424,35 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
 .btn-outline:active { transform: translateY(1px); }
 .btn-outline:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.btn-outline.btn-compact {
+    height: 36px;
+    padding: 0 14px;
+    font-size: 11px;
+    letter-spacing: 0.4px;
+    gap: 8px;
+    border-radius: 10px;
+}
+.btn-outline.btn-compact i { font-size: 12px; color: var(--accent); opacity: 0.92; }
+.btn-outline.btn-compact:hover i { opacity: 1; }
+
+.lavoz-modal-quick-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    align-items: center;
+}
+.lavoz-modal-quick-actions .btn-outline.btn-compact {
+    background: rgba(255,255,255,0.02);
+    border-color: rgba(255,255,255,0.1);
+}
+.lavoz-modal-quick-actions .btn-outline.btn-compact:hover {
+    background: rgba(31, 200, 195, 0.08);
+    border-color: rgba(31, 200, 195, 0.35);
+    color: var(--accent);
+    box-shadow: 0 0 0 1px rgba(31,200,195,0.08);
+}
+
 .btn-ghost {
     height: 36px;
     padding: 0 16px;
