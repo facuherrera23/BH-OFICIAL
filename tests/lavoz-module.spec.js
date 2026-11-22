@@ -81,6 +81,10 @@ test.describe('La Voz — módulo de publicación asistida', () => {
     expect(fnSrc).not.toContain('function buildPayload(');
     expect(fnSrc).not.toContain('function buildFicha(');
     expect(fnSrc).not.toMatch(/function resizeFoto\(/);
+    // Las fotos viejas tienen /image/upload/v1790.../... (sin transforms): la
+    // versión NO puede confundirse con un transform (daba 404 en Cloudinary).
+    expect(mapperSrc).toContain("const version = segmento && /^v\\d+$/.test(segmento)");
+    expect(mapperSrc).toContain("return `/image/upload/${parts.join(',')}/${version}`;");
   });
 
   test('edge function: permisos por rol y acciones del flujo', () => {

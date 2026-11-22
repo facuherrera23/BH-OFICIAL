@@ -198,16 +198,20 @@ export function slug(s: unknown): string {
 export function resizeFoto(url: string): string {
   if (!/res\.cloudinary\.com/.test(url)) return url;
   // /image/upload/<transforms>/<version>/<path> → se reemplazan los transforms
-  // por el resize de La Voz. El grupo de transforms es opcional (las URLs
-  // viejas pueden no tenerlo).
+  // por el resize de La Voz. El segmento tras /upload/ puede ser un transform
+  // (f_auto,q_auto) O la VERSIÓN (v1790387240) en las fotos viejas: confundirlos
+  // generaba `v1790387240,w_1200,...` → 404 real de Cloudinary (13 fotos viejas
+  // en producción, verificadas el 22/11/2026). La versión se conserva SIEMPRE
+  // detrás de los transforms, nunca dentro de la lista.
   return url.replace(
     /\/image\/upload\/(?:([^/]+)\/)?/,
-    (_m, transforms?: string) => {
-      const base = (transforms || '')
+    (_m, segmento?: string) => {
+      const version = segmento && /^v\d+$/.test(segmento) ? `${segmento}/` : '';
+      const base = (version ? '' : (segmento || ''))
         .split(',')
         .filter((t) => t && !/^f_(auto|jpg|jpeg|png|webp)$/.test(t) && !/^q_/.test(t));
       const parts = [...base, 'w_1200', 'h_900', 'c_limit', 'f_jpg', 'q_80'];
-      return `/image/upload/${parts.join(',')}/`;
+      return `/image/upload/${parts.join(',')}/${version}`;
     },
   );
 }

@@ -210,6 +210,15 @@ test('resizeFoto: fuerza JPG y saca f_auto/q_auto', () => {
   assert.ok(!out.includes(',,'));
 });
 
+test('resizeFoto: URL sin transforms (solo versión) conserva la versión detrás del resize', () => {
+  // 13 fotos viejas en producción (FH-P0010..P0022) tienen /image/upload/v1790.../...
+  // Confundir la versión con un transform generaba /image/upload/v1790...,w_1200,... → 404 real.
+  const out = resizeFoto('https://res.cloudinary.com/jpyigjrh/image/upload/v1790387240/bienenhaus/properties/blz7yidtfeadp3awl8cw.jpg');
+  assert.equal(out, 'https://res.cloudinary.com/jpyigjrh/image/upload/w_1200,h_900,c_limit,f_jpg,q_80/v1790387240/bienenhaus/properties/blz7yidtfeadp3awl8cw.jpg');
+  assert.ok(out.includes('/v1790387240/'));
+  assert.ok(!out.match(/v\d+,w_/));
+});
+
 test('resizeFoto: URLs que no son de Cloudinary no se tocan', () => {
   const url = 'https://example.com/foto.jpg';
   assert.equal(resizeFoto(url), url);
