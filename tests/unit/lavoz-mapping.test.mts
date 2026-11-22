@@ -186,6 +186,19 @@ test('OPCIONES: el tipo de vendedor se elige como "Inmobiliaria"', () => {
   assert.equal(op.valor(), 'Inmobiliaria');
 });
 
+test('OPCIONES: operacion_radio usa el TEXTO DEL BOTÓN real de La Voz', () => {
+  // El botón dice "Alquileres" (plural); operacion_label dice "Alquiler" y
+  // NUNCA matchea la opción real → se marcaba el botón equivocado (o ninguno).
+  const op = OPCIONES.find((o) => o.key === 'operacion_radio');
+  assert.ok(op, 'falta la opción operacion_radio');
+  assert.equal(
+    op.valor({ operacion_boton: 'Alquileres', operacion_label: 'Alquiler', operacion: 'alquiler' }),
+    'Alquileres',
+  );
+  // Compatibilidad con payloads viejos que no traen operacion_boton.
+  assert.equal(op.valor({ operacion_label: 'Venta' }), 'Venta');
+});
+
 test('los regex de botones distinguen "continuar" de "publicar"', () => {
   assert.ok(RE_SIGUIENTE.test('Continuar'));
   assert.ok(RE_SIGUIENTE.test('Siguiente'));
@@ -277,6 +290,7 @@ test('esTextoTerminos: detecta la casilla de condiciones y NO el Turnstile', () 
 test('tieneBloqueante: detecta los 3 avisos que impiden publicar', () => {
   assert.ok(tieneBloqueante({ avisos: ['Falta la operación (venta/alquiler): no se puede publicar sin ella.'] }));
   assert.ok(tieneBloqueante({ avisos: ['Falta el precio'] }));
+  assert.ok(tieneBloqueante({ avisos: ['Falta el subrubro: revisá el tipo de propiedad.'] }));
   assert.ok(tieneBloqueante({ avisos: ['El tipo "quinta" no tiene subrubro mapeado en La Voz.'] }));
   // Un aviso normal no bloquea.
   assert.ok(!tieneBloqueante({ avisos: ['La zona "X" no tiene barrio equivalente en La Voz.'] }));

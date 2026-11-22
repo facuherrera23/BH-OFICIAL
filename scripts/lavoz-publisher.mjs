@@ -28,7 +28,11 @@
 //   node scripts/lavoz-publisher.mjs --run            # publica toda la cola
 //   node scripts/lavoz-publisher.mjs --run --only DA-P0018
 //   node scripts/lavoz-publisher.mjs --run --dry      # llena sin publicar
-//   node scripts/lavoz-publisher.mjs --run --renew    # re-publica vencidos
+//   node scripts/lavoz-publisher.mjs --run --renew    # renueva vencidos
+//   node scripts/lavoz-publisher.mjs --run --renew --force-new
+//       # CONFIRMACIÓN EXPLÍCITA: crea un aviso nuevo si no se pudo renovar.
+//       # Sin este flag el asistente NUNCA duplica un aviso que el CRM ya
+//       # marca publicado/vencido con link real (incidente 2026-11-22).
 // ============================================================
 
 import { chromium } from '@playwright/test';
@@ -50,6 +54,7 @@ import {
   idControl,
   esTextoTerminos,
   tieneBloqueante,
+  RE_BLOQUEANTE,
 } from './lavoz-mapping.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -70,8 +75,8 @@ const SUPABASE_STORAGE_KEY = 'sb-rnldqiwwzhjnurkguihu-auth-token';
 
 function parseArgs(argv) {
   const args = {
-    mode: 'discover', submit: false, dry: false, renew: false, url: PUBLISH_URL,
-    payload: null, only: null, limit: 99,
+    mode: 'discover', submit: false, dry: false, renew: false, forceNew: false,
+    url: PUBLISH_URL, payload: null, only: null, limit: 99,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -83,6 +88,7 @@ function parseArgs(argv) {
     else if (a === '--dry') { args.dry = true; args.submit = false; }
     else if (a === '--no-submit') args.submit = false;
     else if (a === '--renew') args.renew = true;
+    else if (a === '--force-new') args.forceNew = true;
     else if (a === '--url') args.url = argv[++i];
     else if (a === '--only') args.only = argv[++i];
     else if (a === '--limit') args.limit = Number(argv[++i]) || 99;
@@ -97,7 +103,8 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2));
 if (args.help) {
-  console.log('Uso: node scripts/lavoz-publisher.mjs --discover | --run [--only CODE] [--limit N] [--dry] [--renew]');
+  console.log('Uso: node scripts/lavoz-publisher.mjs --discover | --run [--only CODE] [--limit N] [--dry] [--renew] [--force-new]');
+  console.log('     --force-new: CONFIRMACIÓN EXPLÍCITA para crear un aviso nuevo cuando el CRM ya marca publicado/vencido.');
   console.log('     node scripts/lavoz-publisher.mjs --estado   # cola de avisos (solo lectura)');
   process.exit(0);
 }
@@ -673,15 +680,27 @@ async function clickTexto(page, re, { soloVisibles = true, scope = 'main' } = {}
   const els = raiz ? raiz.locator('button, [role="button"], input[type="submit"], a.btn, a[class*="button"]')
     : page.locator('button, [role="button"], input[type="submit"], a.btn, a[class*="button"]');
   const total = await els.count();
+  let ultimoError = null;
   for (let i = 0; i < total; i++) {
     const el = els.nth(i);
     const txt = ((await el.textContent().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
     if (!txt || !re.test(txt)) continue;
     if (soloVisibles && !(await el.isVisible().catch(() => false))) continue;
-    await el.click({ timeout: 8000 }).catch(() => {});
+    /* FAIL-CLOSED: antes el click fallaba (botón tapado, timeout, navigation)
+       y de todos modos se devolvía clicked:true → `publicarAviso` reportaba
+       publicado, el asistente confirmaba en el CRM y el aviso quedaba como
+       "publicado" SIN haberse publicado (y la próxima corrida no lo reintenta).
+       Un falso negativo se reintenta; un falso positivo miente y pierde el
+       aviso. Por eso sólo se reporta éxito si el click NO lanzó error. */
+    try {
+      await el.click({ timeout: 8000 });
+    } catch (err) {
+      ultimoError = err;
+      continue;   // probar otro candidato con el mismo texto
+    }
     return { clicked: true, texto: txt };
   }
-  return { clicked: false };
+  return { clicked: false, ...(ultimoError ? { motivo: ultimoError.message } : {}) };
 }
 
 /** Botón de avance del wizard ("Siguiente"), anclado al cuerpo. */
@@ -843,6 +862,25 @@ async function marcarBoton(page, palabra) {
 
 /* ---------------- URL del aviso publicado ---------------- */
 
+/**
+ * Un aviso REAL de La Voz tiene un id numérico en el path
+ * (`/avisos/inmuebles/terreno/5680772/...`). El wizard `/publicar/inmuebles`
+ * también es de lavoz.com.ar: aceptarlo guardaría la URL del formulario como
+ * si fuera el aviso (y el CRM mostraría un link muerto como "publicado").
+ */
+function esUrlAvisoLaVoz(u) {
+  try {
+    const parsed = new URL(u);
+    // `endsWith('.lavoz.com.ar')` con el PUNTO es clave: un regex de sufijo
+    // como /lavoz\.com\.ar$/ también acepta dominios ajenos (notlavoz.com.ar,
+    // evillavoz.com.ar) y guardaría un link que no es de La Voz como real.
+    const host = parsed.hostname.toLowerCase();
+    if (host !== 'lavoz.com.ar' && !host.endsWith('.lavoz.com.ar')) return false;
+    if (/\/publicar(\/|$)/.test(parsed.pathname)) return false;
+    return /\/\d{5,}(?:\/|$)/.test(parsed.pathname);
+  } catch (_) { return false; }
+}
+
 async function capturarUrlAviso(page, payload) {
   await page.waitForTimeout(3000);
   const url = page.url();
@@ -861,10 +899,12 @@ async function capturarUrlAviso(page, payload) {
     }
     return best;
   }, payload.titulo || '');
-  const final = link || url;
-  // Sólo aceptamos URLs de La Voz.
-  if (!/lavoz\.com\.ar/.test(final)) return null;
-  return final;
+  // Probamos el link encontrado PRIMERO y recién después la URL actual: si el
+  // publish no navegó, la URL actual es el wizard y NO es un aviso.
+  for (const candidato of [link, url]) {
+    if (candidato && esUrlAvisoLaVoz(candidato)) return candidato;
+  }
+  return null;
 }
 
 const RE_RENOVAR = /renovar|reactivar|republicar|volver a publicar|ampliar|dar de alta de nuevo/i;
@@ -1006,34 +1046,51 @@ if (!cola.length) {
 
 let ok = 0;
 let fallos = 0;
+let omitidos = 0;
+let simulados = 0;
 
 for (const item of cola) {
   const row = item.row;
   let payload = item.payload;
+  const codeInicial = payload?.property_code || row?.properties?.property_code || '';
 
   // Payload fresco: lo arma la edge function (mapeos actualizados).
+  // Devuelve el resultado COMPLETO (status/ad_url) para NO publicar un aviso
+  // que el CRM ya marca publicado/vencido. El prepare viejo degradaba a
+  // 'ready' y el asistente lo duplicaba con créditos reales (2026-11-22).
   const refrescarPayload = async () => {
-    if (!item.property_id) return;
+    if (!item.property_id) return null;
     try {
       const r = await crmCall(token, 'prepare', { property_id: item.property_id });
-      const res = (r.results || [])[0];
-      if (res) payload = res.payload;
+      const res = (r.results || [])[0] || null;
+      if (res?.payload) payload = res.payload;
+      return res;
     } catch (err) {
       log('  ! no pude preparar:', err.message);
+      return null;
     }
   };
-  // En renovación NO se prepara antes: `prepare` resetea el estado a 'ready'
-  // y el aviso viejo todavía está publicado (vencido). Se refresca sólo si al
-  // final hay que republicar uno nuevo.
-  if (item.property_id && !args.renew) await refrescarPayload();
+  // En renovación NO se prepara antes: se intenta renovar el aviso viejo y
+  // sólo se pide un payload nuevo si hay que crear uno desde cero.
+  let refrescado = null;
+  if (item.property_id && !args.renew) {
+    refrescado = await refrescarPayload();
+    if (refrescado && (refrescado.status === 'published' || refrescado.status === 'expired') && !args.forceNew) {
+      omitidos++;
+      log(`\n=== ${refrescado.property_code || codeInicial} — OMITIDO (CRM: ${refrescado.status}; link conservado)`);
+      log('  · si querés duplicarlo a propósito: --force-new');
+      continue;
+    }
+  }
   if (!payload) { fallos++; continue; }
 
-  const code = payload.property_code || (row?.properties?.property_code ?? '');
+  const code = payload.property_code || codeInicial;
 
   // Avisos con datos bloqueantes (sin operación/precio/subrubro): NO se
   // publican a ciegas. Quedan en 'failed' en el CRM con el motivo.
   if (tieneBloqueante(payload)) {
-    const motivo = (payload.avisos || []).find((a) => /Falta la operación|Falta el precio|no tiene subrubro/i.test(String(a)));
+    const motivo = (payload.avisos || []).find((a) => RE_BLOQUEANTE.test(String(a)));
+    omitidos++;
     log(`\n=== ${code} — OMITIDO (datos incompletos): ${motivo || 'faltan datos'}`);
     continue;
   }
@@ -1041,29 +1098,58 @@ for (const item of cola) {
   log(`\n=== ${code} — ${payload.titulo}`);
 
   // Renovación: primero se intenta el botón "renovar" del aviso viejo.
+  // En --dry NO se toca: renovar es una acción REAL en La Voz (reinicia el
+  // aviso y quema créditos), igual que hacer clic en "Publicar". El preview
+  // sólo llena el formulario y toma capturas.
   let publicado = false;
-  if (args.renew && row?.ad_url) {
+  if (args.renew && row?.ad_url && !args.dry) {
     const ren = await renovarAviso(page, row.ad_url);
     if (ren.ok) {
       log('  ✓ renovado en el panel:', ren.texto);
       publicado = true;
       if (item.property_id) {
         try {
-          await crmCall(token, 'confirm', { property_id: item.property_id, ad_url: row.ad_url, plan: row.plan || payload.plan_recomendado });
+          // `plan` vacío conserva el REAL del CRM: un plan_recomendado no es
+          // un plan contratado y pisarlo mentiría sobre lo que se pagó.
+          await crmCall(token, 'confirm', { property_id: item.property_id, ad_url: row.ad_url, plan: row.plan || undefined });
           log('  ✓ CRM actualizado (vencimiento renovado):', row.ad_url);
           ok++;
           continue;
-        } catch (err) { log('  ! no pude confirmar en el CRM:', err.message); }
+        } catch (err) {
+          /* La renovación YA ocurrió en La Voz (con el aviso viejo). Crear un
+             aviso nuevo acá dejaría DOS avisos vivos y quemaría créditos.
+             Se cuenta como OK y se deja la traza para que una persona
+             concilie el CRM con "Marcar publicado". */
+          log('  ! no pude confirmar en el CRM:', err.message);
+          log('  · aviso YA renovado en La Voz; NO creo uno nuevo (evito duplicado).');
+          log('  · actualizá el CRM a mano con: Portales → La Voz → "Marcar publicado" →', row.ad_url);
+          ok++;
+          continue;
+        }
       } else { ok++; continue; }
     } else {
-      log('  · sin renovación en el panel:', ren.motivo, '→ publico uno nuevo');
-      // Datos frescos para el aviso nuevo.
-      await refrescarPayload();
+      log('  · sin renovación en el panel:', ren.motivo);
+      // Datos frescos: si el CRM dice 'published' el aviso sigue VIGENTE y
+      // publicar uno nuevo quemaría créditos en un duplicado. Requiere
+      // confirmación explícita (--force-new).
+      refrescado = await refrescarPayload();
+      if (refrescado?.status === 'published' && !args.forceNew) {
+        omitidos++;
+        log('  · el CRM lo marca PUBLICADO (sigue vigente): NO creo un aviso nuevo.');
+        log('  · si querés duplicarlo a propósito: --renew --force-new');
+        continue;
+      }
+      log('  · publico uno nuevo (el anterior venció o no tiene link).');
     }
   }
 
-  // Vuelvo al formulario limpio.
-  await page.goto(PUBLISH_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  // Vuelvo al formulario LIMPIO navegando DIRECTO al wizard: el viejo goto a
+  // /publicar obligaba a un segundo salto (/publicar → /publicar/inmuebles),
+  // y en `--dry` (donde nunca se hace clic en Publicar) dejaba la página en
+  // /publicar/inmuebles con el formulario del aviso ANTERIOR cargado — el
+  // siguiente aviso heredaba datos ajenos. Un goto a INMUEBLES_URL resetea
+  // ambos problemas: una sola navegación y formulario nuevo siempre.
+  await page.goto(INMUEBLES_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(2500);
 
   const files = await bajarFotos(payload.fotos || [], path.join(os.tmpdir(), 'lavoz-publisher-fotos', code || 'prop'));
@@ -1076,10 +1162,16 @@ for (const item of cola) {
 
   if (publicado && item.property_id) {
     const url = await capturarUrlAviso(page, payload);
+    /* El plan lo decide el `prepare` del servidor: para un aviso NUEVO es el
+       recommendation por fotos, pero para un force-new sobre uno publicado
+       es el plan REAL ya guardado (o null, que el confirm conserva). Usar
+       `payload.plan_recomendado` acá le mentiría al CRM sobre lo contratado.
+       Ojo: distingo "sin prepare" de "prepare con plan null" (?? no sirve). */
+    const planConfirm = refrescado ? refrescado.plan : payload.plan_recomendado;
     try {
       // Si no se pudo capturar la URL, igual se confirma: dejarlo 'ready'
       // haría que la próxima corrida publicara el aviso OTRA VEZ (duplicado).
-      await crmCall(token, 'confirm', { property_id: item.property_id, ad_url: url || undefined, plan: payload.plan_recomendado });
+      await crmCall(token, 'confirm', { property_id: item.property_id, ad_url: url || undefined, plan: planConfirm });
       if (url) {
         log('  ✓ CRM actualizado:', url);
       } else {
@@ -1091,12 +1183,18 @@ for (const item of cola) {
     } catch (err) { log('  ! no pude confirmar en el CRM:', err.message); }
   } else if (publicado) {
     ok++;
+  } else if (args.dry) {
+    /* --dry es un PREVIEW: nadie hizo clic en Publicar (ni en Renovar), así
+       que no es un fallo. Antes se contaba como fallo y el script terminaba
+       con exit 1 aunque el formulario se hubiera llenado perfecto. */
+    simulados++;
+    log('  ○ simulado (--dry): formulario lleno, NO se publicó ni se renovó');
   } else {
     fallos++;
     log('  ! no se publicó (faltó el botón o quedó un paso sin completar)');
   }
 }
 
-log(`\nTerminado: ${ok} publicado(s), ${fallos} sin publicar.`);
+log(`\nTerminado: ${ok} publicado(s), ${fallos} sin publicar, ${omitidos} omitido(s) (ya publicados/vigentes), ${simulados} simulado(s) (--dry).`);
 await ctx.close();
 process.exit(fallos ? 1 : 0);

@@ -91,25 +91,62 @@ test.describe('La Voz — módulo de publicación asistida', () => {
     }
     // Los avisos bloqueantes (sin operación / sin precio / sin subrubro)
     // dejan la fila en 'failed' en vez de 'ready'.
-    expect(fnSrc).toContain('const BLOQUEANTES =');
-    expect(fnSrc).toContain("status: yaPublicado ? 'published' : bloqueante.length ? 'failed' : 'ready'");
+    expect(mapperSrc).toContain('export const RE_BLOQUEANTE_LAVOZ');
+    expect(fnSrc).toContain('payload.avisos.filter((a) => RE_BLOQUEANTE_LAVOZ.test(a))');
+    expect(fnSrc).toContain("const statusFinal = vencido ? 'expired'");
     // Confirmar calcula el vencimiento (10 o 30 días).
     expect(fnSrc).toContain('expires_at: expires.toISOString()');
   });
 
   test('prepare NO degrada un aviso ya publicado (link y vencimiento se preservan)', () => {
-    expect(fnSrc).toContain("const yaPublicado = existing?.status === 'published' || degradado");
-    expect(fnSrc).toContain("const degradado = ['ready', 'failed'].includes(String(existing?.status || ''))");
-    expect(fnSrc).toContain("status: yaPublicado ? 'published' : bloqueante.length ? 'failed' : 'ready'");
+    expect(fnSrc).toContain("const yaPublicado = estadoPrevio === 'published' || degradado || vencido");
+    expect(fnSrc).toContain("const degradado = ['ready', 'failed'].includes(estadoPrevio) && conLink");
+    expect(fnSrc).toContain("const vencido = estadoPrevio === 'expired'");
+    expect(fnSrc).toContain("const statusFinal = vencido ? 'expired'");
     expect(fnSrc).toContain('patch.ad_url = existing?.ad_url ?? null');
+    expect(fnSrc).toContain('patch.remote_id = existing?.remote_id ?? null');
     expect(fnSrc).toContain('patch.published_at = existing?.published_at ?? null');
     expect(fnSrc).toContain('patch.expires_at = existing?.expires_at ?? null');
     expect(fnSrc).toContain('preserved_published');
+    expect(fnSrc).toContain('preserved_expired');
     // Si la lectura falla, NO se escribe a ciegas (un error de RLS/red no
     // puede borrar el link de un aviso ya publicado).
     expect(fnSrc).toContain('if (existingError) throw existingError;');
     // El modal recibe el estado real para precargar la URL guardada.
     expect(fnSrc).toContain('ad_url: patch.ad_url');
+  });
+
+  test('ciclo de vencimiento: prepare_all NO reprocesa vencidos y expireVencidos repara degradados', () => {
+    // Un vencido conserva su ad_url: es la ÚNICA forma de encontrarlo para
+    // renovarlo desde el panel (npm run lavoz:renovar). Reprocesarlo en el
+    // prepare en lote le borraba el link y la renovación moría.
+    expect(fnSrc).toContain("r.status === 'published' || r.status === 'expired'");
+    // Los degradados a ready/failed por un prepare viejo (DA-P0013/DA-P0002)
+    // se autocorrigen a 'expired' cuando su fecha ya pasó.
+    expect(fnSrc).toContain(".in('status', ['ready', 'failed'])");
+    expect(fnSrc).toContain(".not('ad_url', 'is', null)");
+  });
+
+  test('config_set y confirm validan la entrada (no confían en el cliente)', () => {
+    // Un config_set descuidado (dias publicitarios inventados, mapas como
+    // array) rompía TODOS los prepares en silencio.
+    expect(fnSrc).toContain('function validarConfigPatch(');
+    expect(fnSrc).toContain("throw new Error('dias_publicacion debe ser 10 o 30')");
+    expect(fnSrc).toContain('const patch = validarConfigPatch(body);');
+    // La URL del aviso la valida también el server (además del panel).
+    expect(fnSrc).toContain('function validarAdUrl(');
+    expect(fnSrc).toContain('adUrl = validarAdUrl(body.ad_url) || existing?.ad_url || null');
+    // Re-confirmar sin URL/plan/remote_id conserva los reales guardados.
+    expect(fnSrc).toContain("const plan = String(body.plan ?? '').trim() || existing?.plan || null");
+    expect(fnSrc).toContain("const remoteId = String(body.remote_id ?? '').trim() || existing?.remote_id || null");
+  });
+
+  test('bloqueantes: el mapper y el asistente usan el MISMO regex (guard de drift)', () => {
+    const rxMapper = mapperSrc.match(/export const RE_BLOQUEANTE_LAVOZ = (\/.*\/i);/);
+    const rxAsistente = mappingSrc.match(/export const RE_BLOQUEANTE = (\/.*\/i);/);
+    expect(rxMapper).not.toBeNull();
+    expect(rxAsistente).not.toBeNull();
+    expect(rxAsistente[1]).toBe(rxMapper[1]);
   });
 
   test('CI: lavoz-proxy se deploya y CON verify_jwt', () => {
@@ -135,7 +172,8 @@ test.describe('La Voz — módulo de publicación asistida', () => {
     // memoria del módulo, el confirm NO muere con un 400 sin auditoría.
     expect(portalesSrc).toContain('data-lavoz-confirm="${esc(pid)}"');
     expect(portalesSrc).toContain('confirm.dataset.lavozConfirm');
-    expect(portalesSrc).toContain('new URL(url)');
+    // Validación estricta ANTES de llamar al servidor (no confía en el cliente).
+    expect(portalesSrc).toContain('if (!lavozEsUrlAviso(url)) {');
     expect(portalesSrc).toContain("logError('lavoz confirm', err)");
 
     // El botón de la fila (una sola acción para el empleador).
@@ -260,6 +298,99 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(scriptSrc).toContain('capturarUrlAviso');
     // La URL capturada tiene que ser de La Voz (nunca una externa).
     expect(scriptSrc).toContain('lavoz\\.com\\.ar');
+  });
+
+  test('la URL capturada es un AVISO real: dominio estricto + id + no wizard', () => {
+    /* BUG real 2026-11-22 (encontrado en la auditoría final): el regex de
+       sufijo /lavoz\.com\.ar$/ acepta dominios AJENOS como notlavoz.com.ar o
+       evillavoz.com.ar → el CRM guardaría un link que no es de La Voz como
+       prueba de publicación. El límite es el PUNTO antes del dominio. */
+    expect(scriptSrc).toContain("const host = parsed.hostname.toLowerCase();");
+    expect(scriptSrc).toContain("if (host !== 'lavoz.com.ar' && !host.endsWith('.lavoz.com.ar')) return false;");
+    // El wizard (/publicar/inmuebles) también es de La Voz pero NO es un aviso.
+    expect(scriptSrc).toContain('if (/\\/publicar(\\/|$)/.test(parsed.pathname)) return false;');
+    // Y el id numérico del aviso (5680772, 5676473… en producción).
+    expect(scriptSrc).toContain('return /\\/\\d{5,}(?:\\/|$)/.test(parsed.pathname);');
+    // El link encontrado se prueba ANTES que la URL actual (que suele ser el wizard).
+    expect(scriptSrc).toContain('for (const candidato of [link, url])');
+  });
+
+  test('las TRES validaciones de URL (asistente, servidor, panel) no se divergen', () => {
+    /* La URL del aviso se valida en 3 lugares porque ninguno es confiable
+       por sí solo: el asistente captura el link, el panel lo pega a mano y
+       el servidor recibe llamadas de ambos. Si una copia se relaja, un link
+       ajeno o del wizard vuelve a guardarse como "publicado". Guard de drift
+       (mismo patrón que el mapper de bloqueantes). */
+    const fnAsistente = (scriptSrc.match(/function esUrlAvisoLaVoz\([\s\S]*?\n\}/) || [''])[0];
+    const fnServidor = (fnSrc.match(/function validarAdUrl\([\s\S]*?\n\}/) || [''])[0];
+    const fnPanel = (portalesSrc.match(/function lavozEsUrlAviso\([\s\S]*?\n  \}/) || [''])[0];
+    for (const [nombre, fn] of [
+      ['asistente', fnAsistente], ['servidor', fnServidor], ['panel', fnPanel],
+    ]) {
+      expect(fn, `${nombre}: no se encontró la validación`).not.toBe('');
+      expect(fn, `${nombre}: dominio estricto`).toContain("host !== 'lavoz.com.ar' && !host.endsWith('.lavoz.com.ar')");
+      expect(fn, `${nombre}: rechazar wizard`).toContain('/\\/publicar(\\/|$)/');
+      expect(fn, `${nombre}: exigir id numérico`).toContain('/\\/\\d{5,}(?:\\/|$)/');
+    }
+    // El servidor NO confía en el panel: devuelve 400 con mensaje accionable.
+    expect(fnServidor).toContain("throw new Error('La URL del aviso debe ser de clasificados.lavoz.com.ar')");
+    expect(fnServidor).toContain("throw new Error('Esa URL es del formulario, no del aviso publicado')");
+    expect(fnServidor).toContain("throw new Error('La URL del aviso no incluye el id del aviso')");
+    // Y el panel usa esa validación ANTES de llamar al servidor.
+    expect(portalesSrc).toContain('if (!lavozEsUrlAviso(url)) {');
+  });
+
+  test('el asistente NO duplica avisos: respeta published/expired del CRM', () => {
+    /* El prepare viejo degradaba a 'ready' un aviso vivo y el asistente lo
+       publicaba OTRA VEZ con créditos reales. Hoy el resultado del prepare
+       trae el status real y se omite salvo --force-new explícito. */
+    expect(scriptSrc).toContain("if (refrescado && (refrescado.status === 'published' || refrescado.status === 'expired') && !args.forceNew)");
+    expect(scriptSrc).toContain("'--force-new'");
+    expect(scriptSrc).toContain('args.forceNew');
+    // En renovación, un aviso aún vigente también se omite sin --force-new.
+    expect(scriptSrc).toContain("if (refrescado?.status === 'published' && !args.forceNew)");
+    // Los bloqueantes se cuentan como OMITIDOS, no como fallos de publicación.
+    expect(scriptSrc).toContain('if (tieneBloqueante(payload)) {');
+  });
+
+  test('el asistente reinicia el wizard y no hereda el formulario anterior', () => {
+    // goto directo a /publicar/inmuebles (antes iba a /publicar y en --dry
+    // el siguiente aviso heredaba los datos del anterior).
+    expect(scriptSrc).toContain('await page.goto(INMUEBLES_URL,');
+    expect(scriptSrc).toContain("const INMUEBLES_URL = `${PORTAL}/publicar/inmuebles`;");
+  });
+
+  test('--dry es un preview: NO renueva, NO publica y NO cuenta fallo', () => {
+    expect(scriptSrc).toContain('if (args.renew && row?.ad_url && !args.dry)');
+    expect(scriptSrc).toContain('submit: args.submit && !args.dry');
+    expect(scriptSrc).toContain('simulados++;');
+    expect(scriptSrc).toContain('} else if (args.dry) {');
+    expect(scriptSrc).toContain('${simulados} simulado(s) (--dry)');
+  });
+
+  test('clickTexto es FAIL-CLOSED: un click fallido NO reporta éxito', () => {
+    /* BUG real 2026-11-22: `await el.click().catch(() => {})` devolvía
+       clicked:true aunque el botón estuviera tapado/arger → el CRM se
+       marcaba como publicado un aviso que nunca se publicó. */
+    /* Acotado a clickTexto: los otros `.click().catch()` del asistente son
+       tolerantes por diseño (login, cerrar modal de borradores, abrir un
+       combobox) y NO marcan un aviso como publicado. El falso positivo sólo
+       vivía en clickTexto, que es el que usan RE_PUBLICAR/RE_RENOVAR. */
+    const fnClick = (scriptSrc.match(/async function clickTexto\([\s\S]*?\r?\n\}/) || [''])[0];
+    expect(fnClick).not.toMatch(/\.click\([^)]*\)\s*\.catch\(/);
+    expect(fnClick).toMatch(/try \{\s*await el\.click\(\{ timeout: 8000 \}\);/);
+    expect(fnClick).toContain('ultimoError = err;');
+    expect(fnClick).toContain('return { clicked: false, ...(ultimoError ? { motivo: ultimoError.message } : {}) };');
+  });
+
+  test('el plan confirmado es el REAL del prepare (nunca una recomendación)', () => {
+    expect(scriptSrc).toContain('const planConfirm = refrescado ? refrescado.plan : payload.plan_recomendado;');
+    expect(scriptSrc).toContain("ad_url: url || undefined, plan: planConfirm");
+    // El servidor devuelve `plan` en cada resultado del prepare.
+    expect(fnSrc).toContain('const planFinal = yaPublicado ? (existing?.plan ?? null) : payload.plan_recomendado;');
+    expect(fnSrc).toContain('plan: planFinal,');
+    // Los avisos vivos/degradados no llevan el bloqueante del CRM actual en last_error.
+    expect(fnSrc).toContain("last_error: yaPublicado || !bloqueante.length ? null : bloqueante.join(' | ')");
   });
 
   test('el wizard real de La Voz: 6 pasos, /publicar/inmuebles y modal de borradores', () => {

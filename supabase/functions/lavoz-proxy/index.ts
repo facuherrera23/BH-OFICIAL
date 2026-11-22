@@ -33,6 +33,7 @@ import { insertAuditLog } from '../_shared/audit.ts';
 import {
   buildLavozPayload,
   buildLavozFicha,
+  RE_BLOQUEANTE_LAVOZ,
   type LavozConfig,
 } from '../_shared/lavoz.mapper.ts';
 
@@ -101,8 +102,82 @@ const PROP_SELECT = [
   'is_published', 'is_vendida', 'is_reservada', 'deleted_at',
 ].join(', ');
 
-/** Avisos que impiden publicar: sin operación, sin precio o sin subrubro. */
-const BLOQUEANTES = /Falta la operación|Falta el precio|no tiene subrubro/i;
+/** Validación de la config: la DB sólo garantiza dias ∈ {10,30}; el resto
+ *  tiene que ser un objeto con la forma que espera el mapper, si no un
+ *  config_set descuidado rompe TODOS los prepares en silencio. */
+function validarConfigPatch(body: Json): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  if (body.dias_publicacion !== undefined) {
+    const d = Number(body.dias_publicacion);
+    if (d !== 10 && d !== 30) throw new Error('dias_publicacion debe ser 10 o 30');
+    patch.dias_publicacion = d;
+  }
+  const esObjeto = (v: unknown): v is Record<string, unknown> =>
+    !!v && typeof v === 'object' && !Array.isArray(v);
+  if (body.tipo_map !== undefined) {
+    if (!esObjeto(body.tipo_map)) throw new Error('tipo_map debe ser un objeto');
+    for (const [k, v] of Object.entries(body.tipo_map)) {
+      if (!esObjeto(v) || typeof v.subrubro !== 'string' || !v.subrubro.trim()
+        || typeof v.label !== 'string' || !v.label.trim()) {
+        throw new Error(`tipo_map.${k} necesita subrubro y label no vacíos`);
+      }
+    }
+    patch.tipo_map = body.tipo_map;
+  }
+  if (body.ubicacion_map !== undefined) {
+    if (!esObjeto(body.ubicacion_map)) throw new Error('ubicacion_map debe ser un objeto');
+    for (const [k, v] of Object.entries(body.ubicacion_map)) {
+      if (!esObjeto(v)) throw new Error(`ubicacion_map.${k} debe ser un objeto`);
+      for (const campo of ['ciudad', 'ciudad_label', 'barrio', 'label']) {
+        if (v[campo] !== undefined && v[campo] !== null && typeof v[campo] !== 'string') {
+          throw new Error(`ubicacion_map.${k}.${campo} debe ser texto o null`);
+        }
+      }
+    }
+    patch.ubicacion_map = body.ubicacion_map;
+  }
+  if (body.contacto !== undefined) {
+    if (!esObjeto(body.contacto)) throw new Error('contacto debe ser un objeto');
+    for (const campo of ['email', 'telefono', 'whatsapp']) {
+      if (body.contacto[campo] !== undefined && body.contacto[campo] !== null
+        && typeof body.contacto[campo] !== 'string') {
+        throw new Error(`contacto.${campo} debe ser texto o null`);
+      }
+    }
+    if (body.contacto.mostrar_whatsapp !== undefined
+      && typeof body.contacto.mostrar_whatsapp !== 'boolean') {
+      throw new Error('contacto.mostrar_whatsapp debe ser true/false');
+    }
+    patch.contacto = body.contacto;
+  }
+  return patch;
+}
+
+/** URL de un AVISO REAL de La Voz: la valida también el panel y el asistente,
+ *  pero el server no puede confiar en ninguno de los dos. Tres condiciones:
+ *  host exacto (o subdominio), NO el wizard /publicar, e id numérico en el
+ *  path. Sin esto, un link ajeno (notlavoz.com.ar) o el formulario mismo se
+ *  guardaban como "publicado" y el panel mostraba un link muerto como prueba. */
+function validarAdUrl(valor: unknown): string | null {
+  const s = String(valor ?? '').trim();
+  if (!s) return null;
+  let parsed: URL;
+  try { parsed = new URL(s); } catch { throw new Error('La URL del aviso no es válida (debe empezar con https://)'); }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('La URL del aviso debe ser http:// o https://');
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (host !== 'lavoz.com.ar' && !host.endsWith('.lavoz.com.ar')) {
+    throw new Error('La URL del aviso debe ser de clasificados.lavoz.com.ar');
+  }
+  if (/\/publicar(\/|$)/.test(parsed.pathname)) {
+    throw new Error('Esa URL es del formulario, no del aviso publicado');
+  }
+  if (!/\/\d{5,}(?:\/|$)/.test(parsed.pathname)) {
+    throw new Error('La URL del aviso no incluye el id del aviso');
+  }
+  return s;
+}
 
 /**
  * Vence los avisos cuyo expires_at ya pasó (10 o 30 días, según el plan).
@@ -110,12 +185,24 @@ const BLOQUEANTES = /Falta la operación|Falta el precio|no tiene subrubro/i;
  * mira el panel (no hace falta un cron para un aviso que nadie consulta).
  */
 async function expireVencidos(supabase: ReturnType<typeof createClient>) {
+  const ahora = new Date().toISOString();
   const { error } = await supabase
     .from('lavoz_listings')
     .update({ status: 'expired' })
     .eq('status', 'published')
-    .lt('expires_at', new Date().toISOString());
+    .lt('expires_at', ahora);
   if (error) console.error('[lavoz] expireVencidos:', error.message);
+
+  /* Los avisos que un prepare viejo degradó a ready/failed CON link guardado
+     también vencen: si no, el panel los sigue mostrando como "listos para
+     subir" aunque su fecha ya pasó (y el asistente los publicaría de nuevo). */
+  const { error: errorDegradados } = await supabase
+    .from('lavoz_listings')
+    .update({ status: 'expired' })
+    .in('status', ['ready', 'failed'])
+    .not('ad_url', 'is', null)
+    .lt('expires_at', ahora);
+  if (errorDegradados) console.error('[lavoz] expireVencidos degradados:', errorDegradados.message);
 }
 
 // ---------------- Handlers ----------------
@@ -149,10 +236,7 @@ async function handleRequest(req: Request): Promise<Response> {
       if (!CONFIG_ROLES.includes(actor.role)) {
         return jsonResponse(403, { error: 'Solo super_admin puede cambiar la configuración' }, req);
       }
-      const patch: Record<string, unknown> = {};
-      for (const key of ['dias_publicacion', 'tipo_map', 'ubicacion_map', 'contacto']) {
-        if (body[key] !== undefined) patch[key] = body[key];
-      }
+      const patch = validarConfigPatch(body);
       if (Object.keys(patch).length) {
         const { error } = await supabase.from('lavoz_config').update(patch).eq('id', true);
         if (error) throw error;
@@ -194,9 +278,12 @@ async function handleRequest(req: Request): Promise<Response> {
           .is('is_reservada', false);
         if (error) throw error;
         const { data: rows } = await supabase.from('lavoz_listings').select('property_id, status');
+        /* Tampoco reprocesar los VENCIDOS: su ad_url es la única forma de
+           renovar el aviso desde el panel (botón "renovar"). Un prepare en
+           lote les borraba el link y la renovación quedaba imposible. */
         const yaPublicados = new Set(
           (rows || [])
-            .filter((r: { status: string }) => r.status === 'published')
+            .filter((r: { status: string }) => r.status === 'published' || r.status === 'expired')
             .map((r: { property_id: string }) => r.property_id),
         );
         props = ((data || []) as Record<string, unknown>[]).filter((p) => !yaPublicados.has(String(p.id)));
@@ -205,7 +292,7 @@ async function handleRequest(req: Request): Promise<Response> {
       const results = [];
       for (const p of props) {
         const payload = buildLavozPayload(p, cfg);
-        const bloqueante = payload.avisos.filter((a) => BLOQUEANTES.test(a));
+        const bloqueante = payload.avisos.filter((a) => RE_BLOQUEANTE_LAVOZ.test(a));
 
         /* Un re-prepare NO puede degradar un aviso ya publicado: el link,
            la fecha de publicación y el vencimiento son la prueba de que se
@@ -213,27 +300,46 @@ async function handleRequest(req: Request): Promise<Response> {
            'ready' al volver a prepararlos, con el ad_url todavía guardado). */
         const { data: existing, error: existingError } = await supabase
           .from('lavoz_listings')
-          .select('status, ad_url, remote_id, published_at, expires_at')
+          .select('status, ad_url, remote_id, plan, published_at, expires_at')
           .eq('property_id', p.id)
           .maybeSingle();
         /* Si no podemos leer el estado, NO escribimos: un upsert a ciegas
            degradaría un aviso publicado (perdería su link de verdad). */
         if (existingError) throw existingError;
-        /* También reparamos los avisos que el regression dejó en ready/failed
-           CON link y fecha de publicación guardados (DA-P0013/DA-P0002):
-           ésos sí estaban publicados, el prepare posterior los degradó. Un
-           'expired' NO se rescata: necesita renovación, no un prepare. */
-        const degradado = ['ready', 'failed'].includes(String(existing?.status || ''))
-          && !!existing?.ad_url && !!existing?.published_at;
-        const yaPublicado = existing?.status === 'published' || degradado;
+        /* También reparamos los avisos que un prepare anterior dejó en
+           ready/failed CON link y fecha de publicación guardados
+           (DA-P0013/DA-P0002). Un 'expired' NO se resucita a published:
+           necesita renovación, pero SÍ conserva su ad_url (es la única
+           forma de encontrar el aviso viejo y renovarlo desde el panel). */
+        const estadoPrevio = String(existing?.status || '');
+        const conLink = !!existing?.ad_url && !!existing?.published_at;
+        const degradado = ['ready', 'failed'].includes(estadoPrevio) && conLink;
+        const vencido = estadoPrevio === 'expired'
+          || (conLink && !!existing?.expires_at
+            && new Date(String(existing.expires_at)).getTime() < Date.now());
+        const yaPublicado = estadoPrevio === 'published' || degradado || vencido;
+        const statusFinal = vencido ? 'expired'
+          : yaPublicado ? 'published'
+          : bloqueante.length ? 'failed' : 'ready';
+        /* El plan de un aviso PUBLICADO (o degradado/vencido con link) es un
+           dato REAL de La Voz, no una recomendación: pisarlo con
+           `plan_recomendado` en un re-prepare puede borrar un plan vigente o
+           inventar uno Premium que nunca se pagó. Si no hay plan guardado, se
+           conserva null a propósito (no se adivina). */
+        const planFinal = yaPublicado ? (existing?.plan ?? null) : payload.plan_recomendado;
 
+        /* El bloqueante es un motivo para NO publicar, no un diagnóstico de
+           un aviso VIVO: si el CRM perdió el precio pero La Voz ya lo publicó
+           con el precio de entonces, marcar 'Falta el precio' en last_error
+           hace creer al empleador que el aviso falló (y no es así). Los
+           avisos publicados/vencidos/degradados nunca llevan last_error. */
         const patch: Record<string, unknown> = {
           property_id: p.id,
-          status: yaPublicado ? 'published' : bloqueante.length ? 'failed' : 'ready',
+          status: statusFinal,
           payload,
           fotos_count: payload.fotos_count,
-          plan: payload.plan_recomendado,
-          last_error: bloqueante.length ? bloqueante.join(' | ') : null,
+          plan: planFinal,
+          last_error: yaPublicado || !bloqueante.length ? null : bloqueante.join(' | '),
         };
         if (yaPublicado) {
           patch.ad_url = existing?.ad_url ?? null;
@@ -257,6 +363,7 @@ async function handleRequest(req: Request): Promise<Response> {
           avisos: payload.avisos,
           status: patch.status,
           ad_url: patch.ad_url,
+          plan: planFinal,
           published_at: patch.published_at,
           expires_at: patch.expires_at,
           payload,
@@ -267,6 +374,7 @@ async function handleRequest(req: Request): Promise<Response> {
         action,
         count: results.length,
         preserved_published: results.filter((r) => r.status === 'published').length,
+        preserved_expired: results.filter((r) => r.status === 'expired').length,
       });
       return jsonResponse(200, { ok: true, count: results.length, results }, req);
     }
@@ -277,21 +385,55 @@ async function handleRequest(req: Request): Promise<Response> {
       }
       const propertyId = String(body.property_id || '');
       if (!propertyId) return jsonResponse(400, { error: 'Falta property_id' }, req);
-      const dias = Math.max(1, Number(body.dias || cfg.dias_publicacion));
+      const { data: prop, error: propError } = await supabase
+        .from('properties').select('id').eq('id', propertyId).maybeSingle();
+      if (propError) throw propError;
+      if (!prop) return jsonResponse(404, { error: 'La propiedad no existe' }, req);
+
+      const { data: existing, error: existingError } = await supabase
+        .from('lavoz_listings')
+        .select('ad_url, remote_id, plan, status')
+        .eq('property_id', propertyId)
+        .maybeSingle();
+      if (existingError) throw existingError;
+
+      let adUrl: string | null;
+      let dias: number;
+      try {
+        /* Un re-confirm sin URL conserva el link real ya guardado. La
+           versión anterior lo pisaba con null (el asistente confirma sin URL
+           cuando no captura el enlace y eso borraba la prueba de publicación). */
+        adUrl = validarAdUrl(body.ad_url) || existing?.ad_url || null;
+        if (body.dias !== undefined && body.dias !== null && body.dias !== '') {
+          const n = Number(body.dias);
+          if (!Number.isFinite(n) || n < 1 || n > 365) {
+            throw new Error('dias debe ser un número entre 1 y 365');
+          }
+          dias = Math.round(n);
+        } else {
+          dias = Number(cfg.dias_publicacion) || 30;
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return jsonResponse(400, { error: msg }, req);
+      }
+
+      const plan = String(body.plan ?? '').trim() || existing?.plan || null;
+      const remoteId = String(body.remote_id ?? '').trim() || existing?.remote_id || null;
       const now = new Date();
       const expires = new Date(now.getTime() + dias * 86400000);
       const { error } = await supabase.from('lavoz_listings').upsert({
         property_id: propertyId,
         status: 'published',
-        ad_url: body.ad_url ? String(body.ad_url) : null,
-        remote_id: body.remote_id ? String(body.remote_id) : null,
-        plan: body.plan ? String(body.plan) : null,
+        ad_url: adUrl,
+        remote_id: remoteId,
+        plan,
         published_at: now.toISOString(),
         expires_at: expires.toISOString(),
         last_error: null,
       }, { onConflict: 'property_id' });
       if (error) throw error;
-      await audit(supabase, actor, 'lavoz_confirm', { property_id: propertyId, ad_url: body.ad_url || null });
+      await audit(supabase, actor, 'lavoz_confirm', { property_id: propertyId, ad_url: adUrl });
       return jsonResponse(200, { ok: true, published_at: now.toISOString(), expires_at: expires.toISOString() }, req);
     }
 

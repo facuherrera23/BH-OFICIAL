@@ -162,7 +162,10 @@ test('buildLavozPayload: medidas numéricas (strings y ceros = no aplica)', () =
   assert.equal(p.bedrooms, 2);
   assert.equal(p.bathrooms, 1);
   assert.equal(p.cocheras, 1);
-  assert.equal(p.antiguedad, 1995);
+  // year_built es un AÑO (1995), no una antigüedad: La Voz pide años
+  // transcurridos. Dinámico para que el test no venza con el calendario.
+  assert.equal(p.antiguedad, new Date().getFullYear() - 1995);
+  assert.equal(p.anio_construccion, 1995);
 
   // 0 = "no aplica" (terrenos/galpones) → null, no 0.
   const sinDormitorios = buildLavozPayload({ ...baseProperty, bedrooms: 0, rooms: 0 }, cfg);

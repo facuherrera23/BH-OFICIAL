@@ -32,7 +32,10 @@ export const CAMPOS = [
   { key: 'bedrooms', names: ['field_aviso_dormitorios'], valor: (p) => p.bedrooms, keywords: ['dormitorio', 'dormitorios', 'dorm'], tag: 'input' },
   { key: 'bathrooms', names: ['field_aviso_banos'], valor: (p) => p.bathrooms, keywords: ['baño', 'bano', 'baños', 'bath'], tag: 'input' },
   { key: 'cocheras', names: ['field_aviso_cocheras'], valor: (p) => p.cocheras, keywords: ['cochera', 'cocheras', 'garaje', 'estacionamiento'], tag: 'input' },
-  { key: 'antiguedad', names: ['field_aviso_antiguedad'], valor: (p) => p.antiguedad, keywords: ['antiguedad', 'antigüedad', 'años de antiguedad', 'fecha de construccion', 'fecha de construcción'], tag: 'input' },
+  // La Voz pide ANTIGÜEDAD en años (1995 → 31), no el año calendario. El
+  // mapper expone `anio_construccion` para la ficha de texto, pero NO hay
+  // evidencia de un control así en el wizard → no se mapea (no inventar).
+  { key: 'antiguedad', names: ['field_aviso_antiguedad'], valor: (p) => p.antiguedad, keywords: ['antiguedad', 'antigüedad', 'años de antiguedad'], tag: 'input' },
   { key: 'expensas', names: ['field_aviso_expensas'], valor: (p) => p.expensas, keywords: ['expensa', 'expensas', 'cuota de administracion', 'administración'], tag: 'input' },
   { key: 'num_manzana', names: ['field_aviso_num_manzana'], valor: (p) => p.num_manzana, keywords: ['manzana'], tag: 'input' },
   { key: 'num_lote', names: ['field_aviso_num_lote'], valor: (p) => p.num_lote, keywords: ['lote'], tag: 'input' },
@@ -89,7 +92,9 @@ export const DEFAULTS = [
 /** Opciones que se eligen por texto (radio/checkbox): tipo de vendedor, etc. */
 export const OPCIONES = [
   { key: 'tipo_vendedor', valor: () => 'Inmobiliaria', keywords: ['tipo de vendedor', 'tipo de anunciante', 'vendedor', 'publicante'] },
-  { key: 'operacion_radio', valor: (p) => p.operacion_label || p.operacion, keywords: ['operacion', 'operación', 'modalidad'] },
+  // El botón real dice "Alquileres" (plural); operacion_label dice "Alquiler"
+  // y nunca matchea. Fuente: mapper.operacion_boton.
+  { key: 'operacion_radio', valor: (p) => p.operacion_boton || p.operacion_label || p.operacion, keywords: ['operacion', 'operación', 'modalidad'] },
 ];
 
 /** Normaliza para comparar: minúsculas, sin tildes, espacios colapsados. */
@@ -238,7 +243,7 @@ export const RE_TERMINOS = /acepto|terminos|términos|condiciones|politica|polí
  * `lavoz-proxy`): sin operación, sin precio o sin subrubro → el aviso no
  * se publica a ciegas.
  */
-export const RE_BLOQUEANTE = /Falta la operación|Falta el precio|no tiene subrubro/i;
+export const RE_BLOQUEANTE = /Falta la operación|Falta el precio|Falta el subrubro|no tiene subrubro/i;
 
 /** ¿El payload tiene un aviso bloqueante? */
 export function tieneBloqueante(payload) {

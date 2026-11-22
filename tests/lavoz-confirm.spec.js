@@ -61,6 +61,29 @@ test.describe('La Voz — marcar publicado guarda el link', () => {
     expect(toasts.some((t) => /no es válida/.test(t.msg))).toBe(true);
   });
 
+  /* BUG real 2026-11-22: un regex de sufijo /lavoz\.com\.ar$/ acepta
+     dominios AJENOS (notlavoz.com.ar) y el wizard /publicar/inmuebles también
+     es de La Voz. Ninguno es un aviso publicado: marcarlos como tal deja un
+     link muerto en el panel y el asistente NO reintentará la publicación. */
+  for (const [nombre, url] of [
+    ['dominio ajeno', 'https://notlavoz.com.ar/avisos/inmuebles/terreno/5680772/aviso'],
+    ['el wizard', 'https://clasificados.lavoz.com.ar/publicar/inmuebles'],
+    ['sin id de aviso', 'https://clasificados.lavoz.com.ar/avisos/inmuebles/terreno/'],
+  ]) {
+    test(`rechaza ${nombre} como URL de aviso publicado`, async ({ page }) => {
+      await page.goto('/tests/helpers/lavoz-confirm-harness.html');
+      await expect.poll(() => page.evaluate(() => !!window.__HARNESS_READY)).toBe(true);
+      await page.evaluate(() => window.adminApp.lavozPrepare('prop-1'));
+      await expect(page.locator('#lavozAdUrl')).toBeVisible();
+
+      await page.locator('#lavozAdUrl').fill(url);
+      await page.locator('[data-lavoz-confirm]').click();
+      expect(await page.evaluate(() => window.__FETCH_CALLS.some((c) => c.action === 'confirm'))).toBe(false);
+      const toasts = await page.evaluate(() => window.__TOASTS);
+      expect(toasts.some((t) => /no es válida/.test(t.msg))).toBe(true);
+    });
+  }
+
   test('si el server falla, el modal queda abierto y el error se ve', async ({ page }) => {
     await page.goto('/tests/helpers/lavoz-confirm-harness.html');
     await expect.poll(() => page.evaluate(() => !!window.__HARNESS_READY)).toBe(true);

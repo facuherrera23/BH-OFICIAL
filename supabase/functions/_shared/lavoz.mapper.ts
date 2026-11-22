@@ -22,6 +22,14 @@
 export const MAX_FOTOS = 25;      // La Voz admite hasta 25 fotos por aviso
 export const MAX_DESC = 2400;
 
+/**
+ * Avisos que impiden publicar. Fuente de verdad COMPARTIDA: la usa la edge
+ * function (lavoz-proxy) y el asistente (scripts/lavoz-mapping.mjs, con guard
+ * de drift en tests/unit). Ojo con los dos textos del mapper: "Falta el subrubro: ..." y
+ * "El tipo X no tiene subrubro mapeado en La Voz." — ambos deben matchear.
+ */
+export const RE_BLOQUEANTE_LAVOZ = /Falta la operación|Falta el precio|Falta el subrubro|no tiene subrubro/i;
+
 export const OPERACION_LABEL: Record<string, string> = {
   venta: 'Venta',
   alquileres: 'Alquiler',
@@ -140,7 +148,10 @@ export interface LavozPayload {
   superficie_construible: number | null;
   num_manzana: string | null;
   num_lote: string | null;
+  /** Años transcurridos (lo que pide La Voz en "Antigüedad"). */
   antiguedad: number | null;
+  /** Año calendario de construcción (por si el wizard pide la fecha, no años). */
+  anio_construccion: number | null;
   expensas: number | null;
   precio: number | null;
   moneda: string | null;
@@ -247,14 +258,25 @@ export function buildLavozPayload(
   const bedrooms = numPos(p.bedrooms) ?? numPos(p.rooms);
   const bathrooms = numPos(p.bathrooms);
   const cocheras = numPos(p.garage_spaces);
-  const anios = numPos(p.year_built);
+  const anioConstruccion = numPos(p.year_built);
+  const anioActual = new Date().getFullYear();
+  /* `year_built` es un AÑO (1995), no una antigüedad: publicar "1995 años"
+     era un error visible en la ficha y en el aviso. La Voz pide años
+     transcurridos. Un año futuro o absurdo se descarta con aviso. */
+  const antiguedad = anioConstruccion !== null && anioConstruccion <= anioActual
+    ? anioActual - anioConstruccion
+    : null;
   const expensas = numPos(p.maintenance_fee);
   const precio = num(p.price_usd);
   const moneda = p.price_currency ? String(p.price_currency).toUpperCase() : null;
 
   if (precio === null) avisos.push('Falta el precio.');
   if (!p.zone && !p.locality) avisos.push('Falta la zona y la localidad.');
-  if (anios === null && subrubro !== 'terrenos-y-lotes') avisos.push('No cargamos antigüedad (year_built vacío).');
+  if (antiguedad === null && subrubro !== 'terrenos-y-lotes') {
+    avisos.push(anioConstruccion === null
+      ? 'No cargamos antigüedad (year_built vacío).'
+      : `year_built (${anioConstruccion}) no es un año válido: no se publica antigüedad.`);
+  }
 
   // --- Fotos: la PORTADA (primera del array) va primero ---
   const rawFotos = Array.isArray(p.image_urls) ? (p.image_urls as unknown[]) : [];
@@ -320,7 +342,8 @@ export function buildLavozPayload(
     superficie_construible: numPos(p.surface_built) ?? numPos(p.construible),
     num_manzana: parseManzanaLote(p.address).manzana,
     num_lote: parseManzanaLote(p.address).lote,
-    antiguedad: anios,
+    antiguedad,
+    anio_construccion: anioConstruccion,
     expensas,
     precio,
     moneda,
@@ -355,6 +378,7 @@ export function buildLavozFicha(p: LavozPayload): string {
     linea('Superficie total (m²)', p.superficie_total),
     linea('Superficie cubierta (m²)', p.superficie_cubierta),
     linea('Antigüedad (años)', p.antiguedad),
+    linea('Año de construcción', p.anio_construccion),
     linea('Expensas', p.expensas),
     linea('Precio', p.precio !== null ? `${p.precio} ${p.moneda || ''}`.trim() : null),
     linea('Fotos a subir', `${p.fotos_count} (la primera es la PORTADA)`),

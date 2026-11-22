@@ -1504,6 +1504,22 @@ try {
     return typeof fn === 'function' ? fn(u) : '';
   }
 
+  /* Un AVISO real de La Voz: host exacto (o subdominio), NO el wizard
+     /publicar e id numérico en el path. La MISMA validación la hace el
+     servidor (validarAdUrl) y el asistente (esUrlAvisoLaVoz): los tres
+     tienen que coincidir o un link ajeno/o del formulario se guardaría
+     como "publicado". */
+  function lavozEsUrlAviso(u) {
+    try {
+      const parsed = new URL(u);
+      if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+      const host = parsed.hostname.toLowerCase();
+      if (host !== 'lavoz.com.ar' && !host.endsWith('.lavoz.com.ar')) return false;
+      if (/\/publicar(\/|$)/.test(parsed.pathname)) return false;
+      return /\/\d{5,}(?:\/|$)/.test(parsed.pathname);
+    } catch (_) { return false; }
+  }
+
   async function loadLavozPanel() {
     const el = $('#lavozPortalPanel');
     if (!el || !window.supabaseClient) return;
@@ -1798,10 +1814,8 @@ try {
         return;
       }
       if (!url) { showToast('Pegá la URL del aviso publicado.', 'error'); return; }
-      let parsed;
-      try { parsed = new URL(url); } catch (_) { parsed = null; }
-      if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) {
-        showToast('La URL no es válida. Debe empezar con https://', 'error');
+      if (!lavozEsUrlAviso(url)) {
+        showToast('La URL no es válida: pegá el link del aviso publicado de clasificados.lavoz.com.ar (no del formulario).', 'error');
         return;
       }
       try {
