@@ -131,13 +131,25 @@ test.describe('La Voz — módulo de publicación asistida', () => {
     expect(fnSrc).toContain(".not('ad_url', 'is', null)");
   });
 
-  test('config_set y confirm validan la entrada (no confían en el cliente)', () => {
+  test('config_set y confirm validan la entrada (no confian en el cliente)', () => {
     // Un config_set descuidado (dias publicitarios inventados, mapas como
-    // array) rompía TODOS los prepares en silencio.
+    // array) rompia TODOS los prepares en silencio.
     expect(fnSrc).toContain('function validarConfigPatch(');
     expect(fnSrc).toContain("throw new Error('dias_publicacion debe ser 10 o 30')");
     expect(fnSrc).toContain('const patch = validarConfigPatch(body);');
-    // La URL del aviso la valida también el server (además del panel).
+    // tipo_map: subrubro debe existir en el catalogo real de La Voz.
+    expect(fnSrc).toContain('SUBRUBROS_LAVOZ.has(subrubro)');
+    expect(mapperSrc).toContain('export const SUBRUBROS_LAVOZ = new Set([');
+    for (const sub of ['casas', 'departamentos', 'terrenos-y-lotes', 'locales', 'galpones-y-depositos', 'oficinas', 'cocheras', 'campos', 'fondo-de-comercio']) {
+      expect(mapperSrc).toContain(`'${sub}'`);
+    }
+    // ubicacion_map: ciudad/barrio son slugs de La Voz, no texto libre.
+    expect(fnSrc).toContain('esSlugLavoz');
+    expect(fnSrc).toContain('debe ser slug de La Voz (minúsculas, números y guiones)');
+    // contacto: email y telefono con formato minimo (evita romper el aviso).
+    expect(fnSrc).toContain('contacto.email no tiene formato válido');
+    expect(fnSrc).toContain('contacto.${campo} debe contener un teléfono válido');
+    // La URL del aviso la valida tambien el server (ademas del panel).
     expect(fnSrc).toContain('function validarAdUrl(');
     expect(fnSrc).toContain('adUrl = validarAdUrl(body.ad_url) || existing?.ad_url || null');
     // Re-confirmar sin URL/plan/remote_id conserva los reales guardados.
@@ -490,9 +502,13 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(portalesSrc).toContain('npm run lavoz:discover');
     expect(portalesSrc).toContain('npm run lavoz:estado');
     expect(portalesSrc).toContain('data-lavoz-copy="npm run lavoz"');
-    // Copia con fallback (la clipboard API exige contexto seguro).
     expect(portalesSrc).toContain('copiarTexto');
     expect(portalesSrc).toContain("execCommand('copy')");
+  });
+
+  test('modal: muestra plan sugerido y duración para coherencia con el aviso armado', () => {
+    expect(portalesSrc).toContain("['Plan sugerido', p.plan_recomendado ? String(p.plan_recomendado).replace(/_/g, ' ') : null]");
+    expect(portalesSrc).toContain("['Duración del aviso', p.dias_publicacion ? `${p.dias_publicacion} días` : null]");
   });
 
   test('el asistente acepta los términos y condiciones antes de publicar', () => {

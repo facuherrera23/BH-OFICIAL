@@ -1545,6 +1545,10 @@ try {
       const thumb = lavozSafeImage(fotos[0] || '');
       const adUrl = lavozSafeUrl(row.ad_url || '');
       const vence = row.expires_at && new Date(row.expires_at) < new Date() ? ' style="color:#f87171;"' : '';
+      const lastError = String(row.last_error || '').trim();
+      const avisosPayload = Array.isArray(row.payload?.avisos) ? row.payload.avisos.filter(Boolean) : [];
+      const motivo = lastError || (row.status === 'published' || row.status === 'expired' ? '' : avisosPayload.join(' | '));
+      const motivoCorto = motivo.length > 72 ? motivo.slice(0, 69) + '...' : motivo;
       return `<tr>
         <td>
           <div style="display:flex; align-items:center; gap:10px; min-width:220px;">
@@ -1555,7 +1559,10 @@ try {
             </div>
           </div>
         </td>
-        <td>${lavozStatusBadge(row.status)}</td>
+        <td>
+          ${lavozStatusBadge(row.status)}
+          ${motivo ? `<div style="margin-top:4px;font-size:10px;line-height:1.35;color:${lastError ? '#fca5a5' : '#fcd34d'};max-width:220px;" title="${esc(motivo)}"><i class="fas ${lastError ? 'fa-circle-exclamation' : 'fa-triangle-exclamation'}"></i> ${esc(motivoCorto)}</div>` : ''}
+        </td>
         <td style="font-size:11.5px;color:var(--text-secondary);">${row.fotos_count || 0}</td>
         <td style="font-size:11.5px;color:var(--text-secondary);">${esc((row.plan || '').replace('_', ' ') || '—')}</td>
         <td style="font-size:11.5px;color:var(--text-secondary);">${lavozFecha(row.published_at)}</td>
@@ -1583,7 +1590,7 @@ try {
             </div>
           </div>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-            <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap;" data-lavoz-prepare-all><i class="fas fa-layer-group"></i> Preparar todas</button>
+            <button class="btn-action" id="lavozPrepareAllBtn" style="padding:6px 12px; font-size:11px; white-space:nowrap;" data-lavoz-prepare-all><i class="fas fa-layer-group"></i> Preparar todas</button>
             <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap;" data-lavoz-open-portal><i class="fas fa-external-link-alt"></i> Abrir La Voz</button>
           </div>
         </div>
@@ -1681,6 +1688,8 @@ try {
         ['Expensas', p.expensas],
         ['Precio', p.precio !== null && p.precio !== undefined ? `${p.precio} ${p.moneda || ''}`.trim() : null],
         ['Fotos a subir', `${p.fotos_count} (la primera es la PORTADA)`],
+        ['Plan sugerido', p.plan_recomendado ? String(p.plan_recomendado).replace(/_/g, ' ') : null],
+        ['Duración del aviso', p.dias_publicacion ? `${p.dias_publicacion} días` : null],
         ['Ficha propia', p.ficha_url],
       ].filter(([, v]) => v !== null && v !== undefined && v !== '');
 
@@ -1740,13 +1749,19 @@ try {
     if (prep) { window.adminApp.lavozPrepare(prep.dataset.lavozPrep); return; }
     const all = e.target.closest('[data-lavoz-prepare-all]');
     if (all) {
+      const btn = all instanceof HTMLElement ? all : document.getElementById('lavozPrepareAllBtn');
+      const prevHtml = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Preparando…'; }
       try {
         showToast('Preparando todos los avisos…', 'info');
         const res = await lavozApiCall('prepare_all');
         showToast(`Avisos preparados: ${res.count || 0}.`, 'success');
-        loadLavozPanel();
+        await loadLavozPanel();
       } catch (err) {
+        logError('lavoz prepare_all', err);
         showToast('Error preparando avisos: ' + err.message, 'error');
+      } finally {
+        if (btn && btn.isConnected) { btn.disabled = false; btn.removeAttribute('aria-busy'); btn.innerHTML = prevHtml; }
       }
       return;
     }
@@ -1818,14 +1833,19 @@ try {
         showToast('La URL no es válida: pegá el link del aviso publicado de clasificados.lavoz.com.ar (no del formulario).', 'error');
         return;
       }
+      const btn = confirm instanceof HTMLElement ? confirm : null;
+      const prevHtml = btn ? btn.innerHTML : '';
+      if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando…'; }
       try {
         const res = await lavozApiCall('confirm', { property_id: propertyId, ad_url: url });
         showToast('Aviso publicado. Vence el ' + lavozFecha(res.expires_at) + '. Link guardado en el panel.', 'success');
         closeModal('lavozModal');
-        loadLavozPanel();
+        await loadLavozPanel();
       } catch (err) {
         logError('lavoz confirm', err);
         showToast('No se pudo guardar el link: ' + err.message, 'error');
+      } finally {
+        if (btn && btn.isConnected) { btn.disabled = false; btn.removeAttribute('aria-busy'); btn.innerHTML = prevHtml; }
       }
       return;
     }

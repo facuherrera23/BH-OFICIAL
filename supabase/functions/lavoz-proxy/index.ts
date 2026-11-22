@@ -34,6 +34,7 @@ import {
   buildLavozPayload,
   buildLavozFicha,
   RE_BLOQUEANTE_LAVOZ,
+  SUBRUBROS_LAVOZ,
   type LavozConfig,
 } from '../_shared/lavoz.mapper.ts';
 
@@ -114,12 +115,17 @@ function validarConfigPatch(body: Json): Record<string, unknown> {
   }
   const esObjeto = (v: unknown): v is Record<string, unknown> =>
     !!v && typeof v === 'object' && !Array.isArray(v);
+  const esSlugLavoz = (v: unknown) => typeof v === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v.trim());
   if (body.tipo_map !== undefined) {
     if (!esObjeto(body.tipo_map)) throw new Error('tipo_map debe ser un objeto');
     for (const [k, v] of Object.entries(body.tipo_map)) {
       if (!esObjeto(v) || typeof v.subrubro !== 'string' || !v.subrubro.trim()
         || typeof v.label !== 'string' || !v.label.trim()) {
         throw new Error(`tipo_map.${k} necesita subrubro y label no vacíos`);
+      }
+      const subrubro = v.subrubro.trim().toLowerCase();
+      if (!SUBRUBROS_LAVOZ.has(subrubro)) {
+        throw new Error(`tipo_map.${k}.subrubro "${v.subrubro}" no es un subrubro válido de La Voz`);
       }
     }
     patch.tipo_map = body.tipo_map;
@@ -129,8 +135,12 @@ function validarConfigPatch(body: Json): Record<string, unknown> {
     for (const [k, v] of Object.entries(body.ubicacion_map)) {
       if (!esObjeto(v)) throw new Error(`ubicacion_map.${k} debe ser un objeto`);
       for (const campo of ['ciudad', 'ciudad_label', 'barrio', 'label']) {
-        if (v[campo] !== undefined && v[campo] !== null && typeof v[campo] !== 'string') {
+        const valor = v[campo];
+        if (valor !== undefined && valor !== null && typeof valor !== 'string') {
           throw new Error(`ubicacion_map.${k}.${campo} debe ser texto o null`);
+        }
+        if ((campo === 'ciudad' || campo === 'barrio') && typeof valor === 'string' && valor.trim() && !esSlugLavoz(valor)) {
+          throw new Error(`ubicacion_map.${k}.${campo} debe ser slug de La Voz (minúsculas, números y guiones)`);
         }
       }
     }
@@ -139,9 +149,15 @@ function validarConfigPatch(body: Json): Record<string, unknown> {
   if (body.contacto !== undefined) {
     if (!esObjeto(body.contacto)) throw new Error('contacto debe ser un objeto');
     for (const campo of ['email', 'telefono', 'whatsapp']) {
-      if (body.contacto[campo] !== undefined && body.contacto[campo] !== null
-        && typeof body.contacto[campo] !== 'string') {
+      const valor = body.contacto[campo];
+      if (valor !== undefined && valor !== null && typeof valor !== 'string') {
         throw new Error(`contacto.${campo} debe ser texto o null`);
+      }
+      if (campo === 'email' && typeof valor === 'string' && valor.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor.trim())) {
+        throw new Error('contacto.email no tiene formato válido');
+      }
+      if ((campo === 'telefono' || campo === 'whatsapp') && typeof valor === 'string' && valor.trim() && !/[0-9]{6,}/.test(valor)) {
+        throw new Error(`contacto.${campo} debe contener un teléfono válido`);
       }
     }
     if (body.contacto.mostrar_whatsapp !== undefined

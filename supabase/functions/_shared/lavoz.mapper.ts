@@ -21,6 +21,18 @@
 
 export const MAX_FOTOS = 25;      // La Voz admite hasta 25 fotos por aviso
 export const MAX_DESC = 2400;
+/** Subrubros reales de La Voz (slugs verificados 2026-11-04). */
+export const SUBRUBROS_LAVOZ = new Set([
+  'casas',
+  'departamentos',
+  'terrenos-y-lotes',
+  'locales',
+  'galpones-y-depositos',
+  'oficinas',
+  'cocheras',
+  'campos',
+  'fondo-de-comercio',
+]);
 
 /**
  * Avisos que impiden publicar. Fuente de verdad COMPARTIDA: la usa la edge

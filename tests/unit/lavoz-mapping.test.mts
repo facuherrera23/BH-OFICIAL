@@ -21,6 +21,7 @@ import {
   planLlenado,
   textoDeControl,
   tieneBloqueante,
+  RE_AVANZAR,
 } from '../../scripts/lavoz-mapping.mjs';
 
 /* Forma de los controles (la misma que devuelve el script en runtime). */
@@ -296,6 +297,15 @@ test('tieneBloqueante: detecta los 3 avisos que impiden publicar', () => {
   assert.ok(!tieneBloqueante({ avisos: ['La zona "X" no tiene barrio equivalente en La Voz.'] }));
   assert.ok(!tieneBloqueante({ avisos: [] }));
   assert.ok(!tieneBloqueante(null));
+});
+
+test('RE_AVANZAR: sólo avanza pasos, no publica/finaliza', () => {
+  assert.equal(RE_AVANZAR.test('Siguiente'), true);
+  assert.equal(RE_AVANZAR.test('Continuar'), true);
+  assert.equal(RE_AVANZAR.test('Avanzar'), true);
+  assert.equal(RE_AVANZAR.test('ir al paso siguiente'), true);
+  assert.equal(RE_AVANZAR.test('Publicar'), false);
+  assert.equal(RE_AVANZAR.test('Finalizar'), false);
 });
 
 test('OPCIONES.moneda: mapea moneda del payload a candidatos del wizard de La Voz', () => {

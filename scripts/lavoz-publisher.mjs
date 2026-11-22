@@ -44,6 +44,7 @@ import {
   CAMPOS,
   OPCIONES,
   RE_SIGUIENTE,
+  RE_AVANZAR,
   RE_PUBLICAR,
   normalizar,
   textoDeControl,
@@ -730,8 +731,7 @@ async function clickTexto(page, re, { soloVisibles = true, scope = 'main' } = {}
   return { clicked: false, ...(ultimoError ? { motivo: ultimoError.message } : {}) };
 }
 
-/** Botón de avance del wizard ("Siguiente"), anclado al cuerpo. */
-const RE_AVANZAR = /^(siguiente|continuar|avanzar|next|ir al paso siguiente)$/i;
+/** Avance del wizard: fuente única en lavoz-mapping.mjs (testeable). */
 
 /** Errores de validación que muestra el wizard ("Este campo es obligatorio"). */
 async function erroresDeValidacion(page) {

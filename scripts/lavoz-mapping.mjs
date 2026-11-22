@@ -258,6 +258,9 @@ export function planDefaults(controls, payload, claimed = []) {
 
 /** Botones que avanzan el wizard vs. los que publican. */
 export const RE_SIGUIENTE = /continuar|siguiente|avanzar|gu[ií]ame|acepto|aceptar|confirmar|next/i;
+/** Avance estricto del wizard ("Siguiente/Continuar"), anclado al cuerpo.
+ *  NO incluye "publicar/finalizar": esos se manejan con RE_PUBLICAR. */
+export const RE_AVANZAR = /^(siguiente|continuar|avanzar|next|ir al paso siguiente)$/i;
 export const RE_PUBLICAR = /publicar|publica|guardar|enviar|finalizar|terminar|registrar/i;
 
 /** Casillas de aceptación de términos y condiciones. */
