@@ -206,26 +206,68 @@ async function handleRequest(req: Request): Promise<Response> {
       for (const p of props) {
         const payload = buildLavozPayload(p, cfg);
         const bloqueante = payload.avisos.filter((a) => BLOQUEANTES.test(a));
-        const { error } = await supabase.from('lavoz_listings').upsert({
+
+        /* Un re-prepare NO puede degradar un aviso ya publicado: el link,
+           la fecha de publicación y el vencimiento son la prueba de que se
+           cargó en La Voz (incidente 2026-11-22: DA-P0013/DA-P0002 quedaron
+           'ready' al volver a prepararlos, con el ad_url todavía guardado). */
+        const { data: existing, error: existingError } = await supabase
+          .from('lavoz_listings')
+          .select('status, ad_url, remote_id, published_at, expires_at')
+          .eq('property_id', p.id)
+          .maybeSingle();
+        /* Si no podemos leer el estado, NO escribimos: un upsert a ciegas
+           degradaría un aviso publicado (perdería su link de verdad). */
+        if (existingError) throw existingError;
+        /* También reparamos los avisos que el regression dejó en ready/failed
+           CON link y fecha de publicación guardados (DA-P0013/DA-P0002):
+           ésos sí estaban publicados, el prepare posterior los degradó. Un
+           'expired' NO se rescata: necesita renovación, no un prepare. */
+        const degradado = ['ready', 'failed'].includes(String(existing?.status || ''))
+          && !!existing?.ad_url && !!existing?.published_at;
+        const yaPublicado = existing?.status === 'published' || degradado;
+
+        const patch: Record<string, unknown> = {
           property_id: p.id,
-          status: bloqueante.length ? 'failed' : 'ready',
+          status: yaPublicado ? 'published' : bloqueante.length ? 'failed' : 'ready',
           payload,
           fotos_count: payload.fotos_count,
           plan: payload.plan_recomendado,
           last_error: bloqueante.length ? bloqueante.join(' | ') : null,
-        }, { onConflict: 'property_id' });
+        };
+        if (yaPublicado) {
+          patch.ad_url = existing?.ad_url ?? null;
+          patch.remote_id = existing?.remote_id ?? null;
+          patch.published_at = existing?.published_at ?? null;
+          patch.expires_at = existing?.expires_at ?? null;
+        } else {
+          /* Si no está publicado, un ad_url viejo sería mentira en el panel. */
+          patch.ad_url = null;
+          patch.remote_id = null;
+          patch.published_at = null;
+          patch.expires_at = null;
+        }
+
+        const { error } = await supabase.from('lavoz_listings').upsert(patch, { onConflict: 'property_id' });
         if (error) throw error;
         results.push({
           property_id: payload.property_id,
           property_code: payload.property_code,
           titulo: payload.titulo,
           avisos: payload.avisos,
-          status: bloqueante.length ? 'failed' : 'ready',
+          status: patch.status,
+          ad_url: patch.ad_url,
+          published_at: patch.published_at,
+          expires_at: patch.expires_at,
           payload,
           ficha: buildLavozFicha(payload),
         });
       }
-      await audit(supabase, actor, 'lavoz_prepare', { action, count: results.length });
+      await audit(supabase, actor, 'lavoz_prepare', {
+        action,
+        count: results.length,
+        preserved_published: results.filter((r) => r.status === 'published').length,
+      });
       return jsonResponse(200, { ok: true, count: results.length, results }, req);
     }
 

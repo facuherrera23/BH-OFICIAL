@@ -92,9 +92,24 @@ test.describe('La Voz — módulo de publicación asistida', () => {
     // Los avisos bloqueantes (sin operación / sin precio / sin subrubro)
     // dejan la fila en 'failed' en vez de 'ready'.
     expect(fnSrc).toContain('const BLOQUEANTES =');
-    expect(fnSrc).toContain("status: bloqueante.length ? 'failed' : 'ready'");
+    expect(fnSrc).toContain("status: yaPublicado ? 'published' : bloqueante.length ? 'failed' : 'ready'");
     // Confirmar calcula el vencimiento (10 o 30 días).
     expect(fnSrc).toContain('expires_at: expires.toISOString()');
+  });
+
+  test('prepare NO degrada un aviso ya publicado (link y vencimiento se preservan)', () => {
+    expect(fnSrc).toContain("const yaPublicado = existing?.status === 'published' || degradado");
+    expect(fnSrc).toContain("const degradado = ['ready', 'failed'].includes(String(existing?.status || ''))");
+    expect(fnSrc).toContain("status: yaPublicado ? 'published' : bloqueante.length ? 'failed' : 'ready'");
+    expect(fnSrc).toContain('patch.ad_url = existing?.ad_url ?? null');
+    expect(fnSrc).toContain('patch.published_at = existing?.published_at ?? null');
+    expect(fnSrc).toContain('patch.expires_at = existing?.expires_at ?? null');
+    expect(fnSrc).toContain('preserved_published');
+    // Si la lectura falla, NO se escribe a ciegas (un error de RLS/red no
+    // puede borrar el link de un aviso ya publicado).
+    expect(fnSrc).toContain('if (existingError) throw existingError;');
+    // El modal recibe el estado real para precargar la URL guardada.
+    expect(fnSrc).toContain('ad_url: patch.ad_url');
   });
 
   test('CI: lavoz-proxy se deploya y CON verify_jwt', () => {
@@ -115,6 +130,13 @@ test.describe('La Voz — módulo de publicación asistida', () => {
     expect(portalesSrc).toContain('window.adminApp.lavozPrepare = async function (propertyId)');
     expect(portalesSrc).toContain('data-lavoz-prepare-all');
     expect(portalesSrc).toContain('data-lavoz-confirm');
+
+    // El botón lleva el property_id en el DOM: si se pierde el estado en
+    // memoria del módulo, el confirm NO muere con un 400 sin auditoría.
+    expect(portalesSrc).toContain('data-lavoz-confirm="${esc(pid)}"');
+    expect(portalesSrc).toContain('confirm.dataset.lavozConfirm');
+    expect(portalesSrc).toContain('new URL(url)');
+    expect(portalesSrc).toContain("logError('lavoz confirm', err)");
 
     // El botón de la fila (una sola acción para el empleador).
     expect(propsSrc).toContain('data-lavoz-action="prepare"');

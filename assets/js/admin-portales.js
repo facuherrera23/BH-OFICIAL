@@ -1641,7 +1641,10 @@ try {
       const res = await lavozApiCall('prepare', { property_id: propertyId });
       const r = (res.results || [])[0];
       if (!r) throw new Error(res.error || 'No se pudo preparar el aviso');
-      _lavozPrepared = r;
+      /* El id va TAMBIÉN en el botón: si otra pestaña/llamada resetea el
+         estado del módulo, el click sigue sabiendo qué propiedad confirmar. */
+      const pid = r.property_id || (r.payload && r.payload.property_id) || propertyId;
+      _lavozPrepared = { ...r, property_id: pid };
 
       const p = r.payload || {};
       const avisos = (r.avisos || []).map((a) =>
@@ -1690,10 +1693,13 @@ try {
             <button type="button" class="btn-action" style="padding:6px 11px;font-size:11px;" data-lavoz-zip><i class="fas fa-file-zipper"></i> Descargar fotos</button>
           </div>
           <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07);">
+            ${r.status === 'published'
+              ? `<div style="font-size:11.5px;color:#4ade80;margin-bottom:8px;"><i class="fas fa-circle-check"></i> Publicado${r.published_at ? ' el ' + esc(lavozFecha(r.published_at)) : ''}${r.expires_at ? ' · vence el ' + esc(lavozFecha(r.expires_at)) : ''}. La URL guardada se precargó abajo.</div>`
+              : ''}
             <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:6px;">Ya lo publicaste? Pegá la URL del aviso</label>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input type="url" id="lavozAdUrl" placeholder="https://clasificados.lavoz.com.ar/avisos/inmuebles/..." style="flex:1;min-width:220px;background:rgba(0,0,0,0.28);border:1px solid var(--border-subtle);border-radius:8px;color:var(--text-primary);padding:8px 10px;font-size:12px;" />
-              <button type="button" class="btn-luxury-action" data-lavoz-confirm style="padding:8px 14px;font-size:12px;">Marcar publicado</button>
+              <input type="url" id="lavozAdUrl" value="${esc(r.ad_url || '')}" placeholder="https://clasificados.lavoz.com.ar/avisos/inmuebles/..." style="flex:1;min-width:220px;background:rgba(0,0,0,0.28);border:1px solid var(--border-subtle);border-radius:8px;color:var(--text-primary);padding:8px 10px;font-size:12px;" />
+              <button type="button" class="btn-luxury-action" data-lavoz-confirm="${esc(pid)}" style="padding:8px 14px;font-size:12px;">Marcar publicado</button>
             </div>
           </div>`;
       }
@@ -1777,15 +1783,36 @@ try {
     }
     const confirm = e.target.closest('[data-lavoz-confirm]');
     if (confirm) {
+      /* Orden de preferencia: el id del propio botón, el último preparado y,
+         como último recurso, el payload. Antes sólo existía el segundo y un
+         estado perdido hacía que el server respondiera 400 "Falta property_id"
+         sin dejar rastro en audit_log (el empleador veía "no pasa nada"). */
+      const propertyId = confirm.dataset.lavozConfirm
+        || _lavozPrepared?.property_id
+        || _lavozPrepared?.payload?.property_id;
       const input = document.querySelector('#lavozAdUrl');
       const url = (input?.value || '').trim();
+      if (!propertyId) {
+        logError('lavoz confirm', new Error('Falta property_id en el modal'));
+        showToast('No se pudo identificar la propiedad. Cerrá el modal y volvé a preparar el aviso.', 'error');
+        return;
+      }
       if (!url) { showToast('Pegá la URL del aviso publicado.', 'error'); return; }
+      let parsed;
+      try { parsed = new URL(url); } catch (_) { parsed = null; }
+      if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) {
+        showToast('La URL no es válida. Debe empezar con https://', 'error');
+        return;
+      }
       try {
-        const res = await lavozApiCall('confirm', { property_id: _lavozPrepared?.property_id, ad_url: url });
-        showToast('Aviso publicado. Vence el ' + lavozFecha(res.expires_at) + '.', 'success');
+        const res = await lavozApiCall('confirm', { property_id: propertyId, ad_url: url });
+        showToast('Aviso publicado. Vence el ' + lavozFecha(res.expires_at) + '. Link guardado en el panel.', 'success');
         closeModal('lavozModal');
         loadLavozPanel();
-      } catch (err) { showToast('Error: ' + err.message, 'error'); }
+      } catch (err) {
+        logError('lavoz confirm', err);
+        showToast('No se pudo guardar el link: ' + err.message, 'error');
+      }
       return;
     }
     const close = e.target.closest('[data-lavoz-close]');

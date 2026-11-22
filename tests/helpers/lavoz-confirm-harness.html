@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Harness — confirmar publicación en La Voz</title>
+</head>
+<body>
+<!-- Harness del modal "Marcar publicado" (2026-11-22). Carga el JS REAL de
+     admin-portales.js con un cliente Supabase/fetch falsos y el markup del
+     modal tal cual está en admin.html. No toca la DB ni la red. -->
+<div class="admin-modal" id="lavozModal">
+  <div class="modal-box confirm-box" role="dialog" aria-modal="true" aria-labelledby="lavozModalTitle" style="max-width:780px;width:94%;max-height:88vh;overflow-y:auto;text-align:left;">
+    <div class="confirm-icon"><i class="fas fa-newspaper"></i></div>
+    <h3 class="confirm-title" id="lavozModalTitle" style="text-align:left;">Publicar en Clasificados La Voz</h3>
+    <p class="confirm-msg" id="lavozModalSub" style="text-align:left;"></p>
+    <div id="lavozModalBody" style="text-align:left; font-size:12.5px; color:var(--text-secondary);"></div>
+    <div class="confirm-actions">
+      <button type="button" class="btn-ghost" data-lavoz-close>Cerrar</button>
+      <button type="button" class="btn-luxury-action" data-lavoz-open><i class="fas fa-external-link-alt"></i> Abrir La Voz</button>
+    </div>
+  </div>
+</div>
+<div id="lavozPortalPanel"></div>
+<div id="toastText"></div>
+
+<script>
+  window.__HARNESS_LOG = [];
+  window.__TOASTS = [];
+  window.__FETCH_CALLS = [];
+
+  window.BH_CONFIG = {
+    SUPABASE_URL: 'https://example.supabase.co',
+    SUPABASE_ANON_KEY: 'fake'
+  };
+  window.supabaseClient = {
+    auth: {
+      getSession: function () {
+        return Promise.resolve({ data: { session: { access_token: 'fake-token' } } });
+      }
+    }
+  };
+  window.BHUtils = {
+    safeUrl: function (u) { return /^https?:\/\//i.test(String(u || '')) ? String(u) : ''; },
+    safeImageUrl: function (u) { return /^https?:\/\//i.test(String(u || '')) ? String(u) : ''; }
+  };
+  window.adminApp = {};
+  window.$ = function (sel) { return document.querySelector(sel); };
+  window.$$ = function (sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); };
+
+  window.fetch = function (url, opts) {
+    const body = JSON.parse(opts.body || '{}');
+    window.__FETCH_CALLS.push({ url: url, action: body.action, body: body });
+    let out = { ok: true };
+    if (body.action === 'prepare') {
+      out = {
+        ok: true,
+        results: [{
+          property_id: 'prop-1',
+          property_code: 'DA-P0099',
+          titulo: 'Terreno de prueba',
+          status: 'published',
+          ad_url: 'https://clasificados.lavoz.com.ar/avisos/inmuebles/terreno/5680772/terreno-de-prueba',
+          published_at: '2026-11-01T00:00:00Z',
+          expires_at: '2026-12-01T00:00:00Z',
+          avisos: [],
+          payload: {
+            property_id: 'prop-1', property_code: 'DA-P0099', titulo: 'Terreno de prueba',
+            descripcion: 'Descripcion de prueba', fotos_count: 3, ficha_url: ''
+          },
+          ficha: 'Ficha de prueba'
+        }]
+      };
+    } else if (body.action === 'status') {
+      out = { ok: true, status: { listings: {}, dias_publicacion: 30 }, config: {} };
+    } else if (body.action === 'list') {
+      out = { ok: true, listings: [] };
+    } else if (body.action === 'confirm') {
+      out = window.__FAIL_CONFIRM
+        ? { ok: false, error: 'Fallo simulado del servidor' }
+        : { ok: true, published_at: '2026-11-22T00:00:00Z', expires_at: '2026-12-22T00:00:00Z' };
+    }
+    return Promise.resolve({
+      ok: out.ok !== false,
+      status: 200,
+      json: function () { return Promise.resolve(out); }
+    });
+  };
+
+  window.__BH = {
+    logError: function (m, e) { window.__HARNESS_LOG.push('ERROR: ' + m + ' ' + (e && e.message)); },
+    logWarn: function (m) { window.__HARNESS_LOG.push('WARN: ' + m); },
+    on: function (el, evt, fn) { if (el) el.addEventListener(evt, fn); },
+    openModal: function (id) { var m = document.getElementById(id); if (m) m.classList.add('is-open'); },
+    closeModal: function (id) { var m = document.getElementById(id); if (m) m.classList.remove('is-open'); },
+    showConfirmDialog: function () { return Promise.resolve(true); },
+    showToast: function (msg, type) { window.__TOASTS.push({ msg: msg, type: type }); },
+    esc: function (s) {
+      if (s === null || s === undefined) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    },
+    mutate: function (t, fn) { return fn(); }
+  };
+</script>
+<script src="../../assets/js/admin-portales.js"></script>
+<script>window.__HARNESS_READY = true;</script>
+</body>
+</html>
