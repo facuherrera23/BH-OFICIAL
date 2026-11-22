@@ -577,22 +577,31 @@ async function marcarRadio(page, palabra) {
       return st.display !== 'none' && st.visibility !== 'hidden' && r.width > 0 && r.height > 0;
     };
     const txt = (el) => norm((el?.textContent || '') + ' ' + (el?.getAttribute?.('aria-label') || '') + ' ' + (el?.getAttribute?.('value') || ''));
-    const cands = [...document.querySelectorAll('input[type=radio], input[type=checkbox]')].filter(visible);
+    const clickEl = (el, wrap, labelFor) => {
+      const target = labelFor || wrap || el;
+      try { target.click(); } catch {}
+      if (!el.checked) {
+        try { el.checked = true; } catch {}
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      }
+      return !!el.checked || el.getAttribute('aria-checked') === 'true' || el.getAttribute('data-checked') !== null;
+    };
+    const cands = [...document.querySelectorAll('input[type=radio], input[type=checkbox], [role="radio"], [role="checkbox"]')].filter(visible);
     for (const el of cands) {
       const wrap = el.closest('label');
       const near = el.parentElement;
       const labelFor = el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`) : null;
-      const local = [txt(wrap), txt(labelFor), txt(near)].filter(Boolean).join(' ');
+      const local = [txt(wrap), txt(labelFor), txt(near), txt(el)].filter(Boolean).join(' ');
       // Evitar match por el grupo entero ("Moneda Dólar Peso") en todos los radios:
       // sólo aceptar si el texto local del input/label coincide.
       if (local && (local === w || local.includes(w) || w.includes(local))) {
-        el.click();
-        return true;
+        return clickEl(el, wrap, labelFor);
       }
       // Fallback: valor exacto del input (ej. USD/ARS/1/2).
       if (norm(el.value) && norm(el.value) === w) {
-        el.click();
-        return true;
+        return clickEl(el, wrap, labelFor);
       }
     }
     return false;
