@@ -95,6 +95,31 @@ export const OPCIONES = [
   // El botón real dice "Alquileres" (plural); operacion_label dice "Alquiler"
   // y nunca matchea. Fuente: mapper.operacion_boton.
   { key: 'operacion_radio', valor: (p) => p.operacion_boton || p.operacion_label || p.operacion, keywords: ['operacion', 'operación', 'modalidad'] },
+  // Moneda del precio (Paso 4 "Precio"). La Voz lo expone como radio dinámico
+  // `filters[price_currency]` (label "Moneda", backendField currency, opciones
+  // cargadas por API). Evidencia: bundles públicos 0c1mjuiu7wren.js /
+  // 0xk_b6~.32du..js (2026-11-22). No adivinamos el id de opción: probamos
+  // labels plausibles y sólo clickeamos si hay match visible.
+  {
+    key: 'moneda',
+    valor: (p) => {
+      const raw = String(p?.moneda || '');
+      const m = normalizar(raw).replace(/[^a-z0-9]/g, '');
+      const hasS = /\$|s/i.test(raw);
+      if (['usd', 'uss', 'us', 'dolar', 'dolares'].includes(m) || (m === 'u' && hasS)) return 'Dólar';
+      if (['ars', 'peso', 'pesos'].includes(m) || m === 's' || (m === '' && hasS)) return 'Peso';
+      return null;
+    },
+    candidatos: (p) => {
+      const raw = String(p?.moneda || '');
+      const m = normalizar(raw).replace(/[^a-z0-9]/g, '');
+      const hasS = /\$|s/i.test(raw);
+      if (['usd', 'uss', 'us', 'dolar', 'dolares'].includes(m) || (m === 'u' && hasS)) return ['Dólar', 'Dólares', 'Dolar', 'Dolares', 'USD', 'U$S'];
+      if (['ars', 'peso', 'pesos'].includes(m) || m === 's' || (m === '' && hasS)) return ['Peso', 'Pesos', 'ARS', '$'];
+      return [];
+    },
+    keywords: ['moneda', 'currency', 'divisa', 'tipo de moneda'],
+  },
 ];
 
 /** Normaliza para comparar: minúsculas, sin tildes, espacios colapsados. */

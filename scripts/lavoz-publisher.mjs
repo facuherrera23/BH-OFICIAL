@@ -564,15 +564,33 @@ async function elegirEnCombo(page, control, valor) {
 
 async function marcarRadio(page, palabra) {
   // Busca un radio/checkbox cuya etiqueta (o el texto cercano) coincida.
+  // Soporta grupos reales de La Voz (ej. filters[price_currency], label "Moneda")
+  // donde el texto visible puede estar en el label, en el hermano o en el grupo.
   const ok = await page.evaluate((want) => {
-    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
     const w = norm(want);
-    const cands = [...document.querySelectorAll('input[type=radio], input[type=checkbox]')];
+    if (!w) return false;
+    const visible = (el) => {
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      const st = window.getComputedStyle(el);
+      return st.display !== 'none' && st.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+    };
+    const txt = (el) => norm((el?.textContent || '') + ' ' + (el?.getAttribute?.('aria-label') || '') + ' ' + (el?.getAttribute?.('value') || ''));
+    const cands = [...document.querySelectorAll('input[type=radio], input[type=checkbox]')].filter(visible);
     for (const el of cands) {
       const wrap = el.closest('label');
-      const near = el.parentElement?.textContent || '';
-      const txt = norm((wrap?.textContent || '') + ' ' + near + ' ' + (el.value || ''));
-      if (txt.includes(w) || w.includes(txt.slice(0, 40))) {
+      const near = el.parentElement;
+      const labelFor = el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`) : null;
+      const local = [txt(wrap), txt(labelFor), txt(near)].filter(Boolean).join(' ');
+      // Evitar match por el grupo entero ("Moneda Dólar Peso") en todos los radios:
+      // sólo aceptar si el texto local del input/label coincide.
+      if (local && (local === w || local.includes(w) || w.includes(local))) {
+        el.click();
+        return true;
+      }
+      // Fallback: valor exacto del input (ej. USD/ARS/1/2).
+      if (norm(el.value) && norm(el.value) === w) {
         el.click();
         return true;
       }
@@ -779,12 +797,20 @@ async function publicarAviso(page, payload, files, { submit }) {
       else faltantes.push(`${campo.key}: ${r.motivo}`);
     }
 
-    // 3) Radios/checkboxes (tipo de vendedor, operación, etc.).
+    // 3) Radios/checkboxes (tipo de vendedor, operación, moneda, etc.).
     for (const op of OPCIONES) {
-      const valor = op.valor(payload);
-      if (!valor) continue;
-      const elegido = await marcarRadio(page, valor);
-      if (elegido) hechos.push(`opción "${valor}"`);
+      const candidatos = typeof op.candidatos === 'function'
+        ? op.candidatos(payload).filter(Boolean)
+        : [op.valor(payload)].filter(Boolean);
+      if (!candidatos.length) continue;
+      let elegido = false;
+      for (const valor of candidatos) {
+        elegido = await marcarRadio(page, valor);
+        if (elegido) { hechos.push(`opción "${valor}"`); break; }
+      }
+      if (!elegido && op.key === 'moneda') {
+        log(`  ! no pude confirmar la moneda "${candidatos[0]}" en el formulario (se deja la opción actual del wizard)`);
+      }
     }
 
     // 3b) Botones que son opciones (La Voz usa botones, no radios, para

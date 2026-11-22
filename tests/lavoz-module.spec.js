@@ -520,4 +520,19 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(mappingSrc).toContain('tipo de barrio');
     expect(mappingSrc).toContain('candidatosDeControl');
   });
+
+  test('el asistente intenta completar la moneda del precio (evidencia bundles La Voz)', () => {
+    // Evidencia 2026-11-22: bundles públicos de La Voz exponen
+    // filters[price_currency] (label "Moneda", backendField currency, radio
+    // dinámico) en el paso Precio. El mapping no adivina IDs: prueba labels
+    // visibles y deja la opción actual si no puede confirmar.
+    expect(mappingSrc).toContain("key: 'moneda'");
+    expect(mappingSrc).toContain('filters[price_currency]');
+    expect(mappingSrc).toContain('candidatos');
+    expect(mappingSrc).toContain("['Dólar', 'Dólares', 'Dolar', 'Dolares', 'USD', 'U$S']");
+    expect(mappingSrc).toContain("['Peso', 'Pesos', 'ARS', '$']");
+    expect(scriptSrc).toContain('op.candidatos');
+    expect(scriptSrc).toContain("op.key === 'moneda'");
+    expect(scriptSrc).toContain('no pude confirmar la moneda');
+  });
 });

@@ -297,3 +297,17 @@ test('tieneBloqueante: detecta los 3 avisos que impiden publicar', () => {
   assert.ok(!tieneBloqueante({ avisos: [] }));
   assert.ok(!tieneBloqueante(null));
 });
+
+test('OPCIONES.moneda: mapea moneda del payload a candidatos del wizard de La Voz', () => {
+  const op = OPCIONES.find((o) => o.key === 'moneda');
+  assert.ok(op, 'falta la opción moneda');
+  // Evidencia de bundles públicos (2026-11-22): filters[price_currency], label Moneda.
+  assert.deepEqual(op.candidatos({ moneda: 'USD' }), ['Dólar', 'Dólares', 'Dolar', 'Dolares', 'USD', 'U$S']);
+  assert.deepEqual(op.candidatos({ moneda: 'U$S' }), ['Dólar', 'Dólares', 'Dolar', 'Dolares', 'USD', 'U$S']);
+  assert.deepEqual(op.candidatos({ moneda: 'ARS' }), ['Peso', 'Pesos', 'ARS', '$']);
+  assert.deepEqual(op.candidatos({ moneda: '$' }), ['Peso', 'Pesos', 'ARS', '$']);
+  assert.equal(op.valor({ moneda: 'USD' }), 'Dólar');
+  assert.equal(op.valor({ moneda: 'ARS' }), 'Peso');
+  assert.equal(op.valor({ moneda: 'EUR' }), null);
+  assert.deepEqual(op.candidatos({ moneda: '' }), []);
+});
