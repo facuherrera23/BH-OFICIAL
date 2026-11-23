@@ -33,6 +33,7 @@
 //       # CONFIRMACIÓN EXPLÍCITA: crea un aviso nuevo si no se pudo renovar.
 //       # Sin este flag el asistente NUNCA duplica un aviso que el CRM ya
 //       # marca publicado/vencido con link real (incidente 2026-11-22).
+//   node scripts/lavoz-publisher.mjs --run --json     # resumen JSON por stdout + archivo lavoz-shots/run-*.json
 // ============================================================
 
 import { chromium } from '@playwright/test';
@@ -76,7 +77,7 @@ const SUPABASE_STORAGE_KEY = 'sb-rnldqiwwzhjnurkguihu-auth-token';
 
 function parseArgs(argv) {
   const args = {
-    mode: 'discover', submit: false, dry: false, renew: false, forceNew: false,
+    mode: 'discover', submit: false, dry: false, renew: false, forceNew: false, json: false,
     url: PUBLISH_URL, payload: null, only: null, limit: 99,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -90,6 +91,7 @@ function parseArgs(argv) {
     else if (a === '--no-submit') args.submit = false;
     else if (a === '--renew') args.renew = true;
     else if (a === '--force-new') args.forceNew = true;
+    else if (a === '--json') args.json = true;
     else if (a === '--url') args.url = argv[++i];
     else if (a === '--only') args.only = argv[++i];
     else if (a === '--limit') args.limit = Number(argv[++i]) || 99;
@@ -104,7 +106,7 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2));
 if (args.help) {
-  console.log('Uso: node scripts/lavoz-publisher.mjs --discover | --run [--only CODE] [--limit N] [--dry] [--renew] [--force-new]');
+  console.log('Uso: node scripts/lavoz-publisher.mjs --discover | --run [--only CODE] [--limit N] [--dry] [--renew] [--force-new] [--json]');
   console.log('     --force-new: CONFIRMACIÓN EXPLÍCITA para crear un aviso nuevo cuando el CRM ya marca publicado/vencido.');
   console.log('     node scripts/lavoz-publisher.mjs --estado   # cola de avisos (solo lectura)');
   process.exit(0);
@@ -752,6 +754,7 @@ async function publicarAviso(page, payload, files, { submit }) {
   const hechos = [];
   const faltantes = [];
   let fotosSubidas = false;
+  let monedaNoConfirmada = null;
 
   // 1) El formulario real vive en /publicar/inmuebles (wizard de 6 pasos).
   if (!urlActual(page).includes('/publicar/inmuebles')) {
@@ -818,6 +821,8 @@ async function publicarAviso(page, payload, files, { submit }) {
         if (elegido) { hechos.push(`opción "${valor}"`); break; }
       }
       if (!elegido && op.key === 'moneda') {
+        monedaNoConfirmada = String(candidatos[0]);
+        faltantes.push(`moneda no confirmada en wizard: ${candidatos[0]} (se dejó la opción actual)`);
         log(`  ! no pude confirmar la moneda "${candidatos[0]}" en el formulario (se deja la opción actual del wizard)`);
       }
     }
@@ -840,7 +845,7 @@ async function publicarAviso(page, payload, files, { submit }) {
           if (pub.clicked) {
             hechos.push(`publicado ("${pub.texto}")`);
             await page.waitForTimeout(4000);
-            return { hechos, faltantes, publicado: true, fotosSubidas };
+            return { hechos, faltantes, publicado: true, fotosSubidas, monedaNoConfirmada };
           }
           const cont = await clickTexto(page, RE_AVANZAR, { scope: 'main' });
           if (!cont.clicked) break;
@@ -869,7 +874,7 @@ async function publicarAviso(page, payload, files, { submit }) {
     }
     break;
   }
-  return { hechos, faltantes, publicado: false, fotosSubidas };
+  return { hechos, faltantes, publicado: false, fotosSubidas, monedaNoConfirmada };
 }
 
 /**
@@ -958,8 +963,9 @@ async function renovarAviso(page, adUrl) {
   const btn = await clickTexto(page, RE_RENOVAR);
   if (!btn.clicked) return { ok: false, motivo: 'el aviso no tiene botón de renovación' };
   await page.waitForTimeout(3000);
-  // Puede haber un paso de confirmación ("¿Renovar?").
-  const conf = await clickTexto(page, /confirmar|aceptar|s[ií]|renovar/i);
+  // Puede haber un paso de confirmación ("¿Renovar?"). No incluimos "renovar"
+  // acá: el botón principal ya se clickeó y re-matchearlo puede duplicar la acción.
+  const conf = await clickTexto(page, /confirmar|aceptar|\bs[ií]\b/i);
   if (conf.clicked) await page.waitForTimeout(2500);
   return { ok: true, texto: btn.texto };
 }
@@ -1083,6 +1089,18 @@ let ok = 0;
 let fallos = 0;
 let omitidos = 0;
 let simulados = 0;
+const runResults = [];
+const runStartedAt = new Date().toISOString();
+
+const pushRunResult = (entry) => {
+  runResults.push({
+    ts: new Date().toISOString(),
+    mode: args.renew ? 'renew' : 'publish',
+    dry_run: !!args.dry,
+    force_new: !!args.forceNew,
+    ...entry,
+  });
+};
 
 for (const item of cola) {
   const row = item.row;
@@ -1114,10 +1132,21 @@ for (const item of cola) {
       omitidos++;
       log(`\n=== ${refrescado.property_code || codeInicial} — OMITIDO (CRM: ${refrescado.status}; link conservado)`);
       log('  · si querés duplicarlo a propósito: --force-new');
+      pushRunResult({
+        property_id: item.property_id || null,
+        property_code: refrescado.property_code || codeInicial || null,
+        status: 'skipped',
+        reason: `crm_${refrescado.status}`,
+        ad_url: refrescado.ad_url || row?.ad_url || null,
+      });
       continue;
     }
   }
-  if (!payload) { fallos++; continue; }
+  if (!payload) {
+    fallos++;
+    pushRunResult({ property_id: item.property_id || null, property_code: codeInicial || null, status: 'failed', reason: 'sin_payload' });
+    continue;
+  }
 
   const code = payload.property_code || codeInicial;
 
@@ -1127,6 +1156,13 @@ for (const item of cola) {
     const motivo = (payload.avisos || []).find((a) => RE_BLOQUEANTE.test(String(a)));
     omitidos++;
     log(`\n=== ${code} — OMITIDO (datos incompletos): ${motivo || 'faltan datos'}`);
+    pushRunResult({
+      property_id: item.property_id || null,
+      property_code: code || null,
+      status: 'skipped',
+      reason: 'datos_incompletos',
+      avisos: (payload.avisos || []).slice(0, 12),
+    });
     continue;
   }
 
@@ -1149,6 +1185,7 @@ for (const item of cola) {
           await crmCall(token, 'confirm', { property_id: item.property_id, ad_url: row.ad_url, plan: row.plan || undefined });
           log('  ✓ CRM actualizado (vencimiento renovado):', row.ad_url);
           ok++;
+          pushRunResult({ property_id: item.property_id, property_code: code || codeInicial || null, status: 'renewed', ad_url: row.ad_url });
           continue;
         } catch (err) {
           /* La renovación YA ocurrió en La Voz (con el aviso viejo). Crear un
@@ -1159,9 +1196,14 @@ for (const item of cola) {
           log('  · aviso YA renovado en La Voz; NO creo uno nuevo (evito duplicado).');
           log('  · actualizá el CRM a mano con: Portales → La Voz → "Marcar publicado" →', row.ad_url);
           ok++;
+          pushRunResult({ property_id: item.property_id, property_code: code || codeInicial || null, status: 'renewed_crm_pending', ad_url: row.ad_url, reason: err.message });
           continue;
         }
-      } else { ok++; continue; }
+      } else {
+        ok++;
+        pushRunResult({ property_id: item.property_id || null, property_code: code || codeInicial || null, status: 'renewed', ad_url: row.ad_url });
+        continue;
+      }
     } else {
       log('  · sin renovación en el panel:', ren.motivo);
       // Datos frescos: si el CRM dice 'published' el aviso sigue VIGENTE y
@@ -1172,6 +1214,7 @@ for (const item of cola) {
         omitidos++;
         log('  · el CRM lo marca PUBLICADO (sigue vigente): NO creo un aviso nuevo.');
         log('  · si querés duplicarlo a propósito: --renew --force-new');
+        pushRunResult({ property_id: item.property_id || null, property_code: code || codeInicial || null, status: 'skipped', reason: 'published_still_active', ad_url: row?.ad_url || refrescado?.ad_url || null });
         continue;
       }
       log('  · publico uno nuevo (el anterior venció o no tiene link).');
@@ -1193,7 +1236,8 @@ for (const item of cola) {
 
   for (const h of r.hechos) log('  ✓', h);
   for (const f of r.faltantes) log('  !', f);
-  log('  → captura:', await shot('aviso-' + (code || 'sin-codigo')));
+  const captura = await shot('aviso-' + (code || 'sin-codigo'));
+  log('  → captura:', captura);
 
   if (publicado && item.property_id) {
     const url = await capturarUrlAviso(page, payload);
@@ -1214,20 +1258,53 @@ for (const item of cola) {
         log('    revisá la captura y pegala en Portales → La Voz → "Marcar publicado".');
       }
       ok++;
+      pushRunResult({ property_id: item.property_id, property_code: code || null, status: url ? 'published' : 'published_no_url', ad_url: url || null, plan: planConfirm || null, moneda_no_confirmada: r.monedaNoConfirmada || null, faltantes: r.faltantes || [], captura });
       continue;
-    } catch (err) { log('  ! no pude confirmar en el CRM:', err.message); }
+    } catch (err) {
+      log('  ! no pude confirmar en el CRM:', err.message);
+      fallos++;
+      pushRunResult({ property_id: item.property_id, property_code: code || null, status: 'published_crm_pending', ad_url: url || null, reason: err.message, moneda_no_confirmada: r.monedaNoConfirmada || null, faltantes: r.faltantes || [], captura });
+      continue;
+    }
   } else if (publicado) {
     ok++;
+    pushRunResult({ property_id: item.property_id || null, property_code: code || null, status: 'published_local_only', ad_url: await capturarUrlAviso(page, payload), moneda_no_confirmada: r.monedaNoConfirmada || null, faltantes: r.faltantes || [], captura });
   } else if (args.dry) {
     /* --dry es un PREVIEW: nadie hizo clic en Publicar (ni en Renovar), así
        que no es un fallo. Antes se contaba como fallo y el script terminaba
        con exit 1 aunque el formulario se hubiera llenado perfecto. */
     simulados++;
     log('  ○ simulado (--dry): formulario lleno, NO se publicó ni se renovó');
+    pushRunResult({ property_id: item.property_id || null, property_code: code || null, status: 'dry_run', moneda_no_confirmada: r.monedaNoConfirmada || null, faltantes: r.faltantes || [], captura, fotos_subidas: !!r.fotosSubidas });
   } else {
     fallos++;
     log('  ! no se publicó (faltó el botón o quedó un paso sin completar)');
+    pushRunResult({ property_id: item.property_id || null, property_code: code || null, status: 'failed', reason: 'no_publicado', moneda_no_confirmada: r.monedaNoConfirmada || null, faltantes: r.faltantes || [], captura });
   }
+}
+
+const runSummary = {
+  started_at: runStartedAt,
+  finished_at: new Date().toISOString(),
+  mode: args.renew ? 'renew' : 'publish',
+  dry_run: !!args.dry,
+  force_new: !!args.forceNew,
+  only: args.only || null,
+  limit: args.limit,
+  totals: { ok, fallos, omitidos, simulados, total: runResults.length },
+  results: runResults,
+};
+
+try {
+  fs.mkdirSync(SHOTS_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const summaryPath = path.join(SHOTS_DIR, `run-${stamp}.json`);
+  fs.writeFileSync(summaryPath, JSON.stringify(runSummary, null, 2), 'utf8');
+  log('Resumen de corrida:', summaryPath);
+  if (args.json) console.log(JSON.stringify(runSummary, null, 2));
+} catch (err) {
+  log('! no pude guardar el resumen de corrida:', err instanceof Error ? err.message : err);
+  if (args.json) console.log(JSON.stringify(runSummary, null, 2));
 }
 
 log(`\nTerminado: ${ok} publicado(s), ${fallos} sin publicar, ${omitidos} omitido(s) (ya publicados/vigentes), ${simulados} simulado(s) (--dry).`);

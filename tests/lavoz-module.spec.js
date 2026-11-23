@@ -576,4 +576,17 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(scriptSrc).toContain("op.key === 'moneda'");
     expect(scriptSrc).toContain('no pude confirmar la moneda');
   });
+
+
+  test('observabilidad: --json y resumen de corrida con faltantes/moneda/url/captura', () => {
+    expect(scriptSrc).toContain("else if (a === '--json') args.json = true");
+    expect(scriptSrc).toContain('[--json]');
+    expect(scriptSrc).toContain('run-${stamp}.json');
+    expect(scriptSrc).toContain('monedaNoConfirmada');
+    expect(scriptSrc).toContain('moneda_no_confirmada: r.monedaNoConfirmada || null');
+    expect(scriptSrc).toContain("status: 'dry_run'");
+    expect(scriptSrc).toContain("status: 'failed'");
+    expect(scriptSrc).toContain('captura');
+    expect(scriptSrc).toContain('faltantes: r.faltantes || []');
+  });
 });
