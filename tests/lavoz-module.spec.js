@@ -102,6 +102,16 @@ test.describe('La Voz — módulo de publicación asistida', () => {
     expect(fnSrc).toContain('expires_at: expires.toISOString()');
   });
 
+  test('config_set sanea y valida contacto/tipo_map/ubicacion_map server-side', () => {
+    expect(fnSrc).toContain("patch.tipo_map = mapa;");
+    expect(fnSrc).toContain("mapa[k] = { subrubro, label: v.label.trim() };");
+    expect(fnSrc).toContain("patch.ubicacion_map = mapa;");
+    expect(fnSrc).toContain("patch.contacto = limpio;");
+    expect(fnSrc).toContain("['ciudad', 'ciudad_label', 'barrio', 'label', 'provincia', 'nota']");
+    expect(fnSrc).toContain("limpio[campo] = txt || null;");
+    expect(fnSrc).toContain("limpio.mostrar_whatsapp = body.contacto.mostrar_whatsapp;");
+  });
+
   test('prepare NO degrada un aviso ya publicado (link y vencimiento se preservan)', () => {
     expect(fnSrc).toContain("const yaPublicado = estadoPrevio === 'published' || degradado || vencido");
     expect(fnSrc).toContain("const degradado = ['ready', 'failed'].includes(estadoPrevio) && conLink");

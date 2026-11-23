@@ -118,6 +118,7 @@ function validarConfigPatch(body: Json): Record<string, unknown> {
   const esSlugLavoz = (v: unknown) => typeof v === 'string' && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v.trim());
   if (body.tipo_map !== undefined) {
     if (!esObjeto(body.tipo_map)) throw new Error('tipo_map debe ser un objeto');
+    const mapa: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(body.tipo_map)) {
       if (!esObjeto(v) || typeof v.subrubro !== 'string' || !v.subrubro.trim()
         || typeof v.label !== 'string' || !v.label.trim()) {
@@ -127,14 +128,17 @@ function validarConfigPatch(body: Json): Record<string, unknown> {
       if (!SUBRUBROS_LAVOZ.has(subrubro)) {
         throw new Error(`tipo_map.${k}.subrubro "${v.subrubro}" no es un subrubro válido de La Voz`);
       }
+      mapa[k] = { subrubro, label: v.label.trim() };
     }
-    patch.tipo_map = body.tipo_map;
+    patch.tipo_map = mapa;
   }
   if (body.ubicacion_map !== undefined) {
     if (!esObjeto(body.ubicacion_map)) throw new Error('ubicacion_map debe ser un objeto');
+    const mapa: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(body.ubicacion_map)) {
       if (!esObjeto(v)) throw new Error(`ubicacion_map.${k} debe ser un objeto`);
-      for (const campo of ['ciudad', 'ciudad_label', 'barrio', 'label']) {
+      const limpio: Record<string, unknown> = {};
+      for (const campo of ['ciudad', 'ciudad_label', 'barrio', 'label', 'provincia', 'nota']) {
         const valor = v[campo];
         if (valor !== undefined && valor !== null && typeof valor !== 'string') {
           throw new Error(`ubicacion_map.${k}.${campo} debe ser texto o null`);
@@ -142,30 +146,38 @@ function validarConfigPatch(body: Json): Record<string, unknown> {
         if ((campo === 'ciudad' || campo === 'barrio') && typeof valor === 'string' && valor.trim() && !esSlugLavoz(valor)) {
           throw new Error(`ubicacion_map.${k}.${campo} debe ser slug de La Voz (minúsculas, números y guiones)`);
         }
+        if (valor !== undefined) limpio[campo] = typeof valor === 'string' ? valor.trim() || null : valor;
       }
+      mapa[k] = limpio;
     }
-    patch.ubicacion_map = body.ubicacion_map;
+    patch.ubicacion_map = mapa;
   }
   if (body.contacto !== undefined) {
     if (!esObjeto(body.contacto)) throw new Error('contacto debe ser un objeto');
+    const limpio: Record<string, unknown> = {};
     for (const campo of ['email', 'telefono', 'whatsapp']) {
       const valor = body.contacto[campo];
       if (valor !== undefined && valor !== null && typeof valor !== 'string') {
         throw new Error(`contacto.${campo} debe ser texto o null`);
       }
-      if (campo === 'email' && typeof valor === 'string' && valor.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor.trim())) {
+      const txt = typeof valor === 'string' ? valor.trim() : null;
+      if (campo === 'email' && txt && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(txt)) {
         throw new Error('contacto.email no tiene formato válido');
       }
-      if ((campo === 'telefono' || campo === 'whatsapp') && typeof valor === 'string' && valor.trim() && !/[0-9]{6,}/.test(valor)) {
+      if ((campo === 'telefono' || campo === 'whatsapp') && txt && !/[0-9]{6,}/.test(txt)) {
         throw new Error(`contacto.${campo} debe contener un teléfono válido`);
       }
+      if (valor !== undefined) limpio[campo] = txt || null;
     }
-    if (body.contacto.mostrar_whatsapp !== undefined
-      && typeof body.contacto.mostrar_whatsapp !== 'boolean') {
-      throw new Error('contacto.mostrar_whatsapp debe ser true/false');
+    if (body.contacto.mostrar_whatsapp !== undefined) {
+      if (typeof body.contacto.mostrar_whatsapp !== 'boolean') {
+        throw new Error('contacto.mostrar_whatsapp debe ser true/false');
+      }
+      limpio.mostrar_whatsapp = body.contacto.mostrar_whatsapp;
     }
-    patch.contacto = body.contacto;
+    patch.contacto = limpio;
   }
+
   return patch;
 }
 
