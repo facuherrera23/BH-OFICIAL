@@ -1549,6 +1549,7 @@ try {
       const avisosPayload = Array.isArray(row.payload?.avisos) ? row.payload.avisos.filter(Boolean) : [];
       const motivo = lastError || (row.status === 'published' || row.status === 'expired' ? '' : avisosPayload.join(' | '));
       const motivoCorto = motivo.length > 72 ? motivo.slice(0, 69) + '...' : motivo;
+      const sinUrlPublicada = row.status === 'published' && !adUrl;
       return `<tr>
         <td>
           <div style="display:flex; align-items:center; gap:10px; min-width:220px;">
@@ -1560,7 +1561,10 @@ try {
           </div>
         </td>
         <td>
-          ${lavozStatusBadge(row.status)}
+          <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+            ${lavozStatusBadge(row.status)}
+            ${sinUrlPublicada ? '<span class="nav-badge" style="background:rgba(251,146,60,0.16);color:#fdba74;font-size:10px;white-space:nowrap;" title="Está marcado como publicado pero no tiene link guardado">Sin URL</span>' : ''}
+          </div>
           ${motivo ? `<div style="margin-top:4px;font-size:10px;line-height:1.35;color:${lastError ? '#fca5a5' : '#fcd34d'};max-width:220px;" title="${esc(motivo)}"><i class="fas ${lastError ? 'fa-circle-exclamation' : 'fa-triangle-exclamation'}"></i> ${esc(motivoCorto)}</div>` : ''}
         </td>
         <td style="font-size:11.5px;color:var(--text-secondary);">${row.fotos_count || 0}</td>
@@ -1714,6 +1718,8 @@ try {
           <textarea id="lavozFicha" rows="8" readonly style="width:100%;background:rgba(0,0,0,0.28);border:1px solid var(--border-subtle);border-radius:10px;color:var(--text-secondary);font-size:11.5px;padding:10px;font-family:ui-monospace,Menlo,Consolas,monospace;">${esc(r.ficha || '')}</textarea>
           <div class="lavoz-modal-quick-actions">
             <button type="button" class="btn-outline btn-compact" data-lavoz-copy-ficha><i class="fas fa-clipboard"></i><span>Copiar ficha</span></button>
+            <button type="button" class="btn-outline btn-compact" data-lavoz-copy-code><i class="fas fa-hashtag"></i><span>Copiar código</span></button>
+            <button type="button" class="btn-outline btn-compact" data-lavoz-copy-title><i class="fas fa-heading"></i><span>Copiar título</span></button>
             <button type="button" class="btn-outline btn-compact" data-lavoz-copy-desc><i class="fas fa-align-left"></i><span>Copiar descripción</span></button>
             <button type="button" class="btn-outline btn-compact" data-lavoz-zip><i class="fas fa-file-zipper"></i><span>Descargar fotos</span></button>
           </div>
@@ -1795,6 +1801,18 @@ try {
       const ta = document.querySelector('#lavozFicha');
       const ok = await copiarTexto(ta ? ta.value : '');
       showToast(ok ? 'Ficha copiada.' : 'No pude copiar al portapapeles.', ok ? 'success' : 'error');
+      return;
+    }
+    const copyCode = e.target.closest('[data-lavoz-copy-code]');
+    if (copyCode) {
+      const ok = await copiarTexto((_lavozPrepared?.payload?.property_code) || _lavozPrepared?.property_code || '');
+      showToast(ok ? 'Código copiado.' : 'No pude copiar al portapapeles.', ok ? 'success' : 'error');
+      return;
+    }
+    const copyTitle = e.target.closest('[data-lavoz-copy-title]');
+    if (copyTitle) {
+      const ok = await copiarTexto((_lavozPrepared?.payload?.titulo) || '');
+      showToast(ok ? 'Título copiado.' : 'No pude copiar al portapapeles.', ok ? 'success' : 'error');
       return;
     }
     const copyDesc = e.target.closest('[data-lavoz-copy-desc]');

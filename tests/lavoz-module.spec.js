@@ -511,6 +511,16 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(portalesSrc).toContain("['Duración del aviso', p.dias_publicacion ? `${p.dias_publicacion} días` : null]");
   });
 
+  test('panel UX: muestra motivo/avisos, badge Sin URL y acciones rápidas de copia', () => {
+    expect(portalesSrc).toContain('const lastError = String(row.last_error || \'\').trim();');
+    expect(portalesSrc).toContain('const avisosPayload = Array.isArray(row.payload?.avisos)');
+    expect(portalesSrc).toContain('Sin URL');
+    expect(portalesSrc).toContain('data-lavoz-copy-title');
+    expect(portalesSrc).toContain('data-lavoz-copy-code');
+    expect(portalesSrc).toContain("copiarTexto((_lavozPrepared?.payload?.titulo) || '')");
+    expect(portalesSrc).toContain("copiarTexto((_lavozPrepared?.payload?.property_code) || _lavozPrepared?.property_code || '')");
+  });
+
   test('el asistente acepta los términos y condiciones antes de publicar', () => {
     expect(scriptSrc).toContain('aceptarTerminos');
     expect(mappingSrc).toContain('esTextoTerminos');
