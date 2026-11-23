@@ -599,4 +599,9 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(scriptSrc).toContain('captura');
     expect(scriptSrc).toContain('faltantes: r.faltantes || []');
   });
+
+  test('renovarAviso no re-clickea Renovar en el paso de confirmación', () => {
+    expect(scriptSrc).toContain('const conf = await clickTexto(page, /confirmar|aceptar|\\bs[ií]\\b/i);');
+    expect(scriptSrc).not.toContain('clickTexto(page, /confirmar|aceptar|s[ií]|renovar/i)');
+  });
 });
