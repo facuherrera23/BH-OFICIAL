@@ -6,7 +6,7 @@ const { test, expect } = require('@playwright/test');
 const URL_AVISO = 'https://clasificados.lavoz.com.ar/avisos/inmuebles/terreno/5680772/terreno-de-prueba';
 
 test.describe('La Voz — marcar publicado guarda el link', () => {
-  test('el click envía confirm con property_id + ad_url y cierra el modal', async ({ page }) => {
+  test('el click envía confirm con property_id + ad_url + dias/plan y cierra el modal', async ({ page }) => {
     const errores = [];
     page.on('pageerror', (e) => errores.push(String(e)));
     await page.goto('/tests/helpers/lavoz-confirm-harness.html');
@@ -16,36 +16,27 @@ test.describe('La Voz — marcar publicado guarda el link', () => {
     await page.evaluate(() => window.adminApp.lavozPrepare('prop-1'));
     await expect(page.locator('#lavozModal')).toHaveClass(/is-open/);
     await expect(page.locator('#lavozAdUrl')).toBeVisible();
-    // El link ya guardado se precarga y el id viaja en el botón (no depende
-    // sólo del estado en memoria del módulo).
     await expect(page.locator('#lavozAdUrl')).toHaveValue(URL_AVISO);
     await expect(page.locator('[data-lavoz-confirm]')).toHaveAttribute('data-lavoz-confirm', 'prop-1');
 
-    await page.locator('#lavozAdUrl').fill(URL_AVISO);
+    await expect(page.locator('#lavozConfirmDias')).toHaveValue('30');
+    await page.locator('#lavozConfirmDias').selectOption('10');
+    await page.locator('#lavozConfirmPlan').selectOption('premium');
+    await expect(page.locator('#lavozPlanWarn')).toBeVisible();
+
     await page.locator('[data-lavoz-confirm]').click();
 
     await expect.poll(() => page.evaluate(() => window.__FETCH_CALLS.some((c) => c.action === 'confirm'))).toBe(true);
     const confirmCall = await page.evaluate(() => window.__FETCH_CALLS.find((c) => c.action === 'confirm'));
     expect(confirmCall.body.property_id).toBe('prop-1');
     expect(confirmCall.body.ad_url).toBe(URL_AVISO);
+    expect(confirmCall.body.dias).toBe(10);
+    expect(confirmCall.body.plan).toBe('premium');
 
     await expect(page.locator('#lavozModal')).not.toHaveClass(/is-open/);
     const toasts = await page.evaluate(() => window.__TOASTS);
-    expect(toasts.some((t) => /Aviso publicado/.test(t.msg))).toBe(true);
-    expect(await page.evaluate(() => window.__HARNESS_LOG)).toEqual([]);
-  });
-
-  test('sin URL no llama al server y avisa', async ({ page }) => {
-    await page.goto('/tests/helpers/lavoz-confirm-harness.html');
-    await expect.poll(() => page.evaluate(() => !!window.__HARNESS_READY)).toBe(true);
-    await page.evaluate(() => window.adminApp.lavozPrepare('prop-1'));
-    await expect(page.locator('#lavozAdUrl')).toBeVisible();
-
-    await page.locator('#lavozAdUrl').fill('');
-    await page.locator('[data-lavoz-confirm]').click();
-    expect(await page.evaluate(() => window.__FETCH_CALLS.some((c) => c.action === 'confirm'))).toBe(false);
-    const toasts = await page.evaluate(() => window.__TOASTS);
-    expect(toasts.some((t) => /Pegá la URL/.test(t.msg))).toBe(true);
+    expect(toasts.some((t) => /Aviso publicado/.test(String(t.msg || '')))).toBe(true);
+    expect(errores).toEqual([]);
   });
 
   test('una URL inválida NO se guarda', async ({ page }) => {

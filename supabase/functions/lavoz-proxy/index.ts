@@ -413,8 +413,10 @@ async function handleRequest(req: Request): Promise<Response> {
         .maybeSingle();
       if (existingError) throw existingError;
 
+      const PLANES_CONFIRM = new Set(['basico', 'estandar', 'premium', 'super_premium']);
       let adUrl: string | null;
       let dias: number;
+      let plan: string | null;
       try {
         /* Un re-confirm sin URL conserva el link real ya guardado. La
            versión anterior lo pisaba con null (el asistente confirma sin URL
@@ -422,19 +424,28 @@ async function handleRequest(req: Request): Promise<Response> {
         adUrl = validarAdUrl(body.ad_url) || existing?.ad_url || null;
         if (body.dias !== undefined && body.dias !== null && body.dias !== '') {
           const n = Number(body.dias);
-          if (!Number.isFinite(n) || n < 1 || n > 365) {
-            throw new Error('dias debe ser un número entre 1 y 365');
+          if (n !== 10 && n !== 30) {
+            throw new Error('dias debe ser 10 o 30');
           }
-          dias = Math.round(n);
+          dias = n;
         } else {
-          dias = Number(cfg.dias_publicacion) || 30;
+          const cfgDias = Number(cfg.dias_publicacion);
+          dias = cfgDias === 10 ? 10 : 30;
+        }
+        if (body.plan !== undefined && body.plan !== null && body.plan !== '') {
+          const p = String(body.plan).trim().toLowerCase();
+          if (!PLANES_CONFIRM.has(p)) {
+            throw new Error('plan debe ser basico, estandar, premium o super_premium');
+          }
+          plan = p;
+        } else {
+          plan = existing?.plan || null;
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return jsonResponse(400, { error: msg }, req);
       }
 
-      const plan = String(body.plan ?? '').trim() || existing?.plan || null;
       const remoteId = String(body.remote_id ?? '').trim() || existing?.remote_id || null;
       const now = new Date();
       const expires = new Date(now.getTime() + dias * 86400000);

@@ -1728,8 +1728,30 @@ try {
               ? `<div style="font-size:11.5px;color:#4ade80;margin-bottom:8px;"><i class="fas fa-circle-check"></i> Publicado${r.published_at ? ' el ' + esc(lavozFecha(r.published_at)) : ''}${r.expires_at ? ' · vence el ' + esc(lavozFecha(r.expires_at)) : ''}. La URL guardada se precargó abajo.</div>`
               : ''}
             <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:6px;">Ya lo publicaste? Pegá la URL del aviso</label>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
               <input type="url" id="lavozAdUrl" value="${esc(r.ad_url || '')}" placeholder="https://clasificados.lavoz.com.ar/avisos/inmuebles/..." style="flex:1;min-width:220px;background:rgba(0,0,0,0.28);border:1px solid var(--border-subtle);border-radius:8px;color:var(--text-primary);padding:8px 10px;font-size:12px;" />
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:10px;">
+              <label style="font-size:11px;color:var(--text-dim);display:flex;flex-direction:column;gap:6px;">
+                <span>Duración</span>
+                <select id="lavozConfirmDias" style="background:rgba(0,0,0,0.28);border:1px solid var(--border-subtle);border-radius:8px;color:var(--text-primary);padding:8px 10px;font-size:12px;">
+                  <option value="10" ${Number(p.dias_publicacion || 30) === 10 ? 'selected' : ''}>10 días</option>
+                  <option value="30" ${Number(p.dias_publicacion || 30) !== 10 ? 'selected' : ''}>30 días</option>
+                </select>
+              </label>
+              <label style="font-size:11px;color:var(--text-dim);display:flex;flex-direction:column;gap:6px;">
+                <span>Plan</span>
+                <select id="lavozConfirmPlan" data-recommended="${esc(String(p.plan_recomendado || 'basico').toLowerCase())}" style="background:rgba(0,0,0,0.28);border:1px solid var(--border-subtle);border-radius:8px;color:var(--text-primary);padding:8px 10px;font-size:12px;">
+                  ${[['basico','Básico'],['estandar','Estándar'],['premium','Premium'],['super_premium','Super Premium']].map(([val,label]) => {
+                    const rec = val === String(p.plan_recomendado || 'basico').toLowerCase() ? ' (recomendado)' : '';
+                    const sel = val === String(r.plan || p.plan_recomendado || 'basico').toLowerCase() ? 'selected' : '';
+                    return `<option value="${val}" ${sel}>${label}${rec}</option>`;
+                  }).join('')}
+                </select>
+              </label>
+            </div>
+            <div id="lavozPlanWarn" style="margin-top:2px;margin-bottom:10px;font-size:11px;color:#fcd34d;${String(r.plan || p.plan_recomendado || 'basico').toLowerCase() !== String(p.plan_recomendado || 'basico').toLowerCase() ? '' : 'display:none;'}"><i class="fas fa-triangle-exclamation"></i> El plan seleccionado es distinto al recomendado (${esc(String(p.plan_recomendado || 'basico').replace(/_/g, ' '))}). Revisá el costo antes de confirmar.</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <button type="button" class="btn-luxury-action" data-lavoz-confirm="${esc(pid)}" style="padding:8px 14px;font-size:12px;">Marcar publicado</button>
             </div>
           </div>`;
@@ -1789,6 +1811,16 @@ try {
     }
   });
 
+  on($('#lavozModal'), 'change', (e) => {
+    const planSel = e.target.closest('#lavozConfirmPlan');
+    if (planSel instanceof HTMLSelectElement) {
+      const warn = document.querySelector('#lavozPlanWarn');
+      const rec = String(planSel.dataset.recommended || '').toLowerCase();
+      const val = String(planSel.value || '').toLowerCase();
+      if (warn instanceof HTMLElement) warn.style.display = rec && val && rec !== val ? 'block' : 'none';
+    }
+  });
+
   on($('#lavozModal'), 'click', async (e) => {
     const copy = e.target.closest('[data-lavoz-copy]');
     if (copy) {
@@ -1832,15 +1864,15 @@ try {
     }
     const confirm = e.target.closest('[data-lavoz-confirm]');
     if (confirm) {
-      /* Orden de preferencia: el id del propio botón, el último preparado y,
-         como último recurso, el payload. Antes sólo existía el segundo y un
-         estado perdido hacía que el server respondiera 400 "Falta property_id"
-         sin dejar rastro en audit_log (el empleador veía "no pasa nada"). */
       const propertyId = confirm.dataset.lavozConfirm
         || _lavozPrepared?.property_id
         || _lavozPrepared?.payload?.property_id;
       const input = document.querySelector('#lavozAdUrl');
+      const diasEl = document.querySelector('#lavozConfirmDias');
+      const planEl = document.querySelector('#lavozConfirmPlan');
       const url = (input?.value || '').trim();
+      const dias = Number(diasEl instanceof HTMLSelectElement ? diasEl.value : 30);
+      const plan = planEl instanceof HTMLSelectElement ? String(planEl.value || '').toLowerCase() : '';
       if (!propertyId) {
         logError('lavoz confirm', new Error('Falta property_id en el modal'));
         showToast('No se pudo identificar la propiedad. Cerrá el modal y volvé a preparar el aviso.', 'error');
@@ -1851,11 +1883,15 @@ try {
         showToast('La URL no es válida: pegá el link del aviso publicado de clasificados.lavoz.com.ar (no del formulario).', 'error');
         return;
       }
+      if (dias !== 10 && dias !== 30) { showToast('La duración debe ser 10 o 30 días.', 'error'); return; }
+      if (plan && !['basico', 'estandar', 'premium', 'super_premium'].includes(plan)) {
+        showToast('El plan seleccionado no es válido.', 'error'); return;
+      }
       const btn = confirm instanceof HTMLElement ? confirm : null;
       const prevHtml = btn ? btn.innerHTML : '';
       if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando…'; }
       try {
-        const res = await lavozApiCall('confirm', { property_id: propertyId, ad_url: url });
+        const res = await lavozApiCall('confirm', { property_id: propertyId, ad_url: url, dias, plan: plan || undefined });
         showToast('Aviso publicado. Vence el ' + lavozFecha(res.expires_at) + '. Link guardado en el panel.', 'success');
         closeModal('lavozModal');
         await loadLavozPanel();

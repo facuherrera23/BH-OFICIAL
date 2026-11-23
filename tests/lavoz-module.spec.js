@@ -152,8 +152,9 @@ test.describe('La Voz — módulo de publicación asistida', () => {
     // La URL del aviso la valida tambien el server (ademas del panel).
     expect(fnSrc).toContain('function validarAdUrl(');
     expect(fnSrc).toContain('adUrl = validarAdUrl(body.ad_url) || existing?.ad_url || null');
-    // Re-confirmar sin URL/plan/remote_id conserva los reales guardados.
-    expect(fnSrc).toContain("const plan = String(body.plan ?? '').trim() || existing?.plan || null");
+    // Re-confirmar sin URL/plan/remote_id conserva los reales guardados (con validación de plan).
+    expect(fnSrc).toContain('PLANES_CONFIRM.has(p)');
+    expect(fnSrc).toContain("plan = existing?.plan || null");
     expect(fnSrc).toContain("const remoteId = String(body.remote_id ?? '').trim() || existing?.remote_id || null");
   });
 
@@ -519,6 +520,20 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(portalesSrc).toContain('data-lavoz-copy-code');
     expect(portalesSrc).toContain("copiarTexto((_lavozPrepared?.payload?.titulo) || '')");
     expect(portalesSrc).toContain("copiarTexto((_lavozPrepared?.payload?.property_code) || _lavozPrepared?.property_code || '')");
+  });
+
+  test('confirm manual permite dias/plan, advierte plan distinto y proxy valida', () => {
+    expect(portalesSrc).toContain('id="lavozConfirmDias"');
+    expect(portalesSrc).toContain('id="lavozConfirmPlan"');
+    expect(portalesSrc).toContain('data-recommended=');
+    expect(portalesSrc).toContain("dias !== 10 && dias !== 30");
+    expect(portalesSrc).toContain("['basico', 'estandar', 'premium', 'super_premium']");
+    expect(portalesSrc).toContain('lavozApiCall(\'confirm\', { property_id: propertyId, ad_url: url, dias, plan: plan || undefined })');
+    expect(portalesSrc).toContain('lavozPlanWarn');
+    expect(fnSrc).toContain("const PLANES_CONFIRM = new Set(['basico', 'estandar', 'premium', 'super_premium']);");
+    expect(fnSrc).toContain("throw new Error('dias debe ser 10 o 30');");
+    expect(fnSrc).toContain("throw new Error('plan debe ser basico, estandar, premium o super_premium');");
+    expect(fnSrc).toContain('ad_url: adUrl,');
   });
 
   test('el asistente acepta los términos y condiciones antes de publicar', () => {
