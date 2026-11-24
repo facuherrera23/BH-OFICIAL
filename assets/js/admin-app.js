@@ -774,7 +774,7 @@ function esc(s) {
       }
       /* Todas las tablas que afectan al CRM (los leads ven propiedades, tareas,
          actividades, visitas y propietarios) + las que alimentan los demás tabs. */
-      const tables = ['visits', 'leads', 'properties', 'agents', 'owners', 'owner_tasks', 'lead_properties', 'lead_tasks', 'lead_activities', 'tasaciones', 'commissions', 'commission_liquidations', 'commission_payments'];
+      const tables = ['visits', 'leads', 'properties', 'agents', 'owners', 'owner_tasks', 'lead_properties', 'lead_tasks', 'lead_activities', 'tasaciones', 'commissions', 'commission_liquidations', 'commission_payments', 'rela_listings'];
 
       /* Refresh del CRM con debounce: agrupa ráfagas de cambios (ML puede
          crear 3 leads en 2 segundos) y solo dispara un reload 500ms después
@@ -887,6 +887,15 @@ function esc(s) {
                 upsertTasacionRow(newRecord);
               } else if (event === 'DELETE') {
                 removeTasacionRow(oldRecord.id);
+              }
+              scheduleBadgeRefresh();
+              break;
+            case 'rela_listings':
+              /* Un publish/update/unpublish cambia el badge y los botones de la
+                 fila en Propiedades, y los contadores de Portales → RELA. */
+              debouncedPropertiesRefresh();
+              if (window.adminApp && typeof window.adminApp.refreshRelaPanel === 'function') {
+                try { window.adminApp.refreshRelaPanel(); } catch (e) { logError('realtime: no se pudo refrescar el panel RELA:', e); }
               }
               scheduleBadgeRefresh();
               break;

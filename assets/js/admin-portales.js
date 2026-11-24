@@ -1197,6 +1197,30 @@ try {
       </div>`;
   };
 
+  /* Refresco automático ante cambios de rela_listings (realtime del admin).
+     Sólo lectura: loadRelaPanel() vuelve a pedir rela_portal_status + eventos.
+     Debounce porque una publicación toca varias filas (listing + sync) y
+     porque el handler del core puede recibir varias notificaciones en ráfaga. */
+  let _relaRefreshTimer = null;
+  window.adminApp.refreshRelaPanel = function () {
+    clearTimeout(_relaRefreshTimer);
+    _relaRefreshTimer = setTimeout(function refreshRelaPanelNow() {
+      const el = $('#relaPortalPanel');
+      /* Si el tab Portales no está a la vista no redibujamos: el panel se arma
+         de cero al entrar y un innerHTML acá tiraría el resultado de un
+         preflight que el usuario esté leyendo. */
+      if (!el || !el.getClientRects().length) return;
+      const preflightHtml = $('#relaPreflightResult')?.innerHTML;
+      const contactsHtml = $('#relaContactsResult')?.innerHTML;
+      loadRelaPanel().then(() => {
+        const pre = $('#relaPreflightResult');
+        const contacts = $('#relaContactsResult');
+        if (pre && preflightHtml) pre.innerHTML = preflightHtml;
+        if (contacts && contactsHtml) contacts.innerHTML = contactsHtml;
+      }).catch(err => logError('refreshRelaPanel', err));
+    }, 600);
+  };
+
   /* "Validar todos": qué avisos quedarían listos para publicar en RELA.
      Sólo lectura (no llama a RELA ni publica nada): clasifica cada
      propiedad en listo / bloqueado (con el motivo) / fuera de cola. */

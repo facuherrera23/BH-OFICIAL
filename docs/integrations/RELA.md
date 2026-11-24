@@ -27,7 +27,12 @@
   `catalogs_sync` (5 catálogos cacheados). RBAC verificado: rol `broker` recibe 403 al
   publicar; sólo `super_admin` escribe.
 - Nota de estado remoto: RELA puede responder `estado: "PROCESADO"` al consultar un aviso
-  creado pero sin créditos; se persiste crudo en `remote_status`.
+  creado; se persiste crudo en `remote_status`. **2026-11-24**: los 11 avisos publicados
+  en sandbox devuelven `PROCESADO` y `GET …/avisos/online/resumen` responde `200` con
+  `total: 0`, pese a que los 11 `PUT` fueron aceptados y descontaron 11 créditos.
+  No sabemos si `PROCESADO` equivale a "visible en ZonaProp": se preguntó a
+  QuintoAndar en el hilo SP-61526. Hasta la respuesta, **la reconciliación se hace
+  con `GET aviso` por código** y no se asume que `total: 0` signifique "falló".
 - Planes existentes: `SIMPLE`, `HOME`, `DESTACADO`, `GRATIS`, `EXCLUSIVE`, `EXCLUSIVE_II`, `ALQUILER_SIMPLE` y variantes `DESARROLLOS_*`. Operaciones: `VENTA`, `ALQUILER`, `ALQUILER_TEMPORAL`. Monedas: `USD`, `ARS`.
 
 ## Estado 2026-11-22 — API caída, monitor propio y salida a producción preparada
@@ -122,7 +127,10 @@ Endpoints usados (todos documentados en la sección API de la doc):
 
 **REQUIRES_CONFIRMATION** (presentes en el menú de la doc como capacidades, sin
 endpoint explícito en las páginas renderizadas): resumen de avisos online de
-clásicos (existe para desarrollos: `GET …/desarrollos/online/resumen`),
+clásicos — **2026-11-24: confirmado que existe** `GET /v1/inmobiliarias/{codigo}/avisos/online/resumen`
+(responde `200`, `{number:0,size:0,total:0,content:[]}`) pero **su semántica sigue
+sin confirmar** (ver nota de `PROCESADO` arriba; existe para desarrollos:
+`GET …/desarrollos/online/resumen`),
 suscripción/baja de eventos de callback, calidad de aviso/inmobiliaria por API,
 polling de contactos. Hasta confirmarlos, la reconciliación se hace por
 `GET aviso` uno a uno y la calidad llega vía callback `AVISO_CALIDAD`.
@@ -565,6 +573,22 @@ para las pruebas**: la sandbox volvió y es espejo de producción.
    para publicar.
 6. **Apagar DRY-RUN** recién con los 27 listos confirmados y 1 aviso de prueba
    publicado a mano.
+
+### Panel: estado reconciliado y refresco automático (2026-11-24)
+
+- Las filas `BLOCKED` quedaron **reconciliadas sin borrar nada**: la cola pasó a
+  `pending: 22 / published: 11 / not_publishable: 13 / blocked: 0`. El estado
+  anterior (con los motivos de cada bloqueo) quedó copiado en `audit_log` con
+  `action='rela_status_reconcile'`. Las 13 `not_publishable` son propiedades
+  vendidas: están **fuera de la cola**, no son errores.
+- El admin ya se actualiza solo cuando cambia un aviso: `setupCoreRealtime()`
+  suscribe `rela_listings` (migración `20261124000001_rela_listings_realtime.sql`)
+  y, con debounce, recarga la tabla de Propiedades, el panel de Portales → RELA
+  (`window.adminApp.refreshRelaPanel`) y los badges. El refresco del panel es
+  **sólo lectura** y no redibuja si el tab Portales no está visible, para no
+  borrar el resultado de un "Validar todos" que el usuario esté leyendo.
+- Guards: `tests/rela-realtime.spec.js` (5 tests: suscripción, handler,
+  debounce/visibilidad, migración y un cambio real disparando los 3 refrescos).
 
 ### Gotchas del código nuevo
 
