@@ -26,6 +26,8 @@ export interface CheckInResult {
 export interface RemindersResult {
   sent: number;
   failed: number;
+  /** Enviados en la ventana 2h (email al cliente o aviso WhatsApp al agente). */
+  sent2h: number;
 }
 
 /** Genera y guarda un código QR para una visita. */
@@ -162,49 +164,196 @@ Si no podés asistir avisanos para reprogramar.`;
 }
 
 /**
- * Procesa recordatorios: visitas en las próximas 24h sin recordatorio enviado,
- * con email de cliente cargado. Envía por Brevo y marca reminder_24h_sent_at.
+ * Procesa recordatorios de visitas en DOS ventanas:
+ *
+ *   24 h → email al cliente (si dejó email), con link para confirmar/cancelar.
+ *   2 h  → email al cliente; y si NO dejó email pero sí teléfono, aviso al
+ *          AGENTE con un link de WhatsApp pre-cargado (wa.me) para que el
+ *          aviso llegue igual — el 2h es justo donde se cae la visita.
+ *
+ * Idempotente por las columnas reminder_24h_sent_at / reminder_2h_sent_at
+ * (se marcan INMEDIATAMENTE después de confirmar cada envío). Una visita sin
+ * email ni teléfono en la ventana 2h se marca igual para no reintentar cada
+ * 15 min (cron visits-reminders → visits-process-reminders).
+ *
+ * 2026-11-26: la ventana 2h existía sólo en una edge function huérfana
+ * (visits-reminders, 0 llamadores: el cron llama a visits-process-reminders)
+ * — reminder_2h_sent_at era 0 en las 8 visitas de producción. Se porta acá.
  */
 export async function processReminders(): Promise<RemindersResult> {
   const now = Date.now();
-  const in24h = new Date(now + 24 * 60 * 60 * 1000).toISOString();
-  const { data: visits, error } = await supabase
-    .from('visits')
-    .select('id, client_name, client_email, client_phone, visit_date, duration_minutes, confirmation_token, status, property:properties(title, property_code)')
-    .in('status', ['pendiente', 'confirmada'])
-    .is('reminder_24h_sent_at', null)
-    .gte('visit_date', new Date(now).toISOString())
-    .lte('visit_date', in24h)
-    .not('client_email', 'is', null);
-
-  if (error) throw new Error(error.message);
-
   const config = await getReminderConfig();
-  let sent = 0;
-  let failed = 0;
 
-  const visitJobs = ((visits as any[]) || []).map(async (visit) => {
-    const confirmUrl = visit.confirmation_token
-      ? `${config.site_origin}/confirmar-visita.html?token=${visit.confirmation_token}`
-      : null;
-    const { html, text } = buildReminderEmail(visit, confirmUrl);
-    const subject = `Recordatorio: visita mañana ${fmtDateTimeAR(visit.visit_date)}`;
-    const r = await sendBrevo(config, visit.client_email, subject, html, text);
-    if (!r.ok) {
-      console.error(`[visits-rem] visita ${visit.id}: ${r.error}`);
-      return false;
-    }
-    await supabase
+  async function ventana(
+    kind: '24h' | '2h',
+    flagCol: 'reminder_24h_sent_at' | 'reminder_2h_sent_at',
+    aheadIso: string,
+  ): Promise<{ sent: number; failed: number; skipped: number }> {
+    const { data: visits, error } = await supabase
       .from('visits')
-      .update({ reminder_24h_sent_at: new Date().toISOString() })
-      .eq('id', visit.id);
-    return true;
-  });
-  const visitResults = await Promise.allSettled(visitJobs);
-  for (const r of visitResults) {
-    if (r.status === 'fulfilled' && r.value) sent++;
-    else failed++;
+      .select('id, client_name, client_email, client_phone, visit_date, duration_minutes, confirmation_token, status, agent_id, property:properties(title, property_code)')
+      .in('status', ['pendiente', 'confirmada'])
+      .is('deleted_at', null)
+      .is(flagCol, null)
+      .gte('visit_date', new Date(now).toISOString())
+      .lte('visit_date', aheadIso);
+
+    if (error) throw new Error(error.message);
+
+    let sent = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    const mark = async (visitId: string) => {
+      const { error: markErr } = await supabase
+        .from('visits')
+        .update({ [flagCol]: new Date().toISOString() })
+        .eq('id', visitId);
+      return !markErr;
+    };
+
+    const jobs = ((visits as any[]) || []).map(async (visit) => {
+      try {
+        if (visit.client_email) {
+          // Camino 1: email directo al cliente.
+          const { html, text } = kind === '24h'
+            ? buildReminderEmail(visit, visit.confirmation_token ? config.site_origin + '/confirmar-visita.html?token=' + visit.confirmation_token : null)
+            : buildReminder2hEmail(visit);
+          const subject = kind === '24h'
+            ? 'Recordatorio: tu visita de mañana en BIENENHAUS'
+            : 'Tu visita es en ~2 horas (' + fmtDateTimeAR(visit.visit_date) + ')';
+          const r = await sendBrevo(config, visit.client_email, subject, html, text);
+          if (!r.ok) throw new Error(r.error || 'send failed');
+          if (await mark(visit.id)) sent++; else failed++;
+          return;
+        }
+
+        if (kind === '2h' && visit.client_phone && visit.agent_id) {
+          // Camino 2 (2h sin email del cliente): aviso al AGENTE con el
+          // WhatsApp pre-cargado — el mensaje sale por WhatsApp del agente.
+          const { data: agent } = await supabase
+            .from('agents')
+            .select('profile_id, full_name')
+            .eq('id', visit.agent_id)
+            .single();
+          let email: string | undefined;
+          if (agent?.profile_id) {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('email')
+              .eq('id', agent.profile_id)
+              .single();
+            email = profile?.email;
+          }
+          if (email) {
+            const { html, text } = buildReminder2hAgenteEmail(visit, agent?.full_name || '');
+            const r = await sendBrevo(
+              config, email,
+              '[Bienenhaus] Visita en 2 horas: avisale a ' + (visit.client_name || 'el cliente') + ' por WhatsApp',
+              html, text,
+            );
+            if (!r.ok) throw new Error(r.error || 'send failed');
+            if (await mark(visit.id)) sent++; else failed++;
+            return;
+          }
+        }
+
+        // Nada que enviar (sin email y — en 2h — sin teléfono/agente): se
+        // marca para no reintentar infinitamente cada 15 min.
+        await mark(visit.id);
+        skipped++;
+      } catch (e) {
+        console.error('[visits-rem] visita ' + visit.id + ' (' + kind + '):', (e as Error).message);
+        failed++;
+      }
+    });
+
+    await Promise.all(jobs);
+    return { sent, failed, skipped };
   }
 
-  return { sent, failed };
+  const r24 = await ventana('24h', 'reminder_24h_sent_at', new Date(now + 24 * 60 * 60 * 1000).toISOString());
+  const r2 = await ventana('2h', 'reminder_2h_sent_at', new Date(now + 2 * 60 * 60 * 1000).toISOString());
+
+  return { sent: r24.sent + r2.sent, failed: r24.failed + r2.failed, sent2h: r2.sent };
+}
+
+/* Normalización AR para el deep link de WhatsApp: espejo de normalizeArPhone +
+   waNumber del CRM (soporta 00/54/0/9 y el 15 de celulares → 549 + área+número). */
+function waDigitsAr(phone: string): string {
+  let d = String(phone || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('549')) d = d.slice(3);
+  else if (d.startsWith('54')) d = d.slice(2);
+  if (d.startsWith('0')) d = d.slice(1);
+  if (d.startsWith('9') && d.length <= 12) d = d.slice(1);
+  return d ? '549' + d : '';
+}
+
+/* Email 2h al CLIENTE (adaptación fiel del de la función huérfana). */
+function buildReminder2hEmail(visit: any): { html: string; text: string } {
+  const fecha = fmtDateTimeAR(visit.visit_date);
+  const propLabel = visit.property?.title
+    ? visit.property.title + (visit.property.property_code ? ' (' + visit.property.property_code + ')' : '')
+    : 'la propiedad agendada';
+
+  const text = 'Hola ' + (visit.client_name || '') + ':\n' +
+    'Tu visita en BIENENHAUS es en aproximadamente 2 horas.\n' +
+    '- Día y hora: ' + fecha + '\n' +
+    '- Propiedad: ' + propLabel + '\n' +
+    'Si no podés asistir avisanos para reprogramar.';
+
+  const html = '<!doctype html><html><body style="font-family:Arial,sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px;">' +
+    '<h2 style="color:#b93d2c;margin:0 0 6px;">Tu visita es en ~2 horas</h2>' +
+    '<p>Hola <strong>' + (visit.client_name || 'Cliente') + '</strong>,</p>' +
+    '<p>Te esperamos hoy:</p>' +
+    '<table style="border-collapse:collapse;margin:12px 0;">' +
+      '<tr><td style="padding:6px 10px;color:#555;">Día y hora</td><td style="padding:6px 10px;"><strong>' + fecha + '</strong></td></tr>' +
+      '<tr><td style="padding:6px 10px;color:#555;">Propiedad</td><td style="padding:6px 10px;"><strong>' + propLabel + '</strong></td></tr>' +
+    '</table>' +
+    '<p style="color:#555;font-size:13px;">Si no podés asistir, respondé este email y lo reprogramamos.</p>' +
+  '</body></html>';
+
+  return { html, text };
+}
+
+/* Email 2h al AGENTE con el WhatsApp pre-cargado (sin email del cliente). */
+function buildReminder2hAgenteEmail(visit: any, agenteNombre: string): { html: string; text: string } {
+  const fecha = fmtDateTimeAR(visit.visit_date);
+  const propLabel = visit.property?.title
+    ? visit.property.title + (visit.property.property_code ? ' (' + visit.property.property_code + ')' : '')
+    : 'la propiedad agendada';
+  const waLink = waDigitsAr(visit.client_phone)
+    ? 'https://wa.me/' + waDigitsAr(visit.client_phone) +
+      '?text=' + encodeURIComponent(
+        'Hola ' + (visit.client_name || '').split(' ')[0] +
+        ', te contacto de Bienenhaus Propiedades. Tu visita a ' + propLabel +
+        ' es en un rato (' + fecha + '). ¿Confirmás?'
+      )
+    : '';
+
+  const text = 'Hola ' + (agenteNombre || '') + ':' +
+    '\nTu visita con ' + (visit.client_name || 'el cliente') + ' es en ~2 horas (' + fecha + ').' +
+    '\nPropiedad: ' + propLabel +
+    '\nTeléfono: ' + (visit.client_phone || '—') +
+    (waLink ? '\nMandale un WhatsApp con un clic: ' + waLink : '\nNo tiene teléfono cargado.') +
+    '\n\n(Sin email del cliente, el recordatorio automático no puede llegarle: este es el puente.)';
+
+  const html = '<!doctype html><html><body style="font-family:Arial,sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px;">' +
+    '<h2 style="color:#b93d2c;margin:0 0 6px;">Visita en ~2 horas — avisale por WhatsApp</h2>' +
+    '<p>Hola <strong>' + (agenteNombre || 'agente') + '</strong>,</p>' +
+    '<p>Tu visita con <strong>' + (visit.client_name || 'el cliente') + '</strong> es en aproximadamente 2 horas y el cliente <strong>no dejó email</strong>, así que el recordatorio automático no puede llegarle.</p>' +
+    '<table style="border-collapse:collapse;margin:12px 0;">' +
+      '<tr><td style="padding:6px 10px;color:#555;">Día y hora</td><td style="padding:6px 10px;"><strong>' + fecha + '</strong></td></tr>' +
+      '<tr><td style="padding:6px 10px;color:#555;">Propiedad</td><td style="padding:6px 10px;"><strong>' + propLabel + '</strong></td></tr>' +
+      '<tr><td style="padding:6px 10px;color:#555;">Teléfono</td><td style="padding:6px 10px;"><strong>' + (visit.client_phone || '—') + '</strong></td></tr>' +
+    '</table>' +
+    (waLink
+      ? '<p><a href="' + waLink + '" style="display:inline-block;background:#25D366;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;">Enviar WhatsApp pre-cargado</a></p>'
+      : '<p style="color:#b91c1c;">El cliente no tiene teléfono cargado: revisá su ficha en el CRM.</p>') +
+    '<p style="color:#555;font-size:13px;">Un aviso 2 horas antes es lo que evita la visita perdida.</p>' +
+  '</body></html>';
+
+  return { html, text };
 }
