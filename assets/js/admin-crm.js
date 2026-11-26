@@ -1382,6 +1382,24 @@ function contactSectionHtml(lead, firstProp, props) {
 function bindContactActions(panel, lead, firstProp, props) {
   bindSiguientesAcciones(panel, lead);
   var propTitle = firstProp && firstProp.property_title;
+  /* WhatsApp deja rastro (2026-11-26): el botón wa.me era el único canal sin
+     registro en el timeline (la plantilla, la campaña y la encuesta sí
+     registraban) → el CRM no sabía que hubo contacto real. El log es
+     fire-and-forget: el chat se abre igual aunque falle el insert. */
+  var waAnchor = panel.querySelector('.crm-contact-btn--wa');
+  if (waAnchor && !waAnchor.dataset.waLogged) {
+    waAnchor.dataset.waLogged = '1';
+    waAnchor.addEventListener('click', function () {
+      try {
+        db().from('lead_activities').insert([{
+          lead_id: lead.id,
+          activity_type: 'note',
+          title: 'WhatsApp abierto desde la ficha',
+          description: 'Contacto por WhatsApp' + (propTitle ? ' · ' + propTitle : '') + '.'
+        }]).then(function () { }, function () { /* el envío ya salió */ });
+      } catch (e) { /* el envío ya salió */ }
+    });
+  }
   var propLink = firstProp && firstProp.property_code
     ? 'https://bienenhaus.com.ar/fichas/' + encodeURIComponent(firstProp.property_code) + '.html'
     : null;
