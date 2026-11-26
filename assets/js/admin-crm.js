@@ -3057,7 +3057,7 @@ function bandejaItemHtml(kind, it, verTodos) {
   '</div>';
 }
 
-function bandejaSeccionHtml(rotulo, icono, color, items, total, kind, verTodos) {
+function bandejaSeccionHtml(rotulo, icono, color, items, total, kind, verTodos, accionHtml) {
   var lista = (items || []).map(function (it) { return bandejaItemHtml(kind, it, verTodos); }).join('');
   if (!lista) {
     lista = '<div style="font-size:11.5px;color:var(--text-dim);padding:6px 2px;">Nada pendiente acá. ✔</div>';
@@ -3066,11 +3066,12 @@ function bandejaSeccionHtml(rotulo, icono, color, items, total, kind, verTodos) 
     ? '<span style="font-size:10.5px;color:var(--text-dim);">y ' + (total - (items || []).length) + ' más en la lista del CRM</span>'
     : '';
   return '<div style="margin-bottom:18px;">' +
-    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">' +
       '<i class="' + icono + '" style="color:' + color + ';font-size:13px;"></i>' +
       '<span style="font-size:12px;font-weight:700;color:var(--text-primary);">' + esc(rotulo) + '</span>' +
       '<span class="nav-badge" style="background:' + color + '22;color:' + color + ';">' + Number(total || 0) + '</span>' +
       mas +
+      (accionHtml || '') +
     '</div>' + lista + '</div>';
 }
 
@@ -3113,7 +3114,11 @@ async function openBandeja() {
       bandejaSeccionHtml('Seguimientos vencidos', 'fas fa-clock', '#f87171', d.seguimientos, d.seguimientos_total, 'seguimiento', verTodos) +
       bandejaSeccionHtml('Tareas vencidas', 'fas fa-list-check', '#FFB800', d.tareas, d.tareas_total, 'tarea', verTodos) +
       bandejaSeccionHtml('Visitas próximas (7 días)', 'fas fa-calendar-check', '#4ade80', d.visitas, d.visitas_total, 'visita', verTodos) +
-      bandejaSeccionHtml('Leads sin agente', 'fas fa-user-slash', '#94a3b8', d.sin_agente, d.sin_agente_total, 'sin_agente', verTodos) +
+      bandejaSeccionHtml('Leads sin agente', 'fas fa-user-slash', '#94a3b8', d.sin_agente, d.sin_agente_total, 'sin_agente', verTodos,
+        /* Reparto automático (sólo quien puede repartir: la RPC gatea el rol). */
+        (d.sin_agente_total > 0
+          ? '<button type="button" class="btn-action" data-bandeja-repartir style="font-size:10.5px;padding:4px 10px;" title="Asignar cada lead sin dueño al agente activo con menos carga"><i class="fas fa-people-arrows"></i> Repartir</button>'
+          : '')) +
       bandejaSeccionHtml('Consultas sin tocar', 'fas fa-comment-slash', '#fbbf24', d.sin_tocar, d.sin_tocar_total, 'sin_tocar', verTodos);
 
     /* Delegación: un solo listener para todas las acciones de la bandeja. */
@@ -3128,6 +3133,8 @@ async function openBandeja() {
       if (tarea) { bandejaCompletarTarea(tarea, body); return; }
       var asignar = e.target.closest('[data-bandeja-asignar]');
       if (asignar) { bandejaAsignarme(asignar, body); return; }
+      var repartir = e.target.closest('[data-bandeja-repartir]');
+      if (repartir) { bandejaRepartir(repartir, body); return; }
     });
   } catch (err) {
     logError('bandeja', err);
@@ -3232,6 +3239,34 @@ async function bandejaAsignarme(btn, body) {
   } catch (e) {
     btn.disabled = false;
     toast('No se pudo asignar: ' + e.message, 'error');
+  }
+}
+
+/* Reparto automático (2026-11-26): cada lead sin dueño va al agente activo
+   con menos carga. La RPC gatea el rol (super_admin/broker); si no hay
+   agentes activos abre una alerta de supervisión. */
+async function bandejaRepartir(btn, body) {
+  var ok = await (window.__BH && window.__BH.showConfirmDialog
+    ? window.__BH.showConfirmDialog({
+        title: '¿Repartir los leads sin agente?',
+        message: 'Cada lead sin dueño se asigna al agente activo con menos leads vivos (round-robin por carga). Queda la traza en el historial de cada lead.',
+        confirmText: 'Repartir'
+      })
+    : Promise.resolve(window.confirm('¿Repartir los leads sin agente entre los agentes activos?')));
+  if (!ok) return;
+  btn.disabled = true;
+  try {
+    var r = await db().rpc('repartir_leads_sin_agente');
+    if (r.error) throw new Error(r.error.message);
+    var d = r.data || {};
+    if (d.alerta) { toast('No hay agentes activos: se abrió una alerta de supervisión.', 'error'); }
+    else { toast('Repartidos ' + (d.asignados || 0) + ' lead(s) entre los agentes activos.', 'success'); }
+    await loadLeads();
+    pintarBadgeBandeja();
+    await openBandeja(); /* re-listar la bandeja */
+  } catch (e) {
+    btn.disabled = false;
+    toast('No se pudo repartir: ' + e.message, 'error');
   }
 }
 

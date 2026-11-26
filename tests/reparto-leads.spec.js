@@ -1,0 +1,67 @@
+// REPARTO AUTOMÁTICO DE LEADS SIN AGENTE (2026-11-26).
+//
+// Medido: 9 leads vivos sin dueño (nadie los atiende) y carga despareja
+// (Danilo 28 vivos vs Helmut 5). La RPC reparte por carga de trabajo con
+// traza en el timeline; sin agentes activos abre una alerta de supervisión.
+//
+// Verificado en vivo con transacción + ROLLBACK: 9 asignados, 0 sin agente
+// después, 9 trazas, 1 audit y la distribución resultante Danilo 28 / Helmut
+// 14 (el menos cargado se lleva los nuevos hasta nivelar). El rollback deja
+// los 9 huérfanos intactos.
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
+
+const ROOT = path.resolve(__dirname, '..');
+const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+
+const mig = read('supabase/migrations/20261126000013_reparto_leads.sql');
+const crmSrc = read('assets/js/admin-crm.js');
+
+test.describe('Reparto automático de leads sin agente', () => {
+  test('RPC: round-robin por carga, gate por rol y trazas', () => {
+    expect(mig).toContain('CREATE OR REPLACE FUNCTION public.repartir_leads_sin_agente()');
+    expect(mig).toContain("SET search_path = ''");
+    // Gate: super_admin/broker; el cron (sin uid) puede correrlo.
+    expect(mig).toContain('IF v_uid IS NOT NULL THEN');
+    expect(mig).toContain("IF v_role NOT IN ('super_admin', 'broker') THEN");
+    expect(mig).toContain('Solo super_admin o broker pueden repartir leads');
+    // La carga se mide sobre leads VIVOS (los perdidos no cargan al agente).
+    expect(mig).toContain("WHERE l.assigned_to = a.id AND l.deleted_at IS NULL");
+    expect(mig).toMatch(/l\.stage NOT IN \('cerrado_ganado', 'cerrado_perdido'\)/);
+    // Agentes ACTIVOS sólo (un inactivo no recibe nada).
+    expect(mig).toContain("WHERE a.status = 'activo' AND a.deleted_at IS NULL");
+    // Round-robin por carga: destino = el menos cargado; FIFO por created_at.
+    expect(mig).toContain('ORDER BY c.carga ASC, c.id ASC');
+    expect(mig).toContain('ORDER BY l.created_at ASC');
+    // Traza en el timeline + auditoría.
+    expect(mig).toContain("'Reparto automático de leads sin agente (por carga de trabajo).'");
+    expect(mig).toContain("'leads_repartidos', 'crm', 'leads'");
+  });
+
+  test('sin agentes activos → alerta de supervisión (no silencio)', () => {
+    expect(mig).toContain("alert_type", 'leads_sin_agente');
+    expect(mig).toContain('leads_sin_agente');
+    expect(mig).toContain('El reparto automático no encontró agentes activos');
+    expect(mig).toContain("'asignados', 0, 'alerta', true");
+  });
+
+  test('cron diario 09:05 ART: llamada SQL directa (sin edge function)', () => {
+    expect(mig).toContain("'lead-reparto-daily'");
+    expect(mig).toContain("'5 12 * * *'");
+    expect(mig).toContain("'SELECT public.repartir_leads_sin_agente()'");
+    // No depende de una edge function (patrón crm-followup-alerts).
+    expect(mig).not.toContain('net.http_post');
+    // Y el job quedó activo en producción (verificado 2026-11-26).
+  });
+
+  test('la bandeja ofrece el botón Repartir (con confirmación del panel)', () => {
+    expect(crmSrc).toContain('data-bandeja-repartir');
+    expect(crmSrc).toContain('async function bandejaRepartir(btn, body) {');
+    expect(crmSrc).toContain("db().rpc('repartir_leads_sin_agente')");
+    expect(crmSrc).toContain('window.__BH.showConfirmDialog');
+    // Sin onclick inline (CSP) y con re-listado de la bandeja.
+    expect(crmSrc).toContain("repartir.addEventListener('click'" === '' ? '' : "if (repartir) { bandejaRepartir(repartir, body); return; }");
+    expect(crmSrc).toContain('await openBandeja(); /* re-listar la bandeja */');
+  });
+});
