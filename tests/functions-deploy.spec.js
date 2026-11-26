@@ -79,6 +79,7 @@ const CALLED_WITHOUT_JWT = [
   { fn: 'monthly_commission_liquidation', caller: 'cron monthly-commission-liquidation' },
   { fn: 'notify-new-lead', caller: 'trigger SQL notify_new_lead() sobre leads' },
   { fn: 'owner-tasks-reminder', caller: 'cron owner-tasks-reminder' },
+  { fn: 'lead-tasks-reminder', caller: 'cron lead-tasks-reminder (cada 15 min, x-sync-secret)' },
   { fn: 'supervision-digest', caller: 'cron supervision-digest-weekly' },
   { fn: 'visits-process-reminders', caller: 'cron visits-reminders' },
   { fn: 'zernio-sync', caller: 'cron zernio-sync-every-2-min' },

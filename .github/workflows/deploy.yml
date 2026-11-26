@@ -216,6 +216,7 @@ jobs:
             "exclusive-expiry-alert"
             "ficha"
             "ics-feed"
+            "lead-tasks-reminder"
             "manage-users"
             "ml-callback"
             "ml-oauth"
