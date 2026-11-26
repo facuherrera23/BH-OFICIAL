@@ -2669,6 +2669,12 @@ function init() {
     bandejaBtn.dataset.crmBound = '1';
     bandejaBtn.addEventListener('click', openBandeja);
   }
+  /* Duplicados (2026-11-26): detección + fusión (sólo super_admin/broker). */
+  var dupBtn = $id('crmDuplicadosBtn');
+  if (dupBtn && !dupBtn.dataset.crmBound) {
+    dupBtn.dataset.crmBound = '1';
+    dupBtn.addEventListener('click', openDuplicados);
+  }
   var search = $id('crmSearch');
 if (search) search.addEventListener('input', function () {
     clearTimeout(_searchTimer);
@@ -2913,6 +2919,9 @@ function _syncHeader() {
   var bandejaBtn = $id('crmBandejaBtn');
   if (bandejaBtn) bandejaBtn.style.display = ownersMode ? 'none' : '';
   pintarBadgeBandeja();
+  /* Duplicados (2026-11-26): mismo modo leads; gate de rol en la RPC. */
+  var dupBtn = $id('crmDuplicadosBtn');
+  if (dupBtn) dupBtn.style.display = ownersMode ? 'none' : '';
   if (newOwnerCrm) newOwnerCrm.style.display = ownersMode ? '' : 'none';
   var tokenCrm = $id('btnGenerateTokenCrm');
   if (tokenCrm) tokenCrm.style.display = ownersMode ? '' : 'none';
@@ -3242,10 +3251,127 @@ function pintarBadgeBandeja() {
     : 'Todo al día: nada vencido en tu bandeja';
 }
 
+/* ============================================================
+   DUPLICADOS (2026-11-26): 48 de 124 leads viven en 38 grupos con el mismo
+   email o teléfono. La RPC leads_duplicados() los detecta; fusionar_leads()
+   consolida el historial en el principal y manda el duplicado a la papelera.
+   Sólo super_admin/broker (lo gatea la RPC).
+   ============================================================ */
+var _dupOverlay = null;
+
+function cerrarDuplicados() {
+  if (_dupOverlay) {
+    var onKey = _dupOverlay.__dupKeyHandler;
+    if (onKey) document.removeEventListener('keydown', onKey);
+    _dupOverlay.remove();
+    _dupOverlay = null;
+  }
+}
+
+async function openDuplicados() {
+  if (!db()) { toast('Sin conexión con la base.', 'error'); return; }
+  cerrarDuplicados();
+  var overlay = document.createElement('div');
+  overlay.className = 'crm-bandeja-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10060;background:rgba(2,3,5,0.7);backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;';
+  overlay.innerHTML = '<div role="dialog" aria-modal="true" aria-label="Leads duplicados" style="width:min(760px,100%);background:var(--bg,#05070A);border:1px solid var(--border-subtle);border-radius:16px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,0.55);">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;">' +
+      '<h3 style="margin:0;font-size:16px;color:var(--text-primary);"><i class="fas fa-clone" style="color:#60a5fa;"></i> Leads duplicados</h3>' +
+      '<button type="button" class="modal-x-close" data-dup-close aria-label="Cerrar" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;"><i class="fas fa-xmark"></i></button>' +
+    '</div>' +
+    '<p style="margin:0 0 16px;font-size:11.5px;color:var(--text-dim);">Mismo email o mismo teléfono (últimos 8 dígitos). Elegí cuál conservar y fusioná: el historial, tareas, propiedades y visitas vivas pasan al lead que elijas y el otro queda en la papelera (recuperable).</p>' +
+    '<div data-dup-body style="font-size:12px;">Cargando…</div>' +
+  '</div>';
+  document.body.appendChild(overlay);
+  _dupOverlay = overlay;
+
+  var onKey = function (e) { if (e.key === 'Escape') cerrarDuplicados(); };
+  overlay.__dupKeyHandler = onKey;
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) cerrarDuplicados(); });
+  var closeBtn = overlay.querySelector('[data-dup-close]');
+  if (closeBtn) closeBtn.addEventListener('click', cerrarDuplicados);
+
+  var body = overlay.querySelector('[data-dup-body]');
+  try {
+    var r = await db().rpc('leads_duplicados');
+    if (r.error) throw new Error(r.error.message);
+    var d = r.data || {};
+    if (d.error) throw new Error(d.error === 'solo super_admin o broker' ? 'Sólo super_admin o broker pueden ver y fusionar duplicados.' : d.error);
+    var grupos = d.grupos || [];
+    if (!grupos.length) {
+      body.innerHTML = '<div style="font-size:12.5px;color:var(--text-secondary);padding:14px 0;"><i class="fas fa-circle-check" style="color:#4ade80;"></i> No hay duplicados detectados. ✔</div>';
+      return;
+    }
+    body.innerHTML = grupos.map(function (g, gi) {
+      var miembros = (g.miembros || []).map(function (m, mi) {
+        return '<label style="display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border:1px solid var(--border-subtle);border-radius:10px;background:rgba(255,255,255,0.02);cursor:pointer;">' +
+          '<input type="radio" name="dup-principal-' + gi + '" value="' + esc(m.lead_id) + '"' + (mi === 0 ? ' checked' : '') + ' style="margin-top:2px;accent-color:var(--accent);" />' +
+          '<span style="min-width:0;flex:1;">' +
+            '<span style="display:block;font-size:12.5px;color:var(--text-primary);font-weight:600;">' + esc(m.nombre || 'Sin nombre') + '</span>' +
+            '<span style="display:block;font-size:10.5px;color:var(--text-dim);margin-top:2px;">' +
+              esc([STATUS_LABELS[m.stage] || m.stage, ORIGIN_LABELS[m.source] || m.source, m.telefono || m.email || '', fmtDate(m.created_at)].filter(Boolean).join(' · ')) +
+            '</span>' +
+          '</span>' +
+        '</label>';
+      }).join('');
+      return '<div style="margin-bottom:18px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
+          '<i class="fas fa-' + (g.tipo === 'email' ? 'envelope' : 'phone') + '" style="color:#60a5fa;font-size:12px;"></i>' +
+          '<span style="font-size:12px;font-weight:700;color:var(--text-primary);">' + (g.tipo === 'email' ? 'Mismo email' : 'Mismo teléfono') + '</span>' +
+          '<span class="nav-badge" style="background:rgba(96,165,250,0.15);color:#60a5fa;">' + Number(g.n) + '</span>' +
+        '</div>' +
+        '<div style="display:grid;gap:6px;">' + miembros + '</div>' +
+        '<div style="margin-top:8px;text-align:right;">' +
+          '<button type="button" class="btn-action" data-dup-fusionar="' + gi + '"><i class="fas fa-code-merge"></i> Fusionar en el elegido</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+    body.addEventListener('click', async function (e) {
+      var btn = e.target.closest('[data-dup-fusionar]');
+      if (!btn) return;
+      var gi = Number(btn.getAttribute('data-dup-fusionar'));
+      var grupo = grupos[gi];
+      if (!grupo) return;
+      var sel = body.querySelector('input[name="dup-principal-' + gi + '"]:checked');
+      var principal = sel ? sel.value : null;
+      var miembros = grupo.miembros || [];
+      var duplicado = miembros.filter(function (m) { return m.lead_id !== principal; });
+      if (!principal || duplicado.length === 0) { toast('Elegí cuál lead conservar.', 'error'); return; }
+      var nombrePrincipal = (miembros.filter(function (m) { return m.lead_id === principal; })[0] || {}).nombre || 'el elegido';
+      var ok = await (window.__BH && window.__BH.showConfirmDialog
+        ? window.__BH.showConfirmDialog({
+            title: '¿Fusionar ' + duplicado.length + ' lead' + (duplicado.length === 1 ? '' : 's') + '?',
+            message: 'El historial, tareas, propiedades y visitas vivas pasan a "' + nombrePrincipal + '". El resto queda en la papelera con el motivo "duplicado" (recuperable).',
+            confirmText: 'Fusionar',
+            danger: true
+          })
+        : Promise.resolve(window.confirm('¿Fusionar? El otro lead queda en la papelera.')));
+      if (!ok) return;
+      btn.disabled = true;
+      try {
+        for (var i = 0; i < duplicado.length; i++) {
+          var res = await db().rpc('fusionar_leads', { p_principal: principal, p_duplicado: duplicado[i].lead_id });
+          if (res.error) throw new Error(res.error.message);
+        }
+        toast('Leads fusionados en ' + nombrePrincipal + '.', 'success');
+        await loadLeads();
+        await openDuplicados(); /* re-listar: los grupos fusionados desaparecen */
+      } catch (err) {
+        btn.disabled = false;
+        toast('No se pudo fusionar: ' + err.message, 'error');
+      }
+    });
+  } catch (err) {
+    logError('duplicados', err);
+    body.innerHTML = '<div style="color:var(--danger);font-size:12px;">No se pudieron detectar duplicados: ' + esc(err.message) + '</div>';
+  }
+}
+
 /* markLeadContacted se publica porque admin-crm-tasks.js (que carga ANTES
    que este archivo) lo necesita al completar una tarea: es el punto único
    que registra contacto, cierra la tarea de SLA y recalcula el followup. */
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja };
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja, openDuplicados: openDuplicados };
 
 /* --- Generación de token portal desde CRM (en modo propietarios) --- */
 (function () {
