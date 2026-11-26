@@ -871,6 +871,7 @@ async function loadLeads() {
     applySort();
     renderLeadList(c);
     updateKpis();
+    pintarBadgeBandeja(); /* contador del botón con el cache del sidebar RPC */
     var sub = $id('crmSubtitle');
     if (sub) sub.textContent = _showTrash ? _totalRows + ' eliminados' : _totalRows + ' prospectos';
     var badge = $id('sideBadgeLeads');
@@ -2662,6 +2663,12 @@ function init() {
   __initialized = true;
   var btn = $id('btnNewLead');
   if (btn && !btn.dataset.crmBound) { btn.dataset.crmBound = '1'; /* el modal existente hace submit a loadCRM */ }
+  /* Mi bandeja (2026-11-26): un lugar con TODO lo que hay que atender hoy. */
+  var bandejaBtn = $id('crmBandejaBtn');
+  if (bandejaBtn && !bandejaBtn.dataset.crmBound) {
+    bandejaBtn.dataset.crmBound = '1';
+    bandejaBtn.addEventListener('click', openBandeja);
+  }
   var search = $id('crmSearch');
 if (search) search.addEventListener('input', function () {
     clearTimeout(_searchTimer);
@@ -2902,6 +2909,10 @@ function _syncHeader() {
       : (otherOverdue > 0 ? otherOverdue + ' tareas de propietarios vencidas' : (otherSoon > 0 ? otherSoon + ' tareas de propietarios vencen en 24 h' : 'Ver padrón de propietarios'));
   }
   if (newLead) newLead.style.display = ownersMode ? 'none' : '';
+  /* Mi bandeja (2026-11-26): botón + contador con el cache del sidebar RPC. */
+  var bandejaBtn = $id('crmBandejaBtn');
+  if (bandejaBtn) bandejaBtn.style.display = ownersMode ? 'none' : '';
+  pintarBadgeBandeja();
   if (newOwnerCrm) newOwnerCrm.style.display = ownersMode ? '' : 'none';
   var tokenCrm = $id('btnGenerateTokenCrm');
   if (tokenCrm) tokenCrm.style.display = ownersMode ? '' : 'none';
@@ -2962,10 +2973,279 @@ function handleSubView(tab, sub) {
   return false;
 }
 
+/* ============================================================
+   MI BANDEJA (2026-11-26): "lo que hay que atender HOY" en un solo lugar.
+   La información existía pero estaba repartida en 5 lugares y nadie la veía
+   (21 tareas vencidas, 6 seguimientos vencidos, 9 leads sin dueño, 10
+   consultas de ZonaProp sin tocar). La RPC mi_bandeja(p_user_id) trae las
+   5 secciones con alcance por rol (super_admin/broker: todo el equipo;
+   agente: lo suyo + lo sin dueño). Las acciones reutilizan los puntos únicos
+   del CRM: markLeadContacted (contacto + cierra la tarea de SLA + recalcula
+   followup) y el alta de actividades.
+   ============================================================ */
+var _bandejaOverlay = null;
+
+function bandejaWaLink(telefono, texto) {
+  var wa = waNumber(telefono);
+  if (!wa) return null;
+  var url = 'https://wa.me/' + wa;
+  if (texto) url += '?text=' + encodeURIComponent(texto);
+  return url;
+}
+
+/* Mensaje pre-cargado del WhatsApp: mismo tono que las plantillas del panel. */
+function bandejaWaTexto(nombre) {
+  var n = (nombre || '').split(' ')[0] || '';
+  return 'Hola ' + (n ? n + ', ' : '') + 'te contacto de Bienenhaus Propiedades. ¿Seguís buscando? Te paso opciones que pueden encajar.';
+}
+
+/* Una fila de la bandeja. `kind` elige las acciones:
+   seguimiento/tarea/visita/sin_agente/sin_tocar. */
+function bandejaItemHtml(kind, it, verTodos) {
+  var puedeEscribir = verTodos || !!it.mios;
+  var acciones = '';
+  var wa = bandejaWaLink(it.telefono, bandejaWaTexto(it.nombre || it.client_name));
+  if (wa) {
+    acciones += '<a class="crm-contact-btn crm-contact-btn--wa" href="' + esc(wa) + '" target="_blank" rel="noopener" data-bandeja-wa><i class="fab fa-whatsapp"></i> WhatsApp</a>';
+  } else {
+    acciones += '<span class="crm-contact-btn is-disabled" title="Sin teléfono"><i class="fab fa-whatsapp"></i> WhatsApp</span>';
+  }
+  if (kind === 'tarea') {
+    acciones += puedeEscribir
+      ? '<button type="button" class="crm-contact-btn" data-bandeja-tarea="' + esc(it.tarea_id) + '" data-lead="' + esc(it.lead_id) + '"><i class="fas fa-check"></i> Completar</button>'
+      : '<span class="crm-contact-btn is-disabled" title="La tarea es de otro agente">Completar</span>';
+  }
+  if (kind === 'sin_agente') {
+    acciones += '<button type="button" class="crm-contact-btn crm-contact-btn--assign" data-bandeja-asignar="' + esc(it.lead_id) + '"><i class="fas fa-user-check"></i> Asignármelo</button>';
+  }
+  if ((kind === 'seguimiento' || kind === 'sin_tocar') && puedeEscribir) {
+    acciones += '<button type="button" class="crm-contact-btn" data-bandeja-contactado="' + esc(it.lead_id) + '" data-stage="' + esc(it.stage || '') + '"><i class="fas fa-phone"></i> Marcar contactado</button>';
+  }
+  if (it.lead_id) {
+    acciones += '<button type="button" class="crm-contact-btn" data-bandeja-abrir="' + esc(it.lead_id) + '" title="Abrir el lead en el CRM"><i class="fas fa-folder-open"></i> Abrir</button>';
+  }
+
+  var titulo = esc(it.nombre || it.client_name || 'Sin nombre');
+  var meta = [];
+  if (it.stage) meta.push(STATUS_LABELS[it.stage] || it.stage);
+  if (it.source) meta.push(ORIGIN_LABELS[it.source] || it.source);
+  if (it.agente) meta.push(it.agente);
+  if (kind === 'seguimiento' && it.vence) meta.push('venció ' + fmtDateTime(it.vence));
+  if (kind === 'tarea' && it.due_at) meta.push('venció ' + fmtDateTime(it.due_at));
+  if (kind === 'visita' && it.visit_date) meta.push(fmtDateTime(it.visit_date));
+  if (kind === 'visita' && it.status) meta.push(it.status === 'confirmada' ? 'confirmada' : 'pendiente');
+  if (kind === 'sin_agente' && it.created_at) meta.push('alta ' + fmtDate(it.created_at));
+  if (it.propiedad) meta.push(it.propiedad);
+  var detalle = kind === 'tarea' && it.title ? esc(it.title) : '';
+
+  return '<div class="crm-bandeja-item" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:9px 10px;border:1px solid var(--border-subtle);border-radius:10px;background:rgba(255,255,255,0.02);">' +
+    '<div style="min-width:200px;flex:1;">' +
+      '<div style="font-size:12.5px;color:var(--text-primary);font-weight:600;">' + titulo + '</div>' +
+      (detalle ? '<div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">' + detalle + '</div>' : '') +
+      '<div style="font-size:10.5px;color:var(--text-dim);margin-top:2px;">' + esc(meta.join(' · ')) + '</div>' +
+    '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;">' + acciones + '</div>' +
+  '</div>';
+}
+
+function bandejaSeccionHtml(rotulo, icono, color, items, total, kind, verTodos) {
+  var lista = (items || []).map(function (it) { return bandejaItemHtml(kind, it, verTodos); }).join('');
+  if (!lista) {
+    lista = '<div style="font-size:11.5px;color:var(--text-dim);padding:6px 2px;">Nada pendiente acá. ✔</div>';
+  }
+  var mas = total > (items || []).length
+    ? '<span style="font-size:10.5px;color:var(--text-dim);">y ' + (total - (items || []).length) + ' más en la lista del CRM</span>'
+    : '';
+  return '<div style="margin-bottom:18px;">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
+      '<i class="' + icono + '" style="color:' + color + ';font-size:13px;"></i>' +
+      '<span style="font-size:12px;font-weight:700;color:var(--text-primary);">' + esc(rotulo) + '</span>' +
+      '<span class="nav-badge" style="background:' + color + '22;color:' + color + ';">' + Number(total || 0) + '</span>' +
+      mas +
+    '</div>' + lista + '</div>';
+}
+
+async function openBandeja() {
+  if (!db()) { toast('Sin conexión con la base.', 'error'); return; }
+  if (_bandejaOverlay) { _bandejaOverlay.remove(); _bandejaOverlay = null; }
+  var overlay = document.createElement('div');
+  overlay.className = 'crm-bandeja-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10060;background:rgba(2,3,5,0.7);backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;';
+  overlay.innerHTML = '<div class="crm-bandeja-box" role="dialog" aria-modal="true" aria-label="Mi bandeja" style="width:min(760px,100%);background:var(--bg,#05070A);border:1px solid var(--border-subtle);border-radius:16px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,0.55);">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;">' +
+      '<h3 style="margin:0;font-size:16px;color:var(--text-primary);"><i class="fas fa-inbox" style="color:var(--accent);"></i> Mi bandeja — lo que hay que atender hoy</h3>' +
+      '<button type="button" class="modal-x-close" data-bandeja-close aria-label="Cerrar" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;"><i class="fas fa-xmark"></i></button>' +
+    '</div>' +
+    '<p style="margin:0 0 16px;font-size:11.5px;color:var(--text-dim);">Seguimientos vencidos, tareas vencidas, visitas próximas, leads sin agente y consultas sin tocar — en un solo lugar.</p>' +
+    '<div data-bandeja-body style="font-size:12px;">Cargando…</div>' +
+  '</div>';
+  document.body.appendChild(overlay);
+  _bandejaOverlay = overlay;
+
+  var onKey = function (e) { if (e.key === 'Escape') cerrar(); };
+  function cerrar() {
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+    if (_bandejaOverlay === overlay) _bandejaOverlay = null;
+  }
+  overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) cerrar(); });
+  var closeBtn = overlay.querySelector('[data-bandeja-close]');
+  if (closeBtn) closeBtn.addEventListener('click', cerrar);
+  document.addEventListener('keydown', onKey);
+
+  var body = overlay.querySelector('[data-bandeja-body]');
+  try {
+    var r = await db().rpc('mi_bandeja');
+    if (r.error) throw new Error(r.error.message);
+    var d = r.data || {};
+    if (d.error) throw new Error(d.error);
+    var verTodos = !!d.ver_todos;
+    body.innerHTML =
+      bandejaSeccionHtml('Seguimientos vencidos', 'fas fa-clock', '#f87171', d.seguimientos, d.seguimientos_total, 'seguimiento', verTodos) +
+      bandejaSeccionHtml('Tareas vencidas', 'fas fa-list-check', '#FFB800', d.tareas, d.tareas_total, 'tarea', verTodos) +
+      bandejaSeccionHtml('Visitas próximas (7 días)', 'fas fa-calendar-check', '#4ade80', d.visitas, d.visitas_total, 'visita', verTodos) +
+      bandejaSeccionHtml('Leads sin agente', 'fas fa-user-slash', '#94a3b8', d.sin_agente, d.sin_agente_total, 'sin_agente', verTodos) +
+      bandejaSeccionHtml('Consultas sin tocar', 'fas fa-comment-slash', '#fbbf24', d.sin_tocar, d.sin_tocar_total, 'sin_tocar', verTodos);
+
+    /* Delegación: un solo listener para todas las acciones de la bandeja. */
+    body.addEventListener('click', function (e) {
+      var wa = e.target.closest('[data-bandeja-wa]');
+      if (wa) { registrarWhatsappBandeja(wa); return; }
+      var abrir = e.target.closest('[data-bandeja-abrir]');
+      if (abrir) { cerrar(); openDetailPanel(abrir.getAttribute('data-bandeja-abrir')); return; }
+      var contactado = e.target.closest('[data-bandeja-contactado]');
+      if (contactado) { bandejaMarcarContactado(contactado, body); return; }
+      var tarea = e.target.closest('[data-bandeja-tarea]');
+      if (tarea) { bandejaCompletarTarea(tarea, body); return; }
+      var asignar = e.target.closest('[data-bandeja-asignar]');
+      if (asignar) { bandejaAsignarme(asignar, body); return; }
+    });
+  } catch (err) {
+    logError('bandeja', err);
+    body.innerHTML = '<div style="color:var(--danger);font-size:12px;">No se pudo cargar la bandeja: ' + esc(err.message) + '</div>';
+  }
+}
+
+/* Log best-effort del WhatsApp enviado desde la bandeja (feature 7 usa el
+   mismo helper). No bloquea el envío: primero se abre el chat. */
+async function registrarWhatsappBandeja(anchor) {
+  try {
+    var item = anchor.closest('.crm-bandeja-item');
+    var abrir = item && item.querySelector('[data-bandeja-abrir]');
+    var leadId = abrir ? abrir.getAttribute('data-bandeja-abrir') : null;
+    if (!leadId) return;
+    await db().from('lead_activities').insert([{
+      lead_id: leadId,
+      activity_type: 'note',
+      title: 'WhatsApp enviado (desde Mi bandeja)',
+      description: 'Contacto desde la bandeja del día.'
+    }]);
+  } catch (e) { /* el envío ya se abrió: el log no bloquea */ }
+}
+
+async function bandejaMarcarContactado(btn, body) {
+  var leadId = btn.getAttribute('data-bandeja-contactado');
+  var stage = btn.getAttribute('data-stage') || '';
+  btn.disabled = true;
+  try {
+    /* Punto único del CRM: registra contacto, cierra la tarea de primer
+       contacto y recalcula el followup. 'nuevo' pasa a 'contactado'. */
+    await markLeadContacted(leadId, stage === 'nuevo' ? { stage: 'contactado' } : null);
+    try {
+      await db().from('lead_activities').insert([{
+        lead_id: leadId,
+        activity_type: 'note',
+        title: 'Contactado desde Mi bandeja',
+        description: 'Marcado como contactado desde la bandeja del día.'
+      }]);
+    } catch (e2) { /* el log no bloquea */ }
+    toast('Lead marcado como contactado.', 'success');
+    btn.innerHTML = '<i class="fas fa-check"></i> Listo';
+    await loadLeads();
+    pintarBadgeBandeja();
+  } catch (e) {
+    btn.disabled = false;
+    toast('No se pudo marcar: ' + e.message, 'error');
+  }
+}
+
+async function bandejaCompletarTarea(btn, body) {
+  var tareaId = btn.getAttribute('data-bandeja-tarea');
+  var leadId = btn.getAttribute('data-lead');
+  btn.disabled = true;
+  try {
+    var upd = { status: 'completada', completed_at: new Date().toISOString() };
+    var r = await db().from('lead_tasks').update(upd).eq('id', tareaId);
+    if (r.error) throw new Error(r.error.message);
+    try {
+      await db().from('lead_activities').insert([{
+        lead_id: leadId,
+        activity_type: 'note',
+        title: 'Tarea completada desde Mi bandeja',
+        description: ''
+      }]);
+    } catch (e2) { /* el log no bloquea */ }
+    /* La tarea vencida podía ser la que generaba el followup: recalcular. */
+    await syncLeadFollowup(leadId);
+    toast('Tarea completada.', 'success');
+    btn.innerHTML = '<i class="fas fa-check"></i> Lista';
+    await loadLeads();
+    pintarBadgeBandeja();
+  } catch (e) {
+    btn.disabled = false;
+    toast('No se pudo completar: ' + e.message, 'error');
+  }
+}
+
+async function bandejaAsignarme(btn, body) {
+  var leadId = btn.getAttribute('data-bandeja-asignar');
+  btn.disabled = true;
+  try {
+    var auth = await db().auth.getUser();
+    var uid = auth && auth.data && auth.data.user && auth.data.user.id;
+    if (!uid) throw new Error('Sin sesión activa');
+    var agentRes = await db().from('agents').select('id, full_name').eq('profile_id', uid).eq('status', 'activo').is('deleted_at', null).maybeSingle();
+    if (!agentRes.data) throw new Error('Tu usuario no está vinculado a un agente activo');
+    var upd = await db().from('leads').update({ assigned_to: agentRes.data.id }).eq('id', leadId).is('assigned_to', null);
+    if (upd.error) throw new Error(upd.error.message);
+    try {
+      await db().from('lead_activities').insert([{
+        lead_id: leadId,
+        activity_type: 'note',
+        title: 'Lead asignado a ' + agentRes.data.full_name,
+        description: 'Reclamado desde Mi bandeja.'
+      }]);
+    } catch (e2) { /* el log no bloquea */ }
+    toast('Lead asignado a ' + agentRes.data.full_name + '.', 'success');
+    btn.innerHTML = '<i class="fas fa-check"></i> ' + esc(agentRes.data.full_name);
+    await loadLeads();
+    pintarBadgeBandeja();
+  } catch (e) {
+    btn.disabled = false;
+    toast('No se pudo asignar: ' + e.message, 'error');
+  }
+}
+
+/* Contador del botón: lee el cache de la RPC del sidebar (get_sidebar_badge_counts
+   v4 devuelve 'mi_bandeja' con el MISMO alcance que la bandeja). Sin llamada extra. */
+function pintarBadgeBandeja() {
+  var btn = $id('crmBandejaBtn');
+  if (!btn) return;
+  var badge = $id('crmBandejaBadge');
+  if (!badge) return;
+  var n = (window.__BH && window.__BH.lastBadgeCounts && window.__BH.lastBadgeCounts.mi_bandeja) || 0;
+  badge.textContent = n > 99 ? '99+' : String(n);
+  badge.style.display = n > 0 ? '' : 'none';
+  btn.classList.toggle('crm-bandeja--alert', n > 0);
+  btn.dataset.bhTip = n > 0
+    ? n + ' cosas para atender hoy: seguimientos vencidos, tareas vencidas, leads sin agente y consultas sin tocar'
+    : 'Todo al día: nada vencido en tu bandeja';
+}
+
 /* markLeadContacted se publica porque admin-crm-tasks.js (que carga ANTES
    que este archivo) lo necesita al completar una tarea: es el punto único
    que registra contacto, cierra la tarea de SLA y recalcula el followup. */
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted };
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja };
 
 /* --- Generación de token portal desde CRM (en modo propietarios) --- */
 (function () {

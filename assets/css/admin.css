@@ -5036,6 +5036,12 @@ input[type="range"]::-moz-range-thumb {
 .crm-tipo-chip--inquilino{background:rgba(251,191,36,0.15);color:#fbbf24}
 .crm-tipo-chip--colega{background:rgba(244,114,182,0.15);color:#f472b6}
 
+/* Mi bandeja (2026-11-26): botón con pendientes + overlay de la bandeja. */
+.crm-bandeja--alert{border-color:rgba(248,113,113,0.45)!important;background:rgba(248,113,113,0.08)!important}
+.crm-bandeja-overlay .crm-bandeja-item:hover{background:rgba(255,255,255,0.045)}
+.crm-bandeja-overlay .crm-bandeja-item .crm-contact-btn{font-size:10.5px;padding:5px 9px}
+@media (max-width:720px){.crm-bandeja-overlay{padding:16px 8px;align-items:stretch}}
+
 /* --------------------------------------------------------- */
 /* TASACIONES â€” listado con identidad CRM                     */
 /* --------------------------------------------------------- */
