@@ -1380,6 +1380,7 @@ function contactSectionHtml(lead, firstProp, props) {
 }
 
 function bindContactActions(panel, lead, firstProp, props) {
+  bindSiguientesAcciones(panel, lead);
   var propTitle = firstProp && firstProp.property_title;
   var propLink = firstProp && firstProp.property_code
     ? 'https://bienenhaus.com.ar/fichas/' + encodeURIComponent(firstProp.property_code) + '.html'
@@ -2086,7 +2087,8 @@ function bindSideOverlayClose(panel) {
 function renderSide(panel, lead, activities, props, visits, tasks, surveys, propMatches, offers) {
   /* Pre-computar HTML de sugerencias ANTES del innerHTML (evita issues de
      scope en la concatenación gigante del panel). */
-  var suggestHtml = '';
+  var siguientesAcciones = siguientesAccionesDe(lead, props, visits, tasks);
+  var accionesHtml = siguientesAccionesHtml(siguientesAcciones, lead);
   if (propMatches && propMatches.length) {
     suggestHtml = '<div class="crm-side-section"><h4 class="crm-side-section-title crm-suggest-title"><i class="fas fa-wand-magic-sparkles" style="color:#8b5cf6; margin-right:4px;"></i> Propiedades Sugeridas</h4>' +
       '<div id="crmSuggestWrap">' + renderPropSuggestions(propMatches) + '</div></div>';
@@ -2136,6 +2138,7 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
       '<button class="crm-side-close" aria-label="Cerrar"><i class="fas fa-times"></i></button>' +
     '</div>' +
     '<div class="crm-side-body">' +
+      accionesHtml +
       contactSectionHtml(lead, (props && props[0]) || null, props) +
       '<div class="crm-modal-tabs">' +
         '<button type="button" class="crm-tab-btn is-active" data-crm-tab="data">Datos Principales</button>' +
@@ -2980,6 +2983,179 @@ function handleSubView(tab, sub) {
   if (tab !== 'tab-leads') return false;
   if (sub === 'owners') { openOwners(); return true; }
   return false;
+}
+
+/* ============================================================
+   SIGUIENTE MEJOR ACCIÓN (2026-11-26): tarjeta al tope de la ficha del lead.
+   No inventa nada nuevo: sugiere lo que corresponde según los datos y cada
+   botón ejecuta un flujo que ya existía (WhatsApp, visita, tarea, contactado,
+   asignarme, sugerencias).
+   ============================================================ */
+
+/* Puras y testeables: devuelven hasta 3 acciones en orden de prioridad.
+   Prioridad: sin dueño → tarea vencida → ML sin responder → sin contacto
+   → visita próxima → contacto viejo → sugerencias → tarea nueva. */
+function siguientesAccionesDe(lead, props, visits, tasks) {
+  if (!lead) return [];
+  var acciones = [];
+  var wa = waNumber(lead.whatsapp) || waNumber(lead.phone);
+  var vivos = (tasks || []).filter(function (t) { return t.status === 'pendiente' || t.status === 'en_progreso'; });
+  var tieneProps = (props || []).length > 0;
+
+  if (!lead.assigned_to) {
+    acciones.push({ id: 'asignarme', label: 'Asignármelo', icon: 'fa-user-check', razon: 'Nadie es dueño de este lead: el primero que lo atiende lo pierde.' });
+  }
+  if (vivos.length) {
+    var t = vivos.slice().sort(function (a, b) {
+      return (a.due_at ? new Date(a.due_at).getTime() : Infinity) - (b.due_at ? new Date(b.due_at).getTime() : Infinity);
+    })[0];
+    var vencida = t.due_at && new Date(t.due_at).getTime() < Date.now();
+    acciones.push({
+      id: 'tarea', label: vencida ? 'Tarea vencida: ' + (t.title || 'pendiente') : 'Tarea: ' + (t.title || 'pendiente'),
+      icon: vencida ? 'fa-triangle-exclamation' : 'fa-list-check', tareaId: t.id,
+      razon: vencida ? 'Venció ' + fmtDateTime(t.due_at) + ' — completala o reagendala.' : 'Vence ' + fmtDateTime(t.due_at) + '.'
+    });
+  } else if (lead.source === 'ml' && !lead.last_contacted_at) {
+    acciones.push({
+      id: 'whatsapp', label: 'Consultó por ML y nadie le respondió', icon: 'fa-comment-slash',
+      razon: 'La fuga comercial medida: los leads de ML se pierden sin contacto. Escribile ahora.'
+    });
+  } else if (!lead.last_contacted_at) {
+    acciones.push({
+      id: 'whatsapp', label: 'Primer contacto', icon: 'fa-paper-plane',
+      razon: 'Sin ningún contacto registrado. El primer mensaje resuelve la mayoría de los leads fríos.'
+    });
+  }
+  var proxima = (visits || []).filter(function (v) { return v.status === 'pendiente' || v.status === 'confirmada'; })
+    .sort(function (a, b) { return new Date(a.visit_date) - new Date(b.visit_date); })[0];
+  if (proxima && proxima.visit_date && new Date(proxima.visit_date).getTime() - Date.now() < 2 * 86400000 && wa) {
+    acciones.push({
+      id: 'whatsapp', label: 'Confirmar la visita de ' + fmtDateTime(proxima.visit_date), icon: 'fa-calendar-check',
+      razon: 'Visita próxima: sin confirmación se cae. Un mensaje ahora la salva.'
+    });
+  } else if (lead.last_contacted_at) {
+    var dias = Math.floor((Date.now() - new Date(lead.last_contacted_at).getTime()) / 86400000);
+    if (dias >= 7) {
+      acciones.push({
+        id: 'whatsapp', label: 'Sin contacto hace ' + dias + ' días', icon: 'fa-clock-rotate-left',
+        razon: 'El seguimiento venció. Un mensaje corto reabre la conversación.'
+      });
+    }
+  }
+  if (!tieneProps && wa && acciones.length < 3) {
+    acciones.push({
+      id: 'sugerencias', label: propMatchesHay(lead) ? 'Ver propiedades que encajan' : 'Vincular una propiedad',
+      icon: 'fa-wand-magic-sparkles',
+      razon: 'Sin propiedad vinculada no hay qué mostrarle: el match por zona/presupuesto está a un clic.'
+    });
+  }
+  if (acciones.length < 3 && vivos.length === 0) {
+    acciones.push({
+      id: 'tarea_nueva', label: 'Crear tarea de seguimiento', icon: 'fa-plus',
+      razon: 'Sin próxima tarea el lead se enfría solo.'
+    });
+  }
+  if (!wa && acciones.length && acciones[0].id === 'whatsapp') acciones.shift();
+  return acciones.slice(0, 3);
+}
+
+function propMatchesHay(lead) {
+  return !!(lead && (lead.preferred_zone || lead.preferred_type || lead.preferred_rooms || lead.budget_usd));
+}
+
+/* Render de la tarjeta: la acción #1 en grande, el resto como chips. */
+function siguientesAccionesHtml(acciones, lead) {
+  if (!acciones || !acciones.length) return '';
+  var prim = acciones[0];
+  var botones = acciones.map(function (a, i) {
+    return '<button type="button" class="' + (i === 0 ? 'btn-luxury-action' : 'crm-contact-btn') + '" data-sig-accion="' + a.id + '"' +
+      (a.tareaId ? ' data-sig-tarea="' + esc(a.tareaId) + '"' : '') +
+      ' style="' + (i === 0 ? 'width:100%;justify-content:center;padding:11px 14px;font-size:12.5px;' : '') + '">' +
+      '<i class="fas ' + a.icon + '"></i> ' + esc(a.label) + '</button>';
+  }).join('');
+  return '<div class="crm-side-section crm-sig-accion" style="background:rgba(31,200,195,0.06);border:1px solid rgba(31,200,195,0.25);border-radius:12px;">' +
+    '<h4 class="crm-side-section-title" style="margin-bottom:6px;"><i class="fas fa-bolt" style="color:var(--accent); margin-right:4px;"></i> Siguiente acción</h4>' +
+    '<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">' + esc(prim.razon || '') + '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:6px;">' + botones + '</div>' +
+  '</div>';
+}
+
+/* Un solo listener delegado por panel: cada acción ejecuta un flujo existente. */
+function bindSiguientesAcciones(panel, lead) {
+  var wrap = panel.querySelector('.crm-sig-accion');
+  if (!wrap || wrap.dataset.sigBound) return;
+  wrap.dataset.sigBound = '1';
+  wrap.addEventListener('click', async function (e) {
+    var btn = e.target.closest('[data-sig-accion]');
+    if (!btn) return;
+    var id = btn.getAttribute('data-sig-accion');
+    if (id === 'whatsapp') {
+      var wa = waNumber(lead.whatsapp) || waNumber(lead.phone);
+      if (!wa) { toast('Sin número de WhatsApp.', 'error'); return; }
+      var text = 'Hola ' + (lead.full_name || '').split(' ')[0] + ', te contacto de Bienenhaus Propiedades. ¿Seguís buscando? Te paso opciones que pueden encajar.';
+      try {
+        await db().from('lead_activities').insert([{ lead_id: lead.id, activity_type: 'note', title: 'WhatsApp enviado (siguiente acción)', description: text }]);
+      } catch (e2) { /* el envío no se bloquea por el log */ }
+      window.open('https://wa.me/' + wa + '?text=' + encodeURIComponent(text), '_blank', 'noopener');
+      return;
+    }
+    if (id === 'visita') {
+      if (window.adminApp && window.adminApp.openVisitModal) {
+        window.adminApp.openVisitModal({
+          lead_id: lead.id,
+          client_name: lead.full_name || '',
+          client_phone: lead.whatsapp || lead.phone || '',
+          client_email: lead.email || ''
+        });
+      } else { toast('La agenda no está cargada.', 'error'); }
+      return;
+    }
+    if (id === 'tarea') {
+      /* La tarea sugerida es una PENDIENTE: abrir su formulario para
+         completarla o reagendarla (mismo flujo del tab Tareas). */
+      if (window.CrmTasks && window.CrmTasks.showTaskForm) {
+        window.CrmTasks.showTaskForm(lead.id, btn.getAttribute('data-sig-tarea'), panel);
+      } else { toast('El módulo de tareas no está cargado.', 'error'); }
+      return;
+    }
+    if (id === 'tarea_nueva') {
+      if (window.CrmTasks && window.CrmTasks.showTaskForm) window.CrmTasks.showTaskForm(lead.id, null, panel);
+      return;
+    }
+    if (id === 'contactado') {
+      try {
+        await markLeadContacted(lead.id, lead.stage === 'nuevo' ? { stage: 'contactado' } : null);
+        toast('Lead marcado como contactado.', 'success');
+        btn.innerHTML = '<i class="fas fa-check"></i> Listo';
+        await loadLeads();
+      } catch (e) { toast('No se pudo marcar: ' + e.message, 'error'); }
+      return;
+    }
+    if (id === 'asignarme') {
+      try {
+        var auth = await db().auth.getUser();
+        var uid = auth && auth.data && auth.data.user && auth.data.user.id;
+        if (!uid) throw new Error('Sin sesión activa');
+        var agentRes = await db().from('agents').select('id, full_name').eq('profile_id', uid).eq('status', 'activo').is('deleted_at', null).maybeSingle();
+        if (!agentRes.data) throw new Error('Tu usuario no está vinculado a un agente activo');
+        var upd = await db().from('leads').update({ assigned_to: agentRes.data.id }).eq('id', lead.id).is('assigned_to', null);
+        if (upd.error) throw new Error(upd.error.message);
+        try {
+          await db().from('lead_activities').insert([{ lead_id: lead.id, activity_type: 'note', title: 'Lead asignado a ' + agentRes.data.full_name, description: 'Asignado desde la tarjeta de siguiente acción.' }]);
+        } catch (e2) { /* el log no bloquea */ }
+        toast('Lead asignado a ' + agentRes.data.full_name + '.', 'success');
+        btn.innerHTML = '<i class="fas fa-check"></i> ' + esc(agentRes.data.full_name);
+        await loadLeads();
+      } catch (e) { toast('No se pudo asignar: ' + e.message, 'error'); }
+      return;
+    }
+    if (id === 'sugerencias') {
+      var sug = panel.querySelector('#crmSuggestWrap');
+      if (sug) { sug.scrollIntoView({ behavior: 'smooth', block: 'center' }); sug.classList.add('crm-sig-flash'); setTimeout(function () { sug.classList.remove('crm-sig-flash'); }, 1600); }
+      else { toast('No hay sugerencias: cargá zona o presupuesto en el lead.', 'error'); }
+      return;
+    }
+  });
 }
 
 /* ============================================================

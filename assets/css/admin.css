@@ -5038,6 +5038,7 @@ input[type="range"]::-moz-range-thumb {
 
 /* Mi bandeja (2026-11-26): botón con pendientes + overlay de la bandeja. */
 .crm-bandeja--alert{border-color:rgba(248,113,113,0.45)!important;background:rgba(248,113,113,0.08)!important}
+.crm-sig-flash{outline:2px solid var(--accent);outline-offset:2px;transition:outline-color 1.6s ease}
 .crm-bandeja-overlay .crm-bandeja-item:hover{background:rgba(255,255,255,0.045)}
 .crm-bandeja-overlay .crm-bandeja-item .crm-contact-btn{font-size:10.5px;padding:5px 9px}
 @media (max-width:720px){.crm-bandeja-overlay{padding:16px 8px;align-items:stretch}}
