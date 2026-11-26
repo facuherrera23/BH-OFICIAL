@@ -112,4 +112,55 @@ test.describe('La Voz — ícono con estado real + fecha de vencimiento', () => 
     expect(fnSrc).toContain('venceManual = validarVencimiento(body.expires_at);');
     expect(fnSrc).toContain('const expires = venceManual ? new Date(venceManual) : new Date(now.getTime() + dias * 86400000);');
   });
+
+  /* La fecha manual tiene que vencer al FINAL del día local (Argentina,
+     UTC-3 sin horario de verano): con 23:59:59Z el aviso vencía a las 20:59
+     y el ícono ya lo pintaba vencido 3 h antes de que terminara el día. */
+  test('el vencimiento manual es el final del día en hora Argentina', () => {
+    expect(fnSrc).toContain("new Date(s + 'T23:59:59-03:00')");
+    expect(fnSrc).not.toContain("new Date(s + 'T23:59:59.000Z')");
+  });
+
+  test('el panel avisa el tope de 400 días antes de mandarlo al server', () => {
+    // El input no deja elegir una fecha fuera del rango.
+    expect(portalesSrc).toContain('max="${esc(lavozFechaMax())}"');
+    expect(portalesSrc).toContain('function lavozFechaMax()');
+    expect(portalesSrc).toContain('400 * 86400000');
+    // Y el confirm lo valida (si el navegador lo dejara pasar).
+    expect(portalesSrc).toContain('La fecha de vencimiento no puede ser más de 400 días.');
+  });
+
+  /* Un aviso con link + fecha de publicación ESTÁ publicado aunque su
+     status guardado diga ready/failed (un 'prepare' viejo lo degradó):
+     el panel de Portales tiene que mostrarlo como publicado, igual que el
+     ícono de Propiedades (si no, los dos paneles se contradicen). */
+  test('el panel de Portales muestra el estado real (no el degradado)', () => {
+    expect(portalesSrc).toContain('function lavozStatusEfectivo(row) {');
+    expect(portalesSrc).toContain('${lavozStatusBadge(statusEf)}');
+    expect(portalesSrc).toContain("${statusEf === 'published' ? `<button class=\"btn-action danger\"");
+    expect(portalesSrc).toContain('const statusEf = lavozStatusEfectivo(row);');
+  });
+
+  test('behavioral: lavozStatusEfectivo con los casos reales', () => {
+    const from = portalesSrc.indexOf('function lavozStatusEfectivo(row) {');
+    const to = portalesSrc.indexOf('function lavozFecha(iso)', from);
+    expect(from, 'lavozStatusEfectivo no encontrado').toBeGreaterThan(-1);
+    expect(to, 'fin de lavozStatusEfectivo no encontrado').toBeGreaterThan(from);
+    const sandbox = { Date, Math, console };
+    vm.createContext(sandbox);
+    vm.runInContext(portalesSrc.slice(from, to), sandbox);
+    const f = sandbox.lavozStatusEfectivo;
+
+    // Sin aviso → draft.
+    expect(f(null)).toBe('draft');
+    // Preparado, sin link → sigue ready (falta publicar).
+    expect(f({ status: 'ready', ad_url: null, published_at: null })).toBe('ready');
+    // Publicado normal.
+    expect(f({ status: 'published', ad_url: 'https://x', published_at: '2026-11-20T10:00:00Z' })).toBe('published');
+    // Degradado por un prepare viejo: link + fecha → PUBLISHED.
+    expect(f({ status: 'ready', ad_url: 'https://x', published_at: '2026-11-20T10:00:00Z' })).toBe('published');
+    expect(f({ status: 'failed', ad_url: 'https://x', published_at: '2026-11-20T10:00:00Z' })).toBe('published');
+    // Vencido y expirado se respetan.
+    expect(f({ status: 'expired', ad_url: 'https://x', published_at: '2026-11-20T10:00:00Z' })).toBe('expired');
+  });
 });

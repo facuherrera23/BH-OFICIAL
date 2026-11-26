@@ -70,6 +70,21 @@ cliente: todos". Se aplicó en:
 - el **export CSV** (`exportLeadsCSV`): si no, el CSV no coincidía con lo que se ve en pantalla,
 - la lista de filtros que se ocultan en el modo Propietarios (`leadOnly`).
 
+### Corrección posterior (auditoría del mismo día)
+
+El filtro de operación (`operationFilter`) **excluía a todos los colegas**: como `colega`
+no deriva operación y la UI no permite cargarla (el `#leadOperationType` es un input
+oculto que ningún JS escribe), todo lead colega queda con `operation_type IS NULL` → no
+matcheaba `operation_type.eq.<op>` ni los grupos `and(operation_type.is.null, tipo_cliente.eq.<…>)`.
+
+Consecuencia: **"Tipo: Colega" + "Operación: Compra" devolvía 0 filas** (filtros
+contradictorios), y era inconsistente con el motor de sugerencias, que para un colega ya
+no filtra por operación.
+
+**Fix:** `operationFilter(op)` suma el grupo `and(operation_type.is.null,tipo_cliente.eq.colega)`
+a las tres operaciones, en `admin-crm.js` **y** `admin-app.js` (idéntico a propósito: el CSV
+tiene que filtrar igual que la pantalla; hay un guard que lo verifica).
+
 ---
 
 ## 3. La Voz: el ícono de la fila de Propiedades
@@ -105,6 +120,18 @@ Reglas importantes:
 - Al confirmar o despublicar desde Portales, el ícono se refresca solo
   (`window.adminApp.refreshLavozIcons` → `loadProperties()`).
 
+### Corrección posterior (auditoría del mismo día)
+
+El **panel de Portales** mostraba el `status` crudo: un aviso degradado a `ready`/`failed`
+que igual tenía link + fecha de publicación aparecía como **"Listo para subir"** mientras
+el ícono de Propiedades ya estaba **verde** — los dos paneles se contradecían (en
+producción: DA-P0002 y DA-P0013).
+
+**Fix:** `lavozStatusEfectivo(row)` calcula el estado real (misma regla que el server y que
+`lavozEstadoDe`) y se usa en el chip, en el motivo/avisos, en el badge "Sin URL" y en el
+botón "Marcar despublicado" (que antes no aparecía para esos avisos). El estado guardado
+en la DB no se toca: lo repara el próximo `prepare` del server.
+
 ---
 
 ## 4. La Voz: la fecha REAL de vencimiento
@@ -134,6 +161,16 @@ en el portal era distinto.
 - La fecha se manda en el `confirm` (`expires_at`) y queda en el `audit_log`.
 - `lavozFecha()` ahora muestra el año con 4 dígitos (`06/12/2026`), igual que el portal.
 
+### Correcciones posteriores (auditoría del mismo día)
+
+1. **El día se tomaba en UTC**: `YYYY-MM-DD` se guardaba como `23:59:59Z` = **20:59 hora
+   Argentina** → el ícono pintaba "vencido" 3 h antes de que terminara el día local.
+   **Fix:** `new Date(s + 'T23:59:59-03:00')` (Argentina no tiene horario de verano desde
+   2009) → el aviso vence a la medianoche del día escrito.
+2. **El panel no validaba el tope de 400 días**: si el empleador escribía una fecha lejana
+   el server respondía 400 sin contexto. **Fix:** `min` = hoy, `max` = hoy + 400 días en
+   el `<input type="date">` + el mismo chequeo en el confirm (mensaje claro antes de mandar).
+
 > Nota de despliegue: `lavoz-proxy` **no** se puede deployar por MCP (el bundle no incluye
 > `_shared/`); lo deploya el CI en el push a `main`.
 
@@ -151,6 +188,6 @@ en el portal era distinto.
 | Fecha real → server | behavioral del modal (harness con fetch falso) + guard del server | `expires_at` enviado y validado |
 | Suite completa | `npm test` | ver commit |
 
-Guardas nuevas: `tests/tipo-cliente-colega.spec.js` (7) y `tests/lavoz-estado-visual.spec.js` (7).
+Guardas nuevas: `tests/tipo-cliente-colega.spec.js` (8) y `tests/lavoz-estado-visual.spec.js` (11).
 Guardas actualizados: `tests/lavoz-module.spec.js`, `tests/lavoz-confirm.spec.js`,
 `tests/lead-cliente-operacion.spec.js`.

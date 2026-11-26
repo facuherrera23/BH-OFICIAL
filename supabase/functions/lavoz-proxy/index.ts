@@ -221,8 +221,11 @@ function validarVencimiento(valor: unknown): string | null {
   if (!s) return null;
   let d: Date;
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    // Fin del día en UTC: en Argentina (UTC-3) sigue siendo el mismo día.
-    d = new Date(s + 'T23:59:59.000Z');
+    // Fin del día en HORA ARGENTINA (UTC-3, sin horario de verano desde
+    // 2009): el aviso queda vigente hasta las 23:59:59 de ESE día local.
+    // Con 23:59:59Z el aviso vencía a las 20:59 y el ícono ya lo pintaba
+    // vencido 3 h antes de que terminara el día.
+    d = new Date(s + 'T23:59:59-03:00');
   } else {
     d = new Date(s);
   }

@@ -105,9 +105,15 @@ test.describe('Alta de lead — un solo campo tipo/operación', () => {
     expect(sandbox.operationFilter('compra')).toBe(
       'operation_type.eq.compra,' +
       'and(operation_type.is.null,tipo_cliente.eq.comprador),' +
-      'and(operation_type.is.null,tipo_cliente.eq.inversor)'
+      'and(operation_type.is.null,tipo_cliente.eq.inversor),' +
+      'and(operation_type.is.null,tipo_cliente.eq.colega)'
     );
     expect(sandbox.operationFilter('venta')).toContain('tipo_cliente.eq.propietario');
     expect(sandbox.operationFilter('alquiler')).toContain('tipo_cliente.eq.inquilino');
+    /* Los colegas (sin operación definida) NO se esconden detrás del
+       filtro de operación: si se escondieran, "Tipo: Colega" + "Operación:
+       Compra" devolvería 0 filas. */
+    expect(sandbox.operationFilter('compra')).toContain('tipo_cliente.eq.colega');
+    expect(sandbox.operationFilter('alquiler')).toContain('tipo_cliente.eq.colega');
   });
 });

@@ -233,9 +233,14 @@ function esc(s) {
   const OPERATION_TIPO_CLIENTES = { compra: ['comprador', 'inversor'], venta: ['propietario'], alquiler: ['inquilino'] };
   const operationFromTipoCliente = tipo => TIPO_CLIENTE_OPERATION[tipo] || null;
   /* Los filtros heredados por operación también encuentran leads que nunca
-     cargaron operation_type: si está NULL, se cae al tipo de cliente. */
+     cargaron operation_type: si está NULL, se cae al tipo de cliente.
+     'colega' (corredor) no tiene operación definida → aparece en los TRES
+     filtros de operación en vez de desaparecer de todos (mismo criterio
+     que admin-crm.js: si el filtro de tipo dice "colega" + una operación,
+     la lista no puede quedar vacía). */
   const operationFilter = op => ['operation_type.eq.' + op]
     .concat((OPERATION_TIPO_CLIENTES[op] || []).map(t => 'and(operation_type.is.null,tipo_cliente.eq.' + t + ')'))
+    .concat(['and(operation_type.is.null,tipo_cliente.eq.colega)'])
     .join(',');
 
   // Visit validation

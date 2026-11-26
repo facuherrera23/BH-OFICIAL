@@ -1508,10 +1508,44 @@ try {
     return `<span class="nav-badge" style="background:${s.bg}; color:${s.color}; font-size:10px; white-space:nowrap;">${s.label}</span>`;
   }
 
+  /* Estado REAL de un aviso (2026-11-26, auditoría): un 'prepare' viejo
+     degradaba a ready/failed un aviso que igual tenía link + fecha de
+     publicación (la prueba de que se publicó). El server repara ese estado
+     en el próximo prepare, pero hasta entonces el panel lo mostraba como
+     "Listo para subir" mientras el ícono de Propiedades ya estaba verde.
+     Acá se calcula el estado efectivo (misma regla que el server y que
+     lavozEstadoDe en el módulo de Propiedades). */
+  function lavozStatusEfectivo(row) {
+    if (!row) return 'draft';
+    const status = String(row.status || 'draft');
+    const conLink = !!row.ad_url && !!row.published_at;
+    if ((status === 'ready' || status === 'failed') && conLink) return 'published';
+    return status;
+  }
+
   function lavozFecha(iso) {
     if (!iso) return '—';
     try { return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
     catch { return '—'; }
+  }
+
+  /* 'YYYY-MM-DD' con las partes LOCALES (el día que ve el empleador en el
+     panel y en La Voz, no un día corrido por el UTC). */
+  function lavozFechaDe(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  /* Tope del server (400 días): se usa como `max` del input para que el
+     navegador no deje elegir una fecha que el server va a rechazar.
+     El server acepta mientras (fin del día elegido) <= ahora + 400 días; en
+     la práctica eso es HOY + 399 días (el día 400 no entra entero). */
+  function lavozFechaMax() {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    return lavozFechaDe(new Date(hoy.getTime() + 399 * 86400000));
   }
 
   /* Fecha para el <input type="date"> ('YYYY-MM-DD'). Si el aviso ya tiene
@@ -1529,10 +1563,7 @@ try {
     if (!d || isNaN(d.getTime()) || d.getTime() < hoy.getTime()) {
       d = new Date(Date.now() + n * 86400000);
     }
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return y + '-' + m + '-' + day;
+    return lavozFechaDe(d);
   }
 
   /* El empleador anota a mano la fecha que muestra La Voz ("Finaliza
@@ -1596,9 +1627,14 @@ try {
       const vence = row.expires_at && new Date(row.expires_at) < new Date() ? ' style="color:#f87171;"' : '';
       const lastError = String(row.last_error || '').trim();
       const avisosPayload = Array.isArray(row.payload?.avisos) ? row.payload.avisos.filter(Boolean) : [];
-      const motivo = lastError || (row.status === 'published' || row.status === 'expired' ? '' : avisosPayload.join(' | '));
+      /* Estado real (no el que quedó guardado degradado): un aviso con link
+         + fecha de publicación ESTÁ publicado, aunque su status diga
+         ready/failed (misma regla que el server y que el ícono de
+         Propiedades). */
+      const statusEf = lavozStatusEfectivo(row);
+      const motivo = lastError || (statusEf === 'published' || statusEf === 'expired' ? '' : avisosPayload.join(' | '));
       const motivoCorto = motivo.length > 72 ? motivo.slice(0, 69) + '...' : motivo;
-      const sinUrlPublicada = row.status === 'published' && !adUrl;
+      const sinUrlPublicada = statusEf === 'published' && !adUrl;
       return `<tr>
         <td>
           <div style="display:flex; align-items:center; gap:10px; min-width:220px;">
@@ -1611,7 +1647,7 @@ try {
         </td>
         <td>
           <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
-            ${lavozStatusBadge(row.status)}
+            ${lavozStatusBadge(statusEf)}
             ${sinUrlPublicada ? '<span class="nav-badge" style="background:rgba(251,146,60,0.16);color:#fdba74;font-size:10px;white-space:nowrap;" title="Está marcado como publicado pero no tiene link guardado">Sin URL</span>' : ''}
           </div>
           ${motivo ? `<div style="margin-top:4px;font-size:10px;line-height:1.35;color:${lastError ? '#fca5a5' : '#fcd34d'};max-width:220px;" title="${esc(motivo)}"><i class="fas ${lastError ? 'fa-circle-exclamation' : 'fa-triangle-exclamation'}"></i> ${esc(motivoCorto)}</div>` : ''}
@@ -1624,7 +1660,7 @@ try {
           <div style="display:flex;gap:4px;flex-wrap:wrap;">
             <button class="btn-action" style="padding:5px 8px;font-size:10px;" title="Preparar / ver el aviso" data-lavoz-prep="${esc(row.property_id)}"><i class="fas fa-file-lines"></i></button>
             ${adUrl ? `<a class="btn-action" style="padding:5px 8px;font-size:10px;color:#1fc8c3;" title="Ver el aviso publicado" href="${esc(adUrl)}" target="_blank" rel="noopener"><i class="fas fa-arrow-up-right-from-square"></i></a>` : ''}
-            ${row.status === 'published' ? `<button class="btn-action danger" style="padding:5px 8px;font-size:10px;" title="Marcar despublicado" data-lavoz-unpub="${esc(row.property_id)}"><i class="fas fa-link-slash"></i></button>` : ''}
+            ${statusEf === 'published' ? `<button class="btn-action danger" style="padding:5px 8px;font-size:10px;" title="Marcar despublicado" data-lavoz-unpub="${esc(row.property_id)}"><i class="fas fa-link-slash"></i></button>` : ''}
           </div>
         </td>
       </tr>`;
@@ -1774,7 +1810,7 @@ try {
             <button type="button" class="btn-outline btn-compact" data-lavoz-zip><i class="fas fa-file-zipper"></i><span>Descargar fotos</span></button>
           </div>
           <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07);">
-            ${r.status === 'published'
+            ${lavozStatusEfectivo(r) === 'published'
               ? `<div style="font-size:11.5px;color:#4ade80;margin-bottom:8px;"><i class="fas fa-circle-check"></i> Publicado${r.published_at ? ' el ' + esc(lavozFecha(r.published_at)) : ''}${r.expires_at ? ' · vence el ' + esc(lavozFecha(r.expires_at)) : ''}. La URL guardada se precargó abajo.</div>`
               : ''}
             <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:6px;">Ya lo publicaste? Pegá la URL del aviso</label>
@@ -1801,7 +1837,7 @@ try {
               </label>
               <label style="font-size:11px;color:var(--text-dim);display:flex;flex-direction:column;gap:6px;">
                 <span>Vence el (fecha real en La Voz)</span>
-                <input type="date" id="lavozVenceEl" value="${esc(lavozFechaInput(r.expires_at, p.dias_publicacion))}" style="background:rgba(0,0,0,0.28);border:1px solid var(--border-subtle);border-radius:8px;color:var(--text-primary);padding:8px 10px;font-size:12px;" />
+                <input type="date" id="lavozVenceEl" min="${esc(lavozFechaDe(new Date()))}" max="${esc(lavozFechaMax())}" value="${esc(lavozFechaInput(r.expires_at, p.dias_publicacion))}" style="background:rgba(0,0,0,0.28);border:1px solid var(--border-subtle);border-radius:8px;color:var(--text-primary);padding:8px 10px;font-size:12px;" />
               </label>
             </div>
             <div style="font-size:10.5px;color:var(--text-dim);margin:-4px 0 10px;line-height:1.45;">
@@ -1972,6 +2008,14 @@ try {
         const elegida = new Date(venceFecha + 'T00:00:00');
         if (isNaN(elegida.getTime()) || elegida.getTime() < hoy.getTime()) {
           showToast('La fecha de vencimiento no puede ser anterior a hoy.', 'error'); return;
+        }
+        /* El server rechaza más de 400 días: se avisa acá para no mandar un
+           request que va a volver con error. Se usa la MISMA fórmula que el
+           server (fin del día en hora Argentina contra ahora + 400 días),
+           así el panel nunca deja pasar una fecha que el server rechace. */
+        const finElegido = new Date(venceFecha + 'T23:59:59-03:00');
+        if (isNaN(finElegido.getTime()) || finElegido.getTime() > Date.now() + 400 * 86400000) {
+          showToast('La fecha de vencimiento no puede ser más de 400 días.', 'error'); return;
         }
       }
       if (plan && !['basico', 'estandar', 'premium', 'super_premium'].includes(plan)) {

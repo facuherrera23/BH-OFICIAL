@@ -104,11 +104,40 @@ test.describe('Tipo de cliente — Colega / Corredor', () => {
     expect(sandbox.operationFromTipoCliente('propietario')).toBe('venta');
     expect(sandbox.operationFromTipoCliente('inquilino')).toBe('alquiler');
     expect(sandbox.operationFromTipoCliente('colega')).toBe(null);
-    // El filtro de operación NO incluye a los colegas (no tienen operación).
-    expect(sandbox.operationFilter('compra')).not.toContain('colega');
-    expect(sandbox.operationFilter('alquiler')).not.toContain('colega');
+    /* El filtro de operación NO puede esconder a los colegas: no tienen
+       operación definida (la UI no la permite), así que si no estuvieran en
+       los tres, "Tipo: Colega" + "Operación: Compra" devolvería 0 filas.
+       Aparecen como "operation_type IS NULL + colega" (no pisan una
+       operación real). Es la misma semántica del motor de sugerencias, que
+       para un colega no filtra por operación. */
+    expect(sandbox.operationFilter('compra')).toContain('and(operation_type.is.null,tipo_cliente.eq.colega)');
+    expect(sandbox.operationFilter('alquiler')).toContain('and(operation_type.is.null,tipo_cliente.eq.colega)');
+    expect(sandbox.operationFilter('venta')).toContain('and(operation_type.is.null,tipo_cliente.eq.colega)');
     // Pero el filtro por TIPO sí los encuentra.
     expect(sandbox.TIPO_CLIENTE_OPTS).toContain('colega');
     expect(sandbox.TIPO_CLIENTE_LABELS.colega).toBe('Colega / Corredor');
+  });
+
+  /* El export CSV (admin-app.js) tiene que filtrar EXACTAMENTE igual que la
+     lista (admin-crm.js): si divergen, el CSV no coincide con la pantalla. */
+  test('el filtro de operación es idéntico en la lista (CRM) y en el export CSV', () => {
+    const crmFrom = crmSrc.indexOf('var TIPO_CLIENTE_OPERATION');
+    const crmTo = crmSrc.indexOf('var PAGE_SIZE', crmFrom);
+    const crmSandbox = {};
+    vm.createContext(crmSandbox);
+    vm.runInContext(crmSrc.slice(crmFrom, crmTo), crmSandbox);
+
+    const appFrom = appSrc.indexOf('const TIPO_CLIENTE_OPERATION');
+    const appTo = appSrc.indexOf('// Visit validation', appFrom);
+    expect(appFrom).toBeGreaterThan(-1);
+    expect(appTo).toBeGreaterThan(appFrom);
+    const appSandbox = {};
+    vm.createContext(appSandbox);
+    vm.runInContext(appSrc.slice(appFrom, appTo) + '\n;globalThis.__opFilter = operationFilter;', appSandbox);
+
+    for (const op of ['compra', 'venta', 'alquiler']) {
+      expect(appSandbox.__opFilter(op)).toBe(crmSandbox.operationFilter(op));
+      expect(appSandbox.__opFilter(op)).toContain('tipo_cliente.eq.colega');
+    }
   });
 });

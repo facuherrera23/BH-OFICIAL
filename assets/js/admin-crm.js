@@ -51,11 +51,18 @@ var OPERATION_TIPO_CLIENTES = { compra:['comprador','inversor'], venta:['propiet
 function operationFromTipoCliente(tipo) { return TIPO_CLIENTE_OPERATION[tipo] || null; }
 function leadOperation(lead) { return (lead && (lead.operation_type || operationFromTipoCliente(lead.tipo_cliente))) || ''; }
 /* Filtro por operación con fallback: si operation_type es NULL (44 leads
-   reales), se usa el tipo de cliente. Si está cargado, manda él. */
+   reales), se usa el tipo de cliente. Si está cargado, manda él.
+   'colega' (corredor) NO tiene operación definida —la UI no la permite— así
+   que aparece en los TRES filtros de operación en vez de desaparecer de
+   todos: con "Tipo: Colega" + "Operación: Compra" la lista no puede quedar
+   vacía. Es la misma semántica del motor de sugerencias, que para un colega
+   no filtra por operación (computePropertyMatches). */
 function operationFilter(op) {
-  return ['operation_type.eq.' + op].concat((OPERATION_TIPO_CLIENTES[op] || []).map(function (t) {
+  var grupos = (OPERATION_TIPO_CLIENTES[op] || []).map(function (t) {
     return 'and(operation_type.is.null,tipo_cliente.eq.' + t + ')';
-  })).join(',');
+  });
+  grupos.push('and(operation_type.is.null,tipo_cliente.eq.colega)');
+  return ['operation_type.eq.' + op].concat(grupos).join(',');
 }
 
 var PAGE_SIZE = 25;
