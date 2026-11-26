@@ -2696,6 +2696,12 @@ function init() {
     dupBtn.dataset.crmBound = '1';
     dupBtn.addEventListener('click', openDuplicados);
   }
+  /* Conversión por origen (2026-11-26): tablero de lectura. */
+  var convBtn = $id('crmConversionBtn');
+  if (convBtn && !convBtn.dataset.crmBound) {
+    convBtn.dataset.crmBound = '1';
+    convBtn.addEventListener('click', function () { openConversion(); });
+  }
   var search = $id('crmSearch');
 if (search) search.addEventListener('input', function () {
     clearTimeout(_searchTimer);
@@ -2943,6 +2949,8 @@ function _syncHeader() {
   /* Duplicados (2026-11-26): mismo modo leads; gate de rol en la RPC. */
   var dupBtn = $id('crmDuplicadosBtn');
   if (dupBtn) dupBtn.style.display = ownersMode ? 'none' : '';
+  var convBtn = $id('crmConversionBtn');
+  if (convBtn) convBtn.style.display = ownersMode ? 'none' : '';
   if (newOwnerCrm) newOwnerCrm.style.display = ownersMode ? '' : 'none';
   var tokenCrm = $id('btnGenerateTokenCrm');
   if (tokenCrm) tokenCrm.style.display = ownersMode ? '' : 'none';
@@ -3174,6 +3182,103 @@ function bindSiguientesAcciones(panel, lead) {
       return;
     }
   });
+}
+
+/* ============================================================
+   CONVERSIÓN POR ORIGEN (2026-11-26): el tablero que antes vivía sólo en el
+   digest semanal. RPC conversion_por_origen(p_dias) + overlay con toggle
+   7/30/90 días. Lectura pura: no escribe nada.
+   ============================================================ */
+var _convOverlay = null;
+var _convDias = 90;
+
+function cerrarConversion() {
+  if (_convOverlay) {
+    var onKey = _convOverlay.__convKeyHandler;
+    if (onKey) document.removeEventListener('keydown', onKey);
+    _convOverlay.remove();
+    _convOverlay = null;
+  }
+}
+
+async function openConversion(dias) {
+  if (!db()) { toast('Sin conexión con la base.', 'error'); return; }
+  if (dias) _convDias = Number(dias);
+  cerrarConversion();
+  var overlay = document.createElement('div');
+  overlay.className = 'crm-bandeja-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10060;background:rgba(2,3,5,0.7);backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;';
+  overlay.innerHTML = '<div role="dialog" aria-modal="true" aria-label="Conversión por origen" style="width:min(700px,100%);background:var(--bg,#05070A);border:1px solid var(--border-subtle);border-radius:16px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,0.55);">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;flex-wrap:wrap;">' +
+      '<h3 style="margin:0;font-size:16px;color:var(--text-primary);"><i class="fas fa-chart-simple" style="color:#a78bfa;"></i> Conversión por origen</h3>' +
+      '<div style="display:flex;gap:6px;align-items:center;">' +
+        [7, 30, 90].map(function (d) {
+          return '<button type="button" class="crm-contact-btn' + (_convDias === d ? ' is-active' : '') + '" data-conv-dias="' + d + '"' + (_convDias === d ? ' style="color:var(--accent);border-color:rgba(31,200,195,0.4);"' : '') + '>' + d + 'd</button>';
+        }).join('') +
+        '<button type="button" class="modal-x-close" data-conv-close aria-label="Cerrar" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;"><i class="fas fa-xmark"></i></button>' +
+      '</div>' +
+    '</div>' +
+    '<p style="margin:0 0 14px;font-size:11.5px;color:var(--text-dim);">Leads creados en los últimos ' + _convDias + ' días: cuántos siguen vivos, cuántos se perdieron y cuántos se ganaron, por origen.</p>' +
+    '<div data-conv-body style="font-size:12px;">Cargando…</div>' +
+  '</div>';
+  document.body.appendChild(overlay);
+  _convOverlay = overlay;
+
+  var onKey = function (e) { if (e.key === 'Escape') cerrarConversion(); };
+  overlay.__convKeyHandler = onKey;
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) cerrarConversion(); });
+  var closeBtn = overlay.querySelector('[data-conv-close]');
+  if (closeBtn) closeBtn.addEventListener('click', cerrarConversion);
+  overlay.addEventListener('click', function (e) {
+    var d = e.target.closest('[data-conv-dias]');
+    if (d) openConversion(d.getAttribute('data-conv-dias'));
+  });
+
+  var body = overlay.querySelector('[data-conv-body]');
+  try {
+    var r = await db().rpc('conversion_por_origen', { p_dias: _convDias });
+    if (r.error) throw new Error(r.error.message);
+    var d = r.data || {};
+    if (d.error) throw new Error(d.error);
+    var filas = d.filas || [];
+    if (!filas.length) {
+      body.innerHTML = '<div style="font-size:12.5px;color:var(--text-secondary);padding:14px 0;"><i class="fas fa-circle-check" style="color:#4ade80;"></i> Sin leads en los últimos ' + _convDias + ' días.</div>';
+      return;
+    }
+    var filasHtml = filas.map(function (f) {
+      var tasa = Number(f.tasa || 0);
+      var color = tasa >= 50 ? '#4ade80' : (tasa >= 20 ? '#FFB800' : '#f87171');
+      var barra = '<div style="height:6px;border-radius:999px;background:rgba(255,255,255,0.06);margin-top:6px;overflow:hidden;"><div style="height:100%;width:' + Math.min(100, tasa) + '%;background:' + color + ';"></div></div>';
+      return '<tr>' +
+        '<td style="padding:8px 10px;color:var(--text-primary);font-weight:600;">' + esc(ORIGIN_LABELS[f.source] || f.source) + '</td>' +
+        '<td style="padding:8px 10px;text-align:right;color:var(--text-secondary);">' + Number(f.total) + '</td>' +
+        '<td style="padding:8px 10px;text-align:right;color:var(--text-secondary);">' + Number(f.vivos) + '</td>' +
+        '<td style="padding:8px 10px;text-align:right;color:var(--text-dim);">' + Number(f.perdidos) + '</td>' +
+        '<td style="padding:8px 10px;text-align:right;color:var(--text-secondary);">' + Number(f.ganados) + '</td>' +
+        '<td style="padding:8px 10px;text-align:right;color:' + color + ';font-weight:700;">' + tasa + '%</td>' +
+        '<td style="padding:8px 10px;color:var(--text-dim);font-size:10.5px;white-space:nowrap;">' + esc(fmtDate(f.primero)) + (f.ultimo && f.ultimo !== f.primero ? ' → ' + esc(fmtDate(f.ultimo)) : '') + '</td>' +
+      '</tr>' +
+      '<tr><td colspan="7" style="padding:0 10px 8px;">' + barra + '</td></tr>';
+    }).join('');
+    body.innerHTML =
+      '<table style="width:100%;border-collapse:collapse;">' +
+        '<thead><tr style="color:var(--text-dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;">' +
+          '<th style="text-align:left;padding:6px 10px;">Origen</th>' +
+          '<th style="text-align:right;padding:6px 10px;">Leads</th>' +
+          '<th style="text-align:right;padding:6px 10px;">Vivos</th>' +
+          '<th style="text-align:right;padding:6px 10px;">Perdidos</th>' +
+          '<th style="text-align:right;padding:6px 10px;">Ganados</th>' +
+          '<th style="text-align:right;padding:6px 10px;">Vivos %</th>' +
+          '<th style="text-align:left;padding:6px 10px;">Ventana</th>' +
+        '</tr></thead>' +
+        '<tbody>' + filasHtml + '</tbody>' +
+      '</table>' +
+      '<p style="margin:12px 0 0;font-size:10.5px;color:var(--text-dim);"><i class="fas fa-circle-info" style="color:#1fc8c3;"></i> "Vivos" = todavía en el embudo (no cerrado ni perdido). La tasa mide supervivencia, no cierre: es la señal de dónde conviene buscar.</p>';
+  } catch (err) {
+    logError('conversion', err);
+    body.innerHTML = '<div style="color:var(--danger);font-size:12px;">No se pudo cargar la conversión: ' + esc(err.message) + '</div>';
+  }
 }
 
 /* ============================================================
@@ -3600,7 +3705,7 @@ async function openDuplicados() {
 /* markLeadContacted se publica porque admin-crm-tasks.js (que carga ANTES
    que este archivo) lo necesita al completar una tarea: es el punto único
    que registra contacto, cierra la tarea de SLA y recalcula el followup. */
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja, openDuplicados: openDuplicados };
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja, openDuplicados: openDuplicados, openConversion: openConversion };
 
 /* --- Generación de token portal desde CRM (en modo propietarios) --- */
 (function () {
