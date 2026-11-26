@@ -1040,7 +1040,7 @@ flowchart LR
 
 ### Autoguardado ("si no guarda, se guardó igual")
 
-- Cada cambio se persiste con debounce de 900 ms vía `survey_submit_by_token` (replace full-set).
+- Cada cambio se persiste con debounce de 900 ms vía `survey_submit_by_token` (**merge server-side** desde 2026-11-25: `answers = answers || lo nuevo`; antes era replace y un guardado corto borraba lo anterior).
 - Draft en `localStorage` por token: al reabrir, merge campo a campo (el draft local gana).
 - Al cerrar la pestaña: `fetch keepalive` contra PostgREST en `pagehide`/`visibilitychange`.
 - Offline: el draft queda y se empuja al volver la señal (`online`).
@@ -1055,10 +1055,12 @@ flowchart LR
 | RLS `SELECT` | Abierto a `authenticated` (consistente con `leads`/`lead_activities`) |
 | RLS `INSERT`/`UPDATE` | Solo el agente asignado/creador del lead o super_admin (mismo criterio que `lead_activities`) |
 | RPC `survey_get_by_token` | Lectura pública por token uuid v4; corta si el lead o propiedad tienen soft-delete |
-| RPC `survey_submit_by_token` | Sanitiza todo (notas 1–10 enteras, enum compraria, textos ≤1000); lock post-finalización; `FOR UPDATE` |
+| RPC `survey_submit_by_token` | Sanitiza todo (notas 1–10 enteras, enum compraria, textos ≤1000); **merge** con lo ya guardado; lock post-finalización; `FOR UPDATE`; primera respuesta parcial deja nota `Encuesta de visita recibida (parcial)` en `lead_activities` (una por encuesta, dedup por id del survey) |
 | RPC `portal_get_surveys` | Solo `finalized`, **cero datos del visitante** (propiedad + fecha + respuestas); valida token/revocación/expiración del portal |
 | Hardening | Las 3 funciones `SECURITY DEFINER`, `search_path=''`, REVOKE a `PUBLIC`, GRANT a `anon`+`authenticated`+`service_role` |
 | Privacidad extra | El portal enmascara secuencias de 7+ dígitos (teléfonos/DNI) escritas en texto libre |
+
+**Notas en el historial del lead (2026-11-25):** el autoguardado con respuestas deja `Encuesta de visita recibida (parcial) — <property_code>` **una sola vez por encuesta** (el `id` del survey va en la descripción y se usa para dedup, así dos visitas del mismo lead no se confunden). El envío final deja la nota normal `Encuesta de visita recibida — <property_code>` con el merge completo. Las 2 parciales que ya existían en producción no reciben nota retroactiva: aparecen en el CRM desde el punto 1 y la nota se creará si el visitante vuelve a cargar algo. Guards: `tests/survey-merge.spec.js`. El conteo de respuestas usa `count(*) FROM jsonb_object_keys(...)`: `jsonb_object_length()` no existe en este Postgres y la correctiva `20261125000003` dejó el RPC ejecutable.
 
 ---
 

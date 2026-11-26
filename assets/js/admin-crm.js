@@ -1509,8 +1509,13 @@ async function offerSurveyAfterVisit(leadId, visitId, panel) {
 
 /* ── Encuesta de visita (HOJA DE VISITA) ── */
 function getLeadSurveys(id) {
-  return db().from('visit_surveys').select('property_id, token, finalized, submitted_at, archived_at, answers').eq('lead_id', id)
+  return db().from('visit_surveys').select('property_id, token, finalized, submitted_at, created_at, updated_at, archived_at, answers').eq('lead_id', id)
     .then(function (r) { return r.data || []; }).catch(function () { return []; });
+}
+
+/* Cantidad de respuestas guardadas (incluye las parciales, no enviadas). */
+function surveyAnswerCount(s) {
+  return s && s.answers && typeof s.answers === 'object' ? Object.keys(s.answers).length : 0;
 }
 
 /* 1 encuesta por (lead, propiedad): el token queda registrado y se reusa al reenviar. */
@@ -1654,6 +1659,9 @@ function bindSurveyActions(panel, lead, surveys) {
       else if (act === 'view') {
         var s = active[propId];
         var text = s ? surveyAnswersText(s.answers) : 'Sin respuestas registradas.';
+        if (s && !s.finalized && surveyAnswerCount(s)) {
+          text = 'Encuesta parcial: el visitante cargó ' + surveyAnswerCount(s) + ' respuesta(s) y no apretó "Enviar".\n\n' + text;
+        }
         if (typeof window.showConfirmDialog === 'function') {
           window.showConfirmDialog({ title: 'Encuesta de visita', message: text, icon: 'fas fa-clipboard-list', confirmText: 'Cerrar' });
         } else { alert(text); }
@@ -2079,21 +2087,25 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
     ? '<div class="crm-side-field-value">Sin propiedades vinculadas</div>'
     : props.map(function (p) {
         var sv = surveyMap[p.property_id];
-        var svState = !sv ? '' : (sv.finalized ? 'done' : 'sent');
+        var svCount = surveyAnswerCount(sv);
+        var svState = !sv ? '' : (sv.finalized ? 'done' : (svCount ? 'partial' : 'sent'));
         var svBadge = svState === 'done'
           ? '<span data-survey-badge="' + esc(p.property_id) + '" style="font-size:10px; font-weight:700; color:#00c878; background:rgba(0,200,120,0.12); border-radius:999px; padding:2px 8px; white-space:nowrap;">✓ Respondida</span>'
-          : svState === 'sent'
-            ? '<span data-survey-badge="' + esc(p.property_id) + '" style="font-size:10px; font-weight:700; color:#FFB800; background:rgba(255,184,0,0.12); border-radius:999px; padding:2px 8px; white-space:nowrap;">Enviada</span>'
-            : '<span data-survey-badge="' + esc(p.property_id) + '" style="display:none;"></span>';
+          : svState === 'partial'
+            ? '<span data-survey-badge="' + esc(p.property_id) + '" style="font-size:10px; font-weight:700; color:var(--accent); background:rgba(31,200,195,0.12); border-radius:999px; padding:2px 8px; white-space:nowrap;">Parcial (' + svCount + ')</span>'
+            : svState === 'sent'
+              ? '<span data-survey-badge="' + esc(p.property_id) + '" style="font-size:10px; font-weight:700; color:#FFB800; background:rgba(255,184,0,0.12); border-radius:999px; padding:2px 8px; white-space:nowrap;">Enviada</span>'
+              : '<span data-survey-badge="' + esc(p.property_id) + '" style="display:none;"></span>';
         var svBtn = '';
         if (svState !== 'done') {
-          svBtn += '<button type="button" class="btn-action" data-survey-action="send" data-prop-id="' + esc(p.property_id) + '" data-prop-title="' + esc(p.property_title || '') + '" title="' + (svState === 'sent' ? 'Reenviar encuesta por WhatsApp' : 'Enviar encuesta de visita por WhatsApp') + '" style="color:#25d366; border-color:rgba(37,211,102,0.35);"><i class="fab fa-whatsapp"></i>' + (svState === 'sent' ? ' Reenviar' : ' Encuesta') + '</button>';
+          var svResend = svState === 'sent' || svState === 'partial';
+          svBtn += '<button type="button" class="btn-action" data-survey-action="send" data-prop-id="' + esc(p.property_id) + '" data-prop-title="' + esc(p.property_title || '') + '" title="' + (svResend ? 'Reenviar encuesta por WhatsApp' : 'Enviar encuesta de visita por WhatsApp') + '" style="color:#25d366; border-color:rgba(37,211,102,0.35);"><i class="fab fa-whatsapp"></i>' + (svResend ? ' Reenviar' : ' Encuesta') + '</button>';
         }
         if (sv) {
           svBtn += '<button type="button" class="btn-action" data-survey-action="reset" data-prop-id="' + esc(p.property_id) + '" title="Archivar esta encuesta y generar una nueva (segunda visita)" style="color:#FFB800; border-color:rgba(255,184,0,0.35);"><i class="fas fa-rotate-left"></i></button>';
         }
-        if (svState === 'done') {
-          svBtn += '<button type="button" class="btn-action" data-survey-action="view" data-prop-id="' + esc(p.property_id) + '" title="Ver respuestas" style="color:var(--accent); border-color:rgba(31,200,195,0.35);"><i class="fas fa-eye"></i></button>';
+        if (svState === 'done' || svState === 'partial') {
+          svBtn += '<button type="button" class="btn-action" data-survey-action="view" data-prop-id="' + esc(p.property_id) + '" title="' + (svState === 'partial' ? 'Ver lo cargado (respuesta parcial)' : 'Ver respuestas') + '" style="color:var(--accent); border-color:rgba(31,200,195,0.35);"><i class="fas fa-eye"></i></button>';
         }
         return '<div class="crm-prop-item"><span>' + esc(p.property_title || 'Propiedad') + '</span>' + svBadge + svBtn +
           '<button type="button" class="btn-action" data-offer-action="new" data-prop-id="' + esc(p.property_id) + '" data-prop-title="' + esc(p.property_title || '') + '" title="Registrar oferta" style="color:#8b5cf6; border-color:rgba(139,92,246,0.3);"><i class="fas fa-handshake"></i></button>' +

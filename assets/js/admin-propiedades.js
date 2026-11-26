@@ -1688,13 +1688,16 @@
 
   function surveyItemHtml(s) {
     const a = s.answers || {};
-    const date = s.submitted_at || s.created_at;
+    const date = s.submitted_at || s.updated_at || s.created_at;
     const dateStr = date ? new Date(date).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+    const nAnswers = Object.keys(a).length;
     const statusBadge = s.archived_at
       ? '<span class="survey-status survey-status--archived">Archivada</span>'
       : s.finalized
         ? '<span class="survey-status survey-status--done">✓ Respondida</span>'
-        : '<span class="survey-status survey-status--pending">Enviada</span>';
+        : nAnswers
+          ? '<span class="survey-status survey-status--partial">Parcial (' + nAnswers + ')</span>'
+          : '<span class="survey-status survey-status--pending">Enviada</span>';
     const compraria = a.compraria
       ? '<span class="survey-compraria ' + (a.compraria === 'si' ? 'survey-compraria--si' : a.compraria === 'no' ? 'survey-compraria--no' : '') + '">' +
         (a.compraria === 'si' ? '✓ Compraría' : a.compraria === 'no' ? '✗ No compraría' : 'Quizás') + '</span>'
@@ -1767,7 +1770,7 @@
       const { data, error } = await window.supabaseClient
         .from('visit_surveys')
         .select(`
-          id, answers, finalized, submitted_at, created_at, archived_at,
+          id, answers, finalized, submitted_at, created_at, updated_at, archived_at,
           lead:leads!inner(full_name, phone, email)
         `)
         .eq('property_id', propertyId)
