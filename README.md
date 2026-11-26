@@ -691,8 +691,9 @@ Un solo campo en el alta: **tipo de cliente**; la **operación se deriva** de é
 
 - **`colega` (2026-11-26)**: los colegas/corredores nos ingresan un lead porque buscan una propiedad **para un cliente propio**. No es un cliente final, así que **no deriva operación** (puede buscar en venta o en alquiler): la operación del lead se conserva, no se pisa con `null`. CHECK de la DB: `20260907000005` + `20261126000001_leads_tipo_cliente_colega.sql`.
 - El chip del lead muestra la etiqueta ("Colega / Corredor", color propio) y la barra de filtros del CRM tiene un **filtro por tipo de cliente** (`#crmTipoClienteFilter`, `eq('tipo_cliente')`) — el export CSV respeta el mismo filtro.
-- Las sugerencias de propiedades no filtran por operación cuando el lead es `colega` (el match es por zona, presupuesto, tipo y ambientes).
+- Las sugerencias de propiedades no filtran por operación cuando el lead es `colega` **y su `operation_type` está vacía** (el match es por zona, presupuesto, tipo y ambientes).
 - **El filtro de operación NO esconde a los colegas** (`operationFilter`, idéntico en `admin-crm.js` y `admin-app.js`): como no tienen operación definida, aparecen en los **tres** filtros de operación (como `operation_type IS NULL + colega`). Si no, "Tipo: Colega" + "Operación: Compra" devolvería 0 filas — y el motor de sugerencias ya los trata como "cualquier operación".
+- **Matiz (decisión del dueño: la operación NO se pisa)**: si a un lead que ya tenía `operation_type` (p. ej. `compra`) el empleador lo reclasifica a `colega` desde el panel lateral, **la operación se conserva** → ese lead aparece sólo en el filtro de su operación y sus sugerencias de propiedades sí se filtran por ella. Los colegas **nuevos** (alta) nacen con `operation_type` vacía → aparecen en los tres filtros y sin filtro de operación en las sugerencias.
 
 ### API global `window.adminApp`
 Expone los handlers al HTML (39 métodos):
@@ -1343,13 +1344,15 @@ El ícono de La Voz en la fila de Propiedades **pinta el estado real** del aviso
 El ícono se refresca solo al confirmar o despublicar desde Portales (`window.adminApp.refreshLavozIcons`).
 
 > **El panel de Portales usa la MISMA regla** (`lavozStatusEfectivo`): un aviso con link + fecha de publicación se muestra **"Publicado"** aunque su `status` guardado diga `ready`/`failed` (lo degradó un `prepare` viejo). Antes el panel decía "Listo para subir" mientras el ícono de Propiedades ya estaba verde — los dos paneles se contradecían (a fin de 11/2026: DA-P0002 y DA-P0013).
+>
+> Las dos reglas son **idénticas entre sí y a la del server** (`expireVencidos` + `prepare`): `expired` (o la fecha ya pasada sobre un aviso publicado/con link) → **Vencido**; `ready`/`failed` con link + fecha de publicación → **Publicado**; si no, el estado guardado. El chip "Vencido" de Portales es **gris** (como el ícono): el ámbar queda reservado para "publicado pero vence en ≤7 días". Hay un guard que corre las dos funciones sobre las mismas filas y falla si se contradicen (`tests/lavoz-estado-visual.spec.js`).
 
 ### 📅 Fecha real de vencimiento (2026-11-26)
 
 El modal "Marcar publicado" tiene un campo **"Vence el (fecha real en La Voz)"**: se escribe la fecha que muestra el portal (*Finaliza dd/mm/aaaa*) y **esa manda** sobre la duración (10/30 días). El aviso queda vigente hasta el final de ese día; si se deja vacío, se calcula con la duración. El server valida que la fecha sea futura y no pase de 400 días (`validarVencimiento` en `lavoz-proxy`). Antes el vencimiento siempre era `publicado + 10/30 días`, así que cualquier diferencia con el portal dejaba al CRM mintiendo.
 
 - El día se toma en **hora Argentina** (`T23:59:59-03:00`): el aviso vence a la medianoche del día escrito, no a las 20:59.
-- El panel avisa **antes** de mandar si la fecha no está en rango (`min` = hoy, `max` = hoy + 400 días, y el mismo chequeo en el confirm) → no llega un error 400 del server sin contexto.
+- El panel avisa **antes** de mandar si la fecha no está en rango (`min` = hoy, `max` = hoy + 399 días, y el mismo chequeo en el confirm) → no llega un error 400 del server sin contexto. El límite real es **399 días** porque el server exige que el día entero entre en la ventana de 400.
 
 ### 🤖 Publicación automática en lote
 

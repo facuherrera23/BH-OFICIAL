@@ -85,6 +85,18 @@ no filtra por operación.
 a las tres operaciones, en `admin-crm.js` **y** `admin-app.js` (idéntico a propósito: el CSV
 tiene que filtrar igual que la pantalla; hay un guard que lo verifica).
 
+> **Matiz documentado (decisión del dueño: la operación NO se pisa)**: si a un lead que ya
+> tenía `operation_type` el empleador lo reclasifica a `colega` desde el panel lateral, la
+> operación **se conserva** → ese lead aparece sólo en el filtro de su operación y sus
+> sugerencias de propiedades sí se filtran por ella. Los colegas **nuevos** (alta) nacen con
+> `operation_type` vacía → aparecen en los tres filtros y sin filtro de operación en las
+> sugerencias. No es un bug: es la consecuencia de no pisar datos del lead.
+
+**Verificación empírica:** la sintaxis del `or(...and(...))` se mandó contra el PostgREST de
+producción (HTTP 200, sin `PGRST100`) y se comprobó que **varios `or=` se combinan con AND**
+(`or=A` + `or=B` → intersección, sin importar el orden) → el filtro de texto + el de
+operación + el de tipo se aplican juntos sin pisarse.
+
 ---
 
 ## 3. La Voz: el ícono de la fila de Propiedades
@@ -131,6 +143,38 @@ producción: DA-P0002 y DA-P0013).
 `lavozEstadoDe`) y se usa en el chip, en el motivo/avisos, en el badge "Sin URL" y en el
 botón "Marcar despublicado" (que antes no aparecía para esos avisos). El estado guardado
 en la DB no se toca: lo repara el próximo `prepare` del server.
+
+### Revisión crítica posterior (mismo día)
+
+Se volvió a auditar el feature con los ojos frescos y contra los **datos reales** de
+producción (8 avisos). Lo que se encontró y se corrigió:
+
+1. **Las dos reglas no eran idénticas** (el panel decía "Publicado" y el ícono "Vencido"):
+   - el front no miraba `status='expired'` → el ícono lo pintaba **verde** si su
+     `expires_at` estaba en el futuro (posible por la action `expire` del server);
+   - el front tampoco aplicaba la **regla de vencimiento por fecha** del server
+     (`expireVencidos`): un aviso con link y fecha ya pasada quedaba "publicado" en
+     Portales y gris en el ícono.
+   - **Fix:** `lavozStatusEfectivo` (Portales) y `lavozEstadoDe` (ícono) ahora aplican
+     **exactamente** la regla del server: `expired` (o fecha pasada sobre un aviso
+     publicado/con link) → vencido; `ready`/`failed` con link + fecha de publicación →
+     publicado; si no, el estado guardado.
+2. **El chip "Vencido" de Portales era ÁMBAR** y el ícono lo pintaba **GRIS**: el mismo
+   color significaba "vencido" en un panel y "vence en ≤7 días" en el otro. **Fix:** el
+   chip "Vencido" pasó a **gris** (`#94a3b8`), como el ícono; el ámbar queda reservado
+   para "publicado pero por vencer".
+3. Se verificó que **el filtro de operación no rompe la búsqueda**: PostgREST combina
+   varios `or=` con **AND** (probado contra producción: `or=A` + `or=B` → intersección,
+   sin importar el orden) → el filtro de texto + el de operación se aplican juntos.
+4. Se verificó que el **asistente de La Voz no duplica avisos**: hace `prepare` primero
+   (el server repara el estado degradado → `published`) y saltea los que ya están
+   publicados salvo `--force-new`.
+
+Guardas: `tests/lavoz-estado-visual.spec.js` grewó con un **test de coherencia
+entre paneles** (corre `lavozStatusEfectivo` y `lavozEstadoDe` sobre las mismas 11 filas y
+falla si el ícono dice gris/rojo y el panel dice otra cosa) + el behavioral del filtro del
+CRM en `tests/tipo-cliente-colega.spec.js` (`applyBaseFilters` REAL con un query recorder:
+aplica operación **y** tipo a la vez).
 
 ---
 
@@ -183,11 +227,12 @@ en el portal era distinto.
 | La DB acepta `colega` | `supabase_apply_migration` + `pg_get_constraintdef` | CHECK con los 5 valores; datos intactos |
 | El alta ofrece la opción | test del modal (HTML real) | "Colega / Corredor" presente |
 | `colega` no inventa operación | behavioral (`vm` con el código real del CRM) | `operationFromTipoCliente('colega') === null` |
-| El filtro filtra de verdad | guard + export CSV | `eq('tipo_cliente')` en ambos |
+| El filtro filtra de verdad | **behavioral de `applyBaseFilters`** (el código real con un query recorder) + guard + export CSV | operación **y** tipo aplicados a la vez; `eq('tipo_cliente')` en lista y CSV |
 | Colores del ícono | behavioral de `lavozEstadoDe` (rojo/verde/ámbar/gris + caso degradado) | 7/7 |
+| **Los dos paneles no se contradicen** | behavioral cruzado: `lavozStatusEfectivo` vs `lavozEstadoDe` sobre 11 filas | gris ⟺ "Vencido"; rojo ⟺ ni publicado ni vencido |
 | Fecha real → server | behavioral del modal (harness con fetch falso) + guard del server | `expires_at` enviado y validado |
 | Suite completa | `npm test` | ver commit |
 
-Guardas nuevas: `tests/tipo-cliente-colega.spec.js` (8) y `tests/lavoz-estado-visual.spec.js` (11).
+Guardas nuevas: `tests/tipo-cliente-colega.spec.js` (9) y `tests/lavoz-estado-visual.spec.js` (13).
 Guardas actualizados: `tests/lavoz-module.spec.js`, `tests/lavoz-confirm.spec.js`,
 `tests/lead-cliente-operacion.spec.js`.

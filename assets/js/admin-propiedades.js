@@ -81,11 +81,24 @@
      estado a 'ready'/'failed' pero conservaba la prueba de publicación. */
   function lavozEstadoDe(row) {
     if (!row) return { color: '#E4002B', title: 'Preparar aviso para Clasificados La Voz' };
-    const publicado = row.status === 'published' || (!!row.ad_url && !!row.published_at);
     const exp = row.expires_at ? new Date(row.expires_at) : null;
-    const vencido = !!exp && exp.getTime() < Date.now();
+    /* Vencido = el server lo marcó 'expired' O la fecha ya pasó (sobre un
+       aviso publicado o con link: uno 'ready' sin link y con fecha vieja
+       sigue siendo "listo para subir", como en el server). La MISMA regla
+       que lavozStatusEfectivo del panel de Portales: si difieren, los dos
+       paneles se contradicen (gris acá vs "Publicado" allá). */
+    const vencido = row.status === 'expired'
+      || (!!exp && !isNaN(exp.getTime()) && exp.getTime() < Date.now()
+          && (row.status === 'published' || !!row.ad_url));
+    const publicado = row.status === 'published' || (!!row.ad_url && !!row.published_at);
     const dias = exp ? Math.ceil((exp.getTime() - Date.now()) / 86400000) : null;
     const fecha = exp ? exp.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+    /* Vencido PRIMERO (aunque no haya link): el server es el que decide
+       "expired" y el panel de Portales lo muestra como "Vencido" (gris).
+       Si el ícono lo pintara rojo ("sin publicar"), los dos paneles se
+       contradirían. Un 'ready' SIN link y con fecha vieja NO está vencido
+       (el server tampoco lo vence): sigue rojo. */
+    if (vencido) return { color: '#94a3b8', title: 'Aviso de La Voz VENCIDO el ' + fecha + ': hay que renovarlo' };
     if (!publicado) {
       return {
         color: '#E4002B',
@@ -96,7 +109,6 @@
             : 'Preparar aviso para Clasificados La Voz')
       };
     }
-    if (vencido) return { color: '#94a3b8', title: 'Aviso de La Voz VENCIDO el ' + fecha + ': hay que renovarlo' };
     if (dias !== null && dias <= 7) return { color: '#FFB800', title: 'Publicado en La Voz · vence en ' + dias + ' día(s) (' + fecha + ')' };
     return { color: '#4ade80', title: 'Publicado en La Voz' + (row.ad_url ? '' : ' (sin link guardado)') + ' · vence el ' + fecha };
   }

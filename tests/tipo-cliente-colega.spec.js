@@ -140,4 +140,86 @@ test.describe('Tipo de cliente — Colega / Corredor', () => {
       expect(appSandbox.__opFilter(op)).toContain('tipo_cliente.eq.colega');
     }
   });
+
+  /* BEHAVIORAL: la función REAL que arma la query del CRM (applyBaseFilters)
+     tiene que aplicar LOS DOS filtros a la vez (operación + tipo). No alcanza
+     con que operationFilter exista: si el CRM no lo aplicara, "Tipo: Colega"
+     + "Operación: Compra" devolvería 0 filas.
+     (PostgREST combina varios `or=` con AND — verificado contra producción.) */
+  test('behavioral: applyBaseFilters aplica operación Y tipo a la vez', () => {
+    const helpersFrom = crmSrc.indexOf('var TIPO_CLIENTE_OPTS');
+    const helpersTo = crmSrc.indexOf('var PAGE_SIZE', helpersFrom);
+    const filtersFrom = crmSrc.indexOf('function applyBaseFilters(q) {');
+    const filtersTo = crmSrc.indexOf('function ownerPendingTasks', filtersFrom);
+    expect(helpersFrom).toBeGreaterThan(-1);
+    expect(helpersTo).toBeGreaterThan(helpersFrom);
+    expect(filtersFrom).toBeGreaterThan(-1);
+    expect(filtersTo).toBeGreaterThan(filtersFrom);
+
+    const selects = {
+      crmSearch: { value: '' },
+      crmStatusFilter: { value: '' },
+      crmOriginFilter: { value: '' },
+      crmTipoOperacionFilter: { value: '' },
+      crmTipoClienteFilter: { value: '' },
+      crmAgentFilter: { value: '' },
+    };
+    const sandbox = {
+      Date,
+      console,
+      $id: (id) => selects[id] || null,
+      _mlUntouchedFilter: false,
+      _hasFollowupFilter: false,
+      _kpiFilter: null,
+      _kpiTaskIds: null,
+      _kpiPropIds: null,
+      _showTrash: false,
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(crmSrc.slice(helpersFrom, helpersTo), sandbox);
+    vm.runInContext(crmSrc.slice(filtersFrom, filtersTo), sandbox);
+
+    const recorder = () => {
+      const calls = [];
+      const q = {
+        eq: (c, v) => { calls.push(['eq', c, v]); return q; },
+        neq: (c, v) => { calls.push(['neq', c, v]); return q; },
+        or: (cond) => { calls.push(['or', cond]); return q; },
+        is: (c, v) => { calls.push(['is', c, v]); return q; },
+        not: (c, op, v) => { calls.push(['not', c, op, v]); return q; },
+        in: (c, vals) => { calls.push(['in', c, vals]); return q; },
+        gte: (c, v) => { calls.push(['gte', c, v]); return q; },
+      };
+      return { q, calls };
+    };
+
+    // 1) Operación + tipo a la vez.
+    selects.crmTipoOperacionFilter.value = 'compra';
+    selects.crmTipoClienteFilter.value = 'colega';
+    let { q, calls } = recorder();
+    sandbox.applyBaseFilters(q);
+    const orCall = calls.find((c) => c[0] === 'or');
+    const tipoCall = calls.find((c) => c[0] === 'eq' && c[1] === 'tipo_cliente');
+    expect(orCall, 'el filtro de operación no se aplicó').toBeTruthy();
+    expect(orCall[1]).toContain('and(operation_type.is.null,tipo_cliente.eq.colega)');
+    expect(tipoCall, 'el filtro de tipo no se aplicó').toBeTruthy();
+    expect(tipoCall[2]).toBe('colega');
+
+    // 2) Sólo tipo (sin operación): no se mete ningún `or` de operación.
+    selects.crmTipoOperacionFilter.value = '';
+    selects.crmTipoClienteFilter.value = 'colega';
+    ({ q, calls } = recorder());
+    sandbox.applyBaseFilters(q);
+    expect(calls.filter((c) => c[0] === 'or').length).toBe(0);
+    expect(calls.find((c) => c[0] === 'eq' && c[1] === 'tipo_cliente')[2]).toBe('colega');
+
+    // 3) Sólo operación: el grupo colega entra en los TRES filtros.
+    selects.crmTipoOperacionFilter.value = 'alquiler';
+    selects.crmTipoClienteFilter.value = '';
+    ({ q, calls } = recorder());
+    sandbox.applyBaseFilters(q);
+    const orAlq = calls.find((c) => c[0] === 'or');
+    expect(orAlq[1]).toContain('and(operation_type.is.null,tipo_cliente.eq.colega)');
+    expect(calls.filter((c) => c[0] === 'eq' && c[1] === 'tipo_cliente').length).toBe(0);
+  });
 });

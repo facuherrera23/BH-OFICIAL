@@ -162,5 +162,67 @@ test.describe('La Voz — ícono con estado real + fecha de vencimiento', () => 
     expect(f({ status: 'failed', ad_url: 'https://x', published_at: '2026-11-20T10:00:00Z' })).toBe('published');
     // Vencido y expirado se respetan.
     expect(f({ status: 'expired', ad_url: 'https://x', published_at: '2026-11-20T10:00:00Z' })).toBe('expired');
+    /* Misma regla que expireVencidos del server: un aviso con link (o
+       publicado) cuya fecha YA PASÓ está VENCIDO, no "publicado" — aunque
+       su status guardado todavía diga published/ready. */
+    const pasado = new Date(Date.now() - 2 * DIA).toISOString();
+    const futuro = new Date(Date.now() + 20 * DIA).toISOString();
+    expect(f({ status: 'published', ad_url: 'https://x', published_at: pasado, expires_at: pasado })).toBe('expired');
+    expect(f({ status: 'ready', ad_url: 'https://x', published_at: pasado, expires_at: pasado })).toBe('expired');
+    expect(f({ status: 'published', ad_url: 'https://x', published_at: pasado, expires_at: futuro })).toBe('published');
+    // Un 'ready' SIN link y con fecha vieja no está vencido (el server no lo vence).
+    expect(f({ status: 'ready', ad_url: null, published_at: null, expires_at: pasado })).toBe('ready');
+  });
+
+  /* Los DOS paneles (ícono de Propiedades y tabla de Portales) tienen que
+     contar la misma historia: si uno dice "vencido" (gris) y el otro
+     "Publicado" (verde), el empleador no sabe cuál creer. */
+  test('el ícono y el panel de Portales nunca se contradicen', () => {
+    const fromP = portalesSrc.indexOf('function lavozStatusEfectivo(row) {');
+    const toP = portalesSrc.indexOf('function lavozFecha(iso)', fromP);
+    const sbP = { Date, Math, console };
+    vm.createContext(sbP);
+    vm.runInContext(portalesSrc.slice(fromP, toP), sbP);
+
+    const sbI = { Date, Math, console };
+    vm.createContext(sbI);
+    vm.runInContext(extraerLavozEstadoDe(propsSrc), sbI);
+
+    const ahora = Date.now();
+    const casos = [
+      null,
+      { status: 'draft' },
+      { status: 'ready', ad_url: null, published_at: null, expires_at: null },
+      { status: 'failed', ad_url: null, published_at: null, expires_at: null },
+      { status: 'published', ad_url: 'https://x', published_at: new Date(ahora - 20 * DIA).toISOString(), expires_at: new Date(ahora + 20 * DIA).toISOString() },
+      { status: 'published', ad_url: 'https://x', published_at: new Date(ahora - 40 * DIA).toISOString(), expires_at: new Date(ahora - 2 * DIA).toISOString() },
+      { status: 'published', ad_url: 'https://x', published_at: new Date(ahora - 40 * DIA).toISOString(), expires_at: new Date(ahora + 3 * DIA).toISOString() },
+      { status: 'ready', ad_url: 'https://x', published_at: new Date(ahora - 20 * DIA).toISOString(), expires_at: new Date(ahora + 20 * DIA).toISOString() },
+      { status: 'ready', ad_url: 'https://x', published_at: new Date(ahora - 40 * DIA).toISOString(), expires_at: new Date(ahora - 2 * DIA).toISOString() },
+      { status: 'expired', ad_url: 'https://x', published_at: new Date(ahora - 40 * DIA).toISOString(), expires_at: new Date(ahora + 20 * DIA).toISOString() },
+      { status: 'expired', ad_url: null, published_at: null, expires_at: new Date(ahora - 2 * DIA).toISOString() },
+    ];
+
+    for (const row of casos) {
+      const estado = sbP.lavozStatusEfectivo(row);
+      const color = sbI.lavozEstadoDe(row).color;
+      const gris = color === '#94a3b8';
+      const rojo = color === '#E4002B';
+      // Gris ⟺ el panel dice "Vencido".
+      expect(gris, 'gris/vencido no coincide: ' + JSON.stringify(row) + ' → ' + estado).toBe(estado === 'expired');
+      // Rojo ⟺ el panel NO dice "Publicado" ni "Vencido".
+      expect(rojo, 'rojo/sin publicar no coincide: ' + JSON.stringify(row) + ' → ' + estado)
+        .toBe(estado !== 'published' && estado !== 'expired');
+    }
+  });
+
+  /* "Vencido" se muestra en GRIS (el mismo color que el ícono): el ámbar
+     está reservado para "publicado pero vence en ≤7 días". Con ámbar, el
+     mismo color significaba "vencido" en Portales y "por vencer" en el
+     ícono → el empleador no sabía cuál era cuál. */
+  test('el chip "Vencido" de Portales es gris (no ámbar)', () => {
+    expect(portalesSrc).toMatch(/expired:\s*\{\s*label:\s*'Vencido',\s*color:\s*'#94a3b8'/);
+    // Y el ámbar queda sólo para el ícono de "vence en ≤7 días".
+    expect(portalesSrc).not.toMatch(/expired:\s*\{\s*label:\s*'Vencido',\s*color:\s*'#FFB800'/);
   });
 });

@@ -1499,7 +1499,10 @@ try {
     published: { label: 'Publicado', color: '#4ade80', bg: 'rgba(74,222,128,0.12)' },
     ready: { label: 'Listo para subir', color: '#1fc8c3', bg: 'rgba(31,200,195,0.12)' },
     failed: { label: 'Faltan datos', color: '#f87171', bg: 'rgba(248,113,113,0.12)' },
-    expired: { label: 'Vencido', color: '#FFB800', bg: 'rgba(255,184,0,0.12)' },
+    /* Vencido = GRIS (el mismo color que el ícono de Propiedades): el ámbar
+       está reservado para "publicado pero vence en ≤7 días". Con ámbar, el
+       mismo color significaba "vencido" acá y "por vencer" en el ícono. */
+    expired: { label: 'Vencido', color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
     draft: { label: 'Sin preparar', color: '#94a3b8', bg: 'rgba(148,163,184,0.12)' },
   };
 
@@ -1513,12 +1516,26 @@ try {
      publicación (la prueba de que se publicó). El server repara ese estado
      en el próximo prepare, pero hasta entonces el panel lo mostraba como
      "Listo para subir" mientras el ícono de Propiedades ya estaba verde.
-     Acá se calcula el estado efectivo (misma regla que el server y que
-     lavozEstadoDe en el módulo de Propiedades). */
+
+     Regla = la MISMA del server (expireVencidos + prepare) y la misma que
+     lavozEstadoDe del ícono de Propiedades, para que los dos paneles NUNCA
+     se contradigan:
+       · 'expired', o la fecha ya pasó (sobre un aviso publicado o con link)
+         → 'expired' (Vencido, gris).
+       · ready/failed CON link + fecha de publicación → 'published'.
+       · si no, el estado guardado. */
   function lavozStatusEfectivo(row) {
     if (!row) return 'draft';
     const status = String(row.status || 'draft');
     const conLink = !!row.ad_url && !!row.published_at;
+    const exp = row.expires_at ? new Date(row.expires_at) : null;
+    /* Vencido = el server lo marcó 'expired' o la fecha ya pasó (sobre un
+       aviso publicado o que tiene link: uno 'ready' sin link y con fecha
+       vieja sigue siendo "listo para subir", como en el server). */
+    const vencido = status === 'expired'
+      || (!!exp && !isNaN(exp.getTime()) && exp.getTime() < Date.now()
+          && (status === 'published' || !!row.ad_url));
+    if (vencido) return 'expired';
     if ((status === 'ready' || status === 'failed') && conLink) return 'published';
     return status;
   }
