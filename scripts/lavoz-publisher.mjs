@@ -970,6 +970,34 @@ async function renovarAviso(page, adUrl) {
   return { ok: true, texto: btn.texto };
 }
 
+/* ---------------- Estado EFECTIVO de un aviso ---------------- */
+
+/**
+ * Estado REAL de un aviso (2026-11-26, revisión crítica).
+ *
+ * Es la MISMA regla que aplican el server (expireVencidos + prepare), la RPC
+ * lavoz_portal_status() y el panel (lavozStatusEfectivo / lavozEstadoDe):
+ *   · 'expired', o expires_at ya pasado sobre un aviso publicado o con link
+ *     → VENCIDO;
+ *   · 'published', o 'ready'/'failed' con link + fecha de publicación → PUBLICADO
+ *     (lo degradó un 'prepare' viejo: DA-P0002 y DA-P0013);
+ *   · si no, el estado guardado.
+ *
+ * Sin esto, la CLI decía "3 publicados · 5 por publicar" mientras el panel
+ * decía "5 publicados · 3 listos" con los MISMOS avisos: el empleador no
+ * sabía si faltaba subir dos avisos o si ya estaban publicados.
+ */
+function estadoEfectivo(l) {
+  const status = String((l && l.status) || 'draft');
+  const conLink = !!(l && l.ad_url && l.published_at);
+  const exp = l && l.expires_at ? new Date(l.expires_at).getTime() : NaN;
+  const vencido = status === 'expired'
+    || (!Number.isNaN(exp) && exp < Date.now() && (status === 'published' || !!(l && l.ad_url)));
+  if (vencido) return 'expired';
+  if ((status === 'ready' || status === 'failed') && conLink) return 'published';
+  return status;
+}
+
 /* ---------------- Modo estado (solo lectura) ---------------- */
 
 /**
@@ -992,7 +1020,7 @@ async function modoEstado() {
   for (const l of listings) {
     console.log(
       pad(l.properties?.property_code || (l.property_id || '').slice(0, 8), 14)
-      + pad(l.status, 12)
+      + pad(estadoEfectivo(l), 12)
       + pad(l.plan, 14)
       + pad(l.published_at ? l.published_at.slice(0, 10) : '-', 12)
       + pad(l.expires_at ? l.expires_at.slice(0, 10) : '-', 12)
@@ -1000,10 +1028,10 @@ async function modoEstado() {
     );
     if (l.last_error) console.log(pad('', 14) + '⚠ ' + l.last_error);
   }
-  const cuenta = (st) => listings.filter((l) => l.status === st).length;
+  const cuenta = (st) => listings.filter((l) => estadoEfectivo(l) === st).length;
   console.log('');
   console.log(`Total ${listings.length} · por publicar ${cuenta('ready') + cuenta('draft')} · publicados ${cuenta('published')} · vencidos ${cuenta('expired')} · con error ${cuenta('failed')}`);
-  const pronto = listings.filter((l) => l.status === 'published' && l.expires_at && new Date(l.expires_at).getTime() - Date.now() < 7 * 86400000);
+  const pronto = listings.filter((l) => estadoEfectivo(l) === 'published' && l.expires_at && new Date(l.expires_at).getTime() - Date.now() < 7 * 86400000);
   if (pronto.length) {
     console.log(`⏰ Vencen en los próximos 7 días: ${pronto.map((l) => l.properties?.property_code).filter(Boolean).join(', ')} (npm run lavoz:renovar)`);
   }
@@ -1056,11 +1084,14 @@ if (args.payload) {
   let listings = res.listings || [];
   if (args.renew) {
     const limite = Date.now() + 7 * 86400000;
-    listings = listings.filter((l) => l.status === 'expired' || (l.expires_at && new Date(l.expires_at).getTime() < limite));
+    listings = listings.filter((l) => estadoEfectivo(l) === 'expired' || (l.expires_at && new Date(l.expires_at).getTime() < limite));
   } else {
-    // Candidatos: lo preparado + lo que quedó con datos incompletos (se
-    // re-prepara y, si el dueño ya los completó, se publica).
-    listings = listings.filter((l) => l.status === 'ready' || l.status === 'draft' || l.status === 'failed');
+    /* Candidatos: lo preparado + lo que quedó con datos incompletos (se
+       re-prepara y, si el dueño ya los completó, se publica).
+       El estado EFECTIVO evita encolar un aviso que ya está publicado (con
+       link + fecha) aunque su status guardado diga 'ready' (lo degradó un
+       prepare viejo): antes entraba en la cola y recién ahí se omitía. */
+    listings = listings.filter((l) => ['ready', 'draft', 'failed'].includes(estadoEfectivo(l)));
     // Cola vacía → se prepara todo desde acá (no hace falta tocar el panel).
     if (!listings.length) {
       log('No hay avisos preparados: los preparo ahora desde el CRM…');
@@ -1068,7 +1099,7 @@ if (args.payload) {
         const prep = await crmCall(token, 'prepare_all');
         log(`  → ${prep.count || 0} aviso(s) preparados`);
         const res2 = await crmCall(token, 'list');
-        listings = (res2.listings || []).filter((l) => l.status === 'ready' || l.status === 'draft' || l.status === 'failed');
+        listings = (res2.listings || []).filter((l) => ['ready', 'draft', 'failed'].includes(estadoEfectivo(l)));
       } catch (err) {
         log('  ! no pude preparar:', err.message);
       }

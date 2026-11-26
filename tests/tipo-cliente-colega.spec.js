@@ -23,6 +23,8 @@ const appSrc = fs.readFileSync(path.join(ROOT, 'assets', 'js', 'admin-app.js'), 
 const crmSrc = fs.readFileSync(path.join(ROOT, 'assets', 'js', 'admin-crm.js'), 'utf8');
 const htmlSrc = fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8');
 const cssSrc = fs.readFileSync(path.join(ROOT, 'assets', 'css', 'admin.css'), 'utf8');
+const contactSrc = fs.readFileSync(path.join(ROOT, 'supabase', 'functions', 'contact-submit', 'index.ts'), 'utf8');
+const landingSrc = fs.readFileSync(path.join(ROOT, 'assets', 'js', 'landing-app.js'), 'utf8');
 const migSrc = fs.readFileSync(
   path.join(ROOT, 'supabase', 'migrations', '20261126000001_leads_tipo_cliente_colega.sql'),
   'utf8',
@@ -35,6 +37,22 @@ test.describe('Tipo de cliente — Colega / Corredor', () => {
     // Aditivo: no borra ni reescribe filas (sólo el CHECK).
     expect(migSrc).not.toMatch(/DELETE\s+FROM\s+public\.leads/i);
     expect(migSrc).not.toMatch(/UPDATE\s+public\.leads/i);
+  });
+
+  /* El captador PÚBLICO (landing/fichas/WhatsApp) NO ofrece "colega": un
+     visitante del sitio no es un corredor, y el tipo lo clasifica el equipo
+     en el CRM (reclasificar conserva la operación → el lead no se pisa).
+     Si alguien "arregla" el server agregando 'colega' a la lista, el valor
+     seguiría siendo inocuo (inList lo descarta → tipo_cliente null), pero
+     el alta pública ofrecería una opción que nadie puede mantener. */
+  test('el captador público NO ofrece "colega" (es una clasificación interna)', () => {
+    expect(contactSrc).toContain("const TIPOS_CLIENTE: readonly TipoCliente[] = ['propietario', 'comprador', 'inquilino', 'inversor'];");
+    expect(contactSrc).not.toMatch(/TIPOS_CLIENTE[^;]*'colega'/);
+    // El landing sólo ofrece comprar/vender/alquilar/invertir.
+    for (const t of ['comprador', 'propietario', 'inquilino', 'inversor']) {
+      expect(landingSrc).toContain(`tipo_cliente: '${t}'`);
+    }
+    expect(landingSrc).not.toContain("tipo_cliente: 'colega'");
   });
 
   test('el alta de lead ofrece la opción Colega / Corredor', async ({ page }) => {

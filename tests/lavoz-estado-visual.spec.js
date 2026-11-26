@@ -16,6 +16,9 @@ const ROOT = path.resolve(__dirname, '..');
 const propsSrc = fs.readFileSync(path.join(ROOT, 'assets', 'js', 'admin-propiedades.js'), 'utf8');
 const portalesSrc = fs.readFileSync(path.join(ROOT, 'assets', 'js', 'admin-portales.js'), 'utf8');
 const fnSrc = fs.readFileSync(path.join(ROOT, 'supabase', 'functions', 'lavoz-proxy', 'index.ts'), 'utf8');
+const scriptSrc = fs.readFileSync(path.join(ROOT, 'scripts', 'lavoz-publisher.mjs'), 'utf8');
+const rpcEfSrc = fs.readFileSync(path.join(ROOT, 'supabase', 'migrations', '20261126000002_lavoz_portal_status_efectivo.sql'), 'utf8');
+const rpcSoonSrc = fs.readFileSync(path.join(ROOT, 'supabase', 'migrations', '20261126000003_lavoz_expiring_soon_inclusive.sql'), 'utf8');
 
 const DIA = 86400000;
 
@@ -224,5 +227,89 @@ test.describe('La Voz — ícono con estado real + fecha de vencimiento', () => 
     expect(portalesSrc).toMatch(/expired:\s*\{\s*label:\s*'Vencido',\s*color:\s*'#94a3b8'/);
     // Y el ámbar queda sólo para el ícono de "vence en ≤7 días".
     expect(portalesSrc).not.toMatch(/expired:\s*\{\s*label:\s*'Vencido',\s*color:\s*'#FFB800'/);
+  });
+
+  /* Los CONTADORES del panel (RPC lavoz_portal_status) contaban por el
+     `status` CRUDO mientras la tabla mostraba el estado EFECTIVO: el panel
+     se contradecía solo ("3 publicados" arriba / 5 filas "Publicado" abajo).
+     La RPC tiene que aplicar la misma regla que el front y el server. */
+  test('los contadores del panel usan el estado efectivo (misma regla)', () => {
+    expect(rpcEfSrc).toContain('CREATE OR REPLACE FUNCTION public.lavoz_portal_status()');
+    // El estado efectivo: vencido por status o por fecha; publicado si tiene
+    // link + fecha de publicación (aunque el status guardado sea ready/failed).
+    expect(rpcEfSrc).toContain("l.status = 'expired'");
+    expect(rpcEfSrc).toContain('l.expires_at < now()');
+    expect(rpcEfSrc).toContain("l.status IN ('ready', 'failed')");
+    expect(rpcEfSrc).toContain('l.ad_url IS NOT NULL');
+    expect(rpcEfSrc).toContain('l.published_at IS NOT NULL');
+    // Y los contadores se arman sobre eff_status, no sobre l.status.
+    expect(rpcEfSrc).toContain('COUNT(*) FILTER (WHERE eff_status = \'published\')');
+    expect(rpcEfSrc).not.toContain("COUNT(*) FILTER (WHERE status = 'published')");
+    // search_path vacío + permisos: la RPC no se abre a anon.
+    expect(rpcEfSrc).toContain("SET search_path = ''");
+    expect(rpcEfSrc).toContain('REVOKE ALL ON FUNCTION public.lavoz_portal_status() FROM PUBLIC, anon;');
+    expect(rpcEfSrc).toContain('GRANT EXECUTE ON FUNCTION public.lavoz_portal_status() TO authenticated, service_role;');
+    // Aditiva: la migración no toca filas.
+    expect(rpcEfSrc).not.toMatch(/DELETE\s+FROM/i);
+    expect(rpcEfSrc).not.toMatch(/UPDATE\s+public\.lavoz_listings/i);
+    expect(rpcEfSrc).not.toMatch(/DROP\s+/i);
+  });
+
+  /* El contador "Vencen en 7 días" tiene que usar la MISMA regla que el
+     ícono (ámbar = vence en ≤ 7 días). Con '<' un aviso que vencía
+     EXACTAMENTE a los 7 días no se contaba y el panel decía "0". */
+  test('"Vencen en 7 días" cuenta lo mismo que el ícono (≤ 7 días)', () => {
+    expect(rpcSoonSrc).toContain("expires_at <= now() + interval '7 days'");
+    // El ícono: ceil((vence - ahora)/día) <= 7 ⟺ vence <= ahora + 7 días.
+    expect(propsSrc).toContain('dias <= 7');
+  });
+
+  /* La CLI del asistente (npm run lavoz:estado) mostraba el status CRUDO:
+     decía "3 publicados · 5 por publicar" con los MISMOS avisos que el
+     panel mostraba como "5 publicados · 3 listos". Ahora usa la misma regla. */
+  test('behavioral: la CLI del asistente usa el mismo estado efectivo', () => {
+    const from = scriptSrc.indexOf('function estadoEfectivo(l) {');
+    const to = scriptSrc.indexOf('/* ---------------- Modo estado', from);
+    expect(from, 'estadoEfectivo no encontrado en el script').toBeGreaterThan(-1);
+    expect(to, 'fin de estadoEfectivo no encontrado').toBeGreaterThan(from);
+    const sandbox = { Date, Math, console, Number };
+    vm.createContext(sandbox);
+    vm.runInContext(scriptSrc.slice(from, to), sandbox);
+    const cli = sandbox.estadoEfectivo;
+
+    // El panel (misma regla, otra implementación).
+    const fromP = portalesSrc.indexOf('function lavozStatusEfectivo(row) {');
+    const toP = portalesSrc.indexOf('function lavozFecha(iso)', fromP);
+    const sbP = { Date, Math, console };
+    vm.createContext(sbP);
+    vm.runInContext(portalesSrc.slice(fromP, toP), sbP);
+
+    const pasado = new Date(Date.now() - 2 * DIA).toISOString();
+    const futuro = new Date(Date.now() + 20 * DIA).toISOString();
+    const casos = [
+      null,
+      { status: 'draft' },
+      { status: 'ready', ad_url: null, published_at: null, expires_at: null },
+      { status: 'failed', ad_url: null, published_at: null, expires_at: null },
+      { status: 'published', ad_url: 'https://x', published_at: pasado, expires_at: futuro },
+      { status: 'published', ad_url: 'https://x', published_at: pasado, expires_at: pasado },
+      { status: 'ready', ad_url: 'https://x', published_at: pasado, expires_at: futuro },
+      { status: 'ready', ad_url: 'https://x', published_at: pasado, expires_at: pasado },
+      { status: 'expired', ad_url: 'https://x', published_at: pasado, expires_at: futuro },
+      { status: 'expired', ad_url: null, published_at: null, expires_at: pasado },
+    ];
+    for (const row of casos) {
+      expect(cli(row), 'la CLI y el panel no coinciden en ' + JSON.stringify(row))
+        .toBe(sbP.lavozStatusEfectivo(row));
+    }
+    // Y los casos que importan, explícitos.
+    expect(cli({ status: 'ready', ad_url: 'https://x', published_at: pasado, expires_at: futuro })).toBe('published');
+    expect(cli({ status: 'published', ad_url: 'https://x', published_at: pasado, expires_at: pasado })).toBe('expired');
+    expect(cli({ status: 'ready', ad_url: null, published_at: null, expires_at: pasado })).toBe('ready');
+
+    // La CLI no puede volver a contar por el status crudo.
+    expect(scriptSrc).toContain('estadoEfectivo(l)');
+    expect(scriptSrc).not.toContain("pad(l.status, 12)");
+    expect(scriptSrc).not.toContain("listings.filter((l) => l.status === st).length");
   });
 });

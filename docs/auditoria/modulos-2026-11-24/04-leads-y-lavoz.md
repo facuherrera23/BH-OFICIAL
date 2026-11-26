@@ -176,6 +176,40 @@ falla si el ícono dice gris/rojo y el panel dice otra cosa) + el behavioral del
 CRM en `tests/tipo-cliente-colega.spec.js` (`applyBaseFilters` REAL con un query recorder:
 aplica operación **y** tipo a la vez).
 
+### Tercera ronda (26/11/2026): los que contaban o mostraban el estado CRUDO
+
+Después de arreglar el ícono y la tabla, quedaban **otros dos lectores del estado crudo**
+que seguían contradiciendo al panel:
+
+5. **Los CONTADORES del panel** (RPC `lavoz_portal_status`) contaban por `status` crudo:
+   el panel decía **"3 publicados"** mientras la tabla mostraba **5 filas "Publicado"**
+   (los 2 avisos degradados: DA-P0002 y DA-P0013). El panel se contradecía solo.
+   - **Fix:** migración `20261126000002_lavoz_portal_status_efectivo.sql` → la RPC arma un
+     `eff_status` con la MISMA fórmula que el front y el server y cuenta sobre él.
+     Aditiva: no toca filas. Verificado en producción: `published=5, ready=3, expired=0,
+     failed=0, draft=0, total=8` — idéntico a las 8 filas de la tabla.
+   - El contador "Vencen en 7 días" usaba `< now() + 7 días` mientras el ícono (y el
+     README) usan "≤ 7 días": un aviso que vencía exactamente a los 7 días no se contaba.
+     **Fix:** `20261126000003_lavoz_expiring_soon_inclusive.sql` (`<=`).
+6. **La CLI del asistente** (`npm run lavoz:estado`) mostraba el `status` crudo: decía
+   "3 publicados · 5 por publicar" con los mismos avisos que el panel mostraba como
+   "5 publicados · 3 listos".
+   - **Fix:** `estadoEfectivo()` en `scripts/lavoz-publisher.mjs` (misma regla) + la cola de
+     publicación ya no encola un aviso que en realidad está publicado.
+7. **El captador público** (`contact-submit`) mantiene su lista de 4 tipos: un visitante del
+   sitio no es un corredor; el tipo lo clasifica el equipo en el CRM. Si un lead público
+   termina siendo de un colega, se reclasifica desde el panel lateral y **la operación se
+   conserva** (no se pisa). Hay un guard para que nadie "arregle" esa lista.
+
+**Verificación empírica de los filtros (SQL sobre los 86 leads vivos)**: Compra 57 ·
+Alquiler 29 · Venta **0** (no hay ningún lead clasificado como venta todavía) · 38 leads sin
+tipo ni operación (no aparecen en ningún filtro de operación: comportamiento pre-existente).
+No hay falsos positivos: el filtro de operación, el de tipo y el de búsqueda se combinan
+(AND) y no se pisan.
+
+Guardas nuevas: `tests/lavoz-estado-visual.spec.js` (16) y `tests/tipo-cliente-colega.spec.js`
+(10).
+
 ---
 
 ## 4. La Voz: la fecha REAL de vencimiento

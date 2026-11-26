@@ -694,6 +694,8 @@ Un solo campo en el alta: **tipo de cliente**; la **operación se deriva** de é
 - Las sugerencias de propiedades no filtran por operación cuando el lead es `colega` **y su `operation_type` está vacía** (el match es por zona, presupuesto, tipo y ambientes).
 - **El filtro de operación NO esconde a los colegas** (`operationFilter`, idéntico en `admin-crm.js` y `admin-app.js`): como no tienen operación definida, aparecen en los **tres** filtros de operación (como `operation_type IS NULL + colega`). Si no, "Tipo: Colega" + "Operación: Compra" devolvería 0 filas — y el motor de sugerencias ya los trata como "cualquier operación".
 - **Matiz (decisión del dueño: la operación NO se pisa)**: si a un lead que ya tenía `operation_type` (p. ej. `compra`) el empleador lo reclasifica a `colega` desde el panel lateral, **la operación se conserva** → ese lead aparece sólo en el filtro de su operación y sus sugerencias de propiedades sí se filtran por ella. Los colegas **nuevos** (alta) nacen con `operation_type` vacía → aparecen en los tres filtros y sin filtro de operación en las sugerencias.
+- **El captador público NO ofrece "colega"**: un visitante del sitio no es un corredor; el tipo lo clasifica el equipo en el CRM (`contact-submit` mantiene su lista de 4 valores y el landing sólo ofrece comprar/vender/alquilar/invertir). Si un lead público termina siendo de un colega, se reclasifica desde el panel lateral —y la operación se conserva—.
+- **Estado real de los filtros (verificado por SQL sobre los 86 leads vivos el 26/11/2026)**: `Compra` 57 · `Alquiler` 29 · `Venta` **0** (no hay ningún lead clasificado como venta todavía) · 38 leads sin tipo **ni** operación (no aparecen en ningún filtro de operación: es el comportamiento pre-existente, no un bug del filtro). Un lead con tipo y operación contradictorios (`inquilino` + `compra`) aparece por la **operación**, que manda cuando está cargada.
 
 ### API global `window.adminApp`
 Expone los handlers al HTML (39 métodos):
@@ -1346,6 +1348,10 @@ El ícono se refresca solo al confirmar o despublicar desde Portales (`window.ad
 > **El panel de Portales usa la MISMA regla** (`lavozStatusEfectivo`): un aviso con link + fecha de publicación se muestra **"Publicado"** aunque su `status` guardado diga `ready`/`failed` (lo degradó un `prepare` viejo). Antes el panel decía "Listo para subir" mientras el ícono de Propiedades ya estaba verde — los dos paneles se contradecían (a fin de 11/2026: DA-P0002 y DA-P0013).
 >
 > Las dos reglas son **idénticas entre sí y a la del server** (`expireVencidos` + `prepare`): `expired` (o la fecha ya pasada sobre un aviso publicado/con link) → **Vencido**; `ready`/`failed` con link + fecha de publicación → **Publicado**; si no, el estado guardado. El chip "Vencido" de Portales es **gris** (como el ícono): el ámbar queda reservado para "publicado pero vence en ≤7 días". Hay un guard que corre las dos funciones sobre las mismas filas y falla si se contradicen (`tests/lavoz-estado-visual.spec.js`).
+>
+> **Los CONTADORES del panel usan la misma regla** (RPC `lavoz_portal_status`, migraciones `20261126000002` y `20261126000003`): antes contaban por el `status` crudo mientras la tabla mostraba el estado efectivo → el panel se contradecía solo ("3 publicados" arriba, 5 filas "Publicado" abajo). Ahora la RPC arma un `eff_status` con la misma fórmula que el front y el server. Verificado contra los 8 avisos reales: **5 publicados / 3 listos** en los tres lugares (tabla, contadores y CLI).
+>
+> **La CLI (`npm run lavoz:estado`) también**: `estadoEfectivo()` en `scripts/lavoz-publisher.mjs` aplica la misma regla (decía "3 publicados · 5 por publicar" con los mismos avisos que el panel mostraba como "5 publicados · 3 listos"). Además la cola de publicación ya no encola un aviso que en realidad está publicado.
 
 ### 📅 Fecha real de vencimiento (2026-11-26)
 
