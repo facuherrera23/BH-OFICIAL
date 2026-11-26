@@ -1,0 +1,114 @@
+// Tipo de cliente "Colega / Corredor" (2026-11-26, pedido del empleador).
+//
+// Los colegas/corredores nos ingresan un lead porque están BUSCANDO una
+// propiedad para un cliente propio. Antes ese lead se mezclaba con los
+// compradores/inquilinos y no había forma de distinguirlo.
+//
+// Reglas del contrato:
+//   · 'colega' es un valor de leads.tipo_cliente (CHECK en la DB).
+//   · NO deriva operación: un colega puede buscar en venta O en alquiler →
+//     la operación del lead se conserva (no se pisa con null).
+//   · Tiene que aparecer en el alta, en el panel del CRM y en el chip de
+//     color de la lista.
+//   · Hay un filtro por tipo de cliente en la barra del CRM (pedido aparte
+//     del empleador: "aca deberia aparecer un filtro de comprador/inquilino/
+//     corredor").
+const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const ROOT = path.resolve(__dirname, '..');
+const appSrc = fs.readFileSync(path.join(ROOT, 'assets', 'js', 'admin-app.js'), 'utf8');
+const crmSrc = fs.readFileSync(path.join(ROOT, 'assets', 'js', 'admin-crm.js'), 'utf8');
+const htmlSrc = fs.readFileSync(path.join(ROOT, 'admin.html'), 'utf8');
+const cssSrc = fs.readFileSync(path.join(ROOT, 'assets', 'css', 'admin.css'), 'utf8');
+const migSrc = fs.readFileSync(
+  path.join(ROOT, 'supabase', 'migrations', '20261126000001_leads_tipo_cliente_colega.sql'),
+  'utf8',
+);
+
+test.describe('Tipo de cliente — Colega / Corredor', () => {
+  test('la DB admite "colega" en el CHECK de tipo_cliente', () => {
+    expect(migSrc).toContain('leads_tipo_cliente_check');
+    expect(migSrc).toContain("'propietario','comprador','inversor','inquilino','colega'");
+    // Aditivo: no borra ni reescribe filas (sólo el CHECK).
+    expect(migSrc).not.toMatch(/DELETE\s+FROM\s+public\.leads/i);
+    expect(migSrc).not.toMatch(/UPDATE\s+public\.leads/i);
+  });
+
+  test('el alta de lead ofrece la opción Colega / Corredor', async ({ page }) => {
+    const start = htmlSrc.indexOf('<div class="admin-modal" id="leadModal">');
+    const end = htmlSrc.indexOf('<!-- MODAL VISITA -->', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    await page.setContent(htmlSrc.slice(start, end));
+
+    const tipo = page.locator('#leadForm select[name="tipo_cliente"]#leadTipoClienteSelect');
+    await expect(tipo.locator('option[value="colega"]')).toHaveCount(1);
+    await expect(tipo.locator('option[value="colega"]')).toHaveText('Colega / Corredor');
+    // Sigue siendo UN solo selector visible (la operación va oculta).
+    await expect(page.locator('#leadForm select[name="operation_type"]')).toHaveCount(0);
+    await expect(page.locator('#leadForm input[name="operation_type"]#leadOperationType')).toHaveCount(1);
+  });
+
+  test('el Zod del alta acepta "colega" (si no, el alta muere con "Origen inválido")', () => {
+    expect(appSrc).toContain("tipo_cliente: z.enum(['propietario','comprador','inversor','inquilino','colega'])");
+  });
+
+  test('"colega" NO deriva operación: se conserva la del lead', () => {
+    // El alta: si el tipo no deriva operación, se preserva la legacy.
+    expect(appSrc).toContain('? operationFromTipoCliente(validated.tipo_cliente) || (validated.operation_type ?? null)');
+    // El panel del CRM: idem (no pisar la operación con null).
+    expect(crmSrc).toContain('operation_type: (tipo ? operationFromTipoCliente(tipo) : null) || ((lead && lead.operation_type) || null)');
+    // El mapa NO incluye colega (si lo incluyera, se inventaría una operación).
+    const mapa = /TIPO_CLIENTE_OPERATION\s*=\s*\{([^}]*)\}/.exec(crmSrc);
+    expect(mapa).toBeTruthy();
+    expect(mapa[1]).not.toContain('colega');
+  });
+
+  test('el panel del CRM y la lista muestran la etiqueta "Colega / Corredor"', () => {
+    expect(crmSrc).toContain("var TIPO_CLIENTE_OPTS = ['propietario','comprador','inversor','inquilino','colega'];");
+    expect(crmSrc).toContain("colega:'Colega / Corredor'");
+    // El select del panel lateral usa la etiqueta (no "Colega" pelado).
+    expect(crmSrc).toContain("esc(TIPO_CLIENTE_LABELS[t] || t)");
+    // El chip de la lista también.
+    expect(crmSrc).toContain("esc(TIPO_CLIENTE_LABELS[l.tipo_cliente] || l.tipo_cliente)");
+    // Y tiene color propio.
+    expect(cssSrc).toContain('.crm-tipo-chip--colega{');
+  });
+
+  test('filtro por tipo de cliente en la barra del CRM', () => {
+    expect(htmlSrc).toContain('id="crmTipoClienteFilter"');
+    // Se aplica con eq (no con el filtro de operación: un colega no tiene
+    // operación definida).
+    expect(crmSrc).toContain("var tc = $id('crmTipoClienteFilter'); if (tc && tc.value) q = q.eq('tipo_cliente', tc.value);");
+    // Cambia la lista al cambiar el filtro.
+    expect(crmSrc).toContain("['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmTipoClienteFilter', 'crmAgentFilter']");
+    // Y se oculta en el modo propietarios (mismo que los otros de leads).
+    expect(crmSrc).toContain("var leadOnly = ['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmTipoClienteFilter', 'crmAgentFilter'");
+    // El export CSV respeta el mismo filtro que la pantalla.
+    expect(appSrc).toContain("const tcSel = document.getElementById('crmTipoClienteFilter');");
+    expect(appSrc).toContain("if (tcSel && tcSel.value) q = q.eq('tipo_cliente', tcSel.value);");
+  });
+
+  test('behavioral: operationFromTipoCliente("colega") no inventa operación', () => {
+    const from = crmSrc.indexOf('var TIPO_CLIENTE_OPTS');
+    const to = crmSrc.indexOf('var PAGE_SIZE', from);
+    expect(from).toBeGreaterThan(-1);
+    expect(to).toBeGreaterThan(from);
+    const sandbox = {};
+    vm.createContext(sandbox);
+    vm.runInContext(crmSrc.slice(from, to), sandbox);
+
+    expect(sandbox.operationFromTipoCliente('propietario')).toBe('venta');
+    expect(sandbox.operationFromTipoCliente('inquilino')).toBe('alquiler');
+    expect(sandbox.operationFromTipoCliente('colega')).toBe(null);
+    // El filtro de operación NO incluye a los colegas (no tienen operación).
+    expect(sandbox.operationFilter('compra')).not.toContain('colega');
+    expect(sandbox.operationFilter('alquiler')).not.toContain('colega');
+    // Pero el filtro por TIPO sí los encuentra.
+    expect(sandbox.TIPO_CLIENTE_OPTS).toContain('colega');
+    expect(sandbox.TIPO_CLIENTE_LABELS.colega).toBe('Colega / Corredor');
+  });
+});

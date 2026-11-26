@@ -68,7 +68,11 @@ test.describe('Propiedades: layout de la columna Acciones', () => {
     const row1 = propsSrc.slice(row1Start, row2Start);
     expect(row1).toContain('${mlButtons}');
     expect(row1).toContain('${relaButtons}');
-    expect(row1).toContain('data-lavoz-action="prepare"');
+    /* El botón de La Voz se arma en una variable (lavozBtn) porque su color
+       depende del estado real del aviso (2026-11-26): rojo = sin publicar,
+       verde = publicado, ámbar = por vencer, gris = vencido. */
+    expect(row1).toContain('${lavozBtn}');
+    expect(propsSrc).toContain('data-lavoz-action="prepare"');
     expect(row1).toContain('data-prop-video');
     expect(row1).toContain('data-prop-act="campaign"');
     // Fila 2 = contacto/operación.

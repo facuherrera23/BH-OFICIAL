@@ -532,18 +532,33 @@ test.describe('La Voz — automatización de la publicación', () => {
     expect(portalesSrc).toContain("copiarTexto((_lavozPrepared?.payload?.property_code) || _lavozPrepared?.property_code || '')");
   });
 
-  test('confirm manual permite dias/plan, advierte plan distinto y proxy valida', () => {
+  test('confirm manual permite dias/plan/fecha real, advierte plan distinto y proxy valida', () => {
     expect(portalesSrc).toContain('id="lavozConfirmDias"');
     expect(portalesSrc).toContain('id="lavozConfirmPlan"');
     expect(portalesSrc).toContain('data-recommended=');
     expect(portalesSrc).toContain("dias !== 10 && dias !== 30");
     expect(portalesSrc).toContain("['basico', 'estandar', 'premium', 'super_premium']");
-    expect(portalesSrc).toContain('lavozApiCall(\'confirm\', { property_id: propertyId, ad_url: url, dias, plan: plan || undefined })');
+    expect(portalesSrc).toContain("lavozApiCall('confirm', { property_id: propertyId, ad_url: url, dias, plan: plan || undefined, expires_at: venceFecha || undefined })");
     expect(portalesSrc).toContain('lavozPlanWarn');
     expect(fnSrc).toContain("const PLANES_CONFIRM = new Set(['basico', 'estandar', 'premium', 'super_premium']);");
     expect(fnSrc).toContain("throw new Error('dias debe ser 10 o 30');");
     expect(fnSrc).toContain("throw new Error('plan debe ser basico, estandar, premium o super_premium');");
     expect(fnSrc).toContain('ad_url: adUrl,');
+  });
+
+  /* La fecha REAL que muestra La Voz ("Finaliza 06/12/2026") tiene que poder
+     cargarse a mano: si no, el CRM la calculaba y cualquier diferencia con el
+     portal lo dejaba mintiendo (2026-11-26, pedido del empleador). */
+  test('el modal permite cargar la fecha real de vencimiento y el server la valida', () => {
+    expect(portalesSrc).toContain('id="lavozVenceEl"');
+    expect(portalesSrc).toContain('<input type="date" id="lavozVenceEl"');
+    expect(portalesSrc).toContain('lavozFechaInput(r.expires_at, p.dias_publicacion)');
+    expect(portalesSrc).toContain('expires_at: venceFecha || undefined');
+    expect(portalesSrc).toContain('La fecha de vencimiento no puede ser anterior a hoy');
+    expect(fnSrc).toContain('function validarVencimiento(valor: unknown): string | null {');
+    expect(fnSrc).toContain("throw new Error('La fecha de vencimiento tiene que ser futura');");
+    expect(fnSrc).toContain('venceManual = validarVencimiento(body.expires_at);');
+    expect(fnSrc).toContain('const expires = venceManual ? new Date(venceManual) : new Date(now.getTime() + dias * 86400000);');
   });
 
   test('el asistente acepta los términos y condiciones antes de publicar', () => {

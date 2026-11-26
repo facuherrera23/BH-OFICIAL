@@ -590,6 +590,7 @@
   <select id="crmStatusFilter" class="crm-field-input crm-field-input--select"><option value="">Todos los estados</option></select>
   <select id="crmOriginFilter" class="crm-field-input crm-field-input--select"><option value="">Todos los orígenes</option></select>
   <select id="crmTipoOperacionFilter" class="crm-field-input crm-field-input--select"><option value="">Operación: todas</option></select>
+  <select id="crmTipoClienteFilter" class="crm-field-input crm-field-input--select"><option value="">Tipo de cliente: todos</option></select>
   <select id="crmAgentFilter" class="crm-field-input crm-field-input--select"><option value="">Todos los agentes</option></select>
   <span class="crm-followup-wrap" id="crmFollowupWrap"></span>
   <span class="crm-followup-wrap" id="crmMlUntouchedWrap"></span>
@@ -2665,11 +2666,12 @@
 <option value="comprador">Comprador (compra)</option>
 <option value="inversor">Inversor (compra)</option>
 <option value="inquilino">Inquilino (alquiler)</option>
+<option value="colega">Colega / Corredor</option>
 </select>
 <input type="hidden" name="operation_type" id="leadOperationType" value="" />
 </div>
 <div class="form-field" style="display:flex; align-items:flex-end; padding-bottom:4px;">
-<small style="color:var(--text-dim); font-size:11px;">Elegí solo el tipo: la operación se completa sola (compra, venta o alquiler).</small>
+<small style="color:var(--text-dim); font-size:11px;">Elegí solo el tipo: la operación se completa sola (compra, venta o alquiler). En <b>Colega / Corredor</b> la operación queda sin definir (el colega busca para un cliente propio).</small>
 </div>
 </div><div class="form-grid-2">  <div class="form-field">    <label>Tipo Preferido</label>    <select name="preferred_type">      <option value="">Sin preferencia</option>      <option value="casa">Casa</option>      <option value="departamento">Departamento</option>      <option value="terreno">Terreno</option>      <option value="local">Local</option>      <option value="oficina">Oficina</option>      <option value="galpon">Galpón</option>      <option value="quinta">Quinta</option>      <option value="otro">Otro</option>    </select>  </div>  <div class="form-field">
 <label>Ambientes Preferidos</label>
@@ -3603,7 +3605,7 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 </div>
 
 <!-- CDN timeout fallback: detect if external scripts fail to load --><script nonce="bienenhaus2024">(function() {function checkCDN() {var missing = [];if (!window.supabase) missing.push('Supabase JS');if (window.supabase && !window.supabaseClient) missing.push('Supabase Client (init failed)');var testEl = document.createElement('i');testEl.className = 'fas fa-check';testEl.style.position = 'absolute';testEl.style.left = '-9999px';document.body.appendChild(testEl);var computed = window.getComputedStyle(testEl);if (computed.fontFamily.indexOf('Font Awesome') === -1) {missing.push('Font Awesome');}document.body.removeChild(testEl);if (missing.length) {var banner = document.getElementById('cdnWarningBanner');if (banner) {banner.style.display = 'block';banner.innerHTML = '<i class="fas fa-exclamation-triangle"></i> <strong>Recursos críticos no cargaron.</strong> Revisá tu conexión a internet y recargá la página (F5). Si persiste, tus datos están a salvo — reintentá más tarde. Faltan: ' + missing.join(', ') + '.';}return false;}return true;}setTimeout(function() { checkCDN(); }, 3000);setTimeout(function() { checkCDN(); }, 6000);})();    // Currency selector handler for property form    document.addEventListener('DOMContentLoaded', function() {        const currencySelect = document.getElementById('priceCurrencySelect');        const usdField = document.getElementById('priceUsdField');        const arsField = document.getElementById('priceArsField');        const statusSelect = document.getElementById('propertyStatusSelect');        if (currencySelect && usdField && arsField) {            function togglePriceFields() {                if (currencySelect.value === 'ARS') {                    usdField.style.display = 'none';                    usdField.querySelector('input').removeAttribute('required');                    arsField.style.display = '';                    arsField.querySelector('input').setAttribute('required', 'required');                } else {                    usdField.style.display = '';                    usdField.querySelector('input').setAttribute('required', 'required');                    arsField.style.display = 'none';                    arsField.querySelector('input').removeAttribute('required');                }            }            currencySelect.addEventListener('change', togglePriceFields);            if (statusSelect) {                statusSelect.addEventListener('change', function() {                    if (statusSelect.value === 'alquiler') {                        currencySelect.value = 'ARS';                    } else {                        currencySelect.value = 'USD';                    }                    togglePriceFields();                });            }            togglePriceFields();        }    });</script><script defer src="assets/vendor/supabase-js.umd.js?v=1"></script><script defer src="assets/js/zod.umd.js"></script><script defer src="assets/js/utils.js?v=375"></script><script defer src="assets/js/config.js?v=376"></script><script defer src="assets/js/supabase-client.js?v=377"></script><script defer src="assets/js/cloudinary.js?v=377"></script><script defer src="assets/js/admin-crm-tasks.js?v=15"></script>
-<script defer src="assets/js/admin-crm.js?v=108"></script>
+<script defer src="assets/js/admin-crm.js?v=109"></script> (crm-lavoz: tipo de cliente colega, filtro por tipo, icono de estado y vencimiento real)
 <script defer src="assets/js/disable-search-autocomplete.js?v=3"></script>
 <script defer src="assets/js/admin-app.js?v=702"></script>
 <script defer src="assets/js/admin-propietarios.js?v=23"></script>
@@ -3622,13 +3624,13 @@ Con email: le llega una invitación de Supabase al correo. El usuario define su 
 <script defer src="assets/js/yt-seo-score.js?v=3"></script>
 <script defer src="assets/js/social-inbox.js?v=3"></script>
 <script defer src="assets/js/admin-contenido.js?v=25"></script>
-<script defer src="assets/js/admin-portales.js?v=38"></script>
+<script defer src="assets/js/admin-portales.js?v=39"></script>
 <script defer src="assets/js/admin-tasaciones.js?v=12"></script>
 <script defer src="assets/js/admin-supervision-panel.js?v=4"></script>
 <script defer src="assets/js/admin-ficha.js?v=2"></script>
 
 <script defer src="assets/js/zip.js?v=1"></script>
-<script defer src="assets/js/admin-propiedades.js?v=30"></script>
+<script defer src="assets/js/admin-propiedades.js?v=31"></script>
 <script defer src="assets/js/tasacion-calc.js?v=1"></script>
 <script defer src="assets/js/admin-agenda.js?v=22"></script>
 <script defer src="assets/js/admin-supervision.js?v=29"></script></body>

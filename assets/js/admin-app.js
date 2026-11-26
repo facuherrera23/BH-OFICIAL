@@ -217,7 +217,7 @@ function esc(s) {
     preferred_zone: z.string().max(80).optional().nullable(),
     preferred_type: z.string().max(50).optional().nullable(),
     preferred_rooms: z.number().int().min(0).max(20).optional().nullable(),
-    tipo_cliente: z.enum(['propietario','comprador','inversor','inquilino']).optional().nullable(),
+    tipo_cliente: z.enum(['propietario','comprador','inversor','inquilino','colega']).optional().nullable(),
     operation_type: z.enum(['compra','venta','alquiler']).optional().nullable(),
     notes: z.string().max(2000).optional().nullable(),
   });
@@ -227,6 +227,9 @@ function esc(s) {
      borra nada). Mismo mapa en admin-crm.js y admin-propiedades.js —
      guard: tests/lead-cliente-operacion.spec.js. */
   const TIPO_CLIENTE_OPERATION = { propietario: 'venta', comprador: 'compra', inversor: 'compra', inquilino: 'alquiler' };
+  /* 'colega' NO está en el mapa a propósito: un colega/corredor consulta por
+     un cliente propio y puede buscar en venta O en alquiler → la operación
+     queda sin derivar (se conserva la que ya tenía el lead, si alguna). */
   const OPERATION_TIPO_CLIENTES = { compra: ['comprador', 'inversor'], venta: ['propietario'], alquiler: ['inquilino'] };
   const operationFromTipoCliente = tipo => TIPO_CLIENTE_OPERATION[tipo] || null;
   /* Los filtros heredados por operación también encuentran leads que nunca
@@ -2958,9 +2961,10 @@ function esc(s) {
         preferred_rooms: validated.preferred_rooms,
         tipo_cliente: validated.tipo_cliente,
         /* Un solo campo visible: si eligió tipo se deriva la operación; si no,
-           se preserva la operation_type legacy (campo oculto del formulario). */
+           se preserva la operation_type legacy (campo oculto del formulario).
+           'colega' no deriva operación → se preserva la que ya tenía. */
         operation_type: validated.tipo_cliente
-          ? operationFromTipoCliente(validated.tipo_cliente)
+          ? operationFromTipoCliente(validated.tipo_cliente) || (validated.operation_type ?? null)
           : (validated.operation_type ?? null),
       };
       const nextFollowRaw = String(formData.get('next_followup_at') || '').trim();
@@ -3482,6 +3486,8 @@ function esc(s) {
     if (orSel && orSel.value) q = q.eq('source', orSel.value);
     const tpSel = document.getElementById('crmTipoOperacionFilter');
     if (tpSel && tpSel.value) q = q.or(operationFilter(tpSel.value));
+    const tcSel = document.getElementById('crmTipoClienteFilter');
+    if (tcSel && tcSel.value) q = q.eq('tipo_cliente', tcSel.value);
     const agSel = document.getElementById('crmAgentFilter');
     if (agSel && agSel.value === '__none__') q = q.is('assigned_to', null);
     else if (agSel && agSel.value) q = q.eq('assigned_to', agSel.value);

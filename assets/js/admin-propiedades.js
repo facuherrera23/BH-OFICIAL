@@ -68,6 +68,47 @@
     return map;
   }
 
+  /* Estado del aviso de La Voz por propiedad (2026-11-26, pedido del
+     empleador): el ícono de La Voz cambia de color según el estado REAL:
+       · rojo  → todavía NO se publicó (falta subirlo y marcarlo publicado)
+       · verde → publicado (verde = "ya fue publicado"; si no se pudo
+                 capturar el link, el tooltip lo avisa)
+       · ámbar → publicado pero vence en ≤7 días
+       · gris  → vencido (hay que renovarlo)
+     La fuente es la tabla lavoz_listings (la misma que usa el panel de
+     Portales). Un aviso cuenta como publicado si está 'published' O si
+     tiene link + fecha de publicación: un 'prepare' viejo degradaba el
+     estado a 'ready'/'failed' pero conservaba la prueba de publicación. */
+  function lavozEstadoDe(row) {
+    if (!row) return { color: '#E4002B', title: 'Preparar aviso para Clasificados La Voz' };
+    const publicado = row.status === 'published' || (!!row.ad_url && !!row.published_at);
+    const exp = row.expires_at ? new Date(row.expires_at) : null;
+    const vencido = !!exp && exp.getTime() < Date.now();
+    const dias = exp ? Math.ceil((exp.getTime() - Date.now()) / 86400000) : null;
+    const fecha = exp ? exp.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+    if (!publicado) {
+      return {
+        color: '#E4002B',
+        title: row.status === 'failed'
+          ? 'Aviso de La Voz con datos faltantes: revisá y volvé a preparar'
+          : (row.status === 'ready'
+            ? 'Aviso preparado en La Voz: falta marcarlo publicado'
+            : 'Preparar aviso para Clasificados La Voz')
+      };
+    }
+    if (vencido) return { color: '#94a3b8', title: 'Aviso de La Voz VENCIDO el ' + fecha + ': hay que renovarlo' };
+    if (dias !== null && dias <= 7) return { color: '#FFB800', title: 'Publicado en La Voz · vence en ' + dias + ' día(s) (' + fecha + ')' };
+    return { color: '#4ade80', title: 'Publicado en La Voz' + (row.ad_url ? '' : ' (sin link guardado)') + ' · vence el ' + fecha };
+  }
+
+  /* La Voz cambia de estado desde el panel de Portales (confirmar o
+     despublicar). El ícono de la fila tiene que reflejarlo al toque: sin
+     esto el agente ve el ícono viejo hasta recargar la pestaña. */
+  window.adminApp = window.adminApp || {};
+  window.adminApp.refreshLavozIcons = function () {
+    try { loadProperties(); } catch (err) { logWarn('Propiedades: no se pudo refrescar el ícono de La Voz', err); }
+  };
+
   async function loadProperties() {
     invalidateSearchCache();
     const tbody = $('#propertiesTableBody');
@@ -115,13 +156,20 @@
         trashBtn.classList.toggle('is-active', _propViewTrash);
       }
 
-      const [propsRes, listingsRes, ownersRes, relaRes] = await Promise.all([
+      const [propsRes, listingsRes, ownersRes, relaRes, lavozRes] = await Promise.all([
         applyPropFilters(client.from('properties').select('*')).order('created_at', { ascending: false }).range(from, to),
         ml_connected
           ? client.from('ml_listings').select('property_id, ml_listing_id:ml_item_id, status:ml_status')
           : Promise.resolve({ data: [] }),
         client.from('owners').select('id, full_name, status').is('deleted_at', null).order('full_name'),
         client.from('rela_listings').select('property_id, codigo_aviso, status, remote_status, last_error'),
+        /* Estado de La Voz por propiedad (para pintar el ícono). Si la tabla
+           no se puede leer, la lista de propiedades NO se rompe: el ícono
+           queda en rojo (estado "sin publicar"). */
+        client.from('lavoz_listings')
+          .select('property_id, status, ad_url, published_at, expires_at')
+          .then((r) => (r && r.error ? { data: [] } : r))
+          .catch((err) => { logWarn('Propiedades: no se pudo leer el estado de La Voz', err); return { data: [] }; }),
       ]);
 
       /* Videos de YouTube publicados por propiedad (botón "ver tour"). */
@@ -136,6 +184,10 @@
 
       const relaMap = {};
       (relaRes.data || []).forEach(l => { if (l.property_id) relaMap[l.property_id] = l; });
+
+      /* Mapa de La Voz (estado real de cada aviso publicado). */
+      const lavozMap = {};
+      (lavozRes && lavozRes.data ? lavozRes.data : []).forEach(l => { if (l && l.property_id) lavozMap[l.property_id] = l; });
 
       const ownerMap = {};
       (ownersRes.data || []).forEach(o => { ownerMap[o.id] = o.full_name; });
@@ -232,6 +284,14 @@
           relaButtons = `<button class="btn-action" style="font-size:11px; color:#3B82F6;" title="Publicar en RELA (ZonaProp)" data-rela-action="publish" data-rela-prop="${esc(p.id)}"><i class="fas fa-cloud-arrow-up"></i></button>`;
         }
 
+        /* Botón de La Voz: el color depende del estado real del aviso
+           (publicado = verde, sin publicar = rojo, por vencer = ámbar,
+           vencido = gris). Ver la función lavozEstadoDe. */
+        const lvEstado = lavozEstadoDe(lavozMap[p.id]);
+        const lavozBtn = p.is_published
+          ? `<button class="btn-action" style="color:${lvEstado.color};" title="${esc(lvEstado.title)}" data-lavoz-action="prepare" data-lavoz-prop="${esc(p.id)}"><i class="fas fa-newspaper"></i></button>`
+          : '';
+
         const codeBadge = p.property_code
           ? (p.is_published
             ? `<a class="props-code props-code--link" href="fichas/${encodeURIComponent(p.property_code)}.html" target="_blank" rel="noopener" title="Ver ficha pública">${esc(p.property_code)}</a>`
@@ -285,7 +345,7 @@
               <div class="props-actions-row">
                 ${mlButtons}
                 ${relaButtons}
-                ${p.is_published ? `<button class="btn-action" style="color:#E4002B;" title="Preparar aviso para Clasificados La Voz" data-lavoz-action="prepare" data-lavoz-prop="${esc(p.id)}"><i class="fas fa-newspaper"></i></button>` : ''}
+                ${lavozBtn}
                 ${_propVideoMap[p.id] ? `<button class="btn-action" style="color:#FF0000;" title="Ver el tour en video (YouTube)" data-prop-video="${esc(p.id)}"><i class="fab fa-youtube"></i></button>` : ''}
                 ${p.is_published ? `<button class="btn-action" style="color:#FFB800;" title="Campaña WhatsApp a leads que encajan" data-prop-act="campaign" data-prop-id="${esc(p.id)}" data-prop-code="${esc(p.property_code || '')}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-bullhorn"></i></button>` : ''}
                 <button class="btn-action" style="color:#8b5cf6;" title="Ver encuestas de visitas" data-prop-act="surveys" data-prop-id="${esc(p.id)}" data-prop-title="${esc(p.title || '')}"><i class="fas fa-clipboard-list"></i></button>

@@ -43,6 +43,9 @@ test.describe('Alta de lead — un solo campo tipo/operación', () => {
     expect(labels.join(' | ')).toContain('Comprador (compra)');
     expect(labels.join(' | ')).toContain('Inversor (compra)');
     expect(labels.join(' | ')).toContain('Inquilino (alquiler)');
+    // Colega/corredor (2026-11-26): consulta por un cliente propio → sin
+    // operación derivada.
+    expect(labels.join(' | ')).toContain('Colega / Corredor');
   });
 
   test('el mismo mapa rige en los 3 módulos que escriben/leen el vínculo', () => {
@@ -65,7 +68,8 @@ test.describe('Alta de lead — un solo campo tipo/operación', () => {
   test('el panel del CRM guarda la operación derivada del tipo', () => {
     expect(crmSrc).toContain('collectSideForm(panel, lead)');
     expect(crmSrc).toContain("var tipo = v('crmDtlTipoCliente');");
-    expect(crmSrc).toContain('operation_type: tipo ? operationFromTipoCliente(tipo)');
+    // Si el tipo NO deriva operación (colega), se conserva la del lead.
+    expect(crmSrc).toContain('operation_type: (tipo ? operationFromTipoCliente(tipo) : null) || ((lead && lead.operation_type) || null)');
     expect(crmSrc).toContain("((lead && lead.operation_type) || null)");
   });
 
@@ -90,6 +94,7 @@ test.describe('Alta de lead — un solo campo tipo/operación', () => {
     expect(sandbox.operationFromTipoCliente('comprador')).toBe('compra');
     expect(sandbox.operationFromTipoCliente('inversor')).toBe('compra');
     expect(sandbox.operationFromTipoCliente('inquilino')).toBe('alquiler');
+    expect(sandbox.operationFromTipoCliente('colega')).toBe(null);
     expect(sandbox.operationFromTipoCliente(undefined)).toBe(null);
 
     // La operación explícita manda; si no hay, se deriva del tipo.

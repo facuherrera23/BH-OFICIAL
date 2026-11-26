@@ -1510,9 +1510,34 @@ try {
 
   function lavozFecha(iso) {
     if (!iso) return '—';
-    try { return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' }); }
+    try { return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
     catch { return '—'; }
   }
+
+  /* Fecha para el <input type="date"> ('YYYY-MM-DD'). Si el aviso ya tiene
+     vencimiento, se respeta; si no, se propone hoy + la duración (10 o 30
+     días). Se usan las partes LOCALES para que el día sea el mismo que ve
+     el empleador en el panel (no un día corrido por el UTC). */
+  function lavozFechaInput(iso, dias) {
+    const n = Number(dias) === 10 ? 10 : 30;
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    let d = iso ? new Date(iso) : null;
+    /* Si el aviso ya está VENCIDO (se está renovando), la fecha vieja no
+       sirve: se propone hoy + duración (si no, el propio panel rechazaría
+       guardar una fecha pasada). */
+    if (!d || isNaN(d.getTime()) || d.getTime() < hoy.getTime()) {
+      d = new Date(Date.now() + n * 86400000);
+    }
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  /* El empleador anota a mano la fecha que muestra La Voz ("Finaliza
+     06/12/2026"). Si tocó el campo de fecha, la duración deja de pisarla. */
+  let _lavozFechaManual = false;
 
   /* URLs seguras (la del aviso y la miniatura). BHUtils vive en utils.js:
      safeUrl sólo deja http/https/mailto/tel, safeImageUrl sólo http/https. */
@@ -1696,6 +1721,7 @@ try {
          estado del módulo, el click sigue sabiendo qué propiedad confirmar. */
       const pid = r.property_id || (r.payload && r.payload.property_id) || propertyId;
       _lavozPrepared = { ...r, property_id: pid };
+      _lavozFechaManual = false;
 
       const p = r.payload || {};
       const avisos = (r.avisos || []).map((a) =>
@@ -1773,6 +1799,14 @@ try {
                   }).join('')}
                 </select>
               </label>
+              <label style="font-size:11px;color:var(--text-dim);display:flex;flex-direction:column;gap:6px;">
+                <span>Vence el (fecha real en La Voz)</span>
+                <input type="date" id="lavozVenceEl" value="${esc(lavozFechaInput(r.expires_at, p.dias_publicacion))}" style="background:rgba(0,0,0,0.28);border:1px solid var(--border-subtle);border-radius:8px;color:var(--text-primary);padding:8px 10px;font-size:12px;" />
+              </label>
+            </div>
+            <div style="font-size:10.5px;color:var(--text-dim);margin:-4px 0 10px;line-height:1.45;">
+              <i class="fas fa-circle-info"></i> Escribí la fecha que muestra La Voz (<b>Finaliza dd/mm/aaaa</b>): el aviso queda vigente hasta el final de ese día.
+              Si lo dejás vacío, se calcula con la duración (10 o 30 días).
             </div>
             <div id="lavozPlanWarn" style="margin-top:2px;margin-bottom:10px;font-size:11px;color:#fcd34d;${String(r.plan || p.plan_recomendado || 'basico').toLowerCase() !== String(p.plan_recomendado || 'basico').toLowerCase() ? '' : 'display:none;'}"><i class="fas fa-triangle-exclamation"></i> El plan seleccionado es distinto al recomendado (${esc(String(p.plan_recomendado || 'basico').replace(/_/g, ' '))}). Revisá el costo antes de confirmar.</div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -1831,6 +1865,7 @@ try {
         await lavozApiCall('unpublish', { property_id: unpub.dataset.lavozUnpub });
         showToast('Aviso marcado como despublicado.', 'success');
         loadLavozPanel();
+        if (typeof window.adminApp.refreshLavozIcons === 'function') window.adminApp.refreshLavozIcons();
       } catch (err) { showToast('Error: ' + err.message, 'error'); }
     }
   });
@@ -1842,6 +1877,19 @@ try {
       const rec = String(planSel.dataset.recommended || '').toLowerCase();
       const val = String(planSel.value || '').toLowerCase();
       if (warn instanceof HTMLElement) warn.style.display = rec && val && rec !== val ? 'block' : 'none';
+    }
+    /* Si el empleador escribió la fecha real de La Voz, la duración deja de
+       pisarla (la fecha manda). Si no la tocó, cambiar la duración recalcula
+       la fecha propuesta. */
+    const fechaEl = e.target.closest('#lavozVenceEl');
+    if (fechaEl instanceof HTMLInputElement) {
+      _lavozFechaManual = true;
+      return;
+    }
+    const diasSel = e.target.closest('#lavozConfirmDias');
+    if (diasSel instanceof HTMLSelectElement && !_lavozFechaManual) {
+      const dateEl = document.querySelector('#lavozVenceEl');
+      if (dateEl instanceof HTMLInputElement) dateEl.value = lavozFechaInput(null, diasSel.value);
     }
   });
 
@@ -1894,9 +1942,14 @@ try {
       const input = document.querySelector('#lavozAdUrl');
       const diasEl = document.querySelector('#lavozConfirmDias');
       const planEl = document.querySelector('#lavozConfirmPlan');
+      const venceEl = document.querySelector('#lavozVenceEl');
       const url = (input?.value || '').trim();
       const dias = Number(diasEl instanceof HTMLSelectElement ? diasEl.value : 30);
       const plan = planEl instanceof HTMLSelectElement ? String(planEl.value || '').toLowerCase() : '';
+      /* Fecha real de vencimiento (dd/mm/aaaa de La Voz). Vacía = se usa la
+         duración. Se manda como 'YYYY-MM-DD' y el server la toma hasta el
+         final de ese día. */
+      const venceFecha = venceEl instanceof HTMLInputElement ? String(venceEl.value || '').trim() : '';
       if (!propertyId) {
         logError('lavoz confirm', new Error('Falta property_id en el modal'));
         showToast('No se pudo identificar la propiedad. Cerrá el modal y volvé a preparar el aviso.', 'error');
@@ -1908,6 +1961,19 @@ try {
         return;
       }
       if (dias !== 10 && dias !== 30) { showToast('La duración debe ser 10 o 30 días.', 'error'); return; }
+      if (venceFecha && !/^\d{4}-\d{2}-\d{2}$/.test(venceFecha)) {
+        showToast('La fecha de vencimiento no es válida.', 'error'); return;
+      }
+      if (venceFecha) {
+        /* No se puede guardar un aviso que ya venció: el panel lo marcaría
+           como vencido al instante y el link quedaría sin sentido. */
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        const elegida = new Date(venceFecha + 'T00:00:00');
+        if (isNaN(elegida.getTime()) || elegida.getTime() < hoy.getTime()) {
+          showToast('La fecha de vencimiento no puede ser anterior a hoy.', 'error'); return;
+        }
+      }
       if (plan && !['basico', 'estandar', 'premium', 'super_premium'].includes(plan)) {
         showToast('El plan seleccionado no es válido.', 'error'); return;
       }
@@ -1915,10 +1981,11 @@ try {
       const prevHtml = btn ? btn.innerHTML : '';
       if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando…'; }
       try {
-        const res = await lavozApiCall('confirm', { property_id: propertyId, ad_url: url, dias, plan: plan || undefined });
+        const res = await lavozApiCall('confirm', { property_id: propertyId, ad_url: url, dias, plan: plan || undefined, expires_at: venceFecha || undefined });
         showToast('Aviso publicado. Vence el ' + lavozFecha(res.expires_at) + '. Link guardado en el panel.', 'success');
         closeModal('lavozModal');
         await loadLavozPanel();
+        if (typeof window.adminApp.refreshLavozIcons === 'function') window.adminApp.refreshLavozIcons();
       } catch (err) {
         logError('lavoz confirm', err);
         showToast('No se pudo guardar el link: ' + err.message, 'error');

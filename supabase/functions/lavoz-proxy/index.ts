@@ -208,6 +208,32 @@ function validarAdUrl(valor: unknown): string | null {
 }
 
 /**
+ * Vencimiento MANUAL (2026-11-26, pedido del empleador): la fecha REAL que
+ * muestra La Voz ("Finaliza 06/12/2026") para poder coordinar la
+ * publicación con el aviso del portal. Sin esto, el vencimiento se calculaba
+ * como publicado + 10/30 días y cualquier diferencia con el portal dejaba al
+ * CRM mintiendo.
+ * Acepta 'YYYY-MM-DD' (se toma hasta el FINAL de ese día) o un ISO completo.
+ */
+function validarVencimiento(valor: unknown): string | null {
+  if (valor === undefined || valor === null || valor === '') return null;
+  const s = String(valor).trim();
+  if (!s) return null;
+  let d: Date;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    // Fin del día en UTC: en Argentina (UTC-3) sigue siendo el mismo día.
+    d = new Date(s + 'T23:59:59.000Z');
+  } else {
+    d = new Date(s);
+  }
+  if (isNaN(d.getTime())) throw new Error('La fecha de vencimiento no es válida');
+  const ahora = Date.now();
+  if (d.getTime() <= ahora) throw new Error('La fecha de vencimiento tiene que ser futura');
+  if (d.getTime() > ahora + 400 * 86400000) throw new Error('La fecha de vencimiento no puede ser más de 400 días');
+  return d.toISOString();
+}
+
+/**
  * Vence los avisos cuyo expires_at ya pasó (10 o 30 días, según el plan).
  * Es self-healing: el estado se corrige solo la primera vez que alguien
  * mira el panel (no hace falta un cron para un aviso que nadie consulta).
@@ -429,6 +455,7 @@ async function handleRequest(req: Request): Promise<Response> {
       let adUrl: string | null;
       let dias: number;
       let plan: string | null;
+      let venceManual: string | null = null;
       try {
         /* Un re-confirm sin URL conserva el link real ya guardado. La
            versión anterior lo pisaba con null (el asistente confirma sin URL
@@ -453,6 +480,8 @@ async function handleRequest(req: Request): Promise<Response> {
         } else {
           plan = existing?.plan || null;
         }
+        /* Fecha real de La Voz (si viene): manda sobre la duración. */
+        venceManual = validarVencimiento(body.expires_at);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         return jsonResponse(400, { error: msg }, req);
@@ -460,7 +489,8 @@ async function handleRequest(req: Request): Promise<Response> {
 
       const remoteId = String(body.remote_id ?? '').trim() || existing?.remote_id || null;
       const now = new Date();
-      const expires = new Date(now.getTime() + dias * 86400000);
+      /* Si no viene fecha manual, el vencimiento es publicado + duración. */
+      const expires = venceManual ? new Date(venceManual) : new Date(now.getTime() + dias * 86400000);
       const { error } = await supabase.from('lavoz_listings').upsert({
         property_id: propertyId,
         status: 'published',
@@ -472,7 +502,7 @@ async function handleRequest(req: Request): Promise<Response> {
         last_error: null,
       }, { onConflict: 'property_id' });
       if (error) throw error;
-      await audit(supabase, actor, 'lavoz_confirm', { property_id: propertyId, ad_url: adUrl });
+      await audit(supabase, actor, 'lavoz_confirm', { property_id: propertyId, ad_url: adUrl, expires_at: expires.toISOString() });
       return jsonResponse(200, { ok: true, published_at: now.toISOString(), expires_at: expires.toISOString() }, req);
     }
 

@@ -52,6 +52,10 @@
     window.__FETCH_CALLS.push({ url: url, action: body.action, body: body });
     let out = { ok: true };
     if (body.action === 'prepare') {
+      /* Fechas DINÁMICAS: el modal valida que el vencimiento no sea pasado,
+         así que un fecha fija envejece y el harness empezaría a fallar solo. */
+      const publicado = new Date(Date.now() - 86400000).toISOString();
+      const vence = new Date(Date.now() + 30 * 86400000).toISOString();
       out = {
         ok: true,
         results: [{
@@ -60,8 +64,8 @@
           titulo: 'Terreno de prueba',
           status: 'published',
           ad_url: 'https://clasificados.lavoz.com.ar/avisos/inmuebles/terreno/5680772/terreno-de-prueba',
-          published_at: '2026-11-01T00:00:00Z',
-          expires_at: '2026-12-01T00:00:00Z',
+          published_at: publicado,
+          expires_at: vence,
           avisos: [],
           payload: {
             property_id: 'prop-1', property_code: 'DA-P0099', titulo: 'Terreno de prueba',

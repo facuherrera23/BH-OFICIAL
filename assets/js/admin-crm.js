@@ -38,7 +38,11 @@ var LEGACY_STAGE_MAP = { visita: 'visita_agendada', oferta: 'negociacion', cerra
      medir su performance. */
 var ORIGINS = ['landing_page','newsletter','manual','landing','ml','rela_zonaprop','lavoz','youtube','facebook','instagram','tiktok','gvamax','chat','referido','tasacion','walkin','contacto','propiedad','whatsapp','web'];
 var ORIGIN_LABELS = { manual:'Manual', landing_page:'Landing web', landing:'Landing (legado)', newsletter:'Newsletter', ml:'Mercado Libre', rela_zonaprop:'ZonaProp (RELA)', lavoz:'Clasificados La Voz', youtube:'YouTube', facebook:'Facebook', instagram:'Instagram', tiktok:'TikTok', gvamax:'Gvamax (import)', chat:'Chat', referido:'Referido', tasacion:'Tasación', walkin:'Visita en persona', contacto:'Contacto', propiedad:'Propiedad', whatsapp:'WhatsApp', web:'Web' };
-var TIPO_CLIENTE_OPTS = ['propietario','comprador','inversor','inquilino'];
+var TIPO_CLIENTE_OPTS = ['propietario','comprador','inversor','inquilino','colega'];
+/* Etiquetas legibles. 'colega' = colega/corredor que consulta para un cliente
+   propio (pedido del empleador 2026-11-26): NO es un cliente final, por eso
+   no deriva operación (ver TIPO_CLIENTE_OPERATION). */
+var TIPO_CLIENTE_LABELS = { propietario:'Propietario', comprador:'Comprador', inversor:'Inversor', inquilino:'Inquilino', colega:'Colega / Corredor' };
 var OPERATION_OPTS = ['compra','venta','alquiler'];
 /* Un solo dato cargado: tipo_cliente manda, operation_type se deriva.
    Mismo mapa en admin-app.js y admin-propiedades.js (guard en tests). */
@@ -235,6 +239,11 @@ function applyBaseFilters(q) {
      origen a mano, el chip se apaga — ver el listener del select). */
   var or = $id('crmOriginFilter'); if (or && or.value && !_mlUntouchedFilter) q = q.eq('source', or.value);
   var tp = $id('crmTipoOperacionFilter'); if (tp && tp.value) q = q.or(operationFilter(tp.value));
+  /* Filtro por TIPO DE CLIENTE (2026-11-26, pedido del empleador): separar
+     compradores/inquilinos de los colegas-corredores que consultan para un
+     cliente propio. Es un eq simple (tipo_cliente), no el filtro de operación:
+     un colega no tiene operación definida. */
+  var tc = $id('crmTipoClienteFilter'); if (tc && tc.value) q = q.eq('tipo_cliente', tc.value);
   var ag = $id('crmAgentFilter');
   if (ag && ag.value === '__none__') q = q.is('assigned_to', null);
   else if (ag && ag.value) q = q.eq('assigned_to', ag.value);
@@ -1193,7 +1202,7 @@ var propCell;
       nextTxt = '<span class="crm-muted">&#8212;</span>';
     }
     var createdTxt = l.created_at ? fmtDate(l.created_at) : '&#8212;';
-    var tipoChip = l.tipo_cliente ? '<span class="crm-tipo-chip crm-tipo-chip--' + esc(l.tipo_cliente) + '">' + esc(l.tipo_cliente) + '</span>' : '';
+    var tipoChip = l.tipo_cliente ? '<span class="crm-tipo-chip crm-tipo-chip--' + esc(l.tipo_cliente) + '">' + esc(TIPO_CLIENTE_LABELS[l.tipo_cliente] || l.tipo_cliente) + '</span>' : '';
     rows +=
       '<tr class="crm-row" data-id="' + l.id + '">' +
         '<td><div class="crm-client-row"><span class="crm-client-avatar" style="background:' + avColor + '">' + inits + '</span><div><strong>' + esc(l.full_name) + '</strong>' + tipoChip + '<div class="crm-meta">' + esc(l.email || '') + (l.phone ? ' &middot; ' + esc(l.phone) : '') + '</div></div></div></td>' +
@@ -2079,7 +2088,7 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
   var sopts = LEAD_STATUSES.map(function (s) { return '<option value="' + s + '"' + (stage === s ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>'; }).join('');
   var aopts = _agents.map(function (a) { return '<option value="' + a.id + '"' + (lead.assigned_to === a.id ? ' selected' : '') + '>' + esc(a.full_name) + '</option>'; }).join('');
   var oopts = ORIGINS.map(function (o) { return '<option value="' + o + '"' + (lead.source === o ? ' selected' : '') + '>' + (ORIGIN_LABELS[o] || o) + '</option>'; }).join('');
-  var tcOpts = TIPO_CLIENTE_OPTS.map(function (t) { return '<option value="' + t + '"' + (lead.tipo_cliente === t ? ' selected' : '') + '>' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>'; }).join('');
+  var tcOpts = TIPO_CLIENTE_OPTS.map(function (t) { return '<option value="' + t + '"' + (lead.tipo_cliente === t ? ' selected' : '') + '>' + esc(TIPO_CLIENTE_LABELS[t] || t) + '</option>'; }).join('');
 
   var surveyMap = {};
   (surveys || []).forEach(function (s) { if (!s.archived_at) surveyMap[s.property_id] = s; });
@@ -2443,8 +2452,9 @@ function collectSideForm(panel, lead) {
     source: v('crmDtlOrigin'),
     tipo_cliente: tipo,
     /* Un solo campo editable: la operación se deriva del tipo. Si no hay tipo,
-       se conserva la operación vieja para no pisar datos heredados. */
-    operation_type: tipo ? operationFromTipoCliente(tipo) : ((lead && lead.operation_type) || null),
+       se conserva la operación vieja para no pisar datos heredados.
+       'colega' no deriva operación → se conserva la que ya tenía el lead. */
+    operation_type: (tipo ? operationFromTipoCliente(tipo) : null) || ((lead && lead.operation_type) || null),
     assigned_to: v('crmDtlAgent') || null,
     notes: v('crmDtlNotes')
   };
@@ -2659,7 +2669,7 @@ if (search) search.addEventListener('input', function () {
       }
     }, 350);
   });
-  ['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmAgentFilter'].forEach(function (id) {
+  ['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmTipoClienteFilter', 'crmAgentFilter'].forEach(function (id) {
     var el = $id(id);
     if (el) el.addEventListener('change', function () {
       /* Si el usuario cambia el origen a mano, el chip "ML sin responder" se
@@ -2680,6 +2690,14 @@ if (search) search.addEventListener('input', function () {
     tpSel.dataset.filled = '1';
     tpSel.innerHTML = '<option value="">Todos</option>' +
       OPERATION_OPTS.map(function (t) { return '<option value="' + t + '">' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>'; }).join('');
+  }
+  /* Filtro por tipo de cliente (2026-11-26): comprador / inquilino /
+     corredor (colega) y el resto. */
+  var tcSel = $id('crmTipoClienteFilter');
+  if (tcSel && !tcSel.dataset.filled) {
+    tcSel.dataset.filled = '1';
+    tcSel.innerHTML = '<option value="">Tipo de cliente: todos</option>' +
+      TIPO_CLIENTE_OPTS.map(function (t) { return '<option value="' + t + '">' + (TIPO_CLIENTE_LABELS[t] || t) + '</option>'; }).join('');
   }
   if (!$id('crmFollowupFilter') && $id('crmFollowupWrap')) {
     var wrap = $id('crmFollowupWrap');
@@ -2858,7 +2876,7 @@ function _syncHeader() {
   var newOwnerCrm = $id('btnNewOwnerCrm');
   var titleEl = $id('crmTitle');
   var searchEl = $id('crmSearch');
-  var leadOnly = ['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmAgentFilter', 'crmFollowupWrap', 'crmMlUntouchedWrap'];
+  var leadOnly = ['crmStatusFilter', 'crmOriginFilter', 'crmTipoOperacionFilter', 'crmTipoClienteFilter', 'crmAgentFilter', 'crmFollowupWrap', 'crmMlUntouchedWrap'];
   var ownerOnly = ['crmOwnerAgentFilter', 'crmOwnerExclFilter', 'crmOwnerTaskFilter', 'crmOwnerStatusFilter'];
   if (btn) {
     /* Pedido del empleador: el botón del modo contrario avisa tareas vencidas
