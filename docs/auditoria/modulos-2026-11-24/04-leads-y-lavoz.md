@@ -201,7 +201,7 @@ que seguían contradiciendo al panel:
    termina siendo de un colega, se reclasifica desde el panel lateral y **la operación se
    conserva** (no se pisa). Hay un guard para que nadie "arregle" esa lista.
 
-**Verificación empírica de los filtros (SQL sobre los 86 leads vivos)**: Compra 57 ·
+**Verificación empírica de los filtros (SQL sobre los 124 leads vivos)**: Compra 57 ·
 Alquiler 29 · Venta **0** (no hay ningún lead clasificado como venta todavía) · 38 leads sin
 tipo ni operación (no aparecen en ningún filtro de operación: comportamiento pre-existente).
 No hay falsos positivos: el filtro de operación, el de tipo y el de búsqueda se combinan
