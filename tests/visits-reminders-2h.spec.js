@@ -15,6 +15,7 @@
 const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
@@ -47,7 +48,10 @@ test.describe('Recordatorio 2h de visita', () => {
     // sin esto el wa.me salía sin country code y el clic no abría el chat.
     expect(shared).toContain('function waDigitsAr(phone: string): string {');
     expect(shared).toContain("if (d.startsWith('549')) d = d.slice(3);");
-    expect(shared).toContain("return d ? '549' + d : '';");
+    // Espejo EXACTO del CRM: el "15" de celulares y el largo válido.
+    expect(shared).toContain("if (rest.startsWith('15')) rest = rest.slice(2);");
+    expect(shared).toContain("if (d.length < 8 || d.length > 12) return '';");
+    expect(shared).toContain("return '549' + d;");
     // El asunto del aviso al agente lo dice en claro.
     expect(shared).toContain('avisale a ');
     // El cliente sin email es EL MOTIVO del aviso al agente (explicitado).
@@ -69,5 +73,88 @@ test.describe('Recordatorio 2h de visita', () => {
     expect(runner).toContain('await processReminders()');
     // Sin residuos de la lógica vieja duplicada en el shared.
     expect((shared.match(/const visitJobs/g) || []).length).toBe(0);
+  });
+
+  // ── Auditoría 2026-11-27 (producción): dos defectos reales del camino 2h ──
+  test('la ventana 24h NO toma las visitas que ya entran en la ventana 2h', () => {
+    // Sin este filtro, una visita agendada para dentro de 2h recibía DOS
+    // emails contradictorios ("tu visita de mañana" + "es en ~2 horas").
+    expect(shared).toContain('const cutoff2h = now + 2 * 60 * 60 * 1000;');
+    expect(shared).toContain("kind === '24h'");
+    expect(shared).toContain('new Date(v.visit_date).getTime() > cutoff2h');
+    // Y el email de 24h ya no afirma "mañana" (puede ser HOY).
+    expect(shared).not.toContain('tu visita de mañana');
+    expect(shared).not.toContain('programada mañana');
+    expect(shared).toContain('Recordatorio: tu visita programada en BIENENHAUS');
+  });
+
+  test('el email 2h al cliente conserva el link de confirmar/cancelar', () => {
+    // La visita de última hora ya no recibe el email de 24h → el link de
+    // confirmación tiene que estar también en el email de 2h.
+    expect(shared).toContain('buildReminder2hEmail(visit, confirmUrl)');
+    expect(shared).toContain("function buildReminder2hEmail(visit: any, confirmUrl?: string | null)");
+    expect(shared).toContain('Confirmá desde este link: ');
+    expect(shared).toContain('confirmar-visita.html?token=');
+  });
+
+  test('behavioral: waDigitsAr es espejo EXACTO del normalizeArPhone del CRM', () => {
+    const from = shared.indexOf('function waDigitsAr(');
+    expect(from).toBeGreaterThan(-1);
+    // Se evalúa el código REAL (con las anotaciones de tipos removidas).
+    const src = shared
+      .slice(from)
+      .replace('function waDigitsAr(phone: string): string {', 'function waDigitsAr(phone) {')
+      .replace('function buildReminder2hEmail(visit: any, confirmUrl?: string | null): { html: string; text: string } {', 'function buildReminder2hEmail(visit, confirmUrl) {')
+      .replace('function buildReminder2hAgenteEmail(visit: any, agenteNombre: string): { html: string; text: string } {', 'function buildReminder2hAgenteEmail(visit, agenteNombre) {')
+      .replace('const AR_MOBILE_AREAS: Record<string, number> =', 'const AR_MOBILE_AREAS =');
+    const sandbox = { fmtDateTimeAR: (iso) => 'fecha ' + iso };
+    vm.createContext(sandbox);
+    vm.runInContext(src, sandbox);
+
+    // Mismos casos que el CRM (assets/js/admin-crm.js → normalizeArPhone).
+    expect(sandbox.waDigitsAr('3513 96-5289')).toBe('5493513965289');
+    expect(sandbox.waDigitsAr('5493513965289')).toBe('5493513965289');
+    expect(sandbox.waDigitsAr('54 9 3513-96-5289')).toBe('5493513965289');
+    expect(sandbox.waDigitsAr('0 3513 96 5289')).toBe('5493513965289');
+    expect(sandbox.waDigitsAr('9 3513 96 5289')).toBe('5493513965289');
+    // El marcador móvil doméstico "15": sin esto el wa.me apuntaba mal.
+    expect(sandbox.waDigitsAr('15 3513-96-5289')).toBe('5493513965289');
+    expect(sandbox.waDigitsAr('11 15 3513-96-5289')).toBe('549113513965289');
+    // Teléfono incompleto → SIN link (espejo del null del CRM).
+    expect(sandbox.waDigitsAr('3516')).toBe('');
+    expect(sandbox.waDigitsAr('')).toBe('');
+  });
+
+  test('behavioral: el email del agente lleva el wa.me y el del cliente el link', () => {
+    const from = shared.indexOf('function waDigitsAr(');
+    const src = shared
+      .slice(from)
+      .replace('function waDigitsAr(phone: string): string {', 'function waDigitsAr(phone) {')
+      .replace('function buildReminder2hEmail(visit: any, confirmUrl?: string | null): { html: string; text: string } {', 'function buildReminder2hEmail(visit, confirmUrl) {')
+      .replace('function buildReminder2hAgenteEmail(visit: any, agenteNombre: string): { html: string; text: string } {', 'function buildReminder2hAgenteEmail(visit, agenteNombre) {')
+      .replace('const AR_MOBILE_AREAS: Record<string, number> =', 'const AR_MOBILE_AREAS =');
+    const sandbox = { fmtDateTimeAR: (iso) => 'fecha ' + iso };
+    vm.createContext(sandbox);
+    vm.runInContext(src, sandbox);
+
+    const visita = {
+      client_name: 'Olga Ponssa',
+      client_phone: '15 3513-96-5289',
+      visit_date: '2026-11-27T15:00:00Z',
+      property: { title: 'Casa en Villa Azalay', property_code: 'DA-P0001' },
+    };
+
+    // Al cliente: el link de confirmar aparece y el texto NO dice "mañana".
+    const cliente = sandbox.buildReminder2hEmail(visita, 'https://bienenhaus.com.ar/confirmar-visita.html?token=tok-1');
+    expect(cliente.html).toContain('confirmar-visita.html?token=tok-1');
+    expect(cliente.text).toContain('Confirmá desde este link:');
+    expect(cliente.html).not.toContain('mañana');
+
+    // Al agente: wa.me con el número ya normalizado y el mensaje pre-cargado.
+    const agente = sandbox.buildReminder2hAgenteEmail(visita, 'Danilo Arbo');
+    expect(agente.html).toContain('https://wa.me/5493513965289');
+    expect(agente.html).toContain('Enviar WhatsApp pre-cargado');
+    expect(agente.text).toContain('wa.me/5493513965289');
+    expect(agente.html).toContain('no dejó email');
   });
 });

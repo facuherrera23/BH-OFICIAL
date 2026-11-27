@@ -140,7 +140,7 @@ function buildReminderEmail(visit: any, confirmUrl: string | null): { html: stri
   const dur = visit.duration_minutes ? `${visit.duration_minutes} min` : '60 min';
 
   const text = `Hola ${visit.client_name || ''}:
-Recordatorio de tu visita de mañana en BIENENHAUS:
+Recordatorio de tu visita programada en BIENENHAUS:
 - Día/hora: ${fecha}
 - Propiedad: ${propLabel}
 - Duración estimada: ${dur}
@@ -150,7 +150,7 @@ Si no podés asistir avisanos para reprogramar.`;
   const html = `<!doctype html><html><body style="font-family:Arial,sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px;">
   <h2 style="color:#b93d2c;margin:0 0 6px;">Recordatorio de visita</h2>
   <p>Hola <strong>${visit.client_name || 'Cliente'}</strong>,</p>
-  <p>Te recordamos tu visita programada mañana:</p>
+  <p>Te recordamos tu visita programada:</p>
   <table style="border-collapse:collapse;margin:12px 0;">
     <tr><td style="padding:6px 10px;color:#555;">Día y hora</td><td style="padding:6px 10px;"><strong>${fecha}</strong></td></tr>
     <tr><td style="padding:6px 10px;color:#555;">Propiedad</td><td style="padding:6px 10px;"><strong>${propLabel}</strong></td></tr>
@@ -200,6 +200,15 @@ export async function processReminders(): Promise<RemindersResult> {
 
     if (error) throw new Error(error.message);
 
+    /* La ventana 24h NO toma las visitas que ya entran en la ventana 2h.
+       Si las tomara, el cliente recibiría DOS emails contradictorios
+       ("tu visita programada" + "es en ~2 horas") para la misma visita.
+       La ventana 2h las cubre (con su propio link de confirmación). */
+    const cutoff2h = now + 2 * 60 * 60 * 1000;
+    const candidatos: any[] = kind === '24h'
+      ? ((visits as any[]) || []).filter((v) => new Date(v.visit_date).getTime() > cutoff2h)
+      : (visits as any[]) || [];
+
     let sent = 0;
     let failed = 0;
     let skipped = 0;
@@ -212,15 +221,18 @@ export async function processReminders(): Promise<RemindersResult> {
       return !markErr;
     };
 
-    const jobs = ((visits as any[]) || []).map(async (visit) => {
+    const jobs = (candidatos).map(async (visit) => {
       try {
         if (visit.client_email) {
           // Camino 1: email directo al cliente.
+          const confirmUrl = visit.confirmation_token
+            ? config.site_origin + '/confirmar-visita.html?token=' + visit.confirmation_token
+            : null;
           const { html, text } = kind === '24h'
-            ? buildReminderEmail(visit, visit.confirmation_token ? config.site_origin + '/confirmar-visita.html?token=' + visit.confirmation_token : null)
-            : buildReminder2hEmail(visit);
+            ? buildReminderEmail(visit, confirmUrl)
+            : buildReminder2hEmail(visit, confirmUrl);
           const subject = kind === '24h'
-            ? 'Recordatorio: tu visita de mañana en BIENENHAUS'
+            ? 'Recordatorio: tu visita programada en BIENENHAUS'
             : 'Tu visita es en ~2 horas (' + fmtDateTimeAR(visit.visit_date) + ')';
           const r = await sendBrevo(config, visit.client_email, subject, html, text);
           if (!r.ok) throw new Error(r.error || 'send failed');
@@ -278,8 +290,10 @@ export async function processReminders(): Promise<RemindersResult> {
   return { sent: r24.sent + r2.sent, failed: r24.failed + r2.failed, sent2h: r2.sent };
 }
 
-/* Normalización AR para el deep link de WhatsApp: espejo de normalizeArPhone +
-   waNumber del CRM (soporta 00/54/0/9 y el 15 de celulares → 549 + área+número). */
+/* Normalización AR para el deep link de WhatsApp: ESPEJO EXACTO de
+   normalizeArPhone + waNumber del CRM (soporta 00/54/0/9, el 15 de celulares
+   y las áreas 11/221/341/351). Sin el bloque del "15" un teléfono guardado
+   como "15 3513-96-5289" producía un wa.me a un número inexistente. */
 function waDigitsAr(phone: string): string {
   let d = String(phone || '').replace(/\D/g, '');
   if (!d) return '';
@@ -288,11 +302,26 @@ function waDigitsAr(phone: string): string {
   else if (d.startsWith('54')) d = d.slice(2);
   if (d.startsWith('0')) d = d.slice(1);
   if (d.startsWith('9') && d.length <= 12) d = d.slice(1);
-  return d ? '549' + d : '';
+  const AR_MOBILE_AREAS: Record<string, number> = { '11': 1, '221': 1, '341': 1, '351': 1 };
+  const area3 = d.slice(0, 3);
+  const area2 = d.slice(0, 2);
+  if (AR_MOBILE_AREAS[area3] || AR_MOBILE_AREAS[area2]) {
+    const area = AR_MOBILE_AREAS[area3] ? area3 : area2;
+    let rest = d.slice(area.length);
+    if (rest.startsWith('15')) rest = rest.slice(2); // marcador móvil doméstico
+    d = area + rest;
+  } else if (d.startsWith('15')) {
+    d = d.slice(2);
+  }
+  if (d.length < 8 || d.length > 12) return ''; // teléfono incompleto: sin link
+  return '549' + d;
 }
 
-/* Email 2h al CLIENTE (adaptación fiel del de la función huérfana). */
-function buildReminder2hEmail(visit: any): { html: string; text: string } {
+/* Email 2h al CLIENTE (adaptación fiel del de la función huérfana).
+   El link de confirmación también va acá: una visita agendada para dentro de
+   2h ya no recibe el email de 24h (quedaría contradictorio), así que el
+   cliente necesita poder confirmar/cancelar desde este email. */
+function buildReminder2hEmail(visit: any, confirmUrl?: string | null): { html: string; text: string } {
   const fecha = fmtDateTimeAR(visit.visit_date);
   const propLabel = visit.property?.title
     ? visit.property.title + (visit.property.property_code ? ' (' + visit.property.property_code + ')' : '')
@@ -302,6 +331,7 @@ function buildReminder2hEmail(visit: any): { html: string; text: string } {
     'Tu visita en BIENENHAUS es en aproximadamente 2 horas.\n' +
     '- Día y hora: ' + fecha + '\n' +
     '- Propiedad: ' + propLabel + '\n' +
+    (confirmUrl ? 'Confirmá desde este link: ' + confirmUrl + '\n' : '') +
     'Si no podés asistir avisanos para reprogramar.';
 
   const html = '<!doctype html><html><body style="font-family:Arial,sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px;">' +
@@ -312,6 +342,9 @@ function buildReminder2hEmail(visit: any): { html: string; text: string } {
       '<tr><td style="padding:6px 10px;color:#555;">Día y hora</td><td style="padding:6px 10px;"><strong>' + fecha + '</strong></td></tr>' +
       '<tr><td style="padding:6px 10px;color:#555;">Propiedad</td><td style="padding:6px 10px;"><strong>' + propLabel + '</strong></td></tr>' +
     '</table>' +
+    (confirmUrl
+      ? '<p><a href="' + confirmUrl + '" style="display:inline-block;background:#1FC8C3;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;">Confirmar mi visita</a></p>'
+      : '') +
     '<p style="color:#555;font-size:13px;">Si no podés asistir, respondé este email y lo reprogramamos.</p>' +
   '</body></html>';
 

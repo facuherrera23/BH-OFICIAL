@@ -14,7 +14,10 @@ const CORS = {
   'access-control-allow-methods': 'POST, OPTIONS',
 };
 
-function respond(status: number, body: Record<string, unknown>): Response {
+/* `unknown` y no `Record<string, unknown>`: una INTERFAZ (RemindersResult)
+   no tiene index signature, así que `Record<string, unknown>` la rechazaba
+   (TS2345) aunque el runtime fuera correcto. */
+function respond(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...CORS, 'content-type': 'application/json' },
