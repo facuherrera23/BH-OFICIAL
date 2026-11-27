@@ -498,7 +498,7 @@
           (linkedUser.last_sign_in_at ? '<div class="ag-d-sub" style="font-size:11px; color:var(--text-dim); margin-top:4px;">Último acceso: ' + new Date(linkedUser.last_sign_in_at).toLocaleString('es-AR') + '</div>' : '<div class="ag-d-sub" style="font-size:11px; color:var(--warning); margin-top:4px;"><i class="fas fa-hourglass-half" style="margin-right:4px;"></i>Nunca entró al sistema</div>') +
           '</div>'
         : '';
-      const STAGE_LABELS = { nuevo: 'Nuevo', contactado: 'Contactado', calificado: 'Calificado', visita_agendada: 'Visita agendada', visita_realizada: 'Visita realizada', negociacion: 'Negociación', oferta: 'Oferta', cerrado: 'Cerrado', perdido: 'Perdido' };
+      const STAGE_LABELS = { nuevo: 'Nuevo', contactado: 'Contactado', calificado: 'Calificado', visita_agendada: 'Visita agendada', visita_realizada: 'Visita realizada', negociacion: 'Negociación', en_espera: 'En espera', oferta: 'Oferta', cerrado: 'Cerrado', perdido: 'Perdido' };
       const leadsHtml = (leadsRes.data || []).length
         ? leadsRes.data.map(l => '<div class="ag-d-item"><span>' + esc(l.full_name || 'Lead') + '</span><span style="font-size:10px; color:' + (l.stage === 'cerrado' ? 'var(--success)' : l.stage === 'perdido' ? 'var(--danger)' : 'var(--text-dim)') + ';">' + esc(STAGE_LABELS[l.stage] || l.stage) + '</span></div>').join('')
         : '<div class="ag-d-empty">Sin leads asignados</div>';

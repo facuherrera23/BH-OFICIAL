@@ -20,6 +20,11 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const mig1 = read('supabase/migrations/20261126000004_mi_bandeja.sql');
 const mig2 = read('supabase/migrations/20261126000005_mi_bandeja_ajustes.sql');
 const mig3 = read('supabase/migrations/20261126000006_mi_bandeja_badge_total.sql');
+/* La VERSIÓN VIGENTE de mi_bandeja y del badge: la migración 20261127000004
+   (P1-6, "en espera") los recreó. Los guards de arriba miran las migraciones
+   originales (ya aplicadas y archivadas): sin este bloque, una regresión que
+   metiera de nuevo los leads colgados en la bandeja PASARÍA el spec. */
+const migVigente = read('supabase/migrations/20261127000004_lead_espera_rpc.sql');
 const crmSrc = read('assets/js/admin-crm.js');
 const htmlSrc = read('admin.html');
 const cssSrc = read('assets/css/admin.css');
@@ -79,6 +84,21 @@ test.describe('Mi bandeja — lo que hay que atender hoy', () => {
     for (const k of ['leads_new_24h', 'tasks_overdue_total', 'alq_contracts_expiring', 'visits_today']) {
       expect(mig3).toContain("'" + k + "'");
     }
+  });
+
+  test('la versión vigente (P1-6) excluye los leads colgados de la bandeja y del badge', () => {
+    // La migración 20261127000004 recrea mi_bandeja y get_sidebar_badge_counts:
+    // un lead en "en espera" NO es un seguimiento vencido (está colgado a
+    // propósito, con fecha de regreso) y sus tareas están suspendidas.
+    expect(migVigente).toContain('CREATE OR REPLACE FUNCTION public.mi_bandeja(p_user_id uuid DEFAULT NULL)');
+    expect(migVigente).toContain('CREATE OR REPLACE FUNCTION public.get_sidebar_badge_counts');
+    // La exclusión explícita del estado colgado en cada sección de deuda.
+    expect(migVigente.match(/stage NOT IN \('cerrado_ganado', 'cerrado_perdido', 'en_espera'\)/g).length).toBeGreaterThanOrEqual(4);
+    // El badge de tareas vencidas también (mismo filtro que la bandeja).
+    expect(migVigente).toContain("and l.stage not in ('cerrado_ganado', 'cerrado_perdido', 'en_espera')");
+    // Y los permisos siguen cerrados a anon.
+    expect(migVigente).toContain('REVOKE ALL ON FUNCTION public.mi_bandeja(uuid) FROM PUBLIC, anon;');
+    expect(migVigente).toContain('GRANT EXECUTE ON FUNCTION public.mi_bandeja(uuid) TO authenticated, service_role;');
   });
 
   test('el CRM tiene el botón Mi bandeja con contador', () => {

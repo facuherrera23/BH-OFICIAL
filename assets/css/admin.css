@@ -5512,6 +5512,103 @@ input[type="range"]::-moz-range-thumb {
 .crm-tl-inline-actions{display:flex;gap:6px;margin-top:8px}
 .crm-tl-inline-actions .crm-visit-btn{width:28px;height:28px;font-size:12px}
 
+/* --- P0-2 (2026-11-27): posponer en 1 clic (+1d / +3d / +1s) --- */
+.crm-postponer{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap}
+.crm-postponer-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:32px;height:24px;padding:0 7px;border-radius:6px;
+  border:1px solid var(--border-subtle);background:rgba(255,255,255,0.04);
+  color:var(--text-secondary);font-size:10.5px;font-weight:700;letter-spacing:.3px;
+  cursor:pointer;transition:all .12s ease;white-space:nowrap;
+}
+.crm-postponer-btn:hover{border-color:rgba(31,200,195,.45);color:var(--accent);background:rgba(31,200,195,.12)}
+.crm-postponer-btn:disabled{opacity:.45;cursor:not-allowed}
+.crm-tl-task-postpone{margin-top:6px}
+.crm-tl-task .crm-tl-task-postpone{display:none}
+.crm-tl-task:hover .crm-tl-task-postpone,
+.crm-tl-task:focus-within .crm-tl-task-postpone{display:block}
+
+/* --- P0-3 (2026-11-27): cierre de visita en 1 clic (Fui / No fui / +1d...) --- */
+.crm-visit-quick{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap;margin-left:2px}
+.crm-visit-quick-btn{
+  display:inline-flex;align-items:center;gap:4px;
+  height:28px;padding:0 9px;border-radius:7px;
+  border:1px solid var(--border-subtle);background:rgba(255,255,255,0.04);
+  color:var(--text-secondary);font-size:11px;font-weight:600;
+  cursor:pointer;transition:all .12s ease;white-space:nowrap;
+}
+.crm-visit-quick-btn:hover{border-color:rgba(31,200,195,.45);color:var(--accent);background:rgba(31,200,195,.12)}
+.crm-visit-quick-btn:disabled{opacity:.45;cursor:not-allowed}
+.crm-visit-quick-btn--ok:hover{border-color:rgba(16,185,129,.5);color:var(--success);background:rgba(16,185,129,.12)}
+.crm-visit-quick-btn--no:hover{border-color:rgba(239,68,68,.5);color:var(--danger);background:rgba(239,68,68,.12)}
+.crm-tl-visit .crm-visit-quick{display:none;margin-top:8px}
+.crm-tl-visit:hover .crm-visit-quick,
+.crm-tl-visit:focus-within .crm-visit-quick{display:inline-flex}
+
+/* --- P1-6 (2026-11-27): etapa "en espera" (lead colgado) --- */
+.crm-status-dot--en_espera{background:#64748b}
+.crm-status-badge--en_espera{color:var(--text-secondary)}
+.crm-espera-banner{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:11px 13px;margin-bottom:14px;border-radius:12px;
+  background:rgba(100,116,139,0.14);border:1px solid rgba(148,163,184,0.35);
+}
+.crm-espera-banner > i{font-size:18px;color:#94a3b8;flex-shrink:0}
+.crm-espera-txt{flex:1;min-width:180px;display:flex;flex-direction:column;gap:2px}
+.crm-espera-txt strong{font-size:12.5px;color:var(--text-primary);font-weight:700}
+.crm-espera-txt span{font-size:11px;color:var(--text-dim);line-height:1.45}
+.crm-espera-toolbar{
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  padding:8px 10px;margin-bottom:14px;border-radius:10px;
+  background:rgba(255,255,255,0.03);border:1px solid var(--border-subtle);
+}
+.crm-espera-toolbar-label{font-size:11px;color:var(--text-dim);font-weight:600;margin-right:2px}
+.crm-espera-toolbar-label i{margin-right:4px;color:#94a3b8}
+.crm-espera-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:32px;height:24px;padding:0 8px;border-radius:6px;
+  border:1px solid var(--border-subtle);background:rgba(255,255,255,0.04);
+  color:var(--text-secondary);font-size:10.5px;font-weight:700;letter-spacing:.3px;
+  cursor:pointer;transition:all .12s ease;white-space:nowrap;
+}
+.crm-espera-btn:hover{border-color:rgba(148,163,184,.5);color:#cbd5e1;background:rgba(148,163,184,.14)}
+.crm-espera-btn:disabled{opacity:.45;cursor:not-allowed}
+.crm-tl-status--espera{background:rgba(100,116,139,0.22);color:#cbd5e1}
+.crm-task-status--espera{background:rgba(100,116,139,0.22);color:#cbd5e1;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;display:inline-block}
+.crm-task-card--espera{opacity:.7}
+
+/* --- P1-7 (2026-11-27): acciones en lote sobre la lista de leads --- */
+.crm-batch-bar{margin:0 0 12px}
+.crm-batch-inner{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:9px 12px;border-radius:12px;
+  background:rgba(31,200,195,0.08);border:1px solid rgba(31,200,195,0.28);
+}
+.crm-batch-count{font-size:12px;color:var(--text-secondary);font-weight:600;white-space:nowrap}
+.crm-batch-count i{margin-right:5px;color:var(--accent)}
+.crm-batch-count strong{color:var(--text-primary);font-weight:800}
+.crm-batch-group{display:inline-flex;align-items:center;gap:4px}
+.crm-batch-group-label{font-size:11px;color:var(--text-dim);margin-right:2px;white-space:nowrap}
+.crm-batch-btn{
+  display:inline-flex;align-items:center;gap:4px;
+  height:26px;padding:0 9px;border-radius:7px;
+  border:1px solid var(--border-subtle);background:rgba(255,255,255,0.05);
+  color:var(--text-secondary);font-size:11px;font-weight:700;
+  cursor:pointer;transition:all .12s ease;white-space:nowrap;
+}
+.crm-batch-btn:hover{border-color:rgba(31,200,195,.45);color:var(--accent);background:rgba(31,200,195,.12)}
+.crm-batch-btn:disabled{opacity:.45;cursor:not-allowed}
+.crm-batch-btn--ghost{background:transparent;color:var(--text-dim);padding:0 8px}
+.crm-td-check{width:34px;text-align:center;padding-left:6px!important;padding-right:6px!important}
+.crm-row-check{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;vertical-align:middle}
+.crm-row-check:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* --- P1-8 (2026-11-27): "Mi día" (las 3 acciones más urgentes) --- */
+.crm-midia-item{transition:background .15s ease,border-color .15s ease}
+.crm-midia-item:hover{background:rgba(255,255,255,0.035)}
+.crm-midia-conteos{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border-subtle)}
+.crm-midia-chip{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px}
+
 /* --- Supervision: Team Board --- */
 .sup-team-card { background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:16px; padding:22px; cursor:pointer; transition:border-color .3s, transform .3s; position:relative; }
 .sup-team-card:hover { border-color:rgba(31,200,195,0.4); transform:translateY(-3px); }

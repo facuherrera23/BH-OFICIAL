@@ -899,9 +899,33 @@
     }
   }
 
+  /* P0-1 (27/11/2026): el panel mostraba 25 alertas abiertas y 19 eran ruido
+     viejo. Para que "abierta" no vuelva a ser sinónimo de "urgente", cada
+     alerta abierta creada en las últimas 24 h se marca como NUEVA y la
+     cabecera muestra cuántas hay. */
+  var ALERT_NUEVA_HORAS = 24;
+
+  function esAlertaNueva(a) {
+    if (!a || !a.created_at) return false;
+    if (a.status && a.status !== 'open') return false;
+    var t = new Date(a.created_at).getTime();
+    if (isNaN(t)) return false;
+    return (Date.now() - t) < ALERT_NUEVA_HORAS * 3600000;
+  }
+
   function renderAlerts(alerts) {
     var el = $('supAlertsList');
     if (!el) return;
+    var nuevas = (alerts || []).filter(esAlertaNueva).length;
+    var chip = $('supAlertsNewChip');
+    if (chip) {
+      if (nuevas > 0) {
+        chip.textContent = nuevas + ' nueva' + (nuevas !== 1 ? 's' : '') + ' (24 h)';
+        chip.style.display = '';
+      } else {
+        chip.style.display = 'none';
+      }
+    }
     if (!alerts.length) {
       el.innerHTML = '<div class="sup-act-empty" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:16px;"><i class="fas fa-check-circle" style="color:#10B981;"></i>No hay alertas en ese estado</div>';
       return;
@@ -912,6 +936,7 @@
       var p = _profilesById[a.user_id];
       var actor = p ? p.full_name : 'Sistema';
       var moduleLabel = (MODULE_META[a.module] || {}).label || a.module || '—';
+      var nueva = esAlertaNueva(a);
       var evidence = '';
       if (a.evidence && typeof a.evidence === 'object') {
         var keys = Object.keys(a.evidence);
@@ -930,6 +955,7 @@
           '<div style="flex:1; min-width:0;">' +
             '<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:6px;">' +
               '<span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; padding:3px 8px; border-radius:6px; background:' + meta.color + '22; color:' + meta.color + ';">' + meta.label + '</span>' +
+              (nueva ? '<span style="font-size:10px; font-weight:800; letter-spacing:.5px; padding:3px 8px; border-radius:6px; background:rgba(31,200,195,.18); color:#1FC8C3; border:1px solid rgba(31,200,195,.4);">NUEVA</span>' : '') +
               '<span style="font-size:11px; color:var(--text-dim);">' + esc(moduleLabel) + '</span>' +
               '<span style="font-size:11px; color:var(--text-dim);">·</span>' +
               '<span style="font-size:11px; color:var(--text-dim);">' + timeAgo(a.created_at) + '</span>' +
@@ -946,6 +972,95 @@
         '</div></div>';
     }).join('');
     setText('supAlertsCount', alerts.length + ' alerta' + (alerts.length !== 1 ? 's' : ''));
+  }
+
+  /* ==================== VISTA ENVÍOS (traza — P0-4) ====================
+     `crm_envios` es el log de los envíos del CRM (una fila por envío con su
+     resultado). Antes sólo existía la alerta `crm_email_broken`: cuando algo
+     fallaba, y NUNCA se veía lo que sí salió. */
+  var ENVIO_ORIGEN_LABEL = {
+    notify_new_lead: 'Lead nuevo',
+    lead_task_reminder: 'Recordatorio de tarea',
+    visit_reminder: 'Recordatorio de visita',
+    commission: 'Comisión'
+  };
+  var ENVIO_ESTADO_META = {
+    enviado: { label: 'Enviado', color: '#10B981', icon: 'check-circle' },
+    error: { label: 'Error', color: '#EF4444', icon: 'exclamation-triangle' },
+    omitido: { label: 'Omitido', color: '#F59E0B', icon: 'minus-circle' }
+  };
+
+  async function fetchEnvios() {
+    var q = db().from('crm_envios')
+      .select('id, origen, canal, estado, destinatario, asunto, proveedor, lead_id, agente_id, visita_id, tarea_id, error, created_at')
+      .order('created_at', { ascending: false })
+      .limit(200);
+    var estado = $('supEnviosEstadoFilter') ? $('supEnviosEstadoFilter').value : '';
+    var origen = $('supEnviosOrigenFilter') ? $('supEnviosOrigenFilter').value : '';
+    if (estado) q = q.eq('estado', estado);
+    if (origen) q = q.eq('origen', origen);
+    var res = await q;
+    if (res.error) throw res.error;
+    return res.data || [];
+  }
+
+  function renderEnvios(rows) {
+    var el = $('supEnviosList');
+    if (!el) return;
+    if (!rows.length) {
+      el.innerHTML = '<div class="sup-act-empty" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:16px;"><i class="fas fa-inbox" style="color:#1FC8C3;"></i>Todavía no hay envíos registrados</div>';
+      setText('supEnviosCount', '');
+      return;
+    }
+    var errores = rows.filter(function(r) { return r.estado === 'error'; }).length;
+    el.innerHTML = rows.map(function(r) {
+      var meta = ENVIO_ESTADO_META[r.estado] || { label: r.estado, color: '#94A3B8', icon: 'circle' };
+      var origenLabel = ENVIO_ORIGEN_LABEL[r.origen] || r.origen || '—';
+      var ctx = [];
+      if (r.lead_id) ctx.push('lead');
+      if (r.agente_id) ctx.push('agente');
+      if (r.visita_id) ctx.push('visita');
+      if (r.tarea_id) ctx.push('tarea');
+      return '<div style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-left:4px solid ' + meta.color + '; border-radius:12px; padding:14px 18px;">' +
+        '<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:4px;">' +
+          '<span style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; padding:3px 8px; border-radius:6px; background:' + meta.color + '22; color:' + meta.color + ';"><i class="fas fa-' + meta.icon + '"></i> ' + esc(meta.label) + '</span>' +
+          '<span style="font-size:11px; color:var(--text-dim);">' + esc(origenLabel) + '</span>' +
+          (r.canal ? '<span style="font-size:11px; color:var(--text-dim);">· ' + esc(r.canal) + '</span>' : '') +
+          (r.proveedor ? '<span style="font-size:11px; color:var(--text-dim);">· ' + esc(r.proveedor) + '</span>' : '') +
+          (ctx.length ? '<span style="font-size:11px; color:var(--text-dim);">· ' + esc(ctx.join(' · ')) + '</span>' : '') +
+          '<span style="flex:1;"></span>' +
+          '<span style="font-size:11px; color:var(--text-dim);">' + timeAgo(r.created_at) + '</span>' +
+        '</div>' +
+        '<div style="font-size:13px; color:#fff; font-weight:600;">' + esc(r.asunto || '(sin asunto)') + '</div>' +
+        '<div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">' + esc(r.destinatario || '—') + '</div>' +
+        (r.error ? '<div style="font-size:12px; color:#EF4444; margin-top:6px; word-break:break-word;"><i class="fas fa-exclamation-triangle"></i> ' + esc(r.error) + '</div>' : '') +
+      '</div>';
+    }).join('');
+    setText('supEnviosCount', rows.length + ' envío' + (rows.length !== 1 ? 's' : '') + (errores ? ' · ' + errores + ' con error' : ''));
+  }
+
+  async function loadEnvios() {
+    var el = $('supEnviosList');
+    if (el) el.innerHTML = '<div class="sup-act-empty" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:16px;"><i class="fas fa-spinner fa-spin"></i>Cargando envíos...</div>';
+    try {
+      renderEnvios(await fetchEnvios());
+      refreshEnviosBadge();
+    } catch (err) {
+      console.error('[sup] envios:', err);
+      if (el) el.innerHTML = '<div class="sup-act-empty" style="color:var(--danger);"><i class="fas fa-exclamation-triangle"></i>Error: ' + esc(err.message) + '</div>';
+    }
+  }
+
+  async function refreshEnviosBadge() {
+    try {
+      var res = await db().from('crm_envios').select('id', { count: 'exact', head: true }).eq('estado', 'error');
+      var n = res.count || 0;
+      var badge = $('supEnviosBadge');
+      if (badge) {
+        if (n > 0) { badge.textContent = n > 99 ? '99+' : String(n); badge.style.display = ''; }
+        else badge.style.display = 'none';
+      }
+    } catch (_) { console.error('[sup] refreshEnviosBadge:', _); }
   }
 
   function renderFeedEntries(containerId, entries, append, showUser) {
@@ -983,22 +1098,26 @@
     var alerts = $('supAlertsView');
     var errors = $('supErrorsView');
     var anomalies = $('supAnomaliesView');
+    var envios = $('supEnviosView');
     if (team) team.style.display = name === 'team' ? 'block' : 'none';
     if (feed) feed.style.display = name === 'feed' ? 'block' : 'none';
     if (detail) detail.style.display = name === 'detail' ? 'block' : 'none';
     if (alerts) alerts.style.display = name === 'alerts' ? 'block' : 'none';
     if (errors) errors.style.display = name === 'errors' ? 'block' : 'none';
     if (anomalies) anomalies.style.display = name === 'anomalies' ? 'block' : 'none';
+    if (envios) envios.style.display = name === 'envios' ? 'block' : 'none';
     var tabTeam = $('supTabTeam');
     var tabFeed = $('supTabFeed');
     var tabAlerts = $('supTabAlerts');
     var tabErrors = $('supTabErrors');
     var tabAnomalies = $('supTabAnomalies');
+    var tabEnvios = $('supTabEnvios');
     if (tabTeam) tabTeam.classList.toggle('is-active', name === 'team' || name === 'detail');
     if (tabFeed) tabFeed.classList.toggle('is-active', name === 'feed');
     if (tabAlerts) tabAlerts.classList.toggle('is-active', name === 'alerts');
     if (tabErrors) tabErrors.classList.toggle('is-active', name === 'errors');
     if (tabAnomalies) tabAnomalies.classList.toggle('is-active', name === 'anomalies');
+    if (tabEnvios) tabEnvios.classList.toggle('is-active', name === 'envios');
   }
 
   function openDetail(uid, uname, urole, uemail) {
@@ -1548,6 +1667,21 @@
       loadErrors();
     });
 
+    var tabEnvios = $('supTabEnvios');
+    if (tabEnvios) tabEnvios.addEventListener('click', function() {
+      showView('envios');
+      loadEnvios();
+    });
+
+    var enviosRefresh = $('supEnviosRefreshBtn');
+    if (enviosRefresh) enviosRefresh.addEventListener('click', loadEnvios);
+
+    var enviosEstado = $('supEnviosEstadoFilter');
+    if (enviosEstado) enviosEstado.addEventListener('change', loadEnvios);
+
+    var enviosOrigen = $('supEnviosOrigenFilter');
+    if (enviosOrigen) enviosOrigen.addEventListener('change', loadEnvios);
+
     var errorsRefresh = $('supErrorsRefreshBtn');
     if (errorsRefresh) errorsRefresh.addEventListener('click', loadErrors);
 
@@ -1602,6 +1736,7 @@
       refreshAlertsBadge();
       refreshErrorsBadge();
       refreshAnomaliesBadge();
+      refreshEnviosBadge();
       if (_view === 'feed') {
         loadFeed();
       } else if (_view === 'alerts') {
@@ -1610,6 +1745,8 @@
         loadErrors();
       } else if (_view === 'anomalies') {
         loadAnomalies();
+      } else if (_view === 'envios') {
+        loadEnvios();
       } else if (_view === 'detail' && _currentUserId) {
         loadDetailActivity().catch(console.error);
       } else {
@@ -1624,7 +1761,8 @@
     if (!db()) { setTimeout(initBadge, 400); return; }
     refreshAlertsBadge();
     refreshErrorsBadge();
-    setInterval(function() { refreshAlertsBadge(); refreshErrorsBadge(); }, 120000);
+    refreshEnviosBadge();
+    setInterval(function() { refreshAlertsBadge(); refreshErrorsBadge(); refreshEnviosBadge(); }, 120000);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initBadge);
   else setTimeout(initBadge, 1200);

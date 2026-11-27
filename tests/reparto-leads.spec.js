@@ -16,6 +16,10 @@ const ROOT = path.resolve(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 const mig = read('supabase/migrations/20261126000013_reparto_leads.sql');
+/* La versión vigente: la migración 20261127000004 (P1-6) recreó la RPC para
+   que un lead colgado ("en espera") no se reparta (no está sin dueño: está
+   colgado a propósito). */
+const migVigente = read('supabase/migrations/20261127000004_lead_espera_rpc.sql');
 const crmSrc = read('assets/js/admin-crm.js');
 
 test.describe('Reparto automático de leads sin agente', () => {
@@ -37,6 +41,16 @@ test.describe('Reparto automático de leads sin agente', () => {
     // Traza en el timeline + auditoría.
     expect(mig).toContain("'Reparto automático de leads sin agente (por carga de trabajo).'");
     expect(mig).toContain("'leads_repartidos', 'crm', 'leads'");
+  });
+
+  test('la versión vigente (P1-6) no reparte leads colgados', () => {
+    // Un lead en "en espera" NO está sin dueño: está colgado a propósito con
+    // su fecha de regreso → el reparto no lo toca (si no, un lead a medio
+    // trabajar se reasignaba y se le perdía el contexto).
+    expect(migVigente).toContain('CREATE OR REPLACE FUNCTION public.repartir_leads_sin_agente()');
+    expect(migVigente).toContain("AND l.stage NOT IN ('cerrado_ganado', 'cerrado_perdido', 'en_espera')");
+    // La carga que usa para nivelar tampoco cuenta los colgados.
+    expect(migVigente).toMatch(/carga[\s\S]{0,400}en_espera/);
   });
 
   test('sin agentes activos → alerta de supervisión (no silencio)', () => {

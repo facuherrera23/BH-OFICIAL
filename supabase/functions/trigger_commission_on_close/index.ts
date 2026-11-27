@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { corsHeaders, jsonResponse, optionsResponse } from "../_shared/http.ts";
+import { registrarEnvio } from "../_shared/envios.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return optionsResponse(req);
@@ -125,6 +126,23 @@ async function getOwner(supabase: any, ownerId: string) {
 
 async function getBroker(supabase: any, brokerId: string) {
   const { data } = await supabase.from("agents").select("*").eq("id", brokerId).single();
+  if (!data) return data;
+  /* `agents.email` es una copia y puede estar mal (medido 27/11/2026: el de
+     Facundo terminaba en `.gmail.con` → el aviso de comisión se perdía en
+     silencio). Si el email del agente no es usable, se usa el del PERFIL
+     (que es la fuente real del login). */
+  if (!data.email || !String(data.email).includes("@")) {
+    if (data.profile_id) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("id", data.profile_id)
+        .maybeSingle();
+      if (profile?.email && String(profile.email).includes("@")) {
+        data.email = profile.email;
+      }
+    }
+  }
   return data;
 }
 
@@ -155,15 +173,35 @@ async function notifyBrokerCommission(supabase: any, broker: any, commission: an
       </div>
     `;
 
-    await fetch("https://api.brevo.com/v3/smtp/email", {
+    const asunto = `💰 Nueva comisión: ${property.title}`;
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: { "Content-Type": "application/json", "api-key": brevoKey },
       body: JSON.stringify({
         sender: { name: "BIENENHAUS", email: "noreply@bienenhaus.com.ar" },
         to: [{ email: broker.email, name: broker.full_name }],
-        subject: `💰 Nueva comisión: ${property.title}`,
+        subject: asunto,
         htmlContent: html
       })
+    });
+
+    /* Traza del envío (P0-4): una fila en `crm_envios` por comisión avisada.
+       El trigger de la tabla auto-resuelve la alerta `crm_email_broken`. */
+    await registrarEnvio(supabase, {
+      origen: "commission",
+      estado: res.ok ? "enviado" : "error",
+      canal: "email",
+      agente_id: broker.id ?? null,
+      destinatario: broker.email,
+      asunto,
+      proveedor: "brevo",
+      error: res.ok ? null : `Brevo ${res.status}: ${(await res.text()).slice(0, 800)}`,
+      metadata: {
+        commission_id: commission.id,
+        property_id: property.id,
+        operation_type: commission.operation_type,
+        amount_usd: commission.commission_amount_usd,
+      },
     });
   } catch (e) { console.error("Broker notify failed:", e); }
 }

@@ -8,11 +8,20 @@
 (function () {
 'use strict';
 
+/* ── ETAPAS DEL EMBUDO ───────────────────────────────────────────────────
+   `en_espera` (P1-6, 2026-11-27) NO es una etapa del embudo: es un estado
+   OPERATIVO (lead colgado). Por eso NO aparece en el <select> del panel
+   lateral — se maneja con los botones "En espera" / "Reactivar" — pero SÍ
+   aparece en el filtro de estados del listado (para poder encontrar y
+   revisar los leads colgados).
+   `LEAD_STATUSES_ALL` = embudo + en espera (para el filtro y el sorting). */
 var LEAD_STATUSES = ['nuevo','contactado','calificado','visita_agendada','visita_realizada','negociacion','cerrado_ganado','cerrado_perdido'];
+var LEAD_STATUSES_ALL = LEAD_STATUSES.concat(['en_espera']);
 var STATUS_LABELS = {
   nuevo: 'Nuevo', contactado: 'Contactado', calificado: 'Calificado',
   visita_agendada: 'Visita agendada', visita_realizada: 'Visita realizada',
   negociacion: 'Negociación', cerrado_ganado: 'Ganado', cerrado_perdido: 'Perdido',
+  en_espera: 'En espera',
   visita: 'Visita agendada', oferta: 'Negociación', cerrado: 'Ganado', perdido: 'Perdido'
 };
 var LEGACY_STAGE_MAP = { visita: 'visita_agendada', oferta: 'negociacion', cerrado: 'cerrado_ganado', perdido: 'cerrado_perdido' };
@@ -83,6 +92,9 @@ var _hasFollowupFilter = false;
    El filtro aplica el origen 'ml' él mismo (por eso el select de origen se
    ignora mientras el chip está activo). */
 var _mlUntouchedFilter = false;
+/* P1-7 (2026-11-27): selección de leads para las acciones en lote.
+   Es un Set de ids (no un array) para no duplicar y para quitar en O(1). */
+var _batchSel = new Set();
 
 /** Apaga el chip "ML sin responder" (flag + checkbox). */
 function _resetMlUntouchedFilter() {
@@ -188,8 +200,8 @@ function sortValueFor(l, key) {
     return { v: p && (p.property_code || p.property_title) ? (p.property_code || p.property_title).toLowerCase() : null };
   }
   if (key === 'estado') {
-    var idx = LEAD_STATUSES.indexOf(normalizeStage(l.stage || 'nuevo'));
-    return { v: idx < 0 ? LEAD_STATUSES.length : idx };
+    var idx = LEAD_STATUSES_ALL.indexOf(normalizeStage(l.stage || 'nuevo'));
+    return { v: idx < 0 ? LEAD_STATUSES_ALL.length : idx };
   }
   if (key === 'prioridad') {
     return { v: ({ baja: 0, media: 1, alta: 2 }[getPriority(l.lead_score)] || 0) };
@@ -1213,6 +1225,9 @@ var propCell;
     var tipoChip = l.tipo_cliente ? '<span class="crm-tipo-chip crm-tipo-chip--' + esc(l.tipo_cliente) + '">' + esc(TIPO_CLIENTE_LABELS[l.tipo_cliente] || l.tipo_cliente) + '</span>' : '';
     rows +=
       '<tr class="crm-row" data-id="' + l.id + '">' +
+        /* P1-7: checkbox de selección (acciones en lote). En la papelera no
+           hay selección: un lead eliminado no se reasigna ni se exporta. */
+        (_showTrash ? '' : '<td class="crm-td-check"><input type="checkbox" class="crm-row-check" data-id="' + l.id + '"' + (_batchSel.has(l.id) ? ' checked' : '') + ' aria-label="Seleccionar lead"></td>') +
         '<td><div class="crm-client-row"><span class="crm-client-avatar" style="background:' + avColor + '">' + inits + '</span><div><strong>' + esc(l.full_name) + '</strong>' + tipoChip + '<div class="crm-meta">' + esc(l.email || '') + (l.phone ? ' &middot; ' + esc(l.phone) : '') + '</div></div></div></td>' +
         '<td>' + propCell + '</td>' +
         '<td>' + agentCell + '</td>' +
@@ -1236,6 +1251,8 @@ var propCell;
   c.innerHTML =
     '<div class="crm-table-wrap luxury-table-wrap"><table class="luxury-table crm-table">' +
       '<thead><tr>' +
+        /* P1-7: "seleccionar todos" (sólo la página visible). */
+        (_showTrash ? '' : '<th class="crm-td-check"><input type="checkbox" data-crm-batch-all aria-label="Seleccionar todos los leads de esta página"></th>') +
         '<th class="crm-th-sort" data-sort="cliente">Cliente' + sortArrow('cliente') + '</th>' +
         '<th class="crm-th-sort" data-sort="propiedad">Propiedad' + sortArrow('propiedad') + '</th>' +
         '<th>Agente</th>' +
@@ -1289,6 +1306,288 @@ function bindListHandlers(c) {
       loadLeads();
     });
   });
+  /* P1-7: checkboxes de selección por fila + "seleccionar todos" de la
+     página. El checkbox frena la propagación para que al tildarlo no se
+     abra la ficha del lead (la fila es clicable). */
+  c.querySelectorAll('.crm-row-check').forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      batchSelToggle(this.dataset.id, this.checked);
+    });
+    b.addEventListener('change', batchSyncSelectAll);
+  });
+  var allBox = c.querySelector('[data-crm-batch-all]');
+  if (allBox) {
+    allBox.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var on = this.checked;
+      c.querySelectorAll('.crm-row-check').forEach(function (b) {
+        b.checked = on;
+        if (on) _batchSel.add(b.dataset.id); else _batchSel.delete(b.dataset.id);
+      });
+      renderBatchBar();
+    });
+  }
+  batchSyncSelectAll();
+}
+
+/* ============================================================
+   ACCIONES EN LOTE (P1-7 — 2026-11-27).
+   Diagnóstico: en 124 leads vivos, cualquier tarea masiva ("reasignar los
+   leads de Mercado Libre", "colgar los que no contestan", "exportar la
+   cartera") obligaba a abrir lead por lead. Con ~2 minutos por lead, en la
+   práctica no se hacía.
+
+   Lo que hay: 4 acciones sobre la selección (reasignar agente, cambiar
+   etapa, colgar en espera, exportar CSV).
+
+   Reglas duras:
+   · Las escrituras se hacen de a UNA fila (`batchEach`), no con un
+     `.in('id', ...)` masivo: la policy `leads_update` evalúa el WITH CHECK
+     por fila y un solo fallo (p.ej. un broker reasignando un lead que no
+     es suyo) abortaría TODO el lote. Con el loop, cada lead se reporta
+     por separado y el resto del lote sigue.
+   · Los errores se INFORMAN: nunca se traga un fallo en silencio.
+   · La traza va al timeline de cada lead (actividad 'status_change'), que
+     es lo que el agente ve cuando abre la ficha.
+   · La exportación no deja datos sueltos: el CSV va con BOM (Excel abre
+     bien los acentos) y neutraliza la inyección de fórmulas.
+   ============================================================ */
+
+var BATCH_CHUNK = 5; /* requests en paralelo por tanda */
+
+/* Corre `fn` sobre cada id, en tandas, y cuenta éxitos/fallos SIN que un
+   fallo Aborte el lote. */
+async function batchEach(ids, fn) {
+  var ok = 0, fail = 0, errores = [];
+  for (var i = 0; i < ids.length; i += BATCH_CHUNK) {
+    var chunk = ids.slice(i, i + BATCH_CHUNK);
+    var rs = await Promise.all(chunk.map(function (id) {
+      return Promise.resolve().then(function () { return fn(id); })
+        .then(function () { return { ok: true }; })
+        .catch(function (e) { return { ok: false, msg: (e && e.message) || String(e) }; });
+    }));
+    rs.forEach(function (r) {
+      if (r.ok) ok++;
+      else { fail++; if (errores.length < 3) errores.push(r.msg); }
+    });
+  }
+  return { ok: ok, fail: fail, errores: errores };
+}
+
+function batchSelectedIds() { return Array.from(_batchSel); }
+
+/* La barra: sólo aparece con ≥1 seleccionado y desaparece en la papelera
+   (un lead eliminado no se reasigna ni se exporta). */
+function renderBatchBar() {
+  var bar = $id('crmBatchBar');
+  if (!bar) return;
+  if (_showTrash) { _batchSel.clear(); bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  var n = _batchSel.size;
+  if (!n) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+  bar.style.display = '';
+  var agentOpts = '<option value="">Reasignar agente…</option><option value="__none">— Sin agente —</option>' +
+    _agents.map(function (a) { return '<option value="' + a.id + '">' + esc(a.full_name) + '</option>'; }).join('');
+  var stageOpts = '<option value="">Cambiar etapa…</option>' +
+    LEAD_STATUSES.map(function (s) { return '<option value="' + s + '">' + (STATUS_LABELS[s] || s) + '</option>'; }).join('');
+  bar.innerHTML =
+    '<div class="crm-batch-inner">' +
+      '<span class="crm-batch-count"><i class="fas fa-check-square"></i> <strong>' + n + '</strong> seleccionado' + (n === 1 ? '' : 's') + '</span>' +
+      '<select id="crmBatchAgent" class="crm-field-input crm-field-input--select" title="Reasignar el agente de los leads seleccionados">' + agentOpts + '</select>' +
+      '<select id="crmBatchStage" class="crm-field-input crm-field-input--select" title="Cambiar la etapa de los leads seleccionados">' + stageOpts + '</select>' +
+      '<span class="crm-batch-group"><span class="crm-batch-group-label">En espera</span>' +
+        [1, 3, 7].map(function (d) {
+          return '<button type="button" class="crm-batch-btn" data-crm-batch-espera="' + d + '" title="Colgar ' + n + ' lead(s) durante ' + d + ' día(s)">' + (d === 7 ? '1 sem' : d + 'd') + '</button>';
+        }).join('') +
+      '</span>' +
+      '<button type="button" class="crm-batch-btn" data-crm-batch-csv title="Descargar los leads seleccionados en CSV"><i class="fas fa-file-csv"></i> CSV</button>' +
+      '<button type="button" class="crm-batch-btn crm-batch-btn--ghost" data-crm-batch-clear title="Quitar la selección"><i class="fas fa-xmark"></i></button>' +
+    '</div>';
+
+  var agSel = $id('crmBatchAgent');
+  if (agSel) agSel.addEventListener('change', async function () {
+    var val = this.value;
+    if (!val) return;
+    this.value = '';
+    await batchSetAgent(val);
+  });
+  var stSel = $id('crmBatchStage');
+  if (stSel) stSel.addEventListener('change', async function () {
+    var val = this.value;
+    if (!val) return;
+    this.value = '';
+    await batchSetStage(val);
+  });
+  bar.querySelectorAll('[data-crm-batch-espera]').forEach(function (b) {
+    b.addEventListener('click', async function () {
+      await batchToEspera(parseInt(this.getAttribute('data-crm-batch-espera'), 10) || 7);
+    });
+  });
+  var csvBtn = bar.querySelector('[data-crm-batch-csv]');
+  if (csvBtn) csvBtn.addEventListener('click', function () { batchExportCsv(); });
+  var clrBtn = bar.querySelector('[data-crm-batch-clear]');
+  if (clrBtn) clrBtn.addEventListener('click', function () { batchSelClear(); });
+}
+
+function batchSelToggle(id, on) {
+  if (!id) return;
+  if (on) _batchSel.add(id); else _batchSel.delete(id);
+  renderBatchBar();
+}
+
+function batchSelClear() {
+  _batchSel.clear();
+  var c = $id('crmLeadList');
+  if (c) {
+    c.querySelectorAll('.crm-row-check').forEach(function (b) { b.checked = false; });
+    var all = c.querySelector('[data-crm-batch-all]');
+    if (all) { all.checked = false; all.indeterminate = false; }
+  }
+  renderBatchBar();
+}
+
+/* El checkbox de "todos" queda en estado indeterminado si sólo se ticked
+   una parte de la página. */
+function batchSyncSelectAll() {
+  var c = $id('crmLeadList');
+  if (!c) return;
+  var all = c.querySelector('[data-crm-batch-all]');
+  if (!all) return;
+  var boxes = Array.from(c.querySelectorAll('.crm-row-check'));
+  var sel = boxes.filter(function (b) { return b.checked; }).length;
+  all.checked = boxes.length > 0 && sel === boxes.length;
+  all.indeterminate = sel > 0 && sel < boxes.length;
+}
+
+/* Reporte único de un lote: N actualizados / M con error. */
+function batchReport(titulo, res) {
+  if (!res.fail) { toast(titulo + ': ' + res.ok + ' lead(s) actualizados.', 'success'); return; }
+  var msg = titulo + ': ' + res.ok + ' actualizados, ' + res.fail + ' sin permiso o con error.';
+  if (res.errores.length) msg += ' (' + res.errores[0] + ')';
+  toast(msg, 'error');
+}
+
+/* --- Acción 1: reasignar agente --- */
+async function batchSetAgent(agentId) {
+  var ids = batchSelectedIds();
+  if (!ids.length) return;
+  var nuevo = agentId === '__none' ? null : agentId;
+  var found = _agents.filter(function (a) { return a.id === agentId; })[0];
+  var nombre = agentId === '__none' ? 'Sin agente' : ((found && found.full_name) || 'otro agente');
+  var res = await batchEach(ids, async function (id) {
+    var r = await db().from('leads').update({ assigned_to: nuevo }).eq('id', id);
+    if (r.error) throw new Error(r.error.message);
+    try {
+      await db().from('lead_activities').insert([{
+        lead_id: id, activity_type: 'status_change',
+        title: 'Reasignado: ' + nombre
+      }]);
+    } catch (e) { /* la traza es best-effort: el lead ya quedó reasignado */ }
+  });
+  batchReport('Reasignación', res);
+  if (res.ok) { batchSelClear(); await loadLeads(); }
+}
+
+/* --- Acción 2: cambiar etapa (en lote) --- */
+async function batchSetStage(stage) {
+  var ids = batchSelectedIds();
+  if (!ids.length) return;
+  stage = normalizeStage(stage);
+  /* La razón de pérdida es OBLIGATORIA (mismo criterio que el panel
+     lateral): se pide una vez y se aplica a todo el lote. */
+  var lost = null;
+  if (stage === 'cerrado_perdido') {
+    lost = await showLostReasonModal();
+    if (!lost) return; /* canceló */
+  }
+  /* Los leads que hoy están en "cerrado_perdido" y salen de ahí pierden
+     su razón (igual que el guardado del panel lateral). */
+  var prev = await db().from('leads').select('id, stage').in('id', ids);
+  var stageById = {};
+  (prev.data || []).forEach(function (l) { stageById[l.id] = normalizeStage(l.stage || 'nuevo'); });
+  var res = await batchEach(ids, async function (id) {
+    var patch = { stage: stage };
+    if (stage === 'cerrado_perdido') patch.lost_reason = lost.reason;
+    else if (stageById[id] === 'cerrado_perdido') patch.lost_reason = null;
+    var r = await db().from('leads').update(patch).eq('id', id);
+    if (r.error) throw new Error(r.error.message);
+    try {
+      await db().from('lead_activities').insert([{
+        lead_id: id, activity_type: 'status_change',
+        title: 'Cambio de estado: ' + (STATUS_LABELS[stageById[id]] || stageById[id] || 'nuevo') + ' -> ' + (STATUS_LABELS[stage] || stage),
+        description: (stage === 'cerrado_perdido' && lost)
+          ? ('Motivo: ' + (lost.label || lost.reason) + (lost.detail ? ' — ' + lost.detail : ''))
+          : null
+      }]);
+    } catch (e) { /* la traza es best-effort */ }
+  });
+  batchReport('Cambio de etapa', res);
+  if (res.ok) { batchSelClear(); await loadLeads(); }
+}
+
+/* --- Acción 3: colgar en espera (usa la RPC que suspende las tareas) --- */
+async function batchToEspera(dias) {
+  var ids = batchSelectedIds();
+  if (!ids.length) return;
+  var hasta = new Date(Date.now() + dias * 86400000).toISOString();
+  var res = await batchEach(ids, async function (id) {
+    var r = await db().rpc('lead_pasar_a_espera', { p_lead_id: id, p_hasta: hasta });
+    if (r.error) throw new Error(r.error.message);
+    var d = r.data || {};
+    if (d.error) throw new Error(d.error);
+  });
+  batchReport('Puesta en espera', res);
+  if (res.ok) { batchSelClear(); await loadLeads(); }
+}
+
+/* --- Acción 4: exportar a CSV --- */
+function csvSafe(v) {
+  var s = (v === null || v === undefined) ? '' : String(v);
+  /* Neutraliza la inyección de fórmulas (=, +, -, @): Excel las ejecuta. */
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+
+async function batchExportCsv() {
+  var ids = batchSelectedIds();
+  if (!ids.length) return;
+  var r = await db().from('leads').select('id, full_name, email, phone, stage, source, assigned_to, lead_score, created_at, next_followup_at').in('id', ids);
+  if (r.error) { toast('No se pudo exportar: ' + r.error.message, 'error'); return; }
+  var rows = r.data || [];
+  var agentName = function (id) {
+    var a = _agents.filter(function (x) { return x.id === id; })[0];
+    return (a && a.full_name) || 'Sin agente';
+  };
+  var head = ['Nombre', 'Email', 'Teléfono', 'Etapa', 'Origen', 'Agente', 'Prioridad', 'Alta', 'Próximo seguimiento', 'ID'];
+  var lines = [head.map(csvSafe).join(',')];
+  rows.forEach(function (l) {
+    lines.push([
+      l.full_name, l.email, l.phone,
+      STATUS_LABELS[normalizeStage(l.stage || 'nuevo')] || l.stage,
+      (ORIGIN_LABELS[l.source] || l.source || ''),
+      agentName(l.assigned_to),
+      (l.lead_score === null || l.lead_score === undefined) ? '' : l.lead_score,
+      l.created_at ? fmtDate(l.created_at) : '',
+      l.next_followup_at ? fmtDateTime(l.next_followup_at) : '',
+      l.id
+    ].map(csvSafe).join(','));
+  });
+  /* BOM: sin él, Excel abre los acentos como caracteres rotos. */
+  var csv = '\ufeff' + lines.join('\r\n');
+  try {
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'leads-bienhaus-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    toast(rows.length + ' lead(s) exportados.', 'success');
+  } catch (e) {
+    toast('No se pudo generar el CSV: ' + e.message, 'error');
+  }
 }
 
 
@@ -1708,7 +2007,7 @@ function bindSurveyActions(panel, lead, surveys) {
 
 /* -- Panel lateral -- */
 function getLeadFull(id) {
-  return db().from('leads').select('id, full_name, email, phone, whatsapp, stage, source, tipo_cliente, operation_type, lead_score, lead_score_breakdown, assigned_to, property_id, next_followup_at, last_contacted_at, created_at, notes, ml_lead_id, preferred_zone, preferred_type, preferred_rooms, preferred_contact_method, budget_usd, estimated_value, lost_reason, consent_at').eq('id', id).single();
+  return db().from('leads').select('id, full_name, email, phone, whatsapp, stage, stage_previo, source, tipo_cliente, operation_type, lead_score, lead_score_breakdown, assigned_to, property_id, next_followup_at, last_contacted_at, created_at, notes, ml_lead_id, preferred_zone, preferred_type, preferred_rooms, preferred_contact_method, budget_usd, estimated_value, lost_reason, consent_at').eq('id', id).single();
 }
 var TIMELINE_PAGE = 50;
 function getLeadActivities(id, offset) {
@@ -2102,6 +2401,98 @@ function bindSideOverlayClose(panel) {
   panel.dataset.sideBound = '1';
 }
 
+/* ============================================================
+   ETAPA "EN ESPERA" (P1-6 — 2026-11-27).
+   Un lead colgado deja de pedir atención: no aparece en la bandeja, sus
+   tareas no vencen y no generan avisos hasta su fecha de regreso
+   (`leads.next_followup_at`). Al llegar esa fecha vuelve solo a "Mi bandeja"
+   y el botón "Reactivar" lo devuelve a la etapa desde la que se colgó
+   (`leads.stage_previo`).
+   Las RPCs (lead_pasar_a_espera / lead_reactivar) son SECURITY DEFINER y
+   replican el alcance de la policy `leads_update` (super_admin, agente
+   asignado o agente creador).
+   ============================================================ */
+
+/* Toolbar / banner del panel lateral. */
+function leadEsperaHtml(lead) {
+  if (!lead) return '';
+  var stage = normalizeStage(lead.stage || 'nuevo');
+  if (stage === 'cerrado_ganado' || stage === 'cerrado_perdido') return '';
+  if (stage === 'en_espera') {
+    var hasta = lead.next_followup_at ? fmtDateTime(lead.next_followup_at) : 'sin fecha';
+    var previo = lead.stage_previo ? (STATUS_LABELS[lead.stage_previo] || lead.stage_previo) : '';
+    return '<div class="crm-espera-banner">' +
+      '<i class="fas fa-pause-circle"></i>' +
+      '<div class="crm-espera-txt"><strong>Lead en espera</strong>' +
+      '<span>Vuelve solo a la bandeja el ' + esc(hasta) +
+      (previo ? ' · vuelve a "' + esc(previo) + '"' : '') +
+      '. Sus tareas quedan suspendidas.</span></div>' +
+      '<button type="button" class="btn-action" data-crm-reactivar="' + esc(lead.id) + '"><i class="fas fa-play"></i> Reactivar</button>' +
+    '</div>';
+  }
+  return '<div class="crm-espera-toolbar">' +
+    '<span class="crm-espera-toolbar-label"><i class="fas fa-pause"></i> En espera</span>' +
+    '<button type="button" class="crm-espera-btn" data-crm-esperar-dias="1" title="Colgar este lead 1 día">1d</button>' +
+    '<button type="button" class="crm-espera-btn" data-crm-esperar-dias="3" title="Colgar este lead 3 días">3d</button>' +
+    '<button type="button" class="crm-espera-btn" data-crm-esperar-dias="7" title="Colgar este lead una semana">1s</button>' +
+  '</div>';
+}
+
+/* RPC: pasar a espera (con fecha de regreso). */
+async function leadPasarAEspera(leadId, dias) {
+  var d = parseInt(dias, 10) || 7;
+  var hasta = new Date(Date.now() + d * 86400000).toISOString();
+  var r = await db().rpc('lead_pasar_a_espera', { p_lead_id: leadId, p_hasta: hasta });
+  if (r.error) throw new Error(r.error.message);
+  var res = r.data || {};
+  if (res.error) throw new Error(res.error);
+  return res;
+}
+
+/* RPC: reactivar (vuelve a la etapa previa + reactiva las tareas). */
+async function leadReactivar(leadId) {
+  var r = await db().rpc('lead_reactivar', { p_lead_id: leadId });
+  if (r.error) throw new Error(r.error.message);
+  var res = r.data || {};
+  if (res.error) throw new Error(res.error);
+  return res;
+}
+
+/* Listener de los botones "En espera" / "Reactivar" del panel lateral. */
+function bindLeadEspera(panel, lead) {
+  panel.querySelectorAll('[data-crm-esperar-dias]').forEach(function (b) {
+    b.addEventListener('click', async function () {
+      var dias = parseInt(this.getAttribute('data-crm-esperar-dias'), 10) || 7;
+      b.disabled = true;
+      try {
+        var r = await leadPasarAEspera(lead.id, dias);
+        toast('Lead en espera hasta el ' + fmtDateTime(r.hasta) + '.', 'success');
+        closeDetailPanel();
+        await loadLeads();
+        openDetailPanel(lead.id);
+      } catch (e) {
+        b.disabled = false;
+        toast('No se pudo colgar el lead: ' + e.message, 'error');
+      }
+    });
+  });
+  panel.querySelectorAll('[data-crm-reactivar]').forEach(function (b) {
+    b.addEventListener('click', async function () {
+      b.disabled = true;
+      try {
+        var r = await leadReactivar(lead.id);
+        toast('Lead reactivado: ' + (STATUS_LABELS[r.stage] || r.stage) + '.', 'success');
+        closeDetailPanel();
+        await loadLeads();
+        openDetailPanel(lead.id);
+      } catch (e) {
+        b.disabled = false;
+        toast('No se pudo reactivar: ' + e.message, 'error');
+      }
+    });
+  });
+}
+
 function renderSide(panel, lead, activities, props, visits, tasks, surveys, propMatches, offers) {
   /* Pre-computar HTML de sugerencias ANTES del innerHTML (evita issues de
      scope en la concatenación gigante del panel). */
@@ -2156,6 +2547,7 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
       '<button class="crm-side-close" aria-label="Cerrar"><i class="fas fa-times"></i></button>' +
     '</div>' +
     '<div class="crm-side-body">' +
+      leadEsperaHtml(lead) +
       accionesHtml +
       contactSectionHtml(lead, (props && props[0]) || null, props) +
       '<div class="crm-modal-tabs">' +
@@ -2174,6 +2566,7 @@ function renderSide(panel, lead, activities, props, visits, tasks, surveys, prop
     b.addEventListener('click', function () { unlinkProperty(lead.id, this.dataset.propId, panel); });
   });
   bindSideSave(lead, panel);
+  bindLeadEspera(panel, lead);
   bindPropSearch(panel, lead.id);
   /* Motor de match: vincular propiedad sugerida al lead */
   panel.querySelectorAll('.crm-suggest-link').forEach(function (b) {
@@ -2259,7 +2652,12 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks
           '</div>' +
           '<div class="crm-side-field-row">' +
             '<div class="crm-side-field"><span class="crm-side-field-label">Agente</span><select class="crm-field-input crm-field-input--select" id="crmDtlAgent"><option value="">Sin agente</option>' + aopts + '</select></div>' +
-            '<div class="crm-side-field"><span class="crm-side-field-label">Estado</span><select class="crm-field-input crm-field-input--select" id="crmDtlStatus">' + sopts + '</select></div>' +
+            /* P1-6: un lead en espera NO tiene select de etapa — la etapa se
+               cambia con "Reactivar" (vuelve a la etapa previa). Si el select
+               no existe, `collectSideForm` conserva la etapa actual. */
+            (normalizeStage(lead.stage || 'nuevo') === 'en_espera'
+              ? '<div class="crm-side-field"><span class="crm-side-field-label">Estado</span><div class="crm-side-field-value">En espera — usá "Reactivar" para volver al embudo</div></div>'
+              : '<div class="crm-side-field"><span class="crm-side-field-label">Estado</span><select class="crm-field-input crm-field-input--select" id="crmDtlStatus">' + sopts + '</select></div>') +
           '</div>' +
         '</div></div>' +
       '<div class="crm-side-section"><h4 class="crm-side-section-title">Notas</h4>' +
@@ -2314,7 +2712,7 @@ function sideBodyHtml(lead, sopts, aopts, oopts, tcOpts, ph, timelineHtml, tasks
       '<div class="crm-tasks-grid">' +
         '<div class="crm-tasks-col">' +
           '<h4 class="crm-side-section-title crm-tasks-col-title">Tareas' + (tasks.length > 3 ? ' <span class="crm-tasks-col-count">' + tasks.length + '</span>' : '') + '</h4>' +
-          '<div class="crm-timeline crm-timeline--cards">' + (tasks.length ? buildUnifiedTimeline([], [], tasks) : '<div class="crm-tasks-empty"><i class="fas fa-list-check"></i><span>Sin tareas.</span></div>') + '</div>' +
+          '<div class="crm-timeline crm-timeline--cards">' + (tasks.length ? buildUnifiedTimeline([], [], tasks, lead.id) : '<div class="crm-tasks-empty"><i class="fas fa-list-check"></i><span>Sin tareas.</span></div>') + '</div>' +
         '</div>' +
         '<div class="crm-tasks-col">' +
           '<h4 class="crm-side-section-title crm-tasks-col-title">Historial' + (histCount ? ' <span class="crm-tasks-col-count">' + histCount + '</span>' : '') + '</h4>' +
@@ -2477,7 +2875,9 @@ function collectSideForm(panel, lead) {
     phone: v('crmDtlPhone'),
     whatsapp: v('crmDtlPhone'),
     preferred_contact_method: v('crmDtlPrefContact'),
-    stage: v('crmDtlStatus'),
+    /* P1-6: si el lead está en espera el <select> de etapa no existe → se
+       conserva la etapa actual (si no, el guardado la pisaría con NULL). */
+    stage: v('crmDtlStatus') || (lead && lead.stage) || null,
     source: v('crmDtlOrigin'),
     tipo_cliente: tipo,
     /* Un solo campo editable: la operación se deriva del tipo. Si no hay tipo,
@@ -2690,6 +3090,12 @@ function init() {
     bandejaBtn.dataset.crmBound = '1';
     bandejaBtn.addEventListener('click', openBandeja);
   }
+  /* "Mi día" (P1-8, 2026-11-27): las 3 acciones más urgentes del día. */
+  var miDiaBtn = $id('crmMiDiaBtn');
+  if (miDiaBtn && !miDiaBtn.dataset.crmBound) {
+    miDiaBtn.dataset.crmBound = '1';
+    miDiaBtn.addEventListener('click', openMiDia);
+  }
   /* Duplicados (2026-11-26): detección + fusión (sólo super_admin/broker). */
   var dupBtn = $id('crmDuplicadosBtn');
   if (dupBtn && !dupBtn.dataset.crmBound) {
@@ -2805,7 +3211,9 @@ if (search) search.addEventListener('input', function () {
   if (stSel && !stSel.dataset.filled) {
     stSel.dataset.filled = '1';
     stSel.innerHTML = '<option value="">Todos los estados</option>' +
-      LEAD_STATUSES.map(function (s) { return '<option value="' + s + '">' + STATUS_LABELS[s] + '</option>'; }).join('');
+      /* P1-6: el filtro SÍ incluye "en espera" (aunque no sea una etapa del
+         embudo): los leads colgados tienen que poder encontrarse. */
+      LEAD_STATUSES_ALL.map(function (s) { return '<option value="' + s + '">' + STATUS_LABELS[s] + '</option>'; }).join('');
   }
   var trashBtn = $id('crmTrashToggle');
   if (trashBtn && !trashBtn.dataset.bound) {
@@ -2946,6 +3354,9 @@ function _syncHeader() {
   var bandejaBtn = $id('crmBandejaBtn');
   if (bandejaBtn) bandejaBtn.style.display = ownersMode ? 'none' : '';
   pintarBadgeBandeja();
+  /* "Mi día" (P1-8): sólo en el modo leads (es la agenda del agente). */
+  var miDiaBtn = $id('crmMiDiaBtn');
+  if (miDiaBtn) miDiaBtn.style.display = ownersMode ? 'none' : '';
   /* Duplicados (2026-11-26): mismo modo leads; gate de rol en la RPC. */
   var dupBtn = $id('crmDuplicadosBtn');
   if (dupBtn) dupBtn.style.display = ownersMode ? 'none' : '';
@@ -3024,6 +3435,16 @@ function handleSubView(tab, sub) {
 function siguientesAccionesDe(lead, props, visits, tasks) {
   if (!lead) return [];
   var acciones = [];
+  /* P1-6: un lead colgado NO necesita acciones — sugerirle "mandar WhatsApp"
+     o "tarea vencida" sería ruido (ya lo pausó el agente a propósito). Lo
+     único que corresponde es poder reactivarlo. */
+  if (normalizeStage(lead.stage || 'nuevo') === 'en_espera') {
+    acciones.push({
+      id: 'reactivar', label: 'Reactivar el lead', icon: 'fa-play',
+      razon: 'Está en espera: vuelve solo a la bandeja cuando llega su fecha de regreso.'
+    });
+    return acciones;
+  }
   var wa = waNumber(lead.whatsapp) || waNumber(lead.phone);
   var vivos = (tasks || []).filter(function (t) { return t.status === 'pendiente' || t.status === 'en_progreso'; });
   var tieneProps = (props || []).length > 0;
@@ -3155,6 +3576,16 @@ function bindSiguientesAcciones(panel, lead) {
         btn.innerHTML = '<i class="fas fa-check"></i> Listo';
         await loadLeads();
       } catch (e) { toast('No se pudo marcar: ' + e.message, 'error'); }
+      return;
+    }
+    if (id === 'reactivar') {
+      /* P1-6: el lead vuelve a la etapa desde la que se colgó. */
+      try {
+        var r = await leadReactivar(lead.id);
+        toast('Lead reactivado: ' + (STATUS_LABELS[r.stage] || r.stage) + '.', 'success');
+        btn.innerHTML = '<i class="fas fa-check"></i> Reactivado';
+        await loadLeads();
+      } catch (e) { toast('No se pudo reactivar: ' + e.message, 'error'); }
       return;
     }
     if (id === 'asignarme') {
@@ -3301,6 +3732,29 @@ function bandejaWaLink(telefono, texto) {
   return url;
 }
 
+/* --- P0-2 (2026-11-27): posponer en 1 clic (+1d / +3d / +1s) -------------
+   Se declara ACÁ (dentro del bloque de la bandeja) a propósito: el guard
+   behavioral de `tests/mi-bandeja.spec.js` evalúa el slice del módulo que va
+   de `bandejaWaLink` a `openBandeja`, y la bandeja ya ofrece posponer. Si el
+   helper viviera fuera de ese slice, el sandbox del test lo encontraría
+   undefined y el guard no probaría nada. */
+var POSPONER_OPCIONES = [
+  { dias: 1, label: '+1d', full: '+1 día' },
+  { dias: 3, label: '+3d', full: '+3 días' },
+  { dias: 7, label: '+1s', full: '+1 semana' }
+];
+
+/* Botones de posponer. `ctx.leadId` + `ctx.tareaId` (opcional). */
+function posponerBotonesHtml(ctx) {
+  ctx = ctx || {};
+  if (!ctx.leadId) return '';
+  return '<span class="crm-postponer">' + POSPONER_OPCIONES.map(function (o) {
+    return '<button type="button" class="crm-postponer-btn" data-crm-posponer="' + esc(ctx.leadId) + '"' +
+      (ctx.tareaId ? ' data-crm-posponer-tarea="' + esc(ctx.tareaId) + '"' : '') +
+      ' data-crm-posponer-dias="' + o.dias + '" title="Posponer ' + esc(o.full) + '">' + o.label + '</button>';
+  }).join('') + '</span>';
+}
+
 /* Mensaje pre-cargado del WhatsApp: mismo tono que las plantillas del panel. */
 function bandejaWaTexto(nombre) {
   var n = (nombre || '').split(' ')[0] || '';
@@ -3322,11 +3776,23 @@ function bandejaItemHtml(kind, it, verTodos) {
     acciones += puedeEscribir
       ? '<button type="button" class="crm-contact-btn" data-bandeja-tarea="' + esc(it.tarea_id) + '" data-lead="' + esc(it.lead_id) + '"><i class="fas fa-check"></i> Completar</button>'
       : '<span class="crm-contact-btn is-disabled" title="La tarea es de otro agente">Completar</span>';
+    /* P0-2: posponer en 1 clic (+1d / +3d / +1s). */
+    if (puedeEscribir) acciones += posponerBotonesHtml({ leadId: it.lead_id, tareaId: it.tarea_id });
+  }
+  if (kind === 'seguimiento') {
+    /* P0-2: posponer el seguimiento del lead (mueve la tarea que lo genera
+       o, si no hay, `leads.next_followup_at`). */
+    if (puedeEscribir) acciones += posponerBotonesHtml({ leadId: it.lead_id });
   }
   if (kind === 'sin_agente') {
     acciones += '<button type="button" class="crm-contact-btn crm-contact-btn--assign" data-bandeja-asignar="' + esc(it.lead_id) + '"><i class="fas fa-user-check"></i> Asignármelo</button>';
   }
-  if ((kind === 'seguimiento' || kind === 'sin_tocar') && puedeEscribir) {
+  /* P1-6: un lead que volvió de "en espera" (la fecha de regreso ya pasó) se
+     ofrece con "Reactivar" — no con "Marcar contactado": reactivarlo lo
+     devuelve a su etapa previa y reactiva sus tareas. */
+  if (it.espera) {
+    if (puedeEscribir) acciones += '<button type="button" class="crm-contact-btn" data-bandeja-reactivar="' + esc(it.lead_id) + '"><i class="fas fa-play"></i> Reactivar</button>';
+  } else if ((kind === 'seguimiento' || kind === 'sin_tocar') && puedeEscribir) {
     acciones += '<button type="button" class="crm-contact-btn" data-bandeja-contactado="' + esc(it.lead_id) + '" data-stage="' + esc(it.stage || '') + '"><i class="fas fa-phone"></i> Marcar contactado</button>';
   }
   if (it.lead_id) {
@@ -3338,7 +3804,8 @@ function bandejaItemHtml(kind, it, verTodos) {
   if (it.stage) meta.push(STATUS_LABELS[it.stage] || it.stage);
   if (it.source) meta.push(ORIGIN_LABELS[it.source] || it.source);
   if (it.agente) meta.push(it.agente);
-  if (kind === 'seguimiento' && it.vence) meta.push('venció ' + fmtDateTime(it.vence));
+  if (kind === 'seguimiento' && it.espera) meta.push('en espera · vuelve ' + fmtDateTime(it.vence));
+  else if (kind === 'seguimiento' && it.vence) meta.push('venció ' + fmtDateTime(it.vence));
   if (kind === 'tarea' && it.due_at) meta.push('venció ' + fmtDateTime(it.due_at));
   if (kind === 'visita' && it.visit_date) meta.push(fmtDateTime(it.visit_date));
   if (kind === 'visita' && it.status) meta.push(it.status === 'confirmada' ? 'confirmada' : 'pendiente');
@@ -3434,6 +3901,10 @@ async function openBandeja() {
       if (asignar) { bandejaAsignarme(asignar, body); return; }
       var repartir = e.target.closest('[data-bandeja-repartir]');
       if (repartir) { bandejaRepartir(repartir, body); return; }
+      var posponer = e.target.closest('[data-crm-posponer]');
+      if (posponer) { doPosponer(posponer, async function () { await loadLeads(); pintarBadgeBandeja(); }); return; }
+      var rea = e.target.closest('[data-bandeja-reactivar]');
+      if (rea) { bandejaReactivar(rea); return; }
     });
   } catch (err) {
     logError('bandeja', err);
@@ -3541,6 +4012,25 @@ async function bandejaAsignarme(btn, body) {
   }
 }
 
+/* P1-6 (2026-11-27): reactivar un lead que volvió de "en espera". */
+async function bandejaReactivar(btn) {
+  var leadId = btn.getAttribute('data-bandeja-reactivar');
+  btn.disabled = true;
+  try {
+    var r = await db().rpc('lead_reactivar', { p_lead_id: leadId });
+    if (r.error) throw new Error(r.error.message);
+    var d = r.data || {};
+    if (d.error) throw new Error(d.error);
+    toast('Lead reactivado: ' + (STATUS_LABELS[d.stage] || d.stage) + '.', 'success');
+    await loadLeads();
+    pintarBadgeBandeja();
+    await openBandeja(); /* re-listar la bandeja */
+  } catch (e) {
+    btn.disabled = false;
+    toast('No se pudo reactivar: ' + e.message, 'error');
+  }
+}
+
 /* Reparto automático (2026-11-26): cada lead sin dueño va al agente activo
    con menos carga. La RPC gatea el rol (super_admin/broker); si no hay
    agentes activos abre una alerta de supervisión. */
@@ -3569,7 +4059,226 @@ async function bandejaRepartir(btn, body) {
   }
 }
 
-/* Contador del botón: lee el cache de la RPC del sidebar (get_sidebar_badge_counts
+/* ============================================================
+   "MI DÍA" (P1-8 — 2026-11-27): las 3 acciones más urgentes.
+   ------------------------------------------------------------
+   "Mi bandeja" (2026-11-26) trae TODO lo pendiente: 5 secciones y
+   decenas de filas. Para el dueño es un inventario; para el agente que
+   tiene que trabajar HOY es demasiado: abre la bandeja, ve 21
+   seguimientos + 14 visitas + 9 sin dueño y no sabe por dónde empezar.
+
+   "Mi día" responde la pregunta concreta: ¿qué hago ahora? Muestra las 3
+   acciones más urgentes, en orden, con el lead, el teléfono y una acción
+   de 1 clic cada una. Los conteos van aparte (abajo) para que el top 3
+   no tape el volumen real.
+
+   La RPC `mi_dia` (SECURITY DEFINER, search_path vacío, sin anon) trae los
+   ítems ya ordenados por urgencia y con el alcance por rol.
+   ============================================================ */
+var _miDiaOverlay = null;
+
+var MI_DIA_TIPO = {
+  visita: { icon: 'fas fa-calendar-check', color: '#4ade80', label: 'Visita' },
+  espera: { icon: 'fas fa-pause-circle', color: '#94a3b8', label: 'Volver de espera' },
+  seguimiento: { icon: 'fas fa-clock', color: '#f87171', label: 'Seguimiento vencido' },
+  tarea: { icon: 'fas fa-list-check', color: '#FFB800', label: 'Tarea vencida' },
+  contacto: { icon: 'fas fa-comment-slash', color: '#fbbf24', label: 'Nunca contactado' }
+};
+
+function miDiaItemHtml(it) {
+  var meta = MI_DIA_TIPO[it.tipo] || { icon: 'fas fa-circle', color: '#94a3b8', label: it.tipo || '' };
+  var acciones = '';
+  if (it.accion === 'agenda') {
+    acciones += '<button type="button" class="crm-contact-btn" data-midia-agenda><i class="fas fa-calendar-day"></i> Ver agenda</button>';
+  }
+  if (it.accion === 'reactivar' && it.lead_id) {
+    acciones += '<button type="button" class="crm-contact-btn" data-midia-reactivar="' + esc(it.lead_id) + '"><i class="fas fa-play"></i> Reactivar</button>';
+  }
+  if (it.accion === 'contactar' && it.lead_id) {
+    acciones += '<button type="button" class="crm-contact-btn" data-midia-contactado="' + esc(it.lead_id) + '" data-stage="' + esc(it.stage || '') + '"><i class="fas fa-phone"></i> Marcar contactado</button>';
+    var wa = bandejaWaLink(it.telefono, 'Hola ' + (it.nombre || '') + ', te escribimos de Bienenhaus Propiedades.');
+    if (wa) acciones += '<a class="crm-contact-btn" href="' + esc(wa) + '" target="_blank" rel="noopener" data-midia-wa><i class="fab fa-whatsapp"></i> WhatsApp</a>';
+  }
+  if (it.accion === 'tarea' && it.tarea_id) {
+    acciones += '<button type="button" class="crm-contact-btn" data-midia-tarea="' + esc(it.tarea_id) + '" data-lead="' + esc(it.lead_id || '') + '"><i class="fas fa-check"></i> Completar</button>';
+  }
+  if (it.lead_id) {
+    acciones += '<button type="button" class="crm-contact-btn" data-midia-abrir="' + esc(it.lead_id) + '" title="Abrir el lead en el CRM"><i class="fas fa-folder-open"></i> Abrir</button>';
+  }
+  return '<div class="crm-midia-item" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:11px 12px;margin-bottom:8px;border:1px solid var(--border-subtle);border-left:3px solid ' + meta.color + ';border-radius:10px;background:rgba(255,255,255,0.02);">' +
+    '<div style="min-width:220px;flex:1;">' +
+      '<div style="display:flex;align-items:center;gap:7px;">' +
+        '<i class="' + meta.icon + '" style="color:' + meta.color + ';font-size:13px;"></i>' +
+        '<span style="font-size:11px;font-weight:700;color:' + meta.color + ';text-transform:uppercase;letter-spacing:.4px;">' + esc(meta.label) + '</span>' +
+      '</div>' +
+      '<div style="font-size:13px;color:var(--text-primary);font-weight:700;margin-top:4px;">' + esc(it.nombre || 'Sin nombre') + '</div>' +
+      '<div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">' + esc(it.detalle || '') + '</div>' +
+      (it.telefono ? '<div style="font-size:10.5px;color:var(--text-dim);margin-top:2px;">' + esc(it.telefono) + '</div>' : '') +
+    '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;">' + acciones + '</div>' +
+  '</div>';
+}
+
+function miDiaConteosHtml(conteos) {
+  var c = conteos || {};
+  var chips = [
+    { k: 'visitas', l: 'visitas hoy', color: '#4ade80' },
+    { k: 'esperas', l: 'volvieron de espera', color: '#94a3b8' },
+    { k: 'seguimientos', l: 'seguimientos vencidos', color: '#f87171' },
+    { k: 'tareas', l: 'tareas vencidas', color: '#FFB800' },
+    { k: 'sin_contacto', l: 'sin ningún contacto', color: '#fbbf24' }
+  ];
+  var html = chips.filter(function (x) { return Number(c[x.k] || 0) > 0; }).map(function (x) {
+    return '<span class="crm-midia-chip" style="font-size:10.5px;color:' + x.color + ';background:' + x.color + '18;border:1px solid ' + x.color + '40;padding:2px 8px;border-radius:999px;font-weight:700;">' +
+      Number(c[x.k] || 0) + ' ' + esc(x.l) + '</span>';
+  }).join('');
+  if (!html) return '';
+  return '<div class="crm-midia-conteos" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border-subtle);">' + html + '</div>';
+}
+
+async function miDiaRender(body, sub) {
+  try {
+    var r = await db().rpc('mi_dia');
+    if (r.error) throw new Error(r.error.message);
+    var d = r.data || {};
+    if (d.error) throw new Error(d.error);
+    var items = d.items || [];
+    var total = Number(d.total || 0);
+    if (sub) {
+      sub.innerHTML = d.agente
+        ? ('Hoy le toca a <strong style="color:var(--text-primary);">' + esc(d.agente) + '</strong>. ' + total + ' cosa(s) pendientes.')
+        : (total + ' cosa(s) pendientes en el equipo.');
+    }
+    body.innerHTML = (items.length
+      ? items.map(miDiaItemHtml).join('')
+      : '<div style="font-size:12.5px;color:var(--text-secondary);padding:14px 0;"><i class="fas fa-circle-check" style="color:#4ade80;"></i> Nada urgente para hoy. ✔</div>') +
+      miDiaConteosHtml(d.conteos);
+  } catch (err) {
+    if (window.__BH && window.__BH.logError) window.__BH.logError('mi dia:', err);
+    body.innerHTML = '<div style="color:var(--danger);font-size:12px;">No se pudo cargar Mi día: ' + esc(err.message) + '</div>';
+  }
+}
+
+async function openMiDia() {
+  if (!db()) { toast('Sin conexión con la base.', 'error'); return; }
+  if (_miDiaOverlay) { _miDiaOverlay.remove(); _miDiaOverlay = null; }
+  var overlay = document.createElement('div');
+  overlay.className = 'crm-bandeja-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10060;background:rgba(2,3,5,0.7);backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;';
+  overlay.innerHTML = '<div class="crm-bandeja-box" role="dialog" aria-modal="true" aria-label="Mi día" style="width:min(720px,100%);background:var(--bg,#05070A);border:1px solid var(--border-subtle);border-radius:16px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,0.55);">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;">' +
+      '<h3 style="margin:0;font-size:16px;color:var(--text-primary);"><i class="fas fa-sun" style="color:#facc15;"></i> Mi día — qué hacer ahora</h3>' +
+      '<button type="button" class="modal-x-close" data-midia-close aria-label="Cerrar" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;"><i class="fas fa-xmark"></i></button>' +
+    '</div>' +
+    '<p data-midia-sub style="margin:0 0 16px;font-size:11.5px;color:var(--text-dim);">Cargando…</p>' +
+    '<div data-midia-body style="font-size:12px;">Cargando…</div>' +
+  '</div>';
+  document.body.appendChild(overlay);
+  _miDiaOverlay = overlay;
+
+  var onKey = function (e) { if (e.key === 'Escape') cerrar(); };
+  function cerrar() {
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+    if (_miDiaOverlay === overlay) _miDiaOverlay = null;
+  }
+  overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) cerrar(); });
+  var closeBtn = overlay.querySelector('[data-midia-close]');
+  if (closeBtn) closeBtn.addEventListener('click', cerrar);
+  document.addEventListener('keydown', onKey);
+
+  var body = overlay.querySelector('[data-midia-body]');
+  var sub = overlay.querySelector('[data-midia-sub]');
+
+  /* Delegación: un solo listener para todas las acciones de "Mi día". */
+  body.addEventListener('click', function (e) {
+    var abrir = e.target.closest('[data-midia-abrir]');
+    if (abrir) { cerrar(); openDetailPanel(abrir.getAttribute('data-midia-abrir')); return; }
+    var agenda = e.target.closest('[data-midia-agenda]');
+    if (agenda) {
+      cerrar();
+      if (window.adminApp && window.adminApp.navigateTo) window.adminApp.navigateTo('tab-agenda');
+      return;
+    }
+    var contactado = e.target.closest('[data-midia-contactado]');
+    if (contactado) { miDiaMarcarContactado(contactado, body, sub); return; }
+    var tarea = e.target.closest('[data-midia-tarea]');
+    if (tarea) { miDiaCompletarTarea(tarea, body, sub); return; }
+    var rea = e.target.closest('[data-midia-reactivar]');
+    if (rea) { miDiaReactivar(rea, body, sub); return; }
+  });
+
+  await miDiaRender(body, sub);
+}
+
+/* "Marcar contactado" (mismo punto único del CRM que usa la bandeja). */
+async function miDiaMarcarContactado(btn, body, sub) {
+  var leadId = btn.getAttribute('data-midia-contactado');
+  var stage = btn.getAttribute('data-stage') || '';
+  btn.disabled = true;
+  try {
+    await markLeadContacted(leadId, stage === 'nuevo' ? { stage: 'contactado' } : null);
+    try {
+      await db().from('lead_activities').insert([{
+        lead_id: leadId, activity_type: 'note',
+        title: 'Contactado desde Mi día',
+        description: 'Marcado como contactado desde Mi día.'
+      }]);
+    } catch (e2) { /* el log no bloquea */ }
+    toast('Lead marcado como contactado.', 'success');
+    await loadLeads();
+    pintarBadgeBandeja();
+    await miDiaRender(body, sub);
+  } catch (e) {
+    btn.disabled = false;
+    toast('No se pudo marcar: ' + e.message, 'error');
+  }
+}
+
+/* "Completar" una tarea vencida. */
+async function miDiaCompletarTarea(btn, body, sub) {
+  var tareaId = btn.getAttribute('data-midia-tarea');
+  var leadId = btn.getAttribute('data-lead');
+  btn.disabled = true;
+  try {
+    var r = await db().from('lead_tasks').update({ status: 'completada', completed_at: new Date().toISOString() }).eq('id', tareaId);
+    if (r.error) throw new Error(r.error.message);
+    try {
+      await db().from('lead_activities').insert([{
+        lead_id: leadId, activity_type: 'note', title: 'Tarea completada desde Mi día', description: ''
+      }]);
+    } catch (e2) { /* el log no bloquea */ }
+    if (leadId) await syncLeadFollowup(leadId);
+    toast('Tarea completada.', 'success');
+    await loadLeads();
+    pintarBadgeBandeja();
+    await miDiaRender(body, sub);
+  } catch (e) {
+    btn.disabled = false;
+    toast('No se pudo completar: ' + e.message, 'error');
+  }
+}
+
+/* "Reactivar" un lead que volvió de "en espera". */
+async function miDiaReactivar(btn, body, sub) {
+  var leadId = btn.getAttribute('data-midia-reactivar');
+  btn.disabled = true;
+  try {
+    var r = await db().rpc('lead_reactivar', { p_lead_id: leadId });
+    if (r.error) throw new Error(r.error.message);
+    var d = r.data || {};
+    if (d.error) throw new Error(d.error);
+    toast('Lead reactivado: ' + (STATUS_LABELS[d.stage] || d.stage) + '.', 'success');
+    await loadLeads();
+    pintarBadgeBandeja();
+    await miDiaRender(body, sub);
+  } catch (e) {
+    btn.disabled = false;
+    toast('No se pudo reactivar: ' + e.message, 'error');
+  }
+}
+
+/* Contador del botón: lee el cache del sidebar RPC (get_sidebar_badge_counts
    v4 devuelve 'mi_bandeja' con el MISMO alcance que la bandeja). Sin llamada extra. */
 function pintarBadgeBandeja() {
   var btn = $id('crmBandejaBtn');
@@ -3705,7 +4414,7 @@ async function openDuplicados() {
 /* markLeadContacted se publica porque admin-crm-tasks.js (que carga ANTES
    que este archivo) lo necesita al completar una tarea: es el punto único
    que registra contacto, cierra la tarea de SLA y recalcula el followup. */
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja, openDuplicados: openDuplicados, openConversion: openConversion };
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja, openDuplicados: openDuplicados, openConversion: openConversion, cerrarVisitaRapido: cerrarVisitaRapido, reprogramarVisitaRapido: reprogramarVisitaRapido, leadPasarAEspera: leadPasarAEspera, leadReactivar: leadReactivar, openMiDia: openMiDia, batchSetAgent: batchSetAgent, batchSetStage: batchSetStage, batchToEspera: batchToEspera, batchExportCsv: batchExportCsv, batchSelClear: batchSelClear };
 
 /* --- Generación de token portal desde CRM (en modo propietarios) --- */
 (function () {
@@ -3940,6 +4649,119 @@ async function updateVisitStatus(visitId, newStatus, leadId, panel, cancelReason
   } catch (e) { toast('Error: ' + e.message, 'error'); }
 }
 
+/* ============================================================
+   CIERRE DE VISITA EN 1 CLIC (P0-3 — 2026-11-27).
+   Diagnóstico: las visitas quedaban abiertas y nadie las cerraba desde la
+   ficha del lead (2 alertas `visit_overdue` falsas sobre visitas que ya
+   habían pasado; el cierre exigía abrir un modal y escribir el resultado).
+   El agente llega de la visita: quiere marcarla y seguir trabajando.
+
+   Tres acciones, un clic cada una, desde la ficha del lead Y desde la Agenda:
+     · "Fui"      → status='completada' (cierre rápido; el resultado largo
+                     sigue disponible con el botón "Completar…").
+     · "No fui"   → status='no_show' (el cliente no asistió).
+     · "Reprogramar" → +1 día / +3 días / +1 semana a la MISMA hora, con
+                     status→'pendiente' y los recordatorios reiniciados (si
+                     no, la visita reprogramada nunca recibía aviso).
+   ============================================================ */
+
+/* Cierre rápido: 'fui' | 'no_show'. */
+async function cerrarVisitaRapido(visitId, accion) {
+  var vr = await db().from('visits')
+    .select('id, lead_id, client_name, visit_date, status, agent_id, property_id, confirmed_at')
+    .eq('id', visitId).maybeSingle();
+  if (vr.error) throw new Error(vr.error.message);
+  if (!vr.data) throw new Error('La visita ya no existe');
+  var v = vr.data;
+  var nowIso = new Date().toISOString();
+  var patch = {};
+  var titulo = '';
+  var desc = '';
+
+  if (accion === 'fui') {
+    patch = { status: 'completada', check_out: nowIso, confirmed_at: v.confirmed_at || nowIso };
+    titulo = 'Visita realizada';
+    desc = 'Cierre rápido: la visita se marcó como realizada.';
+  } else if (accion === 'no_show') {
+    patch = { status: 'no_show' };
+    titulo = 'No asistió a la visita';
+    desc = 'Cierre rápido: el cliente no asistió.';
+  } else {
+    throw new Error('Acción desconocida: ' + accion);
+  }
+
+  var up = await db().from('visits').update(patch).eq('id', visitId);
+  if (up.error) throw new Error(up.error.message);
+
+  if (accion === 'fui' && v.lead_id) {
+    try { await db().from('leads').update({ stage: 'visita_realizada' }).eq('id', v.lead_id); } catch (_) {}
+  }
+  if (v.lead_id) {
+    try {
+      await db().from('lead_activities').insert([{
+        lead_id: v.lead_id,
+        activity_type: 'note',
+        title: titulo,
+        description: desc
+      }]);
+    } catch (_) {}
+  }
+  toast(accion === 'fui' ? 'Visita marcada como realizada.' : 'Visita marcada como no asistió.', 'success');
+  if (accion === 'fui' && v.lead_id) {
+    try { await offerSurveyAfterVisit(v.lead_id, visitId, null); } catch (_) {}
+  }
+  return v;
+}
+
+/* Reprograma la visita N días hacia adelante, a la misma hora. */
+async function reprogramarVisitaRapido(visitId, dias) {
+  dias = parseInt(dias, 10) || 1;
+  var vr = await db().from('visits')
+    .select('id, lead_id, client_name, visit_date, reschedule_count')
+    .eq('id', visitId).maybeSingle();
+  if (vr.error) throw new Error(vr.error.message);
+  if (!vr.data) throw new Error('La visita ya no existe');
+  var v = vr.data;
+  var base = v.visit_date ? new Date(v.visit_date) : new Date();
+  if (isNaN(base.getTime())) base = new Date();
+  var nuevo = new Date(base.getTime() + dias * 86400000);
+  var up = await db().from('visits').update({
+    visit_date: nuevo.toISOString(),
+    status: 'pendiente',
+    reschedule_count: (v.reschedule_count || 0) + 1,
+    check_in: null,
+    check_out: null,
+    /* Los recordatorios se reinician: la visita reprogramada tiene que volver
+       a avisar (24 h y 2 h) para la fecha nueva. */
+    reminder_24h_sent_at: null,
+    reminder_2h_sent_at: null
+  }).eq('id', visitId);
+  if (up.error) throw new Error(up.error.message);
+  if (v.lead_id) {
+    try {
+      await db().from('lead_activities').insert([{
+        lead_id: v.lead_id,
+        activity_type: 'note',
+        title: 'Visita reprogramada',
+        description: fmtDateTime(v.visit_date) + ' → ' + fmtDateTime(nuevo.toISOString()) + ' (+' + dias + 'd)'
+      }]);
+    } catch (_) {}
+  }
+  toast('Visita reprogramada para el ' + fmtDateTime(nuevo.toISOString()) + '.', 'success');
+  return v;
+}
+
+/* Grupo compacto de cierre rápido (se muestra al hacer hover en la fila). */
+function visitaCierreRapidoHtml(visitId) {
+  return '<span class="crm-visit-quick">' +
+    '<button type="button" class="crm-visit-quick-btn crm-visit-quick-btn--ok" data-visit-action="done" data-visit-id="' + esc(visitId) + '" title="Fui — la visita se realizó"><i class="fas fa-check"></i> Fui</button>' +
+    '<button type="button" class="crm-visit-quick-btn crm-visit-quick-btn--no" data-visit-action="no_show" data-visit-id="' + esc(visitId) + '" title="No fui — el cliente no asistió"><i class="fas fa-user-slash"></i> No fui</button>' +
+    '<button type="button" class="crm-visit-quick-btn" data-visit-action="reprogramar_1" data-visit-id="' + esc(visitId) + '" title="Reprogramar a mañana (misma hora)"><i class="fas fa-rotate-right"></i> +1d</button>' +
+    '<button type="button" class="crm-visit-quick-btn" data-visit-action="reprogramar_3" data-visit-id="' + esc(visitId) + '" title="Reprogramar a 3 días (misma hora)"><i class="fas fa-rotate-right"></i> +3d</button>' +
+    '<button type="button" class="crm-visit-quick-btn" data-visit-action="reprogramar_7" data-visit-id="' + esc(visitId) + '" title="Reprogramar a una semana (misma hora)"><i class="fas fa-rotate-right"></i> +1s</button>' +
+    '</span>';
+}
+
 async function rescheduleVisit(visitId, leadId, panel) {
   var input = typeof window.showInputPrompt === 'function'
     ? await window.showInputPrompt({ title: 'Reprogramar visita', message: 'Nueva fecha y hora (YYYY-MM-DDTHH:mm):', icon: 'fas fa-clock', placeholder: '2026-10-02T10:30', confirmText: 'Reprogramar' })
@@ -3984,6 +4806,24 @@ function bindAgendaActions(panel, leadId) {
         updateVisitStatus(vid, 'cancelada', leadId, panel, String(reason).trim() || null);
       }
       else if (act === 'reschedule') rescheduleVisit(vid, leadId, panel);
+      /* P0-3: cierre de 1 clic */
+      else if (act === 'done' || act === 'no_show') {
+        try {
+          await cerrarVisitaRapido(vid, act);
+          closeDetailPanel();
+          if (leadId) openDetailPanel(leadId);
+          await loadLeads();
+        } catch (e) { toast('Error: ' + e.message, 'error'); }
+      }
+      else if (act === 'reprogramar_1' || act === 'reprogramar_3' || act === 'reprogramar_7') {
+        var dias = act === 'reprogramar_1' ? 1 : (act === 'reprogramar_3' ? 3 : 7);
+        try {
+          await reprogramarVisitaRapido(vid, dias);
+          closeDetailPanel();
+          if (leadId) openDetailPanel(leadId);
+          await loadLeads();
+        } catch (e) { toast('Error: ' + e.message, 'error'); }
+      }
     });
   });
 }
@@ -4027,6 +4867,114 @@ async function syncLeadFollowup(leadId) {
     var next = (r.data && r.data[0] && r.data[0].due_at) || null;
     await db().from('leads').update({ next_followup_at: next }).eq('id', leadId);
   } catch (e) { console.warn('[crm] sync followup:', e.message); }
+}
+
+/* ============================================================
+   POSPONER EN 1 CLIC (P0-2 — 2026-11-27).
+   Diagnóstico: 21 tareas vencidas y 6 seguimientos vencidos en el CRM, sin
+   ninguna forma de "corazonar" el plazo. El agente tenía que abrir el
+   editor de tarea y escribir la fecha a mano para sacarse un vencimiento
+   de encima — y many veces no lo hacía, así que el backlog crecía.
+
+   Tres atajos, un clic cada uno: +1 día / +3 días / +1 semana.
+   · Si hay TAREA: se mueve `lead_tasks.due_at` y se recalcula el followup
+     del lead (`syncLeadFollowup`).
+   · Si NO hay tarea (seguimiento del lead): se mueve la tarea pendiente
+     que lo genera; si el lead no tiene ninguna, se mueve
+     `leads.next_followup_at` directo.
+   · `reminder_sent_at` se limpia: al posponer, el aviso automático tiene
+     que volver a dispararse para la nueva fecha (si no, la tarea nueva
+     nunca avisaba).
+   ============================================================ */
+
+/* Mueve el vencimiento. Devuelve un texto con lo que se movió. */
+async function posponerLead(leadId, tareaId, dias) {
+  if (!leadId) throw new Error('Falta el lead');
+  dias = parseInt(dias, 10) || 1;
+  var tId = tareaId || null;
+  var tituloTarea = '';
+
+  if (!tId) {
+    /* Sin tarea explícita → la pendiente más próxima es la que genera el
+       followup del lead (así el "Seguimiento vencido" no vuelve a salir). */
+    var tr = await db().from('lead_tasks')
+      .select('id, due_at, title')
+      .eq('lead_id', leadId)
+      .in('status', ['pendiente', 'en_progreso'])
+      .not('due_at', 'is', null)
+      .order('due_at', { ascending: true })
+      .limit(1);
+    if (tr.error) throw new Error(tr.error.message);
+    if (tr.data && tr.data.length) {
+      tId = tr.data[0].id;
+      tituloTarea = tr.data[0].title || '';
+    }
+  }
+
+  var ahora = new Date();
+  if (tId) {
+    if (!tituloTarea) {
+      var one = await db().from('lead_tasks').select('title').eq('id', tId).maybeSingle();
+      tituloTarea = (one.data && one.data.title) || '';
+    }
+    var tr2 = await db().from('lead_tasks').select('due_at').eq('id', tId).maybeSingle();
+    if (tr2.error) throw new Error(tr2.error.message);
+    if (!tr2.data) throw new Error('La tarea ya no existe');
+    var base = ahora;
+    if (tr2.data.due_at) {
+      var cur = new Date(tr2.data.due_at);
+      /* Una tarea vencida se pospone desde HOY (no desde su vencimiento:
+         "posponer 1 día" tiene que sacarla del rojo, no dejarla en rojo). */
+      if (!isNaN(cur.getTime()) && cur.getTime() > base.getTime()) base = cur;
+    }
+    var nuevo = new Date(base.getTime() + dias * 86400000);
+    var up = await db().from('lead_tasks')
+      .update({ due_at: nuevo.toISOString(), reminder_sent_at: null })
+      .eq('id', tId);
+    if (up.error) throw new Error(up.error.message);
+    await syncLeadFollowup(leadId);
+    return { que: 'tarea', titulo: tituloTarea, hasta: nuevo };
+  }
+
+  /* Sin tarea: se mueve el followup del lead. */
+  var lr = await db().from('leads').select('next_followup_at').eq('id', leadId).maybeSingle();
+  if (lr.error) throw new Error(lr.error.message);
+  var baseL = ahora;
+  if (lr.data && lr.data.next_followup_at) {
+    var curL = new Date(lr.data.next_followup_at);
+    if (!isNaN(curL.getTime()) && curL.getTime() > baseL.getTime()) baseL = curL;
+  }
+  var nuevoL = new Date(baseL.getTime() + dias * 86400000);
+  var upL = await db().from('leads').update({ next_followup_at: nuevoL.toISOString() }).eq('id', leadId);
+  if (upL.error) throw new Error(upL.error.message);
+  return { que: 'seguimiento', titulo: '', hasta: nuevoL };
+}
+
+/* Acción de posponer (delegada). `onDone` refresca lo que haga falta. */
+async function doPosponer(btn, onDone) {
+  var leadId = btn.getAttribute('data-crm-posponer');
+  var tareaId = btn.getAttribute('data-crm-posponer-tarea');
+  var dias = parseInt(btn.getAttribute('data-crm-posponer-dias'), 10) || 1;
+  var op = POSPONER_OPCIONES.filter(function (o) { return o.dias === dias; })[0];
+  btn.disabled = true;
+  try {
+    var r = await posponerLead(leadId, tareaId, dias);
+    try {
+      await db().from('lead_activities').insert([{
+        lead_id: leadId,
+        activity_type: 'note',
+        title: 'Seguimiento pospuesto ' + (op ? op.full : ('+' + dias + 'd')),
+        description: r.que === 'tarea'
+          ? 'Tarea "' + (r.titulo || 'sin título') + '" movida al ' + fmtDateTime(r.hasta.toISOString()) + '.'
+          : 'Próximo seguimiento movido al ' + fmtDateTime(r.hasta.toISOString()) + '.'
+      }]);
+    } catch (e2) { /* la traza no bloquea la acción */ }
+    toast('Pospuesto ' + (op ? op.full : '') + ' — ' + fmtDateTime(r.hasta.toISOString()), 'success');
+    if (typeof onDone === 'function') await onDone();
+  } catch (e) {
+    btn.disabled = false;
+    toast('No se pudo posponer: ' + e.message, 'error');
+  }
 }
 
 /* ─── SLA de primer contacto (2026-11-02) ───
@@ -4433,6 +5381,18 @@ function bindTlTaskActions(panel, leadId) {
       edit.addEventListener('click', function (e) { e.stopPropagation(); doEditTlTask(item, leadId, panel); });
     }
   });
+  /* P0-2: posponer (+1d / +3d / +1s) — un clic por opción, sin modal. */
+  panel.querySelectorAll('[data-crm-posponer]').forEach(function (b) {
+    if (b.dataset.crmPosponerBound) return;
+    b.dataset.crmPosponerBound = '1';
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      doPosponer(b, async function () {
+        await refreshTasksInPanel(leadId, panel);
+        await refreshTimelineInPanel(leadId, panel);
+      });
+    });
+  });
 }
 
 /* Refresca el HISTORIAL (timeline) dentro del panel sin cerrarlo.
@@ -4468,7 +5428,7 @@ async function refreshTasksInPanel(leadId, panel) {
     if (r.error) throw new Error(r.error.message);
     var tasks = r.data || [];
     cardsWrap.innerHTML = tasks.length
-      ? buildUnifiedTimeline([], [], tasks)
+      ? buildUnifiedTimeline([], [], tasks, leadId)
       : '<div class="crm-tasks-empty"><i class="fas fa-list-check"></i><span>Sin tareas. Creá una con el campo de arriba.</span></div>';
     bindTlTaskActions(panel, leadId);
   } catch (e) {
@@ -4563,7 +5523,7 @@ function showEditTaskModal(task, leadId, panel) {
    LÍNEA DE TIEMPO UNIFICADA -- actividades + visitas + tareas
    "Lo que está pasando" en un solo feed cronológico.
    ============================================================ */
-function buildUnifiedTimeline(activities, visits, tasks) {
+function buildUnifiedTimeline(activities, visits, tasks, leadIdCtx) {
   var taskStatusLbl = (window.CrmTasks && window.CrmTasks.statusLabels) || { pendiente: 'Pendiente', en_progreso: 'En progreso', completada: 'Completada', cancelada: 'Cancelada' };
   var taskPrioLbl = (window.CrmTasks && window.CrmTasks.priorityLabels) || { baja: 'Baja', media: 'Media', alta: 'Alta', urgente: 'Urgente' };
   function prioClass(p) {
@@ -4602,6 +5562,11 @@ function buildUnifiedTimeline(activities, visits, tasks) {
     if (st === 'en_curso') {
       actions += '<button class="crm-visit-btn" data-visit-action="complete" data-visit-id="' + v.id + '" title="Finalizar y completar" style="color:var(--accent);"><i class="fas fa-flag-checkered"></i></button>';
     }
+    /* P0-3: cierre de 1 clic (Fui / No fui / reprogramar). Sólo tiene sentido
+       mientras la visita siga abierta. */
+    if (st === 'pendiente' || st === 'confirmada' || st === 'en_curso') {
+      actions += visitaCierreRapidoHtml(v.id);
+    }
     items.push({
       _ts: v.visit_date,
       html: '<div class="crm-interaction crm-tl-visit">' +
@@ -4615,15 +5580,22 @@ function buildUnifiedTimeline(activities, visits, tasks) {
     });
   });
   (tasks || []).forEach(function (t) {
+    /* P1-6: una tarea suspendida (lead en espera) no se overdue ni se pospone:
+       está colgada a propósito hasta que el lead vuelva. */
+    var suspendido = t.status === 'en_espera';
     var isDone = t.status === 'completada' || t.status === 'cancelada';
     var checked = t.status === 'completada' ? ' checked' : '';
-    var disabled = isDone ? ' disabled' : '';
+    var disabled = (isDone || suspendido) ? ' disabled' : '';
     var dueStr = t.due_at ? fmtDateTime(t.due_at) : '';
-    var overdue = t.due_at && !isDone && new Date(t.due_at).getTime() < Date.now();
+    var overdue = t.due_at && !isDone && !suspendido && new Date(t.due_at).getTime() < Date.now();
     var stl = t.status === 'completada' ? 'Completada' : t.status === 'cancelada' ? 'Cancelada' : (taskStatusLbl[t.status] || t.status || 'Pendiente');
     var typeLbl = LEAD_TASK_TYPE_LABELS[t.type] || '';
     var contactLbl = CONTACT_TYPE_LABELS[t.contact_type] || '';
     var agent = t.assigned_to ? _agents.filter(function (a) { return a.id === t.assigned_to; })[0] : null;
+    /* P0-2: posponer en 1 clic (+1d / +3d / +1s) sobre la tarea. El grupo
+       se muestra al pasar el mouse por la fila (CSS) para no saturar la
+       timeline de botones. */
+    var posponer = (isDone || suspendido) ? '' : posponerBotonesHtml({ leadId: t.lead_id || leadIdCtx, tareaId: t.id });
     items.push({
       _ts: t.created_at || t.due_at,
       html: '<div class="crm-interaction crm-tl-task' + (isDone ? ' crm-tl-task--done' : '') + '" data-task-id="' + t.id + '">' +
@@ -4639,13 +5611,14 @@ function buildUnifiedTimeline(activities, visits, tasks) {
           '</div>' +
           (t.description ? '<div class="crm-interaction-text">' + esc(t.description) + '</div>' : '') +
           (t.completed_note ? '<div class="crm-tl-completed-note"><i class="fas fa-check-circle"></i> ' + esc(t.completed_note) + '</div>' : '') +
+          (posponer ? '<div class="crm-tl-task-postpone">' + posponer + '</div>' : '') +
           '<div class="crm-tl-task-meta">' +
             (typeLbl ? '<span class="crm-task-priority crm-task-priority--media" style="background:rgba(255,255,255,0.06); color:var(--text-secondary);">' + typeLbl + '</span>' : '') +
             (contactLbl ? '<span class="crm-task-priority crm-task-priority--media" style="background:rgba(255,255,255,0.06); color:var(--text-secondary);">' + contactLbl + '</span>' : '') +
             '<span class="crm-task-priority ' + prioClass(t.priority) + '">' + (taskPrioLbl[t.priority] || 'Media') + '</span>' +
             (dueStr ? '<span class="crm-task-due' + (overdue ? ' crm-task-due--overdue' : '') + '">' + dueStr + '</span>' : '') +
             (agent ? '<span class="crm-task-due">→ ' + esc(agent.full_name) + '</span>' : '') +
-            '<span class="crm-tl-status' + (t.status === 'completada' ? ' crm-tl-status--done' : '') + '">' + stl + '</span>' +
+            '<span class="crm-tl-status' + (t.status === 'completada' ? ' crm-tl-status--done' : (suspendido ? ' crm-tl-status--espera' : '')) + '">' + stl + '</span>' +
           '</div>' +
           '<div class="crm-interaction-date">' + fmtDateTime(t.created_at) + '</div>' +
         '</div></div>'

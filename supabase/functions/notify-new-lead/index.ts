@@ -10,6 +10,7 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { jsonResponse, optionsResponse } from '../_shared/http.ts';
+import { registrarEnvio } from '../_shared/envios.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY') ?? '';
@@ -47,7 +48,17 @@ Deno.serve(async (req: Request) => {
     .eq('role', 'super_admin')
     .eq('is_active', true);
   const recipients = (admins || []).map(a => a.email).filter(e => typeof e === 'string' && e.includes('@'));
-  if (!recipients.length) return jsonResponse(200, { skipped: 'sin destinatarios' }, req);
+  if (!recipients.length) {
+    await registrarEnvio(supabase, {
+      origen: 'notify_new_lead',
+      estado: 'omitido',
+      lead_id: leadId,
+      asunto: `Nuevo lead: ${lead.full_name} (${lead.source ?? 'web'})`,
+      error: 'sin destinatarios (ningún super_admin activo con email)',
+      metadata: { lead_stage: lead.stage, lead_source: lead.source },
+    });
+    return jsonResponse(200, { skipped: 'sin destinatarios' }, req);
+  }
 
   let brevoKey = Deno.env.get('BREVO_API_KEY') ?? '';
   if (!brevoKey) {
@@ -57,7 +68,19 @@ Deno.serve(async (req: Request) => {
   }
   const resendKey = Deno.env.get('RESEND_API_KEY') ?? '';
   if (!brevoKey && !resendKey) {
-    await alertOnceADay(supabase, 'email_key_missing', lead);
+    /* Traza del envío fallido (P0-4): el trigger de `crm_envios` abre la
+       alerta `crm_email_broken` (una por día) y la auto-resuelve con el
+       primer envío OK. Antes esta alerta se acumulaba para siempre. */
+    await registrarEnvio(supabase, {
+      origen: 'notify_new_lead',
+      estado: 'error',
+      lead_id: leadId,
+      asunto: `Nuevo lead: ${lead.full_name} (${lead.source ?? 'web'})`,
+      destinatario: recipients.join(', '),
+      proveedor: 'ninguno',
+      error: 'sin API key de email (Brevo/Resend)',
+      metadata: { lead_stage: lead.stage, lead_source: lead.source },
+    });
     return jsonResponse(200, { skipped: 'sin API key de email (Brevo/Resend)' }, req);
   }
 
@@ -85,6 +108,7 @@ Deno.serve(async (req: Request) => {
     </div>`;
 
   const subject = `Nuevo lead: ${lead.full_name} (${lead.source ?? 'web'})`;
+  const proveedor = brevoKey ? 'brevo' : 'resend';
   let sendRes: Response;
   if (brevoKey) {
     sendRes = await fetch('https://api.brevo.com/v3/smtp/email', {
@@ -112,33 +136,34 @@ Deno.serve(async (req: Request) => {
   if (!sendRes.ok) {
     const txt = await sendRes.text();
     console.error('[notify-new-lead] email provider error:', txt);
-    await alertOnceADay(supabase, 'email_send_failed', lead);
+    await registrarEnvio(supabase, {
+      origen: 'notify_new_lead',
+      estado: 'error',
+      lead_id: leadId,
+      asunto: subject,
+      destinatario: recipients.join(', '),
+      proveedor,
+      error: `${sendRes.status}: ${txt}`.slice(0, 900),
+      metadata: { lead_stage: lead.stage, lead_source: lead.source, destinatarios: recipients.length },
+    });
     return jsonResponse(502, { error: 'Falló el envío de email' }, req);
   }
 
+  /* Traza del envío OK (P0-4). El trigger auto-resuelve la alerta
+     `crm_email_broken` abierta: "están caídas" deja de ser cierto. */
+  await registrarEnvio(supabase, {
+    origen: 'notify_new_lead',
+    estado: 'enviado',
+    lead_id: leadId,
+    asunto: subject,
+    destinatario: recipients.join(', '),
+    proveedor,
+    metadata: {
+      lead_stage: lead.stage,
+      lead_source: lead.source,
+      destinatarios: recipients.length,
+    },
+  });
+
   return jsonResponse(200, { ok: true, notified: recipients.length }, req);
 });
-
-async function alertOnceADay(supabase: any, kind: 'email_key_missing' | 'email_send_failed', lead: Record<string, unknown>) {
-  try {
-    const { data: existing } = await supabase
-      .from('supervision_alerts')
-      .select('id')
-      .eq('alert_type', 'crm_email_broken')
-      .eq('status', 'open')
-      .gte('created_at', new Date(Date.now() - 86400000).toISOString())
-      .limit(1);
-    if (existing && existing.length) return;
-    await supabase.from('supervision_alerts').insert([{
-      module: 'crm',
-      severity: 'high',
-      alert_type: 'crm_email_broken',
-      title: 'Notificaciones de email del CRM están caídas',
-      description: kind === 'email_key_missing'
-        ? 'No hay API key de email configurada (Brevo/Resend). Los avisos de nuevos leads no se están enviando.'
-        : 'El proveedor de email rechazó el envío del aviso. Revisar la key y el dominio sender.',
-      evidence: { kind, lead_id: lead.id },
-      status: 'open',
-    }]);
-  } catch (e) { console.error('[notify-new-lead] alert insert failed:', e); }
-}

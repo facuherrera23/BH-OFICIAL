@@ -712,6 +712,96 @@ Un solo campo en el alta: **tipo de cliente**; la **operación se deriva** de é
 7. **WhatsApp deja rastro**: el botón `wa.me` de la ficha era el único canal sin registro (plantilla, campaña y encuesta sí registraban). Ahora cada apertura se loguea en `lead_activities` con la propiedad vinculada — fire-and-forget: el chat se abre igual aunque falle el insert.
 8. **Conversión por origen** (`conversion_por_origen(p_dias)`): RELA 69% de supervivencia vs ML 21.7% vs GVAmax 6.1% (365 días) — la señal de dónde conviene buscar, antes sólo en el digest del lunes. Overlay con toggle 7/30/90; clamp de días `GREATEST(LEAST(x,365),1)` en el orden CORRECTO (la inversa era el bug de `bh_web_metrics` que ignoraba el parámetro).
 
+### 🚑 P0 + P1 del CRM (2026-11-27 — del diagnóstico de fallas del sistema)
+
+> Un lote con 8 features. Cada una verificada en vivo contra producción (RPC con
+> transacción + ROLLBACK, `has_function_privilege` y lectura del resultado real),
+> no sólo con guards estáticos. Los guards nuevos: `tests/lead-espera.spec.js`
+> (12), `tests/lead-batch.spec.js` (10), `tests/mi-dia.spec.js` (9).
+
+**P0-1 — Higiene de alertas.** `crm_flag_overdue_visits()` recreada con auto-resolve de
+`no_show` (la alerta de visita vencida se cerraba sola). Las 19 alertas viejas se
+cerraron (soft: `resolved_at`): 14 `crm_email_broken` + 3 `sensitive_config_change`
++ 2 `visit_overdue` falsas. Quedan 6 `lead_followup_overdue` reales. El panel
+distingue **nuevas** (≤24 h) de viejas con el chip `#supAlertsNewChip`.
+
+**P0-2 — Posponer en 1 clic.** +1 día / +3 días / próxima semana sobre
+`lead_tasks.due_at` y `leads.next_followup_at`, limpiando `reminder_sent_at`
+(`POSPONER_OPCIONES` / `posponerLead` en `admin-crm.js`). Botones en las tareas del
+timeline (`.crm-tl-task-postpone`) y en la bandeja (seguimiento + tarea).
+
+**P0-3 — Cerrar visita en 1 clic.** `fui` / `no fui` / +1d/+3d/+1s desde la ficha del
+lead y desde la Agenda (`cerrarVisitaRapido` / `reprogramarVisitaRapido`). Al
+reprogramar se reinician `reminder_24h_sent_at` / `reminder_2h_sent_at` y se
+incrementa `reschedule_count` (si no, el recordatorio ya enviado no volvía).
+
+**P0-4 — Traza de envíos.** Tabla `crm_envios` (RLS, SELECT staff autenticado,
+escritura `service_role`) + helper `_shared/envios.ts` instrumentando
+`notify-new-lead`, `lead-tasks-reminder`, las dos ventanas de `_shared/visits.ts` y
+`trigger_commission_on_close`. La alerta `crm_email_broken` se auto-resuelve cuando
+el envío funciona (`crm_envios_sync_alert()`). Nueva pestaña "Envíos" en
+Supervisión (`#supTabEnvios`).
+
+**P0-5 — RELA sin fallback a sandbox.** `rela-proxy` y `_shared/rela.ts` ya no
+caen a la API sandbox cuando falta `RELA_BASE_URL`: el ambiente es explícito
+(host `api-zp-open.navent.com` = producción, `api-zp-sandbox-open.navent.com` =
+sandbox) y el panel muestra un banner "Modo SANDBOX". Un error de producción ya
+no se disfraza de sandbox.
+
+**P1-6 — Etapa "en espera".** `lead_stage` gana `en_espera` (**no terminal**) +
+`leads.stage_previo` (text). Al colgar un lead: sus `lead_tasks` pasan a
+`status='en_espera'` (no vencen, no avisan, no cuentan en el backlog) y
+`next_followup_at` es la **fecha de regreso**. Al reactivar vuelve a
+`stage_previo` y sus tareas a `pendiente`. RPCs `lead_pasar_a_espera` /
+`lead_reactivar` (SECURITY DEFINER, `search_path=''`, sin anon). El lead en espera
+NO aparece en el select de etapa (se maneja con el botón dedicado + banner
+"Reactivar") pero SÍ en el filtro de estados del listado. Una visita nueva lo
+despierta (trigger `trg_visits_sync_lead_stage`). **Bug de badge corregido de paso**:
+`lead_tasks_overdue` contaba tareas de leads cerrados (9) y borrados (4) — ahora
+hace JOIN a `leads` y excluye terminal/borrado/`en_espera`.
+
+**P1-7 — Acciones en lote.** Checkbox por fila + barra flotante (`#crmBatchBar`):
+reasignar agente, cambiar etapa, mandar a "en espera" y exportar CSV (BOM +
+neutralización de fórmulas `=+-@`). Las escrituras van **de a una fila** (`.eq('id')`,
+NO `.in()` masivo) porque la policy `leads_update` evalúa el WITH CHECK por fila: un
+solo fallo abortaría todo el lote. Los errores se reportan por conteo (nunca
+tragados) y cada cambio deja traza `status_change`. La papelera no tiene selección.
+Cambiar a `cerrado_perdido` en lote pide la razón **una vez** y la aplica a todos;
+salir de `cerrado_perdido` limpia `lost_reason`.
+
+**P1-8 — "Mi día" por agente.** RPC `mi_dia(p_user_id)` (SECURITY DEFINER,
+`search_path=''`, authenticated + service_role): las **3 acciones más urgentes** en
+orden de urgencia — visita de hoy → lead que volvió de "en espera" → seguimiento
+vencido → tarea vencida → nunca contactado — con un lead no repetido entre
+categorías (`v_picked`) y los **conteos por categoría aparte** ("y 4 seguimientos
+más"), para que el top 3 no tape el volumen. Overlay propio en el CRM
+(`#crmMiDiaBtn` → `openMiDia`) con una acción de 1 clic por ítem (ver agenda /
+reactivar / marcar contactado + WhatsApp / completar tarea / abrir). Verificado en
+vivo: 3 ítems ordenados, conteos coherentes y el lead colgado aparece como
+"reactivar" en la posición 2. ⚠️ **Bug real encontrado por la primera llamada**:
+`jsonb_array_append` NO existe en Postgres (es `||` sobre arrays jsonb) → la
+migración pasó y la RPC estaba rota (42883). Como la función es plpgsql, el error
+NO aparece al crearla: hay que probarla en vivo (migración de fix
+`20261127000010`).
+
+**Correcciones de datos autorizadas (27/11/2026).** `agents.email` de Facundo
+corregido a `hfacundo45@gmail.com`. El reparto automático ya no tenía huérfanos
+accionables (los 5 leads vivos sin dueño están en `cerrado_perdido` = terminal).
+Las **117 notificaciones ML** que quedaron en `status='received'` (23/10 → 25/11,
+11 publicaciones distintas) se re-inyectaron al webhook → las 117 pasaron a
+`processed`, 0 fallos nuevos y la cola NO se infló (14 pending: el dedup de
+`ml_enqueue` colapsa las 117 notificaciones en un job por propiedad).
+
+**⚠️ Verificación repo↔prod (herramienta nueva del ciclo).** Para no dejar
+divergencia entre el repo y producción (la clase de bug más cara del
+proyecto), se aplicó el SQL de las migraciones dentro de una transacción y se
+comparó `pg_get_functiondef` antes/después (hash MD5 por función). Apareció
+**1 diferencia real**: `lead_reactivar` insertaba la traza con *"se reaktivaron
+sus tareas"* (con "k"). Corregida con `20261127000011_lead_reactivar_texto.sql`
+y verificada en vivo. **Estado final: las 13 funciones de la etapa dan hash
+idéntico entre repo y producción, y los 19 triggers de `leads`/`visits`/
+`lead_activities`/`lead_tasks`/`crm_envios` coinciden (0 cambios).**
+
 ### API global `window.adminApp`
 Expone los handlers al HTML (39 métodos):
 

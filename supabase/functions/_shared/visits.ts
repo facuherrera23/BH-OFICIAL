@@ -4,6 +4,7 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { registrarEnvio } from './envios.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SERVICE_ROLE_KEY') ?? '';
@@ -191,7 +192,7 @@ export async function processReminders(): Promise<RemindersResult> {
   ): Promise<{ sent: number; failed: number; skipped: number }> {
     const { data: visits, error } = await supabase
       .from('visits')
-      .select('id, client_name, client_email, client_phone, visit_date, duration_minutes, confirmation_token, status, agent_id, property:properties(title, property_code)')
+      .select('id, client_name, client_email, client_phone, visit_date, duration_minutes, confirmation_token, status, agent_id, lead_id, property:properties(title, property_code)')
       .in('status', ['pendiente', 'confirmada'])
       .is('deleted_at', null)
       .is(flagCol, null)
@@ -235,8 +236,38 @@ export async function processReminders(): Promise<RemindersResult> {
             ? 'Recordatorio: tu visita programada en BIENENHAUS'
             : 'Tu visita es en ~2 horas (' + fmtDateTimeAR(visit.visit_date) + ')';
           const r = await sendBrevo(config, visit.client_email, subject, html, text);
-          if (!r.ok) throw new Error(r.error || 'send failed');
+          if (!r.ok) {
+            /* Traza del fallo (P0-4). El trigger de `crm_envios` abre la
+               alerta `crm_email_broken` (una por día) y la auto-resuelve
+               con el primer envío OK. */
+            await registrarEnvio(supabase, {
+              origen: 'visit_reminder',
+              estado: 'error',
+              canal: 'email',
+              visita_id: visit.id,
+              lead_id: visit.lead_id || null,
+              agente_id: visit.agent_id || null,
+              destinatario: visit.client_email,
+              asunto: subject,
+              proveedor: 'brevo',
+              error: String(r.error || 'send failed').slice(0, 900),
+              metadata: { ventana: kind, visit_date: visit.visit_date },
+            });
+            throw new Error(r.error || 'send failed');
+          }
           if (await mark(visit.id)) sent++; else failed++;
+          await registrarEnvio(supabase, {
+            origen: 'visit_reminder',
+            estado: 'enviado',
+            canal: 'email',
+            visita_id: visit.id,
+            lead_id: visit.lead_id || null,
+            agente_id: visit.agent_id || null,
+            destinatario: visit.client_email,
+            asunto: subject,
+            proveedor: 'brevo',
+            metadata: { ventana: kind, visit_date: visit.visit_date },
+          });
           return;
         }
 
@@ -259,13 +290,37 @@ export async function processReminders(): Promise<RemindersResult> {
           }
           if (email) {
             const { html, text } = buildReminder2hAgenteEmail(visit, agent?.full_name || '');
-            const r = await sendBrevo(
-              config, email,
-              '[Bienenhaus] Visita en 2 horas: avisale a ' + (visit.client_name || 'el cliente') + ' por WhatsApp',
-              html, text,
-            );
-            if (!r.ok) throw new Error(r.error || 'send failed');
+            const asuntoAgente = '[Bienenhaus] Visita en 2 horas: avisale a ' + (visit.client_name || 'el cliente') + ' por WhatsApp';
+            const r = await sendBrevo(config, email, asuntoAgente, html, text);
+            if (!r.ok) {
+              await registrarEnvio(supabase, {
+                origen: 'visit_reminder',
+                estado: 'error',
+                canal: 'email',
+                visita_id: visit.id,
+                lead_id: visit.lead_id || null,
+                agente_id: visit.agent_id || null,
+                destinatario: email,
+                asunto: asuntoAgente,
+                proveedor: 'brevo',
+                error: String(r.error || 'send failed').slice(0, 900),
+                metadata: { ventana: kind, destino: 'agente', visit_date: visit.visit_date },
+              });
+              throw new Error(r.error || 'send failed');
+            }
             if (await mark(visit.id)) sent++; else failed++;
+            await registrarEnvio(supabase, {
+              origen: 'visit_reminder',
+              estado: 'enviado',
+              canal: 'email',
+              visita_id: visit.id,
+              lead_id: visit.lead_id || null,
+              agente_id: visit.agent_id || null,
+              destinatario: email,
+              asunto: asuntoAgente,
+              proveedor: 'brevo',
+              metadata: { ventana: kind, destino: 'agente', visit_date: visit.visit_date },
+            });
             return;
           }
         }

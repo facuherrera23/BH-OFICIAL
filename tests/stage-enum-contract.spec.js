@@ -9,10 +9,13 @@
 // existieron; nadie lo vio porque el resto del flow seguía andando).
 // Verificado empíricamente contra producción 2026-11-08.
 //
-// Labels REALES del enum (enum_range(lead_stage), verificado 2026-11-08):
+// Labels REALES del enum (enum_range(lead_stage), verificado 2026-11-08 y
+// re-verificado 2026-11-27 tras agregar `en_espera`):
 //   nuevo, contactado, calificado, visita_agendada, visita_realizada,
-//   negociacion, cerrado_ganado, cerrado_perdido
+//   negociacion, cerrado_ganado, cerrado_perdido, en_espera
 // Terminales: solo cerrado_ganado y cerrado_perdido.
+// `en_espera` NO es terminal: es un estado operativo (lead colgado, P1-6) —
+// el lead vuelve a la bandeja cuando llega su fecha de regreso.
 // ⚠️ Si una migración futura agrega o cambia labels: actualizar ESTA lista y
 //    también el enum en la DB.
 const { test, expect } = require('@playwright/test');
@@ -23,6 +26,7 @@ const ROOT = path.join(__dirname, '..');
 const LABELS_REALES = new Set([
   'nuevo', 'contactado', 'calificado', 'visita_agendada',
   'visita_realizada', 'negociacion', 'cerrado_ganado', 'cerrado_perdido',
+  'en_espera',
 ]);
 const TERMINALES = ['cerrado_ganado', 'cerrado_perdido'];
 

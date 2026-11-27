@@ -23,7 +23,9 @@ test.describe('Siguiente mejor acción en la ficha del lead', () => {
   test('la tarjeta vive al tope del panel y se cablea una sola vez', () => {
     expect(crmSrc).toContain('function siguientesAccionesDe(lead, props, visits, tasks) {');
     // El panel la inyecta ANTES de Contacto (al tope) y el binding es delegado.
-    expect(crmSrc).toMatch(/'<div class="crm-side-body">' \+\s*\n\s*accionesHtml \+/);
+    // P1-6 (2026-11-27): arriba de la tarjeta va el banner de "En espera"
+    // (lead colgado) — la tarjeta de sugerencias queda debajo.
+    expect(crmSrc).toMatch(/'<div class="crm-side-body">' \+\s*\n\s*leadEsperaHtml\(lead\) \+\s*\n\s*accionesHtml \+/);
     expect(crmSrc).toContain('function bindSiguientesAcciones(panel, lead) {');
     expect(crmSrc).toContain('bindSiguientesAcciones(panel, lead);');
     // Guard anti-doble-binding.
@@ -55,6 +57,8 @@ test.describe('Siguiente mejor acción en la ficha del lead', () => {
     const sandbox = {
       waNumber: () => '5493515551234',
       fmtDateTime: () => 'fecha',
+      /* P1-6: el motor consulta la etapa normalizada (lead colgado). */
+      normalizeStage: (s) => s,
       console,
     };
     vm.createContext(sandbox);
@@ -100,5 +104,12 @@ test.describe('Siguiente mejor acción en la ficha del lead', () => {
 
     // 9) Lead inexistente → sin acciones (sin crash).
     expect(f(null, [], [], [])).toEqual([]);
+
+    // 10) P1-6: un lead colgado ("en espera") NO recibe sugerencias de
+    //     trabajo (WhatsApp, tareas, etc.): lo único que corresponde es
+    //     poder reactivarlo.
+    const enEspera = f({ stage: 'en_espera', source: 'ml', assigned_to: 'a' }, [], [], [{ id: 't1', title: 'Llamar', status: 'pendiente', due_at: vencida }]);
+    expect(enEspera.length).toBe(1);
+    expect(enEspera[0].id).toBe('reactivar');
   });
 });

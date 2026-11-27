@@ -270,6 +270,10 @@
     const waNum = (window.BH_CRM && window.BH_CRM.waNumber && v.client_phone) ? window.BH_CRM.waNumber(v.client_phone) : null;
     const canCheckin = (v.status === 'pendiente' || v.status === 'confirmada') && !v.check_in;
     const canCheckout = v.check_in && !v.check_out && v.status !== 'completada' && v.status !== 'cancelada';
+    /* P0-3 (27/11/2026): cierre de visita en 1 clic — Fui / No fui / reprogramar.
+       Antes había que abrir la visita y usar el modal de "Marcar salida", que
+       además pedía escribir el resultado. */
+    const puedeCerrar = v.status === 'pendiente' || v.status === 'confirmada' || v.status === 'en_curso';
     pop.innerHTML =
       '<div class="cal-popover-head"><strong>' + esc(v.client_name || 'Visita') + '</strong>' +
       '<button type="button" class="btn-action cal-popover-close"><i class="fas fa-times"></i></button></div>' +
@@ -285,6 +289,11 @@
       '</div>' +
       '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:12px;">' +
       '<button class="btn-action" data-vd="edit" style="font-size:11px;"><i class="fas fa-pen"></i> Editar</button>' +
+      (puedeCerrar ? '<button class="btn-action" data-vd="fui" style="font-size:11px; background:rgba(16,185,129,.15); color:var(--success);"><i class="fas fa-check"></i> Fui</button>' : '') +
+      (puedeCerrar ? '<button class="btn-action" data-vd="noshow" style="font-size:11px; background:rgba(239,68,68,.15); color:var(--danger);"><i class="fas fa-user-slash"></i> No fui</button>' : '') +
+      (puedeCerrar ? '<button class="btn-action" data-vd="rep1" style="font-size:11px; background:rgba(255,184,0,.15); color:var(--warning);"><i class="fas fa-rotate-right"></i> +1d</button>' : '') +
+      (puedeCerrar ? '<button class="btn-action" data-vd="rep3" style="font-size:11px; background:rgba(255,184,0,.15); color:var(--warning);"><i class="fas fa-rotate-right"></i> +3d</button>' : '') +
+      (puedeCerrar ? '<button class="btn-action" data-vd="rep7" style="font-size:11px; background:rgba(255,184,0,.15); color:var(--warning);"><i class="fas fa-rotate-right"></i> +1s</button>' : '') +
       (canCheckin ? '<button class="btn-action" data-vd="checkin" style="font-size:11px; background:rgba(0,200,120,0.15); color:var(--success);"><i class="fas fa-sign-in-alt"></i> Llegué</button>' : '') +
       (canCheckout ? '<button class="btn-action" data-vd="checkout" style="font-size:11px; background:rgba(31,200,195,0.15); color:var(--accent);"><i class="fas fa-sign-out-alt"></i> Me fui</button>' : '') +
       (waNum ? '<a class="btn-action" href="https://wa.me/' + waNum + '" target="_blank" rel="noopener" style="font-size:11px; color:#25D366;"><i class="fab fa-whatsapp"></i> WhatsApp</a>' : '') +
@@ -306,6 +315,11 @@
       if (act === 'edit') window.adminApp.editVisit(v.id);
       else if (act === 'checkin') window.adminApp.checkinVisit(v.id);
       else if (act === 'checkout') window.adminApp.checkoutVisit(v.id);
+      else if (act === 'fui') window.adminApp.visitQuickFui(v.id);
+      else if (act === 'noshow') window.adminApp.visitQuickNoShow(v.id);
+      else if (act === 'rep1') window.adminApp.visitQuickReschedule(v.id, 1);
+      else if (act === 'rep3') window.adminApp.visitQuickReschedule(v.id, 3);
+      else if (act === 'rep7') window.adminApp.visitQuickReschedule(v.id, 7);
       else if (act === 'dup') window.adminApp.duplicateVisit(v.id, false);
       else if (act === 'link') window.adminApp.copyVisitLink(v.id);
       else if (act === 'copyaddr') await navigator.clipboard.writeText(addr).catch(() => prompt('Copiá la dirección:', addr)).then(() => showToast('Dirección copiada.', 'success'));
@@ -1108,6 +1122,14 @@
       checkinTimeHtml += `<div style="font-size:11px; color:var(--accent);"><i class="fas fa-sign-out-alt"></i> ${co}</div>`;
     }
 
+    /* P0-3: cierre de 1 clic en la tabla de visitas (Fui / No fui / +1d). */
+    let quickHtml = '';
+    if (v.status === 'pendiente' || v.status === 'confirmada' || v.status === 'en_curso') {
+      quickHtml = `<button class="btn-action" title="Fui — la visita se realizó" data-action="visitQuickFui" data-id="${v.id}" style="background:rgba(16,185,129,.15); color:var(--success);"><i class="fas fa-check"></i></button>` +
+        `<button class="btn-action" title="No fui — el cliente no asistió" data-action="visitQuickNoShow" data-id="${v.id}" style="background:rgba(239,68,68,.15); color:var(--danger);"><i class="fas fa-user-slash"></i></button>` +
+        `<button class="btn-action" title="Reprogramar a mañana (misma hora)" data-action="visitQuickReschedule" data-id="${v.id}" data-id2="1" style="background:rgba(255,184,0,.15); color:var(--warning);"><i class="fas fa-rotate-right"></i></button>`;
+    }
+
     return `
       <tr>
         <td style="font-size:13px;">${dateStr}</td>
@@ -1120,6 +1142,7 @@
           <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
             ${v.confirmation_token && v.client_email ? '<button class="btn-action" title="Copiar link de confirmacion" data-action="copyVisitLink" data-id="' + v.id + '"><i class="fas fa-link"></i></button>' : ''}
             <button class="btn-action" title="Editar" data-action="editVisit" data-id="${v.id}"><i class="fas fa-pen"></i></button>
+            ${quickHtml}
             ${checkinHtml}
             ${checkinTimeHtml}
             <button class="btn-action danger" title="Eliminar" data-action="deleteVisit" data-id="${v.id}"><i class="fas fa-trash"></i></button>
@@ -1394,7 +1417,10 @@
 
     // Lead card helper (for CRM kanban)
     function upsertLeadCard(lead) {
-      const _stageCol = { nuevo:'nuevos', contactado:'contactados', calificado:'contactados', visita_agendada:'visita', visita_realizada:'visita', negociacion:'oferta', cerrado_ganado:'oferta', cerrado_perdido:'oferta' };
+      /* P1-6: 'en_espera' (lead colgado) no es una columna del embudo: se
+         manda a "nuevos" (columna por defecto) para que no desaparezca del
+         tablero. El badge del CRM es el que lo marca como en espera. */
+      const _stageCol = { nuevo:'nuevos', contactado:'contactados', calificado:'contactados', visita_agendada:'visita', visita_realizada:'visita', negociacion:'oferta', en_espera:'nuevos', cerrado_ganado:'oferta', cerrado_perdido:'oferta' };
       const stage = lead.stage || 'nuevo';
       const container = document.querySelector('#cards-' + (_stageCol[stage] || 'nuevos'));
       if (!container) return;
@@ -1986,6 +2012,35 @@ window.adminApp.editVisit = async function (id) {
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
     }
+  };
+
+  /* P0-3 (27/11/2026): cierre de visita en 1 clic desde la AGENDA.
+     Delega en el CRM (window.BH_CRM) para que la lógica sea la misma que en
+     la ficha del lead: status + etapa del lead + traza en el timeline +
+     oferta de encuesta. */
+  async function visitaQuick(cerrar) {
+    try {
+      if (!window.BH_CRM || typeof window.BH_CRM.cerrarVisitaRapido !== 'function') {
+        throw new Error('El módulo del CRM no está cargado');
+      }
+      await cerrar();
+      loadAgenda();
+      if (window.BH_CRM && typeof window.BH_CRM.refresh === 'function') window.BH_CRM.refresh();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    }
+  }
+
+  window.adminApp.visitQuickFui = function (id) {
+    return visitaQuick(() => window.BH_CRM.cerrarVisitaRapido(id, 'fui'));
+  };
+
+  window.adminApp.visitQuickNoShow = function (id) {
+    return visitaQuick(() => window.BH_CRM.cerrarVisitaRapido(id, 'no_show'));
+  };
+
+  window.adminApp.visitQuickReschedule = function (id, dias) {
+    return visitaQuick(() => window.BH_CRM.reprogramarVisitaRapido(id, dias));
   };
 
   $('#calSubscribeBtn')?.addEventListener('click', async function () {

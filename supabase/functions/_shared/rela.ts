@@ -282,12 +282,19 @@ export function makeRelaClient(
 function enc(s: string): string { return encodeURIComponent(s); }
 function sleep(ms: number): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
 
+/* P0-5 (2026-11-27): sin fallback silencioso a sandbox.
+   `loadRelaEnv` se usa en rela-sync y rela-contacts. Si no hay
+   `RELA_BASE_URL`, devuelve null y cada función muestra su propio error
+   (antes caía al sandbox sin avisar → el panel decía "RELA caído" cuando
+   el problema real era el ambiente equivocado). */
 export function loadRelaEnv(): RelaEnvConfig | null {
   const clientId = Deno.env.get('RELA_CLIENT_ID');
   const clientSecret = Deno.env.get('RELA_CLIENT_SECRET');
   if (!clientId || !clientSecret) return null;
+  const baseUrl = String(Deno.env.get('RELA_BASE_URL') || '').trim().replace(/\/+$/, '');
+  if (!baseUrl) return null;
   return {
-    baseUrl: Deno.env.get('RELA_BASE_URL') || 'https://api-zp-sandbox-open.navent.com',
+    baseUrl,
     role: Deno.env.get('RELA_ROLE') || 'zp',
     clientId,
     clientSecret,

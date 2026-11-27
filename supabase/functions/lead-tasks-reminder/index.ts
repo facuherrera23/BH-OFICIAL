@@ -20,6 +20,7 @@
 // ============================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { registrarEnvio } from '../_shared/envios.ts';
 
 interface ReminderConfig {
   brevo_api_key?: string;
@@ -265,6 +266,11 @@ Deno.serve(async (req: Request) => {
 
       if (!task.assigned_to) { await mark() ? skipped++ : failed++; continue; }
 
+      /* Variables del envío declaradas FUERA del try para que el catch pueda
+         dejar la traza del fallo (P0-4) con el destinatario y el asunto. */
+      let email: string | undefined;
+      let subject = "";
+
       try {
         const { data: agent } = await supabase
           .from("agents")
@@ -273,7 +279,6 @@ Deno.serve(async (req: Request) => {
           .single();
 
         const profileId = agent?.profile_id;
-        let email: string | undefined;
 
         if (profileId) {
           const { data: profile } = await supabase
@@ -313,7 +318,7 @@ Deno.serve(async (req: Request) => {
           lead_name: lead.full_name,
         });
 
-        const subject = `[Bienenhaus CRM] Tarea de lead: ${task.title || "sin título"} — ${lead.full_name || ""}`;
+        subject = `[Bienenhaus CRM] Tarea de lead: ${task.title || "sin título"} — ${lead.full_name || ""}`;
         const result = await sendBrevoEmail(config, email, subject, html, text);
 
         if (!result.success) {
@@ -323,9 +328,40 @@ Deno.serve(async (req: Request) => {
         // Marcar enviado INMEDIATAMENTE después de confirmar esta tarea.
         await mark();
         sent += 1;
+
+        /* Traza del envío OK (P0-4). */
+        await registrarEnvio(supabase, {
+          origen: 'lead_task_reminder',
+          estado: 'enviado',
+          lead_id: lead.id,
+          tarea_id: task.id,
+          agente_id: task.assigned_to,
+          destinatario: email,
+          asunto: subject,
+          proveedor: 'brevo',
+          metadata: { lead_stage: lead.stage, due_at: task.due_at, priority: task.priority },
+        });
       } catch (err) {
-        console.error(`lead-tasks-reminder: tarea ${task.id} falló`, (err as Error).message);
+        const msg = (err as Error).message || String(err);
+        console.error(`lead-tasks-reminder: tarea ${task.id} falló`, msg);
         failed += 1;
+        /* Traza del fallo (P0-4): el trigger de `crm_envios` abre la alerta
+           `crm_email_broken` (una por día) y la auto-resuelve con el primer
+           envío OK. Antes esa alerta se acumulaba para siempre. */
+        try {
+          await registrarEnvio(supabase, {
+            origen: 'lead_task_reminder',
+            estado: 'error',
+            lead_id: lead.id,
+            tarea_id: task.id,
+            agente_id: task.assigned_to,
+            destinatario: email,
+            asunto: subject,
+            proveedor: 'brevo',
+            error: msg.slice(0, 900),
+            metadata: { lead_stage: lead.stage, due_at: task.due_at, priority: task.priority },
+          });
+        } catch (_) { /* la traza nunca bloquea el reminder */ }
         /* Sin marcar: la próxima corrida lo reintenta (el fallo fue del envío,
            no de la tarea). Si el email queda roto, el badge de la bandeja
            sigue siendo la red de seguridad. */

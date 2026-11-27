@@ -1061,6 +1061,9 @@ try {
     const raw = String(msg || '');
     if (/(→\s*521\b|error code:\s*521)/i.test(raw)) return 'La API de ZonaProp está caída (error 521). Es un problema de ZonaProp, no nuestro: probá de nuevo en un rato.';
     if (/RELA red:/.test(raw)) return 'No se pudo conectar con la API de ZonaProp. Probá de nuevo en un rato.';
+    if (/RELA sin URL base/.test(raw)) return 'RELA no tiene URL base configurada: abrí Portales → Open RELA → Configurar y definí el ambiente (sandbox o producción).';
+    if (/el ambiente configurado es/.test(raw)) return 'La configuración de RELA es inconsistente: el ambiente y la URL base no coinciden. Revisá Portales → Open RELA → Configurar.';
+    if (/URL base no es un host conocido/.test(raw)) return 'La URL base de RELA no es un host válido de ZonaProp. Revisá Portales → Open RELA → Configurar.';
     if (/login falló/.test(raw)) return 'ZonaProp rechazó las credenciales de la integración (revisalas en Configurar).';
     if (/(→\s*401\b|invalid_token)/i.test(raw)) return 'La sesión con ZonaProp expiró o fue rechazada. Probá de nuevo en un rato.';
     if (/→\s*409\b/.test(raw)) return 'ZonaProp todavía no vinculó esta cuenta a la integración (pendiente de QuintoAndar).';
@@ -1134,6 +1137,18 @@ try {
     const L = status?.listings || {};
     const dot = (ok) => `<span style="width:8px;height:8px;border-radius:50%;background:${ok ? '#4ade80' : '#f87171'};display:inline-block;box-shadow:0 0 6px ${ok ? '#4ade80' : '#f87171'};"></span>`;
     const fmtDate = (iso) => iso ? new Date(iso).toLocaleString('es-AR') : '—';
+    /* P0-5 (27/11/2026): el ambiente de RELA tiene que quedar a la vista.
+       En sandbox los "11 publicados" NO son avisos reales en ZonaProp: hace
+       falta el pack de créditos (SP-61526, QuintoAndar) + credenciales de
+       producción. Antes el panel no lo decía y el número se leía como real. */
+    const enSandbox = (status?.environment || 'sandbox') !== 'production';
+    const sandboxBanner = enSandbox ? `
+      <div style="margin-top:14px; padding:12px 14px; border-radius:10px; background:rgba(255,184,0,.08); border:1px solid rgba(255,184,0,.28); font-size:12px; color:var(--text-secondary); line-height:1.5;">
+        <strong style="color:var(--warning);"><i class="fas fa-flask"></i> Modo SANDBOX</strong> — los avisos de este panel <strong>no salen en ZonaProp real</strong>:
+        lo publicado abajo es sólo contra el ambiente de pruebas.
+        Para publicar de verdad falta (a) el pack de créditos de QuintoAndar — hilo <strong>SP-61526</strong> — y (b) las credenciales de <strong>producción</strong>
+        (host <code>api-zp-open.navent.com</code> + token de producción). El token guardado es de sandbox: no sirve en producción.
+      </div>` : '';
 
     el.innerHTML = `
       <div class="glass-panel" style="padding:24px; margin-top:20px; text-align:left;">
@@ -1156,6 +1171,7 @@ try {
             <button class="btn-action" style="padding:6px 12px; font-size:11px; white-space:nowrap; flex-shrink:0;" data-action="openRelaConfig"><i class="fas fa-cog"></i> Configurar</button>
           </div>
         </div>
+        ${sandboxBanner}
         <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-top:16px;">
           <div style="background:rgba(255,255,255,0.03); border-radius:10px; padding:12px;">
             <div style="font-size:11px; color:var(--text-dim);">Estado</div>

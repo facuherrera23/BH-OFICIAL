@@ -7,7 +7,10 @@
 
 var TASK_PRIORITIES = ['baja','media','alta','urgente'];
 var TASK_PRIORITY_LABELS = { baja:'Baja', media:'Media', alta:'Alta', urgente:'Urgente' };
-var TASK_STATUS_LABELS = { pendiente:'Pendiente', en_progreso:'En progreso', completada:'Completada', cancelada:'Cancelada' };
+/* P1-6 (2026-11-27): 'en_espera' es el estado de una tarea cuyo lead está
+   colgado (etapa en_espera). La tarea no vence, no avisa y no se puede
+   completar hasta que el lead vuelva. */
+var TASK_STATUS_LABELS = { pendiente:'Pendiente', en_progreso:'En progreso', en_espera:'En espera', completada:'Completada', cancelada:'Cancelada' };
 
 function esc(s) {
   if (window.BHUtils && typeof window.BHUtils.esc === 'function') return window.BHUtils.esc(s);
@@ -38,18 +41,20 @@ function taskPriorityClass(p) {
   return m[p] || m.media;
 }
 function taskStatusClass(s) {
-  var m = { pendiente:'crm-task-status--pendiente', en_progreso:'crm-task-status--progreso', completada:'crm-task-status--completada', cancelada:'crm-task-status--cancelada' };
+  var m = { pendiente:'crm-task-status--pendiente', en_progreso:'crm-task-status--progreso', en_espera:'crm-task-status--espera', completada:'crm-task-status--completada', cancelada:'crm-task-status--cancelada' };
   return m[s] || m.pendiente;
 }
 
 function renderTaskCard(t) {
+  /* P1-6: tarea suspendida (lead en espera) → no se overdue, no se completa. */
+  var suspendido = t.status === 'en_espera';
   var isDone = t.status === 'completada' || t.status === 'cancelada';
   var checked = t.status === 'completada' ? ' checked' : '';
-  var disabled = isDone ? ' disabled' : '';
+  var disabled = (isDone || suspendido) ? ' disabled' : '';
   var dueStr = t.due_at ? fmtDate(t.due_at) : '';
   var noteHtml = t.completed_note ? '<div class="crm-task-completed-note" style="margin-top:6px; padding:8px 12px; background:rgba(16,185,129,0.08); border-left:3px solid var(--success); border-radius:4px; font-size:12px; color:var(--success);">' +
     '<i class="fas fa-check-circle" style="margin-right:4px;"></i>' + esc(t.completed_note) + '</div>' : '';
-  return '<div class="crm-task-card' + (isDone ? ' crm-task-card--done' : '') + '" data-task-id="' + t.id + '">' +
+  return '<div class="crm-task-card' + (isDone ? ' crm-task-card--done' : '') + (suspendido ? ' crm-task-card--espera' : '') + '" data-task-id="' + t.id + '">' +
     '<label class="crm-task-check">' +
       '<input type="checkbox" class="crm-task-checkbox"' + checked + disabled + '>' +
       '<span class="crm-task-check-visual"></span></label>' +
@@ -58,7 +63,8 @@ function renderTaskCard(t) {
       (t.description ? '<div class="crm-task-desc">' + esc(t.description) + '</div>' : '') +
       '<div class="crm-task-meta">' +
         '<span class="crm-task-priority ' + taskPriorityClass(t.priority) + '">' + (TASK_PRIORITY_LABELS[t.priority] || 'Media') + '</span>' +
-        (dueStr ? '<span class="crm-task-due' + (isFollowupDue(t.due_at) && !isDone ? ' crm-task-due--overdue' : '') + '">' + dueStr + '</span>' : '') +
+        (dueStr ? '<span class="crm-task-due' + (isFollowupDue(t.due_at) && !isDone && !suspendido ? ' crm-task-due--overdue' : '') + '">' + dueStr + '</span>' : '') +
+        (suspendido ? '<span class="crm-task-status crm-task-status--espera" title="El lead está en espera: la tarea se reactiva al volver">En espera</span>' : '') +
       '</div>' +
       noteHtml +
     '</div>' +

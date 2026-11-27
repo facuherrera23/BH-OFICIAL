@@ -285,11 +285,40 @@ async function loadProperty(supabase: ReturnType<typeof createClient>, propertyI
   return data as BhProperty;
 }
 
+/* P0-5 (2026-11-27): el fallback SILENCIOSO a sandbox era el bug.
+   Diagnóstico: `base_url` vacío en la config ⇒ la función caía a
+   `api-zp-sandbox-open.navent.com` sin avisar. El panel mostraba "RELA
+   caído" cuando en realidad estaba pegado al ambiente equivocado, y nadie
+   sabía en qué ambiente estaba publicando.
+   Ahora el ambiente es EXPLÍCITO: sin `base_url` no hay cliente, y si el
+   host no corresponde al `environment` configurado, se corta con un error
+   claro en vez de publicar (o fallar) en el ambiente equivocado. */
+const RELA_HOST_PROD = 'api-zp-open.navent.com';
+const RELA_HOST_SANDBOX = 'api-zp-sandbox-open.navent.com';
+
 function makeClient(supabase: ReturnType<typeof createClient>, cfgRow: Record<string, unknown>): RelaClient {
   const clientId = Deno.env.get('RELA_CLIENT_ID');
   const clientSecret = Deno.env.get('RELA_CLIENT_SECRET');
   if (!clientId || !clientSecret) throw new RelaError('Faltan credenciales RELA (RELA_CLIENT_ID / RELA_CLIENT_SECRET)', 500, null, false);
-  const baseUrl = (cfgRow.base_url as string) || Deno.env.get('RELA_BASE_URL') || 'https://api-zp-sandbox-open.navent.com';
+  const baseUrl = String((cfgRow.base_url as string) || Deno.env.get('RELA_BASE_URL') || '').trim().replace(/\/+$/, '');
+  if (!baseUrl) {
+    throw new RelaError(
+      'RELA sin URL base: configurá la URL en Portales → Open RELA (sandbox: ' + RELA_HOST_SANDBOX + ', producción: ' + RELA_HOST_PROD + ')',
+      500, null, false,
+    );
+  }
+  const environment = String((cfgRow.environment as string) || '').trim().toLowerCase();
+  const isProdHost = baseUrl.includes(RELA_HOST_PROD);
+  const isSandboxHost = baseUrl.includes(RELA_HOST_SANDBOX);
+  if (environment === 'production' && !isProdHost) {
+    throw new RelaError('RELA: el ambiente configurado es "production" pero la URL apunta a otro host (' + baseUrl + ')', 500, null, false);
+  }
+  if (environment === 'sandbox' && !isSandboxHost) {
+    throw new RelaError('RELA: el ambiente configurado es "sandbox" pero la URL apunta a otro host (' + baseUrl + ')', 500, null, false);
+  }
+  if (!environment && !isProdHost && !isSandboxHost) {
+    throw new RelaError('RELA: la URL base no es un host conocido de RELA (' + baseUrl + ')', 500, null, false);
+  }
   return new RelaClient(supabase, baseUrl, clientId, clientSecret);
 }
 

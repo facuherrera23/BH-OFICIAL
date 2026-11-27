@@ -18,6 +18,14 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
   window.$ = window.$ || ((sel, ctx = document) => ctx.querySelector(sel));
   window.$$ = window.$$ || ((sel, ctx = document) => Array.from(ctx.querySelectorAll(sel)));
 
+  /* P1-8 (2026-11-27): `navigateTo` es la función que cambia de módulo del
+     panel. Hasta ahora era privada del IIFE y los módulos externos no tenían
+     forma de llevar al usuario a otra pestaña (la Agenda, el Dashboard).
+     Se publica como API: los overlays que se arman en runtime (Mi día, Mi
+     bandeja) la usan para "Ver agenda" sin depender de un data-action
+     estático (el delegation de data-action sólo resuelve window.adminApp). */
+  window.adminApp.navigateTo = function (section, opts) { return navigateTo(section, opts); };
+
   /* ------------------------------------------------
      DEBUG FLAG — false en producción, true solo en desarrollo
      ------------------------------------------------ */
@@ -210,7 +218,12 @@ function esc(s) {
        (guard: tests/lead-origins.spec.js). Si falta un valor, el alta
        falla con "Origen inválido". */
     source: z.enum(['landing_page', 'newsletter', 'manual', 'landing', 'ml', 'rela_zonaprop', 'lavoz', 'youtube', 'facebook', 'instagram', 'tiktok', 'gvamax', 'chat', 'referido', 'tasacion', 'walkin', 'contacto', 'propiedad', 'whatsapp', 'web']).default('manual'),
-    stage: z.enum(['nuevo', 'contactado', 'calificado', 'visita_agendada', 'visita_realizada', 'negociacion', 'cerrado_ganado', 'cerrado_perdido']).default('nuevo'),
+    /* `en_espera` (P1-6) es un estado operativo real del enum `lead_stage`
+       (lead colgado). El <select> del alta NO lo ofrece (una consulta nueva
+       nunca nace en espera), pero el esquema tiene que aceptar todos los
+       labels reales del enum: si no, cualquier flujo que lo use revienta con
+       "Etapa inválida". */
+    stage: z.enum(['nuevo', 'contactado', 'calificado', 'visita_agendada', 'visita_realizada', 'negociacion', 'cerrado_ganado', 'cerrado_perdido', 'en_espera']).default('nuevo'),
     property_id: z.string().uuid('ID de propiedad inválido').optional().nullable(),
     assigned_to: z.string().uuid('ID de broker inválido').optional().nullable(),
     budget_usd: z.number().min(0).max(10000000).default(0),
@@ -2700,7 +2713,7 @@ function esc(s) {
     if (!client) return;
     try {
       const [leadsRes, agentsRes] = await Promise.all([
-        client.from('leads').select('id, stage, source, assigned_to, lead_score, lost_reason').is('deleted_at', null),
+        client.from('leads').select('id, stage, stage_previo, source, assigned_to, lead_score, lost_reason').is('deleted_at', null),
         client.from('agents').select('id, full_name').eq('status', 'activo').is('deleted_at', null)
       ]);
       if (leadsRes.error) throw leadsRes.error;
@@ -2717,10 +2730,15 @@ function esc(s) {
       const total = leads.length;
       const lostCount = leads.filter(l => l.stage === 'cerrado_perdido').length;
 
+      /* P1-6 (2026-11-27): un lead en espera NO perdió su lugar en el embudo —
+         se cuenta en la etapa desde la que se colgó (`stage_previo`). Sin esto
+         el lead desaparecía de todas las barras y los % no cerraban. */
+      const stageEfectiva = (l) => (l && l.stage === 'en_espera' && l.stage_previo) ? l.stage_previo : (l ? l.stage : null);
+
       /* Cada barra del funnel cuenta leads que LLEGARON a esa etapa o más allá */
       const funnelData = STAGE_ORDER.map((stage, i) => {
         const reached = leads.filter(l => {
-          const idx = STAGE_ORDER.indexOf(normalizeStageSafe(l.stage));
+          const idx = STAGE_ORDER.indexOf(normalizeStageSafe(stageEfectiva(l)));
           return idx >= i;
         }).length;
         return { stage, label: LBL[stage] || stage, count: reached, pct: total ? Math.round((reached / total) * 100) : 0 };
@@ -2761,7 +2779,7 @@ function esc(s) {
         </div>`;
 
       /* ── MÉTRICAS CLAVE ── */
-      const withVisit = leads.filter(l => ['visita_agendada','visita_realizada','negociacion','cerrado_ganado'].includes(normalizeStageSafe(l.stage))).length;
+      const withVisit = leads.filter(l => ['visita_agendada','visita_realizada','negociacion','cerrado_ganado'].includes(normalizeStageSafe(stageEfectiva(l)))).length;
       const won = leads.filter(l => l.stage === 'cerrado_ganado').length;
       const visitRate = total ? ((withVisit / total) * 100).toFixed(1) : '0';
       const winRate = total ? ((won / total) * 100).toFixed(1) : '0';
@@ -2790,7 +2808,7 @@ function esc(s) {
         const src = l.source || 'otros';
         if (!bySource[src]) bySource[src] = { total: 0, visita: 0, ganado: 0, perdido: 0 };
         bySource[src].total++;
-        if (['visita_agendada','visita_realizada','negociacion','cerrado_ganado'].includes(normalizeStageSafe(l.stage))) bySource[src].visita++;
+        if (['visita_agendada','visita_realizada','negociacion','cerrado_ganado'].includes(normalizeStageSafe(stageEfectiva(l)))) bySource[src].visita++;
         if (l.stage === 'cerrado_ganado') bySource[src].ganado++;
         if (l.stage === 'cerrado_perdido') bySource[src].perdido++;
       });
@@ -2836,7 +2854,7 @@ function esc(s) {
         if (!byAgent[aid]) byAgent[aid] = { total: 0, activos: 0, conVisita: 0, scoreSum: 0 };
         byAgent[aid].total++;
         if (!['cerrado_ganado','cerrado_perdido'].includes(l.stage)) byAgent[aid].activos++;
-        if (['visita_agendada','visita_realizada','negociacion','cerrado_ganado'].includes(normalizeStageSafe(l.stage))) byAgent[aid].conVisita++;
+        if (['visita_agendada','visita_realizada','negociacion','cerrado_ganado'].includes(normalizeStageSafe(stageEfectiva(l)))) byAgent[aid].conVisita++;
         byAgent[aid].scoreSum += (l.lead_score || 0);
       });
       const agentRows = Object.entries(byAgent)
@@ -4302,7 +4320,7 @@ on(chip, 'click', () => {
 
     window.adminApp.openChatConversation = openConversation;
 
-    const STAGE_LABELS_LEAD = { nuevo: 'Nuevo', contactado: 'Contactado', calificado: 'Calificado', visita_agendada: 'Visita agendada', visita_realizada: 'Visita realizada', negociacion: 'Negociación', cerrado_ganado: 'Ganado', cerrado_perdido: 'Perdido' };
+    const STAGE_LABELS_LEAD = { nuevo: 'Nuevo', contactado: 'Contactado', calificado: 'Calificado', visita_agendada: 'Visita agendada', visita_realizada: 'Visita realizada', negociacion: 'Negociación', cerrado_ganado: 'Ganado', cerrado_perdido: 'Perdido', en_espera: 'En espera' };
     function renderChatLeadBanner(lead, conv) {
       let banner = document.getElementById('chatLeadBanner');
       if (banner) banner.remove();
