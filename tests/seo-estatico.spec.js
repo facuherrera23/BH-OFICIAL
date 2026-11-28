@@ -192,6 +192,35 @@ test.describe('SEO estático — Cloudflare Web Analytics (CSP)', () => {
     expect(scriptSrc).toContain('https://static.cloudflareinsights.com');
     expect(connectSrc).toContain('https://api.cloudflareinsights.com');
   });
+
+  /* Auditoría 28/11/2026: tasacion, política de privacidad, qr-visita y
+     alquileres cargaban tracking.js pero su CSP bloqueaba el beacon; y
+     términos/403/404 no tenían CSP. El beacon se inyecta en TODAS las
+     páginas → sin este guard cada página nueva puede perder medición
+     silenciosamente (error de consola, cero datos). */
+  const PAGINAS_PUBLICAS = [
+    'index.html', 'propiedades.html', 'canal.html', 'tasacion.html',
+    'encuesta.html', 'portal-propietario.html', 'confirmar-visita.html',
+    'politica-de-privacidad.html', 'terminos-y-condiciones.html',
+    'qr-visita.html', 'qr-tasacion.html', 'qr-propiedad.html',
+    'admin.html', 'alquileres.html', '403.html', '404.html',
+  ];
+
+  test('todas las páginas HTML tienen CSP y permiten el beacon de Cloudflare', () => {
+    for (const pagina of PAGINAS_PUBLICAS) {
+      const csp = cspDe(read(pagina));
+      expect(csp, `${pagina} no tiene CSP`).not.toBe('');
+
+      const scriptSrc = csp.match(/script-src[^;]*/)?.[0] || '';
+      expect(scriptSrc, `${pagina}: script-src sin beacon`).toContain('https://static.cloudflareinsights.com');
+
+      const connectSrc = csp.match(/connect-src[^;]*/)?.[0] || '';
+      expect(connectSrc, `${pagina}: connect-src sin beacon`).toContain('https://static.cloudflareinsights.com');
+      expect(connectSrc, `${pagina}: connect-src sin api`).toContain('https://api.cloudflareinsights.com');
+      // El beacon postea a /cdn-cgi/rum en el MISMO origen, no a api.
+      expect(connectSrc, `${pagina}: connect-src sin 'self'`).toContain("'self'");
+    }
+  });
 });
 
 test.describe('SEO estático — sitemap', () => {
