@@ -881,6 +881,34 @@ El advisor sigue en baseline tras las 3 migraciones: **anon-SECDEF 16 /
 `search_path_mutable` 0 / RLS sin policy 19**. Guards: `tests/cron-health.spec.js`,
 `tests/mi-dia.spec.js` y `tests/operacion-diaria.spec.js`.
 
+**Cierre de día + plantilla de primer contacto (28/11/2026, migración
+`20261128000013`).** Dos mejoras más del mismo diagnóstico, también sin
+reimplementar flujos:
+
+1. **Cierre de día**: la RPC `cierre_de_dia(p_user_id, p_solo_propio)` junta
+   **sólo lectura** las 4 colas que estaban repartidas en 4 pantallas (tareas
+   vencidas, leads sin contacto >48 h, encuestas pendientes y leads sin
+   agente), con nombre/teléfono/propiedad/precio/ficha en la misma fila. El
+   overlay `#crmCierreDiaBtn` y el panel `#dashCierreDiaPanel` (propio,
+   `p_solo_propio=true`) comparten el **mismo delegado** `bindMiDiaActions`
+   (extendido con `ctx.render`) y las acciones existentes: `Completar`,
+   `Marcar contactado`, `openVisitModal`, `sendSurveyForProperty`,
+   `showLostReasonModal` + `markLeadContacted` y `Abrir`. Verificado en
+   producción para el uid de Danilo: global `{16,4,4,0}` / propio
+   `{9,1,2,0}`; `anon` sin EXECUTE, `authenticated`/`service_role` con él.
+2. **Plantilla "Primer contacto"**: nombre + propiedad + **precio** +
+   ficha. El precio usa `price_usd` + `price_currency` (`US$` / `$`), no la
+   columna vieja `price`. El botón "Usar" abre `about:blank` dentro de la user
+   activation y recién navega al chat (`popup.location.replace`): el
+   popup-blocker ya no se come el WhatsApp por un `await` previo. La traza en
+   `lead_activities` y el `markLeadContacted` (pasa a `contactado` si estaba
+   `nuevo`) son **fire-and-forget**: el chat se abre igual si fallan.
+
+Guards: `tests/cierre-de-dia.spec.js` (10, con behavioral del render y del
+precio) + ajustes en `tests/wa-rastro.spec.js` y `tests/operacion-diaria.spec.js`.
+El advisor no cambia (la RPC nueva ya nació con `search_path=''` y REVOKE
+explícito a `PUBLIC`/`anon`/`authenticated`).
+
 **Guardián de crons y secretos en runtime (28/11/2026).** El cron de retención
 (jobid 36) falló 27 veces entre el 23 y el 28/11 con
 `function ... is not unique` y `pg_cron` seguía reportando `1 row`: nadie lo vio. La RPC

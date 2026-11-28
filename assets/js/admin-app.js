@@ -31,6 +31,11 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
     if (window.BH_CRM && typeof window.BH_CRM.openMiDia === 'function') return window.BH_CRM.openMiDia();
     return navigateTo('tab-leads');
   };
+  /* 28/11: ídem para las 4 colas del "Cierre de día". */
+  window.adminApp.openCierreDiaPanel = function () {
+    if (window.BH_CRM && typeof window.BH_CRM.openCierreDia === 'function') return window.BH_CRM.openCierreDia();
+    return navigateTo('tab-leads');
+  };
 
   /* ------------------------------------------------
      DEBUG FLAG — false en producción, true solo en desarrollo
@@ -2189,6 +2194,7 @@ function esc(s) {
     if (!client) return;
     renderDashAlquileres(); /* Bloque 2.E + 2.D: independiente — no depende de las demás queries */
     renderDashMiDia();      /* 28/11: cola accionable SOLO propia — fallo aislado del resto */
+    renderDashCierreDia();  /* 28/11: 4 colas SOLO propias — fallo aislado del resto */
     try {
       const now = new Date();
       const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
@@ -2344,6 +2350,23 @@ function esc(s) {
     } catch (err) {
       logError('Dashboard Mi día:', err);
       body.innerHTML = '<p style="color:var(--text-dim); font-size:12px;">No se pudo cargar Mi día.</p>';
+    }
+  }
+
+  /* 28/11/2026 — "Cierre de día" en el Dashboard: no reimplementa acciones,
+     delega en el CRM (BH_CRM.mountCierreDiaPanel) y su RPC con p_solo_propio. */
+  async function renderDashCierreDia() {
+    const body = $('#dashCierreDiaBody');
+    if (!body) return;
+    try {
+      if (!window.BH_CRM || !window.BH_CRM.mountCierreDiaPanel) {
+        body.innerHTML = '<p style="color:var(--text-dim); font-size:12px;">Cierre de día no disponible en este momento.</p>';
+        return;
+      }
+      await window.BH_CRM.mountCierreDiaPanel(body, $('#dashCierreDiaSub'));
+    } catch (err) {
+      logError('Dashboard Cierre de día:', err);
+      body.innerHTML = '<p style="color:var(--text-dim); font-size:12px;">No se pudo cargar el cierre de día.</p>';
     }
   }
 

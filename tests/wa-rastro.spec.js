@@ -30,9 +30,13 @@ test.describe('Rastro de WhatsApp en el CRM', () => {
   });
 
   test('los otros canales siguen registrando (y el envío no se bloquea)', () => {
-    // Plantilla de WhatsApp: log previo + apertura (el patrón que se imita).
+    // Plantilla de WhatsApp (28/11): la apertura va ANTES de cualquier await
+    // para que el popup-blocker no se coma el chat; el log queda fire-and-forget.
     expect(crmSrc).toContain("title: 'WhatsApp enviado (plantilla: ' + tpl.label + ')'");
-    expect(crmSrc).toMatch(/await db\(\)\.from\('lead_activities'\)\.insert\(\[\{\s*\n\s*lead_id: lead\.id,\s*\n\s*activity_type: 'note',\s*\n\s*title: 'WhatsApp enviado \(plantilla: '/);
+    const plantilla = crmSrc.slice(crmSrc.indexOf("var useBtn = panel.querySelector('#crmTemplateUse')"), crmSrc.indexOf("var assignBtn = panel.querySelector('#crmAssignMe')"));
+    expect(plantilla.indexOf("window.open('about:blank', '_blank')")).toBeLessThan(plantilla.indexOf('popup.location.replace(url)'));
+    expect(plantilla.indexOf('popup.location.replace(url)')).toBeLessThan(plantilla.indexOf(".from('lead_activities').insert"));
+    expect(plantilla).not.toMatch(/await db\(\)\.from\('lead_activities'\)/);
     // Y el anchor NO lleva preventDefault: el link de WhatsApp funciona igual.
     const bloque = crmSrc.slice(crmSrc.indexOf('var waAnchor = panel.querySelector'), crmSrc.indexOf('var propLink = firstProp'));
     expect(bloque).not.toContain('preventDefault');

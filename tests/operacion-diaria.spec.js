@@ -53,9 +53,9 @@ test.describe('Operación diaria — Mi día en el Dashboard', () => {
     expect(crm).toContain('await miDiaRender(body, sub, false);');
     expect(crm).toContain('mountMiDiaPanel: mountMiDiaPanel');
     // Las acciones (contactar / tarea / reactivar) pasan el mismo scope.
-    expect(crm).toContain('miDiaMarcarContactado(contactado, ctx.body, ctx.sub, ctx.soloPropio)');
-    expect(crm).toContain('miDiaCompletarTarea(tarea, ctx.body, ctx.sub, ctx.soloPropio)');
-    expect(crm).toContain('miDiaRender(ctx.body, ctx.sub, ctx.soloPropio).then');
+    expect(crm).toContain('miDiaMarcarContactado(contactado, ctx.body, ctx.sub, ctx.soloPropio, render)');
+    expect(crm).toContain('miDiaCompletarTarea(tarea, ctx.body, ctx.sub, ctx.soloPropio, render)');
+    expect(crm).toContain('render(ctx.body, ctx.sub, ctx.soloPropio).then');
   });
 });
 

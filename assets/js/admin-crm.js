@@ -1602,7 +1602,17 @@ function getLeadVisits(id) {
 }
 
 /* -- Contacto rápido y plantillas WhatsApp -- */
+/* Precio en el mismo criterio que el resto del CRM: price_usd es la fuente
+   de verdad y price_currency define el signo (trigger sync_property_price_fields).
+   El precio viejo en `price` queda como fallback para filas históricas. */
+function propPriceText(p) {
+  if (!p) return '';
+  var n = Number(p.price_usd || p.price || 0);
+  if (!n) return '';
+  return (p.price_currency === 'ARS' ? '$ ' : 'US$ ') + n.toLocaleString('es-AR');
+}
 var WA_TEMPLATES = [
+  { id: 'primer_contacto', label: 'Primer contacto', text: function (c) { return 'Hola ' + (c.nombre || '') + ', te escribo de Bienenhaus Propiedades' + (c.prop ? ' por ' + c.prop : '') + (c.precio ? ' (' + c.precio + ')' : '') + '. ¿Te gustaría que te cuente más o coordinamos una visita?' + (c.link ? '\nFicha: ' + c.link : ''); } },
   { id: 'saludo', label: 'Saludo inicial', text: function (c) { return 'Hola ' + c.nombre + ', te escribo de Bienenhaus Propiedades' + (c.prop ? ' sobre tu consulta por ' + c.prop : ' por tu consulta') + '. ¿Tenés unos minutos para hablar?' + (c.link ? '\nTe comparto la ficha: ' + c.link : ''); } },
   { id: 'seguimiento', label: 'Seguimiento', text: function (c) { return 'Hola ' + c.nombre + ', retomo tu consulta' + (c.prop ? ' por ' + c.prop : '') + '. ¿Sigue vigente tu búsqueda? Cualquier duda estoy a disposición.'; } },
   { id: 'visita_propuesta', label: 'Proponer visita', text: function (c) { return 'Hola ' + c.nombre + ', ¿te viene bien venir a ver la propiedad' + (c.prop ? ' ' + c.prop : '') + ' esta semana? Tengo disponibilidad y te coordinamos la visita.'; } },
@@ -1681,6 +1691,7 @@ function contactSectionHtml(lead, firstProp, props) {
 function bindContactActions(panel, lead, firstProp, props) {
   bindSiguientesAcciones(panel, lead);
   var propTitle = firstProp && firstProp.property_title;
+  var propPrecio = propPriceText(firstProp);
   /* WhatsApp deja rastro (2026-11-26): el botón wa.me era el único canal sin
      registro en el timeline (la plantilla, la campaña y la encuesta sí
      registraban) → el CRM no sabía que hubo contacto real. El log es
@@ -1705,21 +1716,35 @@ function bindContactActions(panel, lead, firstProp, props) {
   var useBtn = panel.querySelector('#crmTemplateUse');
   var sel = panel.querySelector('#crmMsgTemplate');
   if (useBtn && sel) {
-    useBtn.addEventListener('click', async function () {
+    useBtn.addEventListener('click', function () {
       var tpl = WA_TEMPLATES.filter(function (t) { return t.id === sel.value; })[0];
       if (!tpl) { toast('Elegí una plantilla.', 'error'); return; }
       var wa = waNumber(lead.whatsapp) || waNumber(lead.phone);
       if (!wa) return;
-      var text = tpl.text({ nombre: (lead.full_name || '').split(' ')[0], prop: propTitle, link: propLink });
+      var text = tpl.text({ nombre: (lead.full_name || '').split(' ')[0], prop: propTitle, precio: propPrecio, link: propLink });
+      var url = 'https://wa.me/' + wa + '?text=' + encodeURIComponent(text);
+      /* Anti popup-blocker (28/11/2026): la apertura va ANTES de cualquier
+         await, igual que en sendSurveyForProperty. Abrimos una pestaña en
+         blanco dentro de la user activation y recién la navegamos al chat. */
+      var popup = null;
+      try { popup = window.open('about:blank', '_blank'); } catch (_) { popup = null; }
+      if (popup) {
+        try { popup.location.replace(url); } catch (_) { window.open(url, '_blank', 'noopener'); }
+      } else {
+        window.open(url, '_blank', 'noopener');
+      }
+      /* La traza y el contacto son fire-and-forget: el chat ya se abrió. */
       try {
-        await db().from('lead_activities').insert([{
+        db().from('lead_activities').insert([{
           lead_id: lead.id,
           activity_type: 'note',
           title: 'WhatsApp enviado (plantilla: ' + tpl.label + ')',
           description: text
-        }]);
+        }]).then(function () { }, function () { });
       } catch (e) { /* el envío no se bloquea por el log */ }
-      window.open('https://wa.me/' + wa + '?text=' + encodeURIComponent(text), '_blank', 'noopener');
+      if (tpl.id === 'primer_contacto') {
+        markLeadContacted(lead.id, lead.stage === 'nuevo' ? { stage: 'contactado' } : null).catch(function () { });
+      }
     });
   }
   var assignBtn = panel.querySelector('#crmAssignMe');
@@ -3138,6 +3163,12 @@ function init() {
     miDiaBtn.dataset.crmBound = '1';
     miDiaBtn.addEventListener('click', openMiDia);
   }
+  /* "Cierre de día" (28/11/2026): las 4 colas en un solo lugar. */
+  var cierreBtn = $id('crmCierreDiaBtn');
+  if (cierreBtn && !cierreBtn.dataset.crmBound) {
+    cierreBtn.dataset.crmBound = '1';
+    cierreBtn.addEventListener('click', openCierreDia);
+  }
   /* Duplicados (2026-11-26): detección + fusión (sólo super_admin/broker). */
   var dupBtn = $id('crmDuplicadosBtn');
   if (dupBtn && !dupBtn.dataset.crmBound) {
@@ -3399,6 +3430,8 @@ function _syncHeader() {
   /* "Mi día" (P1-8): sólo en el modo leads (es la agenda del agente). */
   var miDiaBtn = $id('crmMiDiaBtn');
   if (miDiaBtn) miDiaBtn.style.display = ownersMode ? 'none' : '';
+  var cierreBtn = $id('crmCierreDiaBtn');
+  if (cierreBtn) cierreBtn.style.display = ownersMode ? 'none' : '';
   /* Duplicados (2026-11-26): mismo modo leads; gate de rol en la RPC. */
   var dupBtn = $id('crmDuplicadosBtn');
   if (dupBtn) dupBtn.style.display = ownersMode ? 'none' : '';
@@ -4313,8 +4346,11 @@ function bindMiDiaActions(body, ctx) {
   if (!body || body.dataset.midiaBound) return;
   body.dataset.midiaBound = '1';
   body.addEventListener('click', function (e) {
+    /* ctx.render permite que el mismo delegado atienda "Mi día" y "Cierre de
+       día" sin duplicar handlers: cada vista pasa su propia RPC al refrescar. */
+    var render = ctx.render || miDiaRender;
     var refresh = e.target.closest('[data-midia-refresh]');
-    if (refresh) { refresh.disabled = true; miDiaRender(ctx.body, ctx.sub, ctx.soloPropio).then(function() { refresh.disabled = false; }); return; }
+    if (refresh) { refresh.disabled = true; render(ctx.body, ctx.sub, ctx.soloPropio).then(function() { refresh.disabled = false; }); return; }
     var verVencidas = e.target.closest('[data-midia-ver-vencidas]');
     if (verVencidas) {
       /* Sólo cambia la vista: NO vuelve a llamar a la RPC (evita una
@@ -4336,11 +4372,17 @@ function bindMiDiaActions(body, ctx) {
       return;
     }
     var contactado = e.target.closest('[data-midia-contactado]');
-    if (contactado) { miDiaMarcarContactado(contactado, ctx.body, ctx.sub, ctx.soloPropio); return; }
+    if (contactado) { miDiaMarcarContactado(contactado, ctx.body, ctx.sub, ctx.soloPropio, render); return; }
     var tarea = e.target.closest('[data-midia-tarea]');
-    if (tarea) { miDiaCompletarTarea(tarea, ctx.body, ctx.sub, ctx.soloPropio); return; }
+    if (tarea) { miDiaCompletarTarea(tarea, ctx.body, ctx.sub, ctx.soloPropio, render); return; }
     var rea = e.target.closest('[data-midia-reactivar]');
-    if (rea) { miDiaReactivar(rea, ctx.body, ctx.sub, ctx.soloPropio); return; }
+    if (rea) { miDiaReactivar(rea, ctx.body, ctx.sub, ctx.soloPropio, render); return; }
+    var agendar = e.target.closest('[data-cierre-agendar]');
+    if (agendar) { cierreDiaAgendar(agendar, ctx); return; }
+    var cerrar = e.target.closest('[data-cierre-cerrar]');
+    if (cerrar) { cierreDiaCerrar(cerrar, ctx); return; }
+    var encuesta = e.target.closest('[data-cierre-encuesta]');
+    if (encuesta) { cierreDiaEncuesta(encuesta, ctx); return; }
   });
 }
 
@@ -4358,8 +4400,200 @@ async function mountMiDiaPanel(el, subExterno) {
   await miDiaRender(body, sub, true);
 }
 
+/* ============================================================
+   CIERRE DE DÍA (28/11/2026): las 4 colas que hoy viven separadas.
+   ------------------------------------------------------------
+   `mi_dia` responde "qué hago ahora" con el top 3; esta vista responde
+   "¿qué me queda para cerrar el día?": tareas vencidas, leads sin
+   contacto >48 h, encuestas sin responder y leads sin agente. La RPC
+   `cierre_de_dia` es SOLO LECTURA y trae nombre/teléfono/propiedad/
+   precio/ficha para que las acciones no necesiten más queries.
+
+   Las acciones NO se reimplementan: usan el MISMO delegado
+   (`bindMiDiaActions`) y los puntos únicos del CRM (Completar, Marcar
+   contactado, openVisitModal, sendSurveyForProperty, showLostReasonModal
+   + markLeadContacted).
+   ============================================================ */
+var _cierreOverlay = null;
+var CIERRE_COLAS = [
+  { k: 'tareas', label: 'Tareas vencidas', color: '#FFB800', icon: 'fas fa-list-check' },
+  { k: 'sin_contacto', label: 'Sin contacto (>48 h)', color: '#fbbf24', icon: 'fas fa-comment-slash' },
+  { k: 'encuestas', label: 'Encuestas pendientes', color: '#60a5fa', icon: 'fas fa-clipboard-list' },
+  { k: 'sin_agente', label: 'Sin agente', color: '#a78bfa', icon: 'fas fa-user-clock' }
+];
+
+function cierreDiaItemHtml(it) {
+  /* safeUrl antes de innerHTML (misma regla del resto del panel): el link
+     viene de la RPC, pero el esquema se valida igual. */
+  var ficha = it.link && window.BHUtils && typeof window.BHUtils.safeUrl === 'function'
+    ? window.BHUtils.safeUrl(it.link) : '';
+  var tel = telNumber(it.telefono);
+  var llamar = tel
+    ? '<a class="crm-contact-btn" href="tel:+' + esc(tel) + '"><i class="fas fa-phone"></i> Llamar</a>'
+    : '<span class="crm-contact-btn is-disabled" title="Sin teléfono"><i class="fas fa-phone"></i> Llamar</span>';
+  var acciones = llamar;
+  if (it.tarea_id) {
+    acciones += '<button type="button" class="crm-contact-btn" data-midia-tarea="' + esc(it.tarea_id) + '" data-lead="' + esc(it.lead_id || '') + '"><i class="fas fa-check"></i> Completar</button>';
+  }
+  if (it.tipo === 'sin_contacto') {
+    acciones += '<button type="button" class="crm-contact-btn" data-midia-contactado="' + esc(it.lead_id) + '" data-stage="' + esc(it.stage || '') + '"><i class="fas fa-user-check"></i> Marcar contactado</button>';
+  }
+  if (it.tipo === 'encuesta' && it.property_id) {
+    acciones += '<button type="button" class="crm-contact-btn" data-cierre-encuesta="' + esc(it.lead_id) + '" data-prop-id="' + esc(it.property_id) + '" data-prop="' + esc(it.prop || it.titulo || '') + '" data-tel="' + esc(it.telefono || '') + '" data-nombre="' + esc(it.nombre || '') + '"><i class="fas fa-clipboard-list"></i> Reenviar encuesta</button>';
+  }
+  if (it.lead_id) {
+    acciones += '<button type="button" class="crm-contact-btn" data-cierre-agendar="' + esc(it.lead_id) + '" data-nombre="' + esc(it.nombre || '') + '" data-tel="' + esc(it.telefono || '') + '" data-prop-id="' + esc(it.property_id || '') + '"><i class="fas fa-calendar-day"></i> Agendar</button>';
+    acciones += '<button type="button" class="crm-contact-btn" data-cierre-cerrar="' + esc(it.lead_id) + '" data-detalle="' + esc((it.titulo || '') + (it.detalle ? ' — ' + it.detalle : '')) + '"><i class="fas fa-ban"></i> Cerrar con motivo</button>';
+    acciones += '<button type="button" class="crm-contact-btn" data-midia-abrir="' + esc(it.lead_id) + '" title="Abrir el lead en el CRM"><i class="fas fa-folder-open"></i> Abrir</button>';
+  }
+  var precio = propPriceText(it);
+  var detalle = [it.titulo, it.detalle].filter(Boolean).join(' · ');
+  return '<div class="crm-midia-item" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:10px 12px;margin-bottom:7px;border:1px solid var(--border-subtle);border-radius:10px;background:rgba(255,255,255,0.02);">' +
+    '<div style="min-width:220px;flex:1;">' +
+      '<div style="font-size:13px;color:var(--text-primary);font-weight:700;">' + esc(it.nombre || 'Sin nombre') + '</div>' +
+      '<div style="font-size:11px;color:var(--text-secondary);margin-top:2px;">' + esc(detalle) + '</div>' +
+      (it.prop ? '<div style="font-size:10.5px;color:var(--text-dim);margin-top:2px;">' + esc(it.prop) + (precio ? ' · ' + esc(precio) : '') + (ficha ? ' · <a href="' + esc(ficha) + '" target="_blank" rel="noopener">Ver ficha</a>' : '') + '</div>' : '') +
+      (it.telefono ? '<div style="font-size:10.5px;color:var(--text-dim);margin-top:2px;">' + esc(it.telefono) + '</div>' : '') +
+    '</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;">' + acciones + '</div>' +
+  '</div>';
+}
+
+async function cierreDiaRender(body, sub, soloPropio) {
+  try {
+    var r = await db().rpc('cierre_de_dia', { p_solo_propio: !!soloPropio });
+    if (r.error) throw new Error(r.error.message);
+    var d = r.data || {};
+    if (d.error) throw new Error(d.error);
+    var conteos = d.conteos || {};
+    var total = 0;
+    CIERRE_COLAS.forEach(function (c) { total += Number(conteos[c.k] || 0); });
+    if (sub) {
+      sub.innerHTML = (soloPropio ? 'Tus colas de hoy.' : (d.agente ? 'Colas de <strong style="color:var(--text-primary);">' + esc(d.agente) + '</strong>.' : 'Colas del equipo.')) +
+        ' ' + total + ' cosa(s) pendientes.';
+    }
+    var html = CIERRE_COLAS.map(function (c) {
+      var rows = (d[c.k] || []).slice(0, 20);
+      var n = Number(conteos[c.k] || 0);
+      var cabecera = '<div style="display:flex;align-items:center;gap:7px;margin:14px 0 7px;">' +
+        '<i class="' + c.icon + '" style="color:' + c.color + ';font-size:12px;"></i>' +
+        '<span style="font-size:11px;font-weight:700;color:' + c.color + ';text-transform:uppercase;letter-spacing:.4px;">' + esc(c.label) + '</span>' +
+        '<span class="nav-badge" style="background:' + c.color + '22;color:' + c.color + ';">' + n + '</span>' +
+      '</div>';
+      return cabecera + (rows.length
+        ? rows.map(cierreDiaItemHtml).join('') + (n > rows.length ? '<div style="font-size:10.5px;color:var(--text-dim);">y ' + (n - rows.length) + ' más…</div>' : '')
+        : '<div style="font-size:11.5px;color:var(--text-secondary);padding:4px 0 8px;">Nada pendiente. ✔</div>');
+    }).join('');
+    body.innerHTML = html + '<div style="margin-top:12px;"><button type="button" class="status-pill" data-midia-refresh style="cursor:pointer;font-size:10.5px;"><i class="fas fa-rotate"></i> Actualizar</button></div>';
+  } catch (err) {
+    if (window.__BH && window.__BH.logError) window.__BH.logError('cierre de dia:', err);
+    body.innerHTML = '<div style="color:var(--danger);font-size:12px;">No se pudo cargar el cierre de día: ' + esc(err.message) + '</div>';
+  }
+}
+
+async function openCierreDia() {
+  if (!db()) { toast('Sin conexión con la base.', 'error'); return; }
+  if (_cierreOverlay) { _cierreOverlay.remove(); _cierreOverlay = null; }
+  var overlay = document.createElement('div');
+  overlay.className = 'crm-bandeja-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10062;background:rgba(2,3,5,0.7);backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;';
+  overlay.innerHTML = '<div class="crm-bandeja-box" role="dialog" aria-modal="true" aria-label="Cierre de día" style="width:min(860px,100%);background:var(--bg,#05070A);border:1px solid var(--border-subtle);border-radius:16px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,0.55);">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;">' +
+      '<h3 style="margin:0;font-size:16px;color:var(--text-primary);"><i class="fas fa-moon" style="color:#a78bfa;"></i> Cierre de día — lo que queda pendiente</h3>' +
+      '<button type="button" class="modal-x-close" data-cierre-close aria-label="Cerrar" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;"><i class="fas fa-xmark"></i></button>' +
+    '</div>' +
+    '<p data-cierre-sub style="margin:0 0 14px;font-size:11.5px;color:var(--text-dim);">Cargando…</p>' +
+    '<div data-cierre-body style="font-size:12px;">Cargando…</div>' +
+  '</div>';
+  document.body.appendChild(overlay);
+  _cierreOverlay = overlay;
+
+  var onKey = function (e) { if (e.key === 'Escape') cerrar(); };
+  function cerrar() {
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+    if (_cierreOverlay === overlay) _cierreOverlay = null;
+  }
+  overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) cerrar(); });
+  var closeBtn = overlay.querySelector('[data-cierre-close]');
+  if (closeBtn) closeBtn.addEventListener('click', cerrar);
+  document.addEventListener('keydown', onKey);
+
+  var body = overlay.querySelector('[data-cierre-body]');
+  var sub = overlay.querySelector('[data-cierre-sub]');
+  bindMiDiaActions(body, { body: body, sub: sub, soloPropio: false, cerrar: cerrar, render: cierreDiaRender });
+  await cierreDiaRender(body, sub, false);
+}
+
+/* Panel del Dashboard: MISMA RPC y acciones, con p_solo_propio=true. */
+async function mountCierreDiaPanel(el, subExterno) {
+  if (!el || !db()) return;
+  var body = el.querySelector('[data-cierre-body]');
+  var sub = subExterno || el.querySelector('[data-cierre-sub]');
+  if (!body) {
+    el.innerHTML = '<div data-cierre-body style="font-size:12px;">Cargando…</div>';
+    body = el.querySelector('[data-cierre-body]');
+  }
+  bindMiDiaActions(body, { body: body, sub: sub, soloPropio: true, cerrar: null, render: cierreDiaRender });
+  await cierreDiaRender(body, sub, true);
+}
+
+function cierreDiaAgendar(btn, ctx) {
+  var leadId = btn.getAttribute('data-cierre-agendar');
+  var nombre = btn.getAttribute('data-nombre') || '';
+  var tel = btn.getAttribute('data-tel') || '';
+  var propId = btn.getAttribute('data-prop-id') || null;
+  if (ctx.cerrar) ctx.cerrar();
+  function abrir() {
+    if (!window.adminApp || !window.adminApp.openVisitModal) { toast('La agenda no está disponible.', 'error'); return; }
+    window.adminApp.openVisitModal({ lead_id: leadId, client_name: nombre, client_phone: tel, property_id: propId });
+  }
+  if (window.adminApp && window.adminApp.navigateTo) {
+    Promise.resolve(window.adminApp.navigateTo('tab-agenda')).then(abrir, abrir);
+  } else { abrir(); }
+}
+
+async function cierreDiaCerrar(btn, ctx) {
+  var leadId = btn.getAttribute('data-cierre-cerrar');
+  var detalle = btn.getAttribute('data-detalle') || '';
+  btn.disabled = true;
+  try {
+    var lost = await showLostReasonModal(detalle);
+    if (!lost) { btn.disabled = false; return; }
+    await markLeadContacted(leadId, { stage: 'cerrado_perdido', lost_reason: lost.reason });
+    try {
+      await db().from('lead_activities').insert([{
+        lead_id: leadId, activity_type: 'note',
+        title: 'Motivo del rechazo: ' + lost.label,
+        description: detalle + (lost.detail && lost.detail !== detalle ? ' — ' + lost.detail : '')
+      }]);
+    } catch (e2) { /* la nota es best-effort: el motivo ya quedó guardado */ }
+    toast('Lead cerrado como perdido: ' + lost.label, 'success');
+    await loadLeads();
+    pintarBadgeBandeja();
+    await (ctx.render || miDiaRender)(ctx.body, ctx.sub, ctx.soloPropio);
+  } catch (e) {
+    btn.disabled = false;
+    toast('No se pudo cerrar: ' + e.message, 'error');
+  }
+}
+
+async function cierreDiaEncuesta(btn, ctx) {
+  var leadId = btn.getAttribute('data-cierre-encuesta');
+  var propId = btn.getAttribute('data-prop-id');
+  var prop = btn.getAttribute('data-prop') || '';
+  var tel = btn.getAttribute('data-tel') || '';
+  var nombre = btn.getAttribute('data-nombre') || '';
+  btn.disabled = true;
+  try {
+    await sendSurveyForProperty({ id: leadId, full_name: nombre, whatsapp: tel, phone: tel }, propId, prop, null, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 /* "Marcar contactado" (mismo punto único del CRM que usa la bandeja). */
-async function miDiaMarcarContactado(btn, body, sub, soloPropio) {
+async function miDiaMarcarContactado(btn, body, sub, soloPropio, render) {
   var leadId = btn.getAttribute('data-midia-contactado');
   var stage = btn.getAttribute('data-stage') || '';
   btn.disabled = true;
@@ -4375,7 +4609,7 @@ async function miDiaMarcarContactado(btn, body, sub, soloPropio) {
     toast('Lead marcado como contactado.', 'success');
     await loadLeads();
     pintarBadgeBandeja();
-    await miDiaRender(body, sub, soloPropio);
+    await (render || miDiaRender)(body, sub, soloPropio);
   } catch (e) {
     btn.disabled = false;
     toast('No se pudo marcar: ' + e.message, 'error');
@@ -4383,7 +4617,7 @@ async function miDiaMarcarContactado(btn, body, sub, soloPropio) {
 }
 
 /* "Completar" una tarea vencida. */
-async function miDiaCompletarTarea(btn, body, sub, soloPropio) {
+async function miDiaCompletarTarea(btn, body, sub, soloPropio, render) {
   var tareaId = btn.getAttribute('data-midia-tarea');
   var leadId = btn.getAttribute('data-lead');
   btn.disabled = true;
@@ -4399,7 +4633,7 @@ async function miDiaCompletarTarea(btn, body, sub, soloPropio) {
     toast('Tarea completada.', 'success');
     await loadLeads();
     pintarBadgeBandeja();
-    await miDiaRender(body, sub, soloPropio);
+    await (render || miDiaRender)(body, sub, soloPropio);
   } catch (e) {
     btn.disabled = false;
     toast('No se pudo completar: ' + e.message, 'error');
@@ -4407,7 +4641,7 @@ async function miDiaCompletarTarea(btn, body, sub, soloPropio) {
 }
 
 /* "Reactivar" un lead que volvió de "en espera". */
-async function miDiaReactivar(btn, body, sub, soloPropio) {
+async function miDiaReactivar(btn, body, sub, soloPropio, render) {
   var leadId = btn.getAttribute('data-midia-reactivar');
   btn.disabled = true;
   try {
@@ -4418,7 +4652,7 @@ async function miDiaReactivar(btn, body, sub, soloPropio) {
     toast('Lead reactivado: ' + (STATUS_LABELS[d.stage] || d.stage) + '.', 'success');
     await loadLeads();
     pintarBadgeBandeja();
-    await miDiaRender(body, sub, soloPropio);
+    await (render || miDiaRender)(body, sub, soloPropio);
   } catch (e) {
     btn.disabled = false;
     toast('No se pudo reactivar: ' + e.message, 'error');
@@ -4561,7 +4795,7 @@ async function openDuplicados() {
 /* markLeadContacted se publica porque admin-crm-tasks.js (que carga ANTES
    que este archivo) lo necesita al completar una tarea: es el punto único
    que registra contacto, cierra la tarea de SLA y recalcula el followup. */
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja, openDuplicados: openDuplicados, openConversion: openConversion, cerrarVisitaRapido: cerrarVisitaRapido, reprogramarVisitaRapido: reprogramarVisitaRapido, leadPasarAEspera: leadPasarAEspera, leadReactivar: leadReactivar, openMiDia: openMiDia, mountMiDiaPanel: mountMiDiaPanel, showLostReasonModal: showLostReasonModal, setLostReason: setLostReason, openLostReasonBackfill: openLostReasonBackfill, batchSetAgent: batchSetAgent, batchSetStage: batchSetStage, batchToEspera: batchToEspera, batchExportCsv: batchExportCsv, batchSelClear: batchSelClear };
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja, openDuplicados: openDuplicados, openConversion: openConversion, cerrarVisitaRapido: cerrarVisitaRapido, reprogramarVisitaRapido: reprogramarVisitaRapido, leadPasarAEspera: leadPasarAEspera, leadReactivar: leadReactivar, openMiDia: openMiDia, mountMiDiaPanel: mountMiDiaPanel, openCierreDia: openCierreDia, mountCierreDiaPanel: mountCierreDiaPanel, showLostReasonModal: showLostReasonModal, setLostReason: setLostReason, openLostReasonBackfill: openLostReasonBackfill, batchSetAgent: batchSetAgent, batchSetStage: batchSetStage, batchToEspera: batchToEspera, batchExportCsv: batchExportCsv, batchSelClear: batchSelClear };
 
 /* --- Generación de token portal desde CRM (en modo propietarios) --- */
 (function () {
