@@ -128,6 +128,31 @@ function cronBlock(sql, jobname) {
   return sql.slice(best, bodyEnd + 6);
 }
 
+/**
+ * Estado FINAL del cron de retención: se recorren las migraciones en orden y
+ * gana la última que defina el job (cron.schedule o cron.alter_job). Es lo
+ * que realmente corre en producción, no lo que diga la migración original.
+ */
+function lastRetentionCronCommand() {
+  const dir = path.join(ROOT, 'supabase', 'migrations');
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+  let last = null;
+  for (const file of files) {
+    const sql = fs.readFileSync(path.join(dir, file), 'utf8');
+    const scheduled = cronBlock(sql, 'bh-archive-retention-daily');
+    const alterIdx = sql.indexOf("jobname = 'bh-archive-retention-daily'");
+    let altered = null;
+    if (alterIdx !== -1) {
+      const start = sql.lastIndexOf('cron.alter_job(', alterIdx);
+      // El cierre de la llamada va ANTES del FROM ... WHERE; se toma hasta el ;
+      const end = sql.indexOf(';', alterIdx);
+      if (start !== -1 && end !== -1) altered = sql.slice(start, end + 1);
+    }
+    if (altered || scheduled) last = altered || scheduled;
+  }
+  return last;
+}
+
 /* ------------------------------------------------------------------
    1. Las migraciones existen
    ------------------------------------------------------------------ */
@@ -329,6 +354,27 @@ test.describe('crons', () => {
     for (const fn of RETENTION_FNS) {
       expect(block, `el cron no llama a ${fn}`).toContain(`public.${fn}()`);
     }
+  });
+
+  test('el cron de retención usa firmas explícitas (no sobrecargas ambiguas)', () => {
+    // 28/11/2026: las firmas con p_batches son over loads NUEVAS; llamar sin
+    // argumentos da "function ... is not unique" y el cron no archiva nada.
+    const cmd = lastRetentionCronCommand();
+    expect(cmd, 'no se encontró ninguna definición del cron de retención').not.toBeNull();
+    for (const fn of RETENTION_FNS) {
+      expect(cmd, `el cron llama a ${fn} sin firma explícita`).not.toContain(`public.${fn}()`);
+      expect(cmd, `el cron no usa los 3 argumentos de ${fn}`).toMatch(
+        new RegExp(`public\\.${fn}\\(\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\\d+\\s*\\)`)
+      );
+    }
+  });
+
+  test('el fix corrige el command sin reprogramar el job (conserva historial)', () => {
+    const fix = read('supabase/migrations/20261128000001_retention_cron_explicit_signature.sql');
+    expect(fix).toContain('cron.alter_job(');
+    expect(fix).not.toContain('cron.unschedule(');
+    expect(fix).not.toContain('cron.schedule(');
+    expect(fix).toContain("jobname = 'bh-archive-retention-daily'");
   });
 
   test('la alarma de IO tiene cron horario', () => {
