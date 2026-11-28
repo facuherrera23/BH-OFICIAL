@@ -81,7 +81,8 @@ test.describe('Reparto automático de leads sin agente', () => {
     expect(preview).toContain("'dry_run', v_es_preview");
     // Ni traza, ni auditoría, ni alerta cuando es vista previa.
     expect(preview).toMatch(/IF NOT v_es_preview THEN[\s\S]{0,200}INSERT INTO public\.audit_log/);
-    expect(preview).toContain('IF NOT v_es_preview THEN\n      INSERT INTO public.supervision_alerts');
+    // CRLF/LF: el archivo se edita en Windows, el regex no depende del separador.
+    expect(preview).toMatch(/IF NOT v_es_preview THEN\r?\n\s+INSERT INTO public\.supervision_alerts/);
     // Permisos intactos (anon ✗ / authenticated ✓ / service_role ✓).
     expect(preview).toContain('REVOKE ALL ON FUNCTION public.repartir_leads_sin_agente(boolean) FROM PUBLIC, anon, authenticated');
     expect(preview).toContain('GRANT EXECUTE ON FUNCTION public.repartir_leads_sin_agente(boolean) TO authenticated, service_role');
