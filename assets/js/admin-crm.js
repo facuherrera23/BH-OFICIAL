@@ -2495,7 +2495,13 @@ function bindLeadEspera(panel, lead) {
 
 function renderSide(panel, lead, activities, props, visits, tasks, surveys, propMatches, offers) {
   /* Pre-computar HTML de sugerencias ANTES del innerHTML (evita issues de
-     scope en la concatenación gigante del panel). */
+     scope en la concatenación gigante del panel).
+     ⚠️ `suggestHtml` TIENE que estar DECLARADA: este archivo corre en
+     'use strict', así que una asignación sin `var` a un identificador no
+     declarado (o su lectura) lanza ReferenceError y el panel del lead no
+     abre NUNCA. El `var` se había perdido al agregar la tarjeta de
+     "siguiente mejor acción" (commit a4065e9) — fix 2026-11-27. */
+  var suggestHtml = '';
   var siguientesAcciones = siguientesAccionesDe(lead, props, visits, tasks);
   var accionesHtml = siguientesAccionesHtml(siguientesAcciones, lead);
   if (propMatches && propMatches.length) {

@@ -431,6 +431,18 @@ Cada HTML tiene su meta CSP propia. Al agregar cualquier recurso externo (API, t
 - **Advisor tras los fixes**: anon-SECDEF **16** (sin cambios), `search_path_mutable` **0**, `rls_enabled_no_policy` **18** (baseline 17 + 1 intencional: `alquileres_snapshots_archive`).
 - **Tests**: `tests/alquileres-module.spec.js` → **80** (73 + 7 nuevos); suite completa **692 passed, 0 failed**.
 
+## ⚠️ Identificadores no declarados = ReferenceError (bug real 2026-11-27, "suggestHtml is not defined")
+
+- **Síntoma**: el usuario reportó en producción `Error al cargar prospecto: suggestHtml is not defined` al abrir **CUALQUIER** lead del CRM. El panel lateral se quedaba en "Cargando..." y el toast mostraba el error.
+- **Causa raíz**: el commit `a4065e9` (tarjeta de "siguiente mejor acción") reemplazó `var suggestHtml = '';` por dos líneas nuevas y **olvidó la declaración**. `admin-crm.js` corre dentro de una IIFE con `'use strict'` → la asignación sin `var` a un identificador no declarado (y su lectura posterior, línea 2564) es un **ReferenceError en runtime**.
+- **Por qué los guards de texto NO lo detectaban**: `node --check` sólo valida sintaxis (el archivo estaba perfecto) y los tests estáticos buscaban el STRING `suggestHtml` — que seguía apareciendo en el archivo, sólo que sin declarar. El bug **sólo** se manifiesta cuando `renderSide()` corre de verdad.
+- **Fix**: `var suggestHtml = '';` restaurado en `renderSide()` (`assets/js/admin-crm.js`), con comentario explicativo en el código.
+- **Guard nuevo (2 capas)** en `tests/crm-lead-panel.spec.js`:
+  - **CONDUCTUAL**: corre el `admin-crm.js` REAL en Chromium contra un cliente Supabase falso (`tests/helpers/crm-lead-panel-harness.html`) y abre el panel de un lead SIN y CON coincidencias de propiedades → exige que renderice, sin toast de error y sin errores de consola. **Verificado: con el bug reintroducido fallan los 4 tests.**
+  - **ESTÁTtico con análisis real de scopes**: `tests/helpers/audit-undeclared.cjs` parsea con **acorn** (el parser de V8, incluido en Node vía `--expose-internals`) y construye los scopes ECMAScript → detecta toda asignación a un identificador no declarado en **todos** los `assets/js`. Barrió el repo entero: **0 hallazgos** (el único era `suggestHtml`).
+- **Regla dura (todo el admin)**: los `admin-*.js` corren en `'use strict'` → **toda variable usada tiene que estar DECLARADA** (`var`/`let`/`const`) en su scope. Al agregar una variable a una función existente, agregá la declaración en el MISMO commit — un `var` perdido rompe la pantalla EN SILENCIO (el catch del panel muestra el error, pero el módulo entero queda inservible).
+- **Falsos positivos que el auditor ya descarta**: (a) `window.X =` / `Object.defineProperty(window,'X')` / `__bhAccessor('X')` — son propiedades del global object, así que `X = ...` a secas RESUELVE contra ellas en strict mode; (b) scripts **top-level** que comparten scope de página (el módulo ALQUILERES: `alquileres-core.js` + `alquileres-app.js` sin IIFE, a propósito) → sus declaraciones de nivel de script se tratan como globales compartidos.
+
 ## Sidebar admin (gotchas — plan de 50 mejoras 2026-10-18)
 
 - **supabase-js v2 ya no acepta `table: [array]` en un solo `.on()` de postgres_changes**: la suscripción muere en silencio y el canal desaparece de `getChannels()`. `setupCoreRealtime` va con **UN `.on()` por tabla** compartiendo el handler (`tables.forEach(...)`). Bug real: el realtime de TODO el admin estuvo caído por esto (solo el chat de Zernio, que usa tablas individuales, seguía vivo).
