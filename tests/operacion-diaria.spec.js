@@ -188,3 +188,48 @@ test.describe('Operación diaria — encuesta post-visita automática (28/11)', 
     expect(encuestaSql).toContain('SET finalized = true');
   });
 });
+
+test.describe('Operación diaria — mejoras 4 y 5 del diagnóstico en frío (28/11)', () => {
+  const escalado = read('supabase/migrations/20261128000015_escalado_visible.sql');
+  const score = read('supabase/migrations/20261128000016_encuesta_score.sql');
+
+  test('escalado visible: nota en el timeline y aviso al dueño (misma firma)', () => {
+    expect(escalado).toMatch(
+      /CREATE OR REPLACE FUNCTION public\.crm_escalar_tareas_vencidas\(\s*p_dias integer DEFAULT 7,\s*p_dry_run boolean DEFAULT false\s*\)/,
+    );
+    expect(escalado).not.toMatch(/DROP\s+FUNCTION/);
+    // Dueño = super_admin activo; la alerta se le asigna a él (no al agente,
+    // que no tiene acceso al Centro de Supervisión).
+    expect(escalado).toMatch(/p\.role::text = 'super_admin' AND p\.is_active = true/);
+    expect(escalado).toContain('COALESCE(v_owner, r.task_agent, r.lead_agent)');
+    expect(escalado).toContain("'owner_notified', (v_owner IS NOT NULL)::text");
+    expect(escalado).toContain('Aviso al dueño del agente:');
+    expect(escalado).toContain('notes'); // supervision_alerts.notes (columna real)
+    // Traza en el timeline, con dedup por tarea para no repetir notas.
+    expect(escalado).toContain("'Tarea escalada automáticamente'");
+    expect(escalado).toMatch(/la\.description LIKE '%' \|\| r\.task_id::text \|\| '%'/);
+    // p_dry_run cuenta sin escribir nada (ni alertas ni notas).
+    expect(escalado).toMatch(/IF NOT COALESCE\(p_dry_run, false\) THEN/);
+    // El chip ya existe en Mi día: el escalado deja de ser invisible.
+    expect(crm).toContain("Number(c.escaladas) + ' escaladas (&gt;7d)");
+  });
+
+  test('score de encuesta en lead_activities sin tocar las keys de answers', () => {
+    // Misma firma en los dos RPC (sin sobrecargas ni DROP).
+    expect(score).toContain('CREATE OR REPLACE FUNCTION public.survey_submit_by_token(p_token text, p_answers jsonb, p_finalize boolean DEFAULT false)');
+    expect(score).toContain('CREATE OR REPLACE FUNCTION public.survey_pending_reminders(p_dry_run boolean DEFAULT false)');
+    expect(score).not.toMatch(/DROP\s+FUNCTION/);
+    // Score = promedio de los 5 sliders, leído de answers, NUNCA escrito en él.
+    expect(score).toContain("ARRAY['ubicacion','superficie','distribucion','conservacion','general']");
+    expect(score).toMatch(/round\(avg\(\(v_merged ->> s\.k\)::numeric\)\)::int INTO v_score/);
+    expect(score).toMatch(/round\(avg\(\(r\.answers ->> s\.k\)::numeric\)\)::int INTO v_score/);
+    expect(score).not.toContain("jsonb_build_object('score'");
+    expect(score).not.toMatch(/answers\s*=\s*[^;]*score/i);
+    // Se escribe SOLO en la nota del timeline (finalización, parcial y cierre).
+    expect(score).toContain("'Score: ' || v_score || '/10");
+    expect(score).toContain("'Encuesta cerrada sin respuesta'");
+    expect(score).toContain("'Se enviaron 2 recordatorios para ' || v_prop");
+    // El cierre automático con dry_run sigue sin escribir.
+    expect(score).toContain('IF NOT COALESCE(p_dry_run, false) THEN');
+  });
+});

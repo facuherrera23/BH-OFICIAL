@@ -88,6 +88,30 @@ test.describe('Reparto automático de leads sin agente', () => {
     expect(preview).toContain('GRANT EXECUTE ON FUNCTION public.repartir_leads_sin_agente(boolean) TO authenticated, service_role');
   });
 
+  test('carga real y vetos (28/11): sólo NUEVOS sin actividad, tareas pesan el doble', () => {
+    // Mejora 3 del diagnóstico en frío: los 5 huérfanos que quedaban son
+    // cerrados (no se reparten) y el reparto nivelaba contando SOLO leads.
+    const carga = read('supabase/migrations/20261128000014_reparto_carga_real.sql');
+    // Misma firma: CREATE OR REPLACE, sin DROP ni sobrecarga nueva.
+    expect(carga).toContain('CREATE OR REPLACE FUNCTION public.repartir_leads_sin_agente(p_dry_run boolean DEFAULT false)');
+    expect(carga).not.toMatch(/DROP\s+FUNCTION/);
+    // Veto doble: lead NUEVO y sin rastro en el timeline (nadie lo trabajó).
+    expect(carga).toMatch(/l\.stage::text = 'nuevo'/);
+    expect(carga).toMatch(/NOT EXISTS \([\s\S]{0,200}FROM public\.lead_activities la WHERE la\.lead_id = l\.id\)/);
+    // Carga = leads vivos + 2×tareas de lead + tareas de propietario.
+    expect(carga).toContain('tareas_abiertas');
+    expect(carga).toContain('tareas_owner');
+    expect(carga).toMatch(/\+ 2 \* \(SELECT count\(DISTINCT t\.id\)/);
+    expect(carga).toContain("t.status IN ('pendiente', 'en_progreso')");
+    expect(carga).toMatch(/ot\.status IN \('pendiente', 'en_progreso'\)/);
+    // El detalle explica el destino y la traza dice por qué se asignó.
+    expect(carga).toContain("'criterio', 'solo leads nuevos sin actividad; tareas abiertas pesan el doble'");
+    expect(carga).toContain('Reparto automático de lead NUEVO sin agente (carga real:');
+    // La vista previa sigue sin escribir: ni leads, ni timeline, ni audit, ni alerta.
+    expect(carga).toMatch(/IF v_es_preview THEN[\s\S]{0,300}UPDATE _reparto_carga/);
+    expect(carga).toMatch(/IF NOT v_es_preview THEN[\s\S]{0,200}INSERT INTO public\.audit_log/);
+  });
+
   test('la bandeja ofrece el botón Repartir (con vista previa REAL)', () => {
     expect(crmSrc).toContain('data-bandeja-repartir');
     expect(crmSrc).toContain('async function bandejaRepartir(btn, body) {');

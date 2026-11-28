@@ -909,6 +909,37 @@ precio) + ajustes en `tests/wa-rastro.spec.js` y `tests/operacion-diaria.spec.js
 El advisor no cambia (la RPC nueva ya nació con `search_path=''` y REVOKE
 explícito a `PUBLIC`/`anon`/`authenticated`).
 
+**Cierre del diagnóstico en frío: mejoras 3-6 (28/11/2026).** Cuatro mejoras
+más, todas sobre flujos existentes y con las mismas firmas (sin sobrecargas):
+
+1. **Reparto con carga real y vetos** (`20261128000014`). Sólo leads `nuevo`
+   **sin actividad** en el timeline; carga = leads vivos + tareas abiertas ×2 +
+   tareas de propietario. Preview real: Danilo 90 (26 leads/32 tareas) vs
+   Helmut 39 (11/14); `asignados=0` porque no hay huérfanos accionables.
+2. **Escalado visible** (`20261128000015`). `crm_escalar_tareas_vencidas`
+   deja nota en `lead_activities` y fija `supervision_alerts.notes` con aviso
+   al `super_admin` activo; el agente lo ve en el timeline del lead aunque no
+   entre al Centro de Supervisión. Preview: 15 tareas.
+3. **Score de encuesta en el lead** (`20261128000016`). El promedio de los 5
+   sliders se escribe en la nota del timeline al autoguardar, al enviar y al
+   cerrar sin respuesta; **NUNCA** en `answers` (full-set) ni en columnas nuevas.
+   Preview: 9 recordatorios, token inválido rechazado.
+4. **Guard anti-sobrecarga** (`tests/function-signatures.spec.js`). Allowlist
+   de las 4 sobrecargas históricas auditadas en `pg_proc`; cualquier firma
+   nueva, `DROP` huérfano o llamada de cron con firma ambigua falla el test.
+
+Las 3 migraciones se verificaron primero en producción dentro de
+`BEGIN … ROLLBACK` (cero escrituras: 0 alertas, 0 notas, 0 cierres) y se
+**aplicaron el 28/11 con OK del dueño**. Tras aplicar: los 4 `md5` de
+`pg_get_functiondef` coinciden con el repo, los permisos quedaron intactos
+(`repartir` y `submit` para `authenticated`; `escalar` y `reminders` sólo
+`service_role`; `anon` sin EXECUTE salvo en `submit`), las 4 sobrecargas
+históricas siguen siendo las únicas y el advisor no cambia: **anon-SECDEF 16 /
+`search_path_mutable` 0 / RLS sin policy 19**. Guards nuevos:
+`tests/reparto-leads.spec.js`, `tests/operacion-diaria.spec.js` y
+`tests/function-signatures.spec.js` (7 tests, con allowlist y detección de
+llamadas de cron ambiguas verificada con una sobrecarga artificial).
+
 **Guardián de crons y secretos en runtime (28/11/2026).** El cron de retención
 (jobid 36) falló 27 veces entre el 23 y el 28/11 con
 `function ... is not unique` y `pg_cron` seguía reportando `1 row`: nadie lo vio. La RPC
