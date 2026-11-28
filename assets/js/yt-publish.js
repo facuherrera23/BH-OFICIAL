@@ -289,7 +289,12 @@
         fileName: info.fileName || '',
         fileSize: info.fileSize || 0,
         title: info.title || '',
+        fingerprint: info.fingerprint || '',
         offset: info.offset || 0,
+        /* createdAt es INMUTABLE: cada chunk refresca savedAt, pero el TTL
+           se mide desde que se creó la sesión de Google (7 días). Si se
+           usara savedAt, una subida lenta podría revivir una URL muerta. */
+        createdAt: Date.now(),
         savedAt: Date.now(),
       });
     },
@@ -306,7 +311,9 @@
       if (!storage) return null;
       const cur = storage.get(RESUME_KEY, null);
       if (!cur || !cur.sessionUrl) return null;
-      const age = Date.now() - Number(cur.savedAt || 0);
+      /* Sessions guardadas antes del fix no traen createdAt: se acepta su
+         savedAt para no descartar una subida en vuelo. */
+      const age = Date.now() - Number(cur.createdAt || cur.savedAt || 0);
       if (!Number.isFinite(age) || age < 0 || age > RESUME_TTL_MS) {
         resume.clear();
         return null;

@@ -19,6 +19,7 @@ import { jsonResponse, optionsResponse } from '../_shared/http.ts';
 import { requireAdmin } from '../_shared/auth.ts';
 import { rateLimitMiddleware } from '../_shared/rate-limit.ts';
 import { getSocialAccessToken } from '../_shared/social.ts';
+import { estadoPublicado } from '../_shared/youtube-matching.ts';
 
 const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -306,10 +307,14 @@ Deno.serve(async (req) => {
                dueño): la página pública (/canal.html) sólo lista videos
                públicos, así que el CRM tiene que guardar este dato. */
             const privacyReal = String(checkJson.items[0]?.status?.privacyStatus ?? 'private');
+            const uploadStatus = String(checkJson.items[0]?.status?.uploadStatus ?? 'processed');
+            /* Un video privado/oculto (programación, borrador, unlisted)
+               nunca entra como `published`. La visibilidad REAL manda. */
+            const estado = estadoPublicado(uploadStatus, privacyReal, postContent);
 
             const { error: updErr } = await supabase.from('social_posts').update({
-                status: isDraft ? 'draft' : 'published',
-                published_at: isDraft ? null : new Date().toISOString(),
+                status: estado,
+                published_at: estado === 'published' ? new Date().toISOString() : null,
                 external_post_id: videoId,
                 external_url: `https://www.youtube.com/watch?v=${videoId}`,
                 metrics: { youtube_privacy: privacyReal },

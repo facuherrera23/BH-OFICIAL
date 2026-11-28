@@ -49,6 +49,12 @@ import { jsonResponse, optionsResponse } from '../_shared/http.ts';
 import { requireAdmin } from '../_shared/auth.ts';
 import { rateLimitMiddleware } from '../_shared/rate-limit.ts';
 import { getSocialAccessToken, getSocialCredentials } from '../_shared/social.ts';
+import {
+    emparejarGlobal,
+    estadoPublicado,
+    mejorCoincidencia,
+    type SyncVideo,
+} from '../_shared/youtube-matching.ts';
 
 const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -212,16 +218,9 @@ async function setPostPrivacy(
    nueva al sincronizar) buscamos el video por TÍTULO + FECHA y vinculamos
    la fila existente. Es SÓLO lectura de YouTube: nunca re-subimos.
    ============================================================ */
-type SyncVideo = {
-    id?: string;
-    snippet?: { title?: string; description?: string; publishedAt?: string; categoryId?: string; tags?: string[] };
-    status?: { privacyStatus?: string; uploadStatus?: string };
-};
-
-function normTitle(s: string): string {
-    return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-}
+/* normTitle / esMismoVideo / mejorCoincidencia / emparejarGlobal /
+   estadoPublicado viven en _shared/youtube-matching.ts (lógica pura,
+   testeada en tests/unit/youtube-matching.test.mts). */
 
 /** Inventario REAL del canal: playlist de uploads + detalle de cada video. */
 async function listChannelVideos(accessToken: string, max = 200): Promise<{ vids: SyncVideo[]; completo: boolean }> {
@@ -263,33 +262,6 @@ async function listChannelVideos(accessToken: string, max = 200): Promise<{ vids
         vids.push(...(res.items ?? []));
     }
     return { vids, completo };
-}
-
-/** El título normalizado coincide y la fecha está dentro de la ventana real
- *  de procesamiento de YouTube (±30 min entre created_at y publishedAt). */
-function esMismoVideo(postTitle: string, postCreatedAt: string, v: SyncVideo): boolean {
-    const pub = String(v.snippet?.publishedAt ?? '');
-    if (!pub || normTitle(postTitle) !== normTitle(String(v.snippet?.title ?? ''))) return false;
-    const diff = Math.abs(new Date(pub).getTime() - new Date(postCreatedAt).getTime());
-    return Number.isFinite(diff) && diff <= 30 * 60 * 1000;
-}
-
-/** De todos los videos con el mismo título, elige el más cercano en fecha.
- *  `vedados` evita que dos posts (los 3 shorts del 27/10 tenían el MISMO
- *  título) se vinculen al MISMO video: cada video se usa una sola vez. */
-function mejorCoincidencia(
-    postTitle: string, postCreatedAt: string, vids: SyncVideo[], vedados: Set<string> = new Set(),
-): SyncVideo | null {
-    let best: SyncVideo | null = null;
-    let bestDiff = Infinity;
-    const postMs = new Date(postCreatedAt).getTime();
-    for (const v of vids) {
-        const id = String(v.id ?? '');
-        if (!id || vedados.has(id) || !esMismoVideo(postTitle, postCreatedAt, v)) continue;
-        const diff = Math.abs(new Date(String(v.snippet?.publishedAt ?? '')).getTime() - postMs);
-        if (diff < bestDiff) { best = v; bestDiff = diff; }
-    }
-    return best;
 }
 
 Deno.serve(async (req) => {
@@ -675,27 +647,44 @@ Deno.serve(async (req) => {
 
             await loadAccount(supabase, post.account_id);
             const accessToken = await getSocialAccessToken(supabase, post.account_id);
-            const { vids } = await listChannelVideos(accessToken);
+            const { vids, completo } = await listChannelVideos(accessToken);
+            /* Con el inventario truncado un "not_found" sería una mentira
+               (el video puede estar en la página que no se leyó). No se
+               marca fallo ni se vincula nada hasta tener el canal completo. */
+            if (!completo) {
+                return respond(200, { ok: true, found: false, reason: 'incompleto', revisados: vids.length });
+            }
             /* Los 3 shorts tenían el MISMO título: si el operador vincula uno
-               y luego otro, el segundo NO puede robarle el video al primero. */
-            const { data: vinculados } = await supabase
-                .from('social_posts')
-                .select('external_post_id')
-                .not('external_post_id', 'is', null)
-                .limit(500) as { data: Array<{ external_post_id: string }> | null };
-            const vedados = new Set((vinculados ?? []).map((r) => String(r.external_post_id)));
-            const title = String((post.content ?? {}).title ?? '');
-            const v = mejorCoincidencia(title, post.created_at, vids, vedados);
+               y luego otro, el segundo NO puede robarle el video al primero.
+               Se filtra por plataforma/cuenta y por los ids del inventario:
+               un `.limit(500)` global podía vedar videos ajenos y dejar
+               huérfanos sin match. */
+            const ids = vids.map((x) => String(x.id ?? '')).filter(Boolean);
+            const vinculados: Array<{ external_post_id: string }> = ids.length
+                ? (await supabase
+                    .from('social_posts')
+                    .select('external_post_id')
+                    .eq('platform', 'youtube')
+                    .eq('account_id', post.account_id)
+                    .not('external_post_id', 'is', null)
+                    .in('external_post_id', ids) as { data: Array<{ external_post_id: string }> | null }).data ?? []
+                : [];
+            const vedados = new Set(vinculados.map((r) => String(r.external_post_id)));
+            const postContent = (post.content ?? {}) as Record<string, unknown>;
+            const publishAt = String(postContent.publish_at ?? '');
+            const title = String(postContent.title ?? '');
+            const v = mejorCoincidencia(title, post.created_at, vids, vedados, publishAt);
             if (!v || !v.id) {
                 return respond(200, { ok: true, found: false, reason: 'not_found', revisados: vids.length });
             }
 
             const privacy = String(v.status?.privacyStatus ?? 'private');
             const uploadStatus = String(v.status?.uploadStatus ?? 'processed');
+            const estado = estadoPublicado(uploadStatus, privacy, postContent);
             const url = `https://www.youtube.com/watch?v=${v.id}`;
             const now = new Date().toISOString();
             const { error } = await supabase.from('social_posts').update({
-                status: uploadStatus === 'processed' ? 'published' : 'publishing',
+                status: estado,
                 external_post_id: v.id,
                 external_url: url,
                 published_at: v.snippet?.publishedAt ?? post.created_at,
@@ -731,7 +720,7 @@ Deno.serve(async (req) => {
 
             return respond(200, {
                 ok: true, found: true, video_id: v.id, url,
-                status: uploadStatus === 'processed' ? 'published' : 'publishing',
+                status: estado,
                 title: v.snippet?.title ?? '',
             });
         }
@@ -793,45 +782,29 @@ Deno.serve(async (req) => {
                     metrics: Record<string, unknown> | null;
                 }> | null;
             };
-            /* Emparejamiento único (1 post huérfano ↔ 1 video real): se
-               elige la fecha más cercana y cada video se usa una sola vez.
-               Los videos YA vinculados se excluyen para no robarles el
-               match a un post que todavía no tiene external_post_id. */
+            /* Emparejamiento 1:1 de MÍNIMA distancia total: con 3 shorts del
+               mismo título, un greedy por filas puede dejar un huérfano sin
+               match (o casarlo mal). Los videos YA vinculados se excluyen. */
             const vedados = new Set<string>(porId.keys());
-            const huerfanoPorVideo = new Map<string, {
-                id: string; content: Record<string, unknown> | null;
-                created_at: string; status: string;
-                metrics: Record<string, unknown> | null;
-            }>();
-            /* Emparejamiento GLOBALmente óptimo (por distancia, no por orden de
-               filas): con 3 shorts del mismo título, elegir el par más cercano
-               primero evita que el último quede a 2 minutos del suyo. */
             type Huerfano = {
                 id: string; content: Record<string, unknown> | null;
                 created_at: string; status: string; metrics: Record<string, unknown> | null;
             };
-            const pares: Array<{ vid: string; post: Huerfano; diff: number }> = [];
-            for (const o of huerfanos ?? []) {
-                for (const v of vids) {
-                    const vid = String(v.id ?? '');
-                    if (!vid || vedados.has(vid) || !esMismoVideo(
-                        String((o.content ?? {}).title ?? ''), String(o.created_at), v,
-                    )) continue;
-                    const diff = Math.abs(
-                        new Date(String(v.snippet?.publishedAt ?? '')).getTime()
-                        - new Date(String(o.created_at)).getTime(),
-                    );
-                    pares.push({ vid, post: o, diff });
-                }
-            }
-            pares.sort((a, b) => a.diff - b.diff);
-            const postsUsados = new Set<string>();
-            for (const par of pares) {
-                /* Ambos lados son únicos: un video NO puede vincularse a dos
-                   posts aunque la distancia del segundo sea menor. */
-                if (postsUsados.has(par.post.id) || huerfanoPorVideo.has(par.vid)) continue;
-                huerfanoPorVideo.set(par.vid, par.post);
-                postsUsados.add(par.post.id);
+            const huerfanoPorVideo = new Map<string, Huerfano>();
+            const porPost = new Map((huerfanos ?? []).map((o) => [o.id, o]));
+            const parejas = emparejarGlobal(
+                (huerfanos ?? []).map((o) => ({
+                    id: o.id,
+                    title: String((o.content ?? {}).title ?? ''),
+                    created_at: String(o.created_at),
+                    publish_at: String((o.content ?? {}).publish_at ?? ''),
+                })),
+                vids,
+                vedados,
+            );
+            for (const [vid, pareja] of parejas) {
+                const o = porPost.get(pareja.postId);
+                if (o) huerfanoPorVideo.set(vid, o);
             }
 
             let importados = 0;
@@ -866,10 +839,11 @@ Deno.serve(async (req) => {
                         external_url: url,
                         published_at: v.snippet?.publishedAt ?? null,
                     };
-                    /* El estado del CRM sólo avanza si el video ya está
-                       procesado. Un borrador ('draft') o un fallido NO se
-                       promote: esa decisión es del dueño. */
-                    if (uploadStatus === 'processed' && prev.status === 'publishing') patch.status = 'published';
+                    /* Un borrador, un video privado/oculto o uno todavía no
+                       procesado NO se promueve: esa decisión es del dueño. */
+                    const estado = estadoPublicado(uploadStatus, privacy, prevContent);
+                    if (prev.status === 'publishing' && estado !== 'publishing') patch.status = estado;
+                    if (estado !== 'published') patch.published_at = null;
                     const { error } = await supabase.from('social_posts').update(patch).eq('id', prev.id);
                     if (error) return respond(500, { error: error.message });
                     actualizados++;
@@ -884,11 +858,13 @@ Deno.serve(async (req) => {
                        formulario/score). NO las pisamos con las del video: el
                        match es una vinculación, no una importación nueva. */
                     const metricsHuerfano = Object.assign({}, huerfano.metrics ?? {}, metrics);
+                    const estado = estadoPublicado(uploadStatus, privacy, huerfano.content);
                     const { error } = await supabase.from('social_posts').update({
-                        status: uploadStatus === 'processed' ? 'published' : 'publishing',
+                        status: estado,
                         external_post_id: vid,
                         external_url: url,
-                        published_at: v.snippet?.publishedAt ?? huerfano.created_at,
+                        published_at: estado === 'published'
+                            ? (v.snippet?.publishedAt ?? huerfano.created_at) : null,
                         error: null,
                         updated_at: new Date().toISOString(),
                         metrics: metricsHuerfano,
@@ -898,12 +874,13 @@ Deno.serve(async (req) => {
                     reconciliadosSubidas++;
                     continue;
                 }
+                const estado = estadoPublicado(uploadStatus, privacy, null);
                 const { error } = await supabase.from('social_posts').insert({
                     account_id: accountId,
                     platform: 'youtube',
                     post_type: 'video',
-                    status: uploadStatus === 'processed' ? 'published' : 'publishing',
-                    published_at: v.snippet?.publishedAt ?? null,
+                    status: estado,
+                    published_at: estado === 'published' ? (v.snippet?.publishedAt ?? null) : null,
                     external_post_id: vid,
                     external_url: url,
                     content: {

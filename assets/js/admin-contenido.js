@@ -3639,6 +3639,21 @@
     }
   }
 
+  /** Huella de la metadata que Google ya recibió en el init de la sesión.
+      Si el usuario cambia título/descritor/flags y se retoma igual, el video
+      subido tendría la metadata VIEJA: se descarta la sesión y se hace un
+      init nuevo (nunca se reutiliza una URL con otro payload). */
+  function ytInitFingerprint(payload) {
+    var keys = [
+      'account_id', 'title', 'description', 'tags', 'privacy', 'publish_at',
+      'property_id', 'seo_score', 'keyword', 'category_id', 'embeddable',
+      'notify_subscribers', 'made_for_kids', 'license', 'draft',
+    ];
+    return keys.map(function (k) {
+      return k + '=' + JSON.stringify(payload[k] === undefined ? null : payload[k]);
+    }).join('|');
+  }
+
   /** Botón manual del historial: "ya se subió, vinculá este registro". */
   async function reconcileFromHistory(postId) {
     const ya = await reconcileUpload(postId);
@@ -3762,15 +3777,42 @@
     const progressWrap = $('#ytProgress');
     if (progressWrap) progressWrap.classList.add('is-visible');
 
+    /* 1. init: sesión de subida en Google + registro del post. Se arma ANTES
+       de mirar la sesión guardada para poder comparar la metadata por huella. */
+    const initPayload = {
+      account_id: accountId,
+      title,
+      description: descOut, // #11: con el auto-CTA si correspondía
+      tags,
+      privacy,
+      file_size: file.size,
+      file_type: file.type || 'video/mp4',
+      publish_at: publishAt ? new Date(publishAt).toISOString() : undefined,
+      property_id: (($('#ytProperty') || {}).value || undefined), // #1
+      seo_score: (typeof seoScore === 'number' && seoScore > 0 ? seoScore : undefined), // #18
+      keyword: (($('#ytKeyword') || {}).value || undefined), // se guarda en content (reintentar lo conserva)
+      /* Flags de publicación: categoría real de YouTube, incrustación
+         (si es false las fichas NO pueden embeber el tour), aviso a
+         suscriptores, contenido para niños y licencia. */
+      category_id: (($('#ytCategory') || {}).value || undefined),
+      embeddable: flagChecked('ytEmbeddable', true),
+      notify_subscribers: flagChecked('ytNotifySubs', true),
+      made_for_kids: flagChecked('ytMadeForKids', false),
+      license: (($('#ytLicense') || {}).value || 'youtube'),
+      draft: isDraft,
+    };
+    const initFingerprint = ytInitFingerprint(initPayload);
+
     /* ¿Hay una sesión guardada para ESTE MISMO archivo? Se retoma desde el
-       byte que Google ya recibió. Si es otro archivo, se descarta. */
+       byte que Google ya recibió. Si cambió el archivo O la metadata, se
+       descarta: la sesión ya tiene el payload viejo. */
     let resuming = null;
     if (YTPUB && YTPUB.resume && typeof YTPUB.resume.load === 'function') {
       const prev = YTPUB.resume.load();
-      /* La sesión de Google ya tiene la metadata del init: si el título
-         cambió, esa sesión no sirve (publicaría el título viejo). */
       if (prev && prev.postId && prev.fileName === (file.name || '') &&
-          Number(prev.fileSize) === file.size && (!prev.title || prev.title === title)) {
+          Number(prev.fileSize) === file.size &&
+          (!prev.fingerprint || prev.fingerprint === initFingerprint) &&
+          (!prev.title || prev.title === title)) {
         resuming = prev;
       } else if (prev) {
         YTPUB.resume.clear();
@@ -3778,29 +3820,6 @@
     }
 
     try {
-      /* 1. init: sesión de subida en Google + registro del post */
-      const initPayload = {
-        account_id: accountId,
-        title,
-        description: descOut, // #11: con el auto-CTA si correspondía
-        tags,
-        privacy,
-        file_size: file.size,
-        file_type: file.type || 'video/mp4',
-        publish_at: publishAt ? new Date(publishAt).toISOString() : undefined,
-        property_id: (($('#ytProperty') || {}).value || undefined), // #1
-        seo_score: (typeof seoScore === 'number' && seoScore > 0 ? seoScore : undefined), // #18
-        keyword: (($('#ytKeyword') || {}).value || undefined), // se guarda en content (reintentar lo conserva)
-        /* Flags de publicación: categoría real de YouTube, incrustación
-           (si es false las fichas NO pueden embeber el tour), aviso a
-           suscriptores, contenido para niños y licencia. */
-        category_id: (($('#ytCategory') || {}).value || undefined),
-        embeddable: flagChecked('ytEmbeddable', true),
-        notify_subscribers: flagChecked('ytNotifySubs', true),
-        made_for_kids: flagChecked('ytMadeForKids', false),
-        license: (($('#ytLicense') || {}).value || 'youtube'),
-        draft: isDraft,
-      };
       let sessionUrl;
       if (resuming) {
         /* ANTES de re-subir: si ese video ya está en YouTube, lo vinculamos
@@ -3832,6 +3851,7 @@
             fileName: file.name || '',
             fileSize: file.size,
             title: title,
+            fingerprint: initFingerprint,
             offset: 0,
           });
         }
@@ -3988,14 +4008,6 @@
         await client.from('social_posts')
           .update({ status: 'failed', error: 'Subida interrumpida (el navegador se cerró antes de terminar).' })
           .in('id', idsAFallar);
-      }
-      /* Sólo los que SIGUEN sin video: reconsultar los ya vinculados gastaba
-         llamadas al Studio y duplicaba el toast en el historial. */
-      for (const z of aunZombis.data || []) {
-        const ya = await reconcileUpload(z.id);
-        if (ya) {
-          showToast('El video ya estaba en YouTube: lo vinculamos en vez de marcarlo fallido.', 'success');
-        }
       }
     } catch (e) { logError('Contenido: zombie sweep', e); }
 

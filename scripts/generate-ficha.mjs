@@ -982,7 +982,7 @@ async function loadPropertyVideos() {
   const map = {};
   try {
     const url = new URL(`${SUPABASE_URL}/rest/v1/social_posts`);
-    url.searchParams.set('select', 'property_id,external_post_id,content,published_at');
+    url.searchParams.set('select', 'property_id,external_post_id,content,metrics,published_at');
     url.searchParams.set('platform', 'eq.youtube');
     url.searchParams.set('status', 'eq.published');
     url.searchParams.set('property_id', 'not.is.null');
@@ -991,7 +991,11 @@ async function loadPropertyVideos() {
     const res = await fetch(url, { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } });
     if (!res.ok) throw new Error(`Supabase ${res.status}: ${(await res.text()).slice(0, 120)}`);
     const rows = await res.json();
-    for (const r of rows || []) {
+    /* `status='published'` NO basta: un borrador o un video programado puede
+       estar en esa fila con privacy='private'. La misma regla del canal
+       público aplica al embed de la ficha (fail closed). */
+    const visibles = splitChannelVideos(rows).visibles;
+    for (const r of visibles) {
       if (!r || !r.property_id || !r.external_post_id) continue;
       if (map[r.property_id]) continue; // orden desc → el más reciente gana
       map[r.property_id] = {
