@@ -227,6 +227,9 @@
         }
       };
       window.supabaseClient = client;
+      /* Sólo para los behavioral: permite leer el estado en memoria después
+         de una mutación (no existe en producción). */
+      window.__FAKE_PG.store = function () { return store; };
       return client;
     }
   };

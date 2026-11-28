@@ -51,6 +51,8 @@
   </div>
 
   <div id="crmOwnerAlerts" style="display:none;"></div>
+  <!-- Capa B: el hint inline del buscador anti-duplicados. -->
+  <div id="crmDupHint" style="display:none;"></div>
   <div id="crmLeadList"></div>
   <div class="crm-side-panel" id="crmSidePanel"></div>
 </section>
@@ -68,7 +70,8 @@
   window.__HARNESS_LOG = [];
   window.__FAKE_PG.install({
     agents: [
-      { id: 'agente-1', full_name: 'Agente Uno', email: 'agente1@test.com', role: 'broker', deleted_at: null }
+      { id: 'agente-1', full_name: 'Agente Uno', email: 'agente1@test.com', role: 'broker', status: 'activo', deleted_at: null },
+      { id: 'agente-2', full_name: 'Agente Dos', email: 'agente2@test.com', role: 'agent', status: 'activo', deleted_at: null }
     ],
     leads: [
       {
@@ -110,6 +113,23 @@
     /* RPC de sola lectura que alimenta "Mi día" y la bandeja de siguiente
        acción. Es un fixture determinístico: el guard no depende de la fecha. */
     __rpc: {
+      /* Capa B: ambos leads del fixture comparten teléfono para el guard del
+         buscador anti-duplicados (no se fusiona nada en el test). */
+      leads_duplicados: function () {
+        return {
+          data: {
+            ok: true,
+            grupos: [{
+              tipo: 'telefono', n: 2,
+              miembros: [
+                { lead_id: '11111111-1111-1111-1111-111111111111', nombre: 'Lead Sin Sugerencias', stage: 'nuevo', telefono: '3515550001' },
+                { lead_id: '22222222-2222-2222-2222-222222222222', nombre: 'Lead Con Sugerencias', stage: 'calificado', telefono: '3515550002' }
+              ]
+            }]
+          },
+          error: null
+        };
+      },
       mi_dia: function () {
         return {
           data: {

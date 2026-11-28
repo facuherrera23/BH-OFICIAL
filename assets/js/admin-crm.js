@@ -884,6 +884,7 @@ async function loadLeads() {
     renderLeadList(c);
     updateKpis();
     pintarBadgeBandeja(); /* contador del botón con el cache del sidebar RPC */
+    actualizarDupHint();  /* Capa B: aviso inline de duplicados en la búsqueda (best-effort) */
     var sub = $id('crmSubtitle');
     if (sub) sub.textContent = _showTrash ? _totalRows + ' eliminados' : _totalRows + ' prospectos';
     var badge = $id('sideBadgeLeads');
@@ -1619,6 +1620,20 @@ var WA_TEMPLATES = [
   { id: 'post_visita', label: 'Post-visita', text: function (c) { return 'Hola ' + c.nombre + ', gracias por la visita de hoy. Quedo atento a cualquier duda o si querés avanzar con una propuesta.'; } },
   { id: 'compartir_ficha', label: 'Compartir ficha', text: function (c) { return 'Hola ' + c.nombre + ', te comparto la ficha de la propiedad' + (c.prop ? ' ' + c.prop : '') + ':' + (c.link ? '\n' + c.link : ''); } }
 ];
+/* Capa B / mejora 4: la plantilla que se ofrece por default es la de la
+   etapa actual del lead (la misma lógica del embudo de LEAD_STATUSES). Es
+   sólo una sugerencia: el agente puede elegir cualquier otra. Si la etapa es
+   terminal no se sugiere nada — no se va a escribir a quien ya cerró. */
+var STAGE_TEMPLATE = {
+  nuevo: 'primer_contacto',
+  contactado: 'seguimiento',
+  calificado: 'compartir_ficha',
+  visita_agendada: 'visita_propuesta',
+  visita_realizada: 'post_visita',
+  negociacion: 'seguimiento',
+  cerrado_ganado: '',
+  cerrado_perdido: ''
+};
 
 // Normalización AR: soporta 00/54/0/9 y el 15 de celulares; tel: sin el 9 (fijos).
 var AR_MOBILE_AREAS = { '11': 1, '221': 1, '341': 1, '351': 1 };
@@ -1659,7 +1674,10 @@ function contactSectionHtml(lead, firstProp, props) {
   var wa = waNumber(lead.whatsapp) || waNumber(lead.phone);
   var tel = telNumber(lead.phone);
   var hasProps = props && props.length > 0;
-  var opts = '<option value="">Plantilla de WhatsApp...</option>' + WA_TEMPLATES.map(function (t) { return '<option value="' + t.id + '">' + t.label + '</option>'; }).join('');
+  var sugTpl = STAGE_TEMPLATE[normalizeStage(lead.stage || 'nuevo')] || '';
+  var opts = '<option value="">Plantilla de WhatsApp...</option>' + WA_TEMPLATES.map(function (t) {
+    return '<option value="' + t.id + '"' + (t.id === sugTpl ? ' selected' : '') + '>' + t.label + (t.id === sugTpl ? ' (según etapa)' : '') + '</option>';
+  }).join('');
   var row = '<div class="crm-contact-row">';
   row += wa
     ? '<a class="crm-contact-btn crm-contact-btn--wa" href="https://wa.me/' + wa + '" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i> WhatsApp</a>'
@@ -1681,15 +1699,27 @@ function contactSectionHtml(lead, firstProp, props) {
   }
   if (!lead.assigned_to) {
     row += '<button class="crm-contact-btn crm-contact-btn--assign" id="crmAssignMe" type="button" title="Asignarme este lead"><i class="fas fa-user-check"></i> Asignarme</button>';
+  } else if ((window.currentProfile || window._bhCurrentProfile || {}).role === 'super_admin') {
+    /* Capa B / mejora 5: traspaso con contexto. La reasignación simple ya
+       estaba en el select del panel y en las acciones en lote; acá se agrega
+       el pase con nota y con las tareas abiertas del lead. Sólo super_admin:
+       la policy leads_update (with_check) NO deja a un agente cambiar
+       assigned_to a otro (RLS lo rechaza en silencio). */
+    row += '<button class="crm-contact-btn" id="crmHandoffBtn" type="button" title="Pasar este lead a otro agente, con nota y tareas abiertas"><i class="fas fa-right-left"></i> Pasar a otro agente</button>';
   }
   row += '</div>';
-  row += '<div class="crm-template-row"><select class="crm-field-input crm-field-input--select" id="crmMsgTemplate">' + opts + '</select>' +
+  row += '<div class="crm-template-row"><select class="crm-field-input crm-field-input--select" id="crmMsgTemplate" title="Plantilla sugerida según la etapa; podés elegir otra">' + opts + '</select>' +
     '<button class="btn-action' + (wa ? '' : ' is-disabled') + '" id="crmTemplateUse" title="Abrir WhatsApp con la plantilla"' + (wa ? '' : ' disabled') + '><i class="fas fa-paper-plane"></i></button></div>';
   return '<div class="crm-side-section"><h4 class="crm-side-section-title">Contacto</h4>' + row + '</div>';
 }
 
 function bindContactActions(panel, lead, firstProp, props) {
   bindSiguientesAcciones(panel, lead);
+  var handoffBtn = panel.querySelector('#crmHandoffBtn');
+  if (handoffBtn && !handoffBtn.dataset.handoffBound) {
+    handoffBtn.dataset.handoffBound = '1';
+    handoffBtn.addEventListener('click', function () { openHandoff(lead); });
+  }
   var propTitle = firstProp && firstProp.property_title;
   var propPrecio = propPriceText(firstProp);
   /* WhatsApp deja rastro (2026-11-26): el botón wa.me era el único canal sin
@@ -1798,6 +1828,115 @@ function bindContactActions(panel, lead, firstProp, props) {
       window.open('/tasacion.html?lead=' + encodeURIComponent(String(lead.id || '')), '_blank', 'noopener');
     });
   }
+}
+
+/* ============================================================
+   HANDOFF ENTRE AGENTES (Capa B / mejora 5, 28/11/2026).
+   La reasignación simple ya vivía en el select del panel y en las acciones
+   en lote; lo que faltaba era el CONTEXTO: quién pasa el lead, nota para
+   quien lo recibe y las tareas abiertas. Sin RPC ni tabla nueva: todo con
+   leads / lead_tasks / lead_activities y el mismo panel realtime.
+   ============================================================ */
+var _handoffOverlay = null;
+var HANDOFF_TASK_STATUSES = ['pendiente', 'en_progreso', 'en_espera'];
+
+function cerrarHandoff() {
+  if (!_handoffOverlay) return;
+  var onKey = _handoffOverlay.__handoffKey;
+  if (onKey) document.removeEventListener('keydown', onKey);
+  _handoffOverlay.remove();
+  _handoffOverlay = null;
+}
+
+function openHandoff(lead) {
+  cerrarHandoff();
+  /* _agents viene de loadAgents(): sólo agentes con status 'activo'. */
+  var destinos = _agents.filter(function (a) { return a.id !== lead.assigned_to; });
+  if (!destinos.length) { toast('No hay otro agente activo para el traspaso.', 'error'); return; }
+  var opts = '<option value="">Elegí el agente…</option>' + destinos.map(function (a) {
+    return '<option value="' + esc(a.id) + '">' + esc(a.full_name) + '</option>';
+  }).join('');
+  var overlay = document.createElement('div');
+  overlay.className = 'crm-bandeja-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10070;background:rgba(2,3,5,0.7);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;';
+  overlay.innerHTML = '<div role="dialog" aria-modal="true" aria-label="Pasar lead a otro agente" style="width:min(520px,100%);background:var(--bg,#05070A);border:1px solid var(--border-subtle);border-radius:16px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,0.55);">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">' +
+      '<h3 style="margin:0;font-size:16px;color:var(--text-primary);"><i class="fas fa-right-left" style="color:var(--accent);"></i> Pasar a otro agente</h3>' +
+      '<button type="button" class="modal-x-close" data-handoff-cancel aria-label="Cerrar" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;"><i class="fas fa-xmark"></i></button>' +
+    '</div>' +
+    '<p style="margin:0 0 14px;font-size:12px;color:var(--text-dim);">' + esc(lead.full_name || 'Este lead') + ': se mueve el lead y sus tareas abiertas. Queda nota en el historial para que quien recibe no arranque a ciegas.</p>' +
+    '<div class="form-field" style="margin-bottom:12px;"><label>Agente de destino</label><select id="handoffAgent" class="crm-field-input crm-field-input--select">' + opts + '</select></div>' +
+    '<div class="form-field" style="margin-bottom:16px;"><label>Contexto para quien recibe</label><textarea id="handoffNote" class="crm-field-input" rows="4" placeholder="Ej: hablé con el cliente, quiere verla el sábado. Llamar a las 10."></textarea></div>' +
+    '<div style="display:flex;justify-content:flex-end;gap:8px;">' +
+      '<button type="button" class="btn-action" data-handoff-cancel>Cancelar</button>' +
+      '<button type="button" class="btn-luxury-action" data-handoff-submit><i class="fas fa-right-left"></i> Traspasar</button>' +
+    '</div>' +
+  '</div>';
+  document.body.appendChild(overlay);
+  _handoffOverlay = overlay;
+  var onKey = function (e) { if (e.key === 'Escape') cerrarHandoff(); };
+  overlay.__handoffKey = onKey;
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) cerrarHandoff(); });
+  overlay.querySelectorAll('[data-handoff-cancel]').forEach(function (b) { b.addEventListener('click', cerrarHandoff); });
+  var submit = overlay.querySelector('[data-handoff-submit]');
+  submit.addEventListener('click', async function () {
+    var sel = overlay.querySelector('#handoffAgent');
+    var note = overlay.querySelector('#handoffNote');
+    if (!sel || !sel.value) { toast('Elegí el agente de destino.', 'error'); return; }
+    submit.disabled = true;
+    try {
+      var res = await handoffLead(lead.id, sel.value, note ? note.value.trim() : '');
+      cerrarHandoff();
+      closeDetailPanel();
+      await loadLeads();
+      toast('Lead pasado a ' + res.agente + (res.tareas ? ' (' + res.tareas + ' tareas movidas)' : '') + '.' +
+        (res.tareasError ? ' Revisá el historial: no se pudieron mover todas las tareas.' : ''), 'success');
+    } catch (e) {
+      submit.disabled = false;
+      toast('No se pudo traspasar: ' + (e && e.message ? e.message : String(e)), 'error');
+    }
+  });
+  var first = overlay.querySelector('#handoffAgent');
+  if (first) first.focus();
+}
+
+async function handoffLead(leadId, agentId, nota) {
+  var destino = _agents.filter(function (a) { return a.id === agentId; })[0];
+  if (!destino) throw new Error('Agente de destino no encontrado');
+  var lead = _leads.filter(function (l) { return l.id === leadId; })[0];
+  if (lead && lead.assigned_to === agentId) throw new Error('El lead ya está con ' + destino.full_name);
+  /* El lead PRIMERO: si RLS rechaza el cambio (sólo super_admin puede);
+     no se mueve ninguna tarea ni se escribe una nota mentirosa. El .select()
+     distingue el error del 0 filas silencioso. */
+  var upd = await db().from('leads').update({ assigned_to: agentId }).eq('id', leadId).select('id');
+  if (upd && upd.error) throw new Error(upd.error.message);
+  if (!upd || !upd.data || !upd.data.length) throw new Error('Sin permiso para traspasar este lead o ya no existe');
+  /* Las tareas abiertas siguen al lead para que quien recibe no tenga que
+     buscarlas. Un fallo acá NO deshace el traspaso: se reporta en el toast
+     y en el historial (best-effort, como la reasignación en lote). */
+  var prevRes = await db().from('lead_tasks').select('id').eq('lead_id', leadId).in('status', HANDOFF_TASK_STATUSES);
+  if (prevRes && prevRes.error) throw new Error(prevRes.error.message);
+  var previas = (prevRes && prevRes.data) || [];
+  var movidas = 0;
+  var falloTareas = null;
+  if (previas.length) {
+    var tRes = await db().from('lead_tasks').update({ assigned_to: agentId }).in('id', previas.map(function (t) { return t.id; })).select('id');
+    if (tRes && tRes.error) falloTareas = tRes.error.message;
+    else movidas = (tRes && tRes.data) ? tRes.data.length : previas.length;
+  }
+  var quien = (window.currentProfile && window.currentProfile.full_name) || 'un agente';
+  var desc = (nota || 'Sin nota de traspaso.') + '\nTareas abiertas pasadas a ' + destino.full_name + ': ' + movidas + '.' +
+    (falloTareas ? '\nNo se pudieron mover todas las tareas: ' + falloTareas : '');
+  try {
+    await db().from('lead_activities').insert([{
+      lead_id: leadId,
+      activity_type: 'note',
+      title: 'Handoff de ' + quien + ' a ' + destino.full_name,
+      description: desc
+    }]);
+  } catch (e) { /* la traza es best-effort: el lead ya quedó traspasado */ }
+  return { agente: destino.full_name, tareas: movidas, tareasError: falloTareas };
 }
 
 /* Modal selector de propiedad para encuesta cuando el lead tiene varias vinculadas.
@@ -3182,6 +3321,15 @@ function init() {
     dupBtn.dataset.crmBound = '1';
     dupBtn.addEventListener('click', openDuplicados);
   }
+  /* Capa B / mejora 2: el aviso inline del buscador abre el overlay de fusión
+     existente. Delegado en el contenedor: el hint se vuelve a dibujar. */
+  var dupHint = $id('crmDupHint');
+  if (dupHint && !dupHint.dataset.dupBound) {
+    dupHint.dataset.dupBound = '1';
+    dupHint.addEventListener('click', function (e) {
+      if (e.target.closest('[data-dup-hint-open]')) openDuplicados();
+    });
+  }
   /* Conversión por origen (2026-11-26): tablero de lectura. */
   var convBtn = $id('crmConversionBtn');
   if (convBtn && !convBtn.dataset.crmBound) {
@@ -3444,6 +3592,8 @@ function _syncHeader() {
   /* Duplicados (2026-11-26): mismo modo leads; gate de rol en la RPC. */
   var dupBtn = $id('crmDuplicadosBtn');
   if (dupBtn) dupBtn.style.display = ownersMode ? 'none' : '';
+  var dupHintEl = $id('crmDupHint');
+  if (dupHintEl && ownersMode) dupHintEl.style.display = 'none';
   var convBtn = $id('crmConversionBtn');
   if (convBtn) convBtn.style.display = ownersMode ? 'none' : '';
   if (newOwnerCrm) newOwnerCrm.style.display = ownersMode ? '' : 'none';
@@ -4850,6 +5000,51 @@ function pintarBadgeBandeja() {
   btn.dataset.bhTip = n > 0
     ? n + ' cosas para atender hoy: seguimientos vencidos, tareas vencidas, leads sin agente y consultas sin tocar'
     : 'Todo al día: nada vencido en tu bandeja';
+}
+
+/* ============================================================
+   CAPA B / MEJORA 2 — BUSCADOR ANTI-DUPLICADOS (28/11/2026).
+   Al buscar en el CRM, si alguno de los leads de la página comparte email o
+   teléfono con otro, mostramos una señal inline que abre el overlay de fusión
+   existente. No hay lógica de fusión nueva ni RPC nueva: se reutiliza
+   leads_duplicados() (cacheada 5 min) y openDuplicados(). Si la RPC no está
+   permitida (agente), el hint simplemente no aparece.
+   ============================================================ */
+var _dupHintCache = { at: 0, ids: null };
+
+async function actualizarDupHint() {
+  var hint = $id('crmDupHint');
+  if (!hint) return;
+  var search = $id('crmSearch');
+  var query = search && search.value.trim();
+  if (_viewMode === 'owners' || _showTrash || !query) { hint.style.display = 'none'; return; }
+  if (!_dupHintCache.ids || Date.now() - _dupHintCache.at > 300000) {
+    try {
+      var r = await db().rpc('leads_duplicados');
+      var d = r && r.data;
+      if (!r || r.error || !d || d.error) { hint.style.display = 'none'; return; }
+      var ids = new Set();
+      (d.grupos || []).forEach(function (g) {
+        var miembros = g.miembros || [];
+        if (miembros.length > 1) {
+          miembros.forEach(function (m) { if (m && m.lead_id) ids.add(m.lead_id); });
+        }
+      });
+      _dupHintCache = { at: Date.now(), ids: ids };
+    } catch (_) { hint.style.display = 'none'; return; }
+  }
+  /* La RPC puede resolverse después de que el usuario borró la búsqueda o
+     cambió de vista: no vuelve a aparecer un aviso viejo. */
+  if (_viewMode === 'owners' || _showTrash || !(search && search.value.trim())) { hint.style.display = 'none'; return; }
+  var enPagina = 0;
+  (_leads || []).forEach(function (l) { if (_dupHintCache.ids.has(l.id)) enPagina++; });
+  if (!enPagina) { hint.style.display = 'none'; return; }
+  hint.innerHTML = '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px solid rgba(96,165,250,0.35);border-radius:10px;background:rgba(96,165,250,0.08);color:var(--text-primary);font-size:12px;">' +
+    '<i class="fas fa-clone" style="color:#60a5fa;"></i>' +
+    '<span>' + enPagina + ' de los contactos de esta página ' + (enPagina === 1 ? 'tiene' : 'tienen') + ' otro lead con el mismo email o teléfono. Revisá antes de cargar uno nuevo.</span>' +
+    '<button type="button" class="btn-action" data-dup-hint-open style="margin-left:auto;"><i class="fas fa-code-merge"></i> Ver duplicados</button>' +
+  '</div>';
+  hint.style.display = '';
 }
 
 /* ============================================================

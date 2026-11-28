@@ -940,6 +940,38 @@ históricas siguen siendo las únicas y el advisor no cambia: **anon-SECDEF 16 /
 `tests/function-signatures.spec.js` (7 tests, con allowlist y detección de
 llamadas de cron ambiguas verificada con una sobrecarga artificial).
 
+**Cinco mejoras para el agente elegidas por el dueño — Capas A y B (28/11/2026).**
+Sólo código del CRM (`admin.html` + `admin-crm.js`): ni RPC ni migración nueva.
+Ninguna reimplementa un flujo existente.
+
+1. **Bandeja "Siguiente acción"** (`#crmSiguienteBtn`): agrupa por lead los ítems
+   de `mi_dia()` y reutiliza `siguientesAccionesDe()` / `siguientesAccionesHtml()`
+   / `bindSiguientesAcciones()` de la ficha (mismo delegado, sin handlers clonados).
+2. **Mini-KPIs del agente** en el panel de "Mi día": chips con tareas, escaladas,
+   seguimientos y sin contacto, tomados de la MISMA respuesta de `mi_dia()`.
+3. **Buscador anti-duplicados**: al buscar, si algún lead de la página está en
+   `leads_duplicados()` (cache 5 min), un aviso inline abre el overlay de fusión
+   existente. La RPC devuelve `{error:...}` para roles sin permiso → el aviso
+   simplemente no aparece. No se fusiona nada desde el buscador.
+4. **Plantillas por etapa** (`STAGE_TEMPLATE`): el selector de WhatsApp
+   preselecciona la plantilla según `stage` y la marca "(según etapa)". Etapas
+   terminales (`cerrado_ganado` / `cerrado_perdido`) sin sugerencia. Es sólo un
+   default: el agente puede elegir otra y el botón "Usar" sigue su elección.
+5. **Handoff entre agentes** (`#crmHandoffBtn`): overlay con agente de destino
+   (sólo activos) + nota; mueve el lead, sus `lead_tasks` abiertas
+   (`pendiente`/`en_progreso`/`en_espera`) y deja traza en `lead_activities`.
+   Botón sólo para `super_admin`: la policy `leads_update` (WITH CHECK) no
+   permite a un agente ceder su lead a otro. El lead se actualiza **primero** y
+   con `.select('id')` (un 0 filas por RLS se detecta: no se mueve nada); un
+   fallo al mover tareas se reporta en el toast y en el historial, sin deshacer
+   el traspaso. Verificado contra las policies reales de producción (sólo
+   lectura).
+
+Guards: `tests/crm-agente-mejoras.spec.js` (Capa A) y
+`tests/crm-agente-capa-b.spec.js` (Capa B, con behavioral del hint, la
+preselección por etapa y el handoff completo contra Supabase falso). La firma
+de `leads_duplicados()` y los estados de `lead_tasks` se verificaron en vivo.
+
 **Guardián de crons y secretos en runtime (28/11/2026).** El cron de retención
 (jobid 36) falló 27 veces entre el 23 y el 28/11 con
 `function ... is not unique` y `pg_cron` seguía reportando `1 row`: nadie lo vio. La RPC
