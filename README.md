@@ -796,7 +796,16 @@ se duplica; la traza usa `_shared/envios.ts` → un fallo abre/actualiza la
 alerta `crm_email_broken`. El cron va con `x-sync-secret` (patrón
 `lead-tasks-reminder`) y la función está en `NO_VERIFY` de `deploy.yml` +
 `CALLED_WITHOUT_JWT` del guard. **`dry_run:true`** (con secret) calcula contra
-producción SIN enviar ni escribir traza: es el camino de verificación.
+producción SIN enviar ni escribir traza: es el camino de verificación. El cron
+se creó en `dry_run` (migración `20261128000002`) y se habilitó el 28/11 con OK
+del dueño mediante `cron.alter_job` (`20261128000003`): conserva el jobid y el
+historial, y agrega `timeout_milliseconds := 30000` porque el default de 5 s de
+pg_net ya dio timeouts de DNS en este proyecto. Verificado en producción: sin
+secret → 401; con `dry_run:true` → 2 agentes, top 3 real y `crm_envios` en 0;
+con el cron activo → 1 envío por agente/día y el segundo disparo omitido por
+dedupe. ⚠️ `mi_dia` da alcance global a `super_admin`/`broker`: los dos agentes
+activos tienen ese rol, por eso sus resúmenes son idénticos (comportamiento de
+la RPC, no de este módulo).
 
 **Correcciones de datos autorizadas (27/11/2026).** `agents.email` de Facundo
 corregido a `hfacundo45@gmail.com`. El reparto automático ya no tenía huérfanos

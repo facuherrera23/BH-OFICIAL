@@ -15,6 +15,7 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 const fn = read('supabase/functions/agent-daily-digest/index.ts');
 const cron = read('supabase/migrations/20261128000002_agent_daily_digest_cron.sql');
+const enable = read('supabase/migrations/20261128000003_agent_daily_digest_enable.sql');
 const deployYml = read('.github/workflows/deploy.yml');
 
 test.describe('Resumen diario para agentes — Mi día por email', () => {
@@ -33,6 +34,24 @@ test.describe('Resumen diario para agentes — Mi día por email', () => {
     expect(cron).toContain("cron.unschedule('agent-daily-digest')");
     // Primera etapa: sin correos reales hasta que el dueño lo apruebe.
     expect(cron).toContain('body := \'{"dry_run":true}\'::jsonb');
+  });
+
+  test('la habilitación conserva el jobid con cron.alter_job y envía sin dry_run', () => {
+    // El arranque en dry_run se verificó en producción; el OK del dueño se
+    // aplica con alter_job, NO con unschedule+schedule (perdería el historial).
+    expect(enable).toContain('cron.alter_job(');
+    expect(enable).not.toContain('cron.unschedule(');
+    expect(enable).not.toContain('cron.schedule(');
+    expect(enable).toContain("SELECT jobid INTO v_jobid FROM cron.job WHERE jobname = 'agent-daily-digest'");
+    expect(enable).toContain('job_id => v_jobid');
+    expect(enable).toContain("body := '{}'::jsonb");
+    // Los comentarios explican el arranque en dry_run; el COMANDO no debe
+    // llevarlo (si no, el cron sigue sin enviar correos para siempre).
+    const sqlSinComentarios = enable.replace(/--.*$/gm, '');
+    expect(sqlSinComentarios).not.toContain('dry_run');
+    expect(enable).toContain('timeout_milliseconds := 30000');
+    expect(enable).toContain('x-sync-secret');
+    expect(enable).not.toContain('current_setting(');
   });
 
   test('la función está en NO_VERIFY (sin JWT: el cron manda solo x-sync-secret)', () => {
