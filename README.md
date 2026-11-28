@@ -784,6 +784,20 @@ migración pasó y la RPC estaba rota (42883). Como la función es plpgsql, el e
 NO aparece al crearla: hay que probarla en vivo (migración de fix
 `20261127000010`).
 
+**Resumen diario de "Mi día" (28/11/2026).** Edge function `agent-daily-digest`
++ cron `agent-daily-digest` (`0 11 * * *` = 08:00 ART): un email por agente
+activo con el **mismo top 3 de la RPC `mi_dia`** que abre el botón del CRM (no
+se reimplementan las reglas de urgencia) y los conteos aparte. Destinatarios =
+agentes `status='activo'` sin borrar, con profile activo y email (`profile.email`
+→ fallback `agents.email`), respetando `notification_preferences.email=false`.
+Dedupe por día en `crm_envios` (`origen='agent_daily_digest'`, estado
+`'enviado'`, agente, fecha ART): un error se reintenta el mismo día, un OK no
+se duplica; la traza usa `_shared/envios.ts` → un fallo abre/actualiza la
+alerta `crm_email_broken`. El cron va con `x-sync-secret` (patrón
+`lead-tasks-reminder`) y la función está en `NO_VERIFY` de `deploy.yml` +
+`CALLED_WITHOUT_JWT` del guard. **`dry_run:true`** (con secret) calcula contra
+producción SIN enviar ni escribir traza: es el camino de verificación.
+
 **Correcciones de datos autorizadas (27/11/2026).** `agents.email` de Facundo
 corregido a `hfacundo45@gmail.com`. El reparto automático ya no tenía huérfanos
 accionables (los 5 leads vivos sin dueño están en `cerrado_perdido` = terminal).

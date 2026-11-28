@@ -207,7 +207,10 @@ jobs:
           # llama el visitante anónimo desde assets/js/tracking.js; con
           # verify_jwt ON el gateway responde 401 y no se registra ningún
           # evento (el sitio volvería a quedar sin medición, en silencio).
+          # agent-daily-digest: cron diario de "Mi día" a las 08:00 ART —
+          # net.http_post manda x-sync-secret, no JWT (verify_jwt ON = 401).
           NO_VERIFY=(
+            "agent-daily-digest"
             "backup-snapshot"
             "check-password-hash"
             "cloudinary-sign"
