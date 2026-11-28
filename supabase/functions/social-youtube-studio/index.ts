@@ -201,6 +201,97 @@ async function setPostPrivacy(
     }
 }
 
+/* ============================================================
+   RECONCILIACIÓN DE SUBIDAS (incidente Shorts 27/10/2026)
+   ------------------------------------------------------------
+   Si el PUT a Google termina pero la llamada `complete` NO llega
+   (micro-corte de red, pestaña cerrada), el video EXISTE en YouTube y
+   el post queda 'publishing' → el sweep lo marca 'failed'. Al reintentar
+   se sube OTRO video: tres shorts idénticos en el canal y el CRM
+   mintiendo "falló". Antes de marcar fallo (y antes de insertar una fila
+   nueva al sincronizar) buscamos el video por TÍTULO + FECHA y vinculamos
+   la fila existente. Es SÓLO lectura de YouTube: nunca re-subimos.
+   ============================================================ */
+type SyncVideo = {
+    id?: string;
+    snippet?: { title?: string; description?: string; publishedAt?: string; categoryId?: string; tags?: string[] };
+    status?: { privacyStatus?: string; uploadStatus?: string };
+};
+
+function normTitle(s: string): string {
+    return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/** Inventario REAL del canal: playlist de uploads + detalle de cada video. */
+async function listChannelVideos(accessToken: string, max = 200): Promise<{ vids: SyncVideo[]; completo: boolean }> {
+    const ch = (await youtubeFetch(
+        `${YOUTUBE_API}/channels?part=contentDetails&mine=true`, accessToken,
+    )) as { items?: Array<{ contentDetails?: { relatedPlaylists?: { uploads?: string } } }> };
+    const uploadsPlaylist = ch.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+    if (!uploadsPlaylist) throw new Error('No se encontró la playlist de uploads del canal');
+
+    const ids: string[] = [];
+    let pageToken: string | undefined;
+    do {
+        const url = new URL(`${YOUTUBE_API}/playlistItems`);
+        url.searchParams.set('part', 'contentDetails');
+        url.searchParams.set('playlistId', uploadsPlaylist);
+        url.searchParams.set('maxResults', '50');
+        if (pageToken) url.searchParams.set('pageToken', pageToken);
+        const pl = (await youtubeFetch(url.toString(), accessToken)) as {
+            items?: Array<{ contentDetails?: { videoId?: string } }>;
+            nextPageToken?: string;
+        };
+        for (const it of pl.items ?? []) {
+            const vid = it.contentDetails?.videoId;
+            if (vid) ids.push(vid);
+        }
+        pageToken = pl.nextPageToken || undefined;
+    } while (pageToken && ids.length < max);
+    /* Si quedó pagination sin terminar, el inventario está incompleto:
+       no se reconcilia (podríamos marcar como borrado un video que
+       existe pero no entró en esta vuelta). */
+    const completo = !pageToken;
+
+    const vids: SyncVideo[] = [];
+    for (let i = 0; i < Math.min(ids.length, max); i += 50) {
+        const lote = ids.slice(i, i + 50);
+        const res = (await youtubeFetch(
+            `${YOUTUBE_API}/videos?part=snippet,status&id=${lote.join(',')}`, accessToken,
+        )) as { items?: SyncVideo[] };
+        vids.push(...(res.items ?? []));
+    }
+    return { vids, completo };
+}
+
+/** El título normalizado coincide y la fecha está dentro de la ventana real
+ *  de procesamiento de YouTube (±30 min entre created_at y publishedAt). */
+function esMismoVideo(postTitle: string, postCreatedAt: string, v: SyncVideo): boolean {
+    const pub = String(v.snippet?.publishedAt ?? '');
+    if (!pub || normTitle(postTitle) !== normTitle(String(v.snippet?.title ?? ''))) return false;
+    const diff = Math.abs(new Date(pub).getTime() - new Date(postCreatedAt).getTime());
+    return Number.isFinite(diff) && diff <= 30 * 60 * 1000;
+}
+
+/** De todos los videos con el mismo título, elige el más cercano en fecha.
+ *  `vedados` evita que dos posts (los 3 shorts del 27/10 tenían el MISMO
+ *  título) se vinculen al MISMO video: cada video se usa una sola vez. */
+function mejorCoincidencia(
+    postTitle: string, postCreatedAt: string, vids: SyncVideo[], vedados: Set<string> = new Set(),
+): SyncVideo | null {
+    let best: SyncVideo | null = null;
+    let bestDiff = Infinity;
+    const postMs = new Date(postCreatedAt).getTime();
+    for (const v of vids) {
+        const id = String(v.id ?? '');
+        if (!id || vedados.has(id) || !esMismoVideo(postTitle, postCreatedAt, v)) continue;
+        const diff = Math.abs(new Date(String(v.snippet?.publishedAt ?? '')).getTime() - postMs);
+        if (diff < bestDiff) { best = v; bestDiff = diff; }
+    }
+    return best;
+}
+
 Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') return optionsResponse(req);
     const respond = (status: number, body: Record<string, unknown>): Response =>
@@ -219,6 +310,7 @@ Deno.serve(async (req) => {
 
     let body: {
         action?: string;
+        post_id?: string;
         account_id?: string;
         video_id?: string;
         title?: string;
@@ -552,6 +644,98 @@ Deno.serve(async (req) => {
             });
         }
 
+        /* ------- Reconciliar una subida que SÍ llegó a YouTube -------
+           El PUT terminó pero `complete` no se registró (red/pestaña): el
+           video existe y el post dice "fallido". Se vincula por título +
+           fecha. Nunca re-subimos: es la red de seguridad que evita los
+           shorts duplicados del 27/10/2026. Sólo requireAdmin + JWT. */
+        if (body.action === 'reconcile_upload') {
+            const postId = String(body.post_id ?? '');
+            if (!postId) return respond(400, { error: 'Falta el post' });
+            const { data: post } = await supabase
+                .from('social_posts')
+                .select('id, account_id, status, content, created_at, external_post_id, metrics')
+                .eq('id', postId).eq('platform', 'youtube').maybeSingle() as {
+                data: {
+                    id: string; account_id: string; status: string;
+                    content: Record<string, unknown> | null; created_at: string;
+                    external_post_id: string | null; metrics: Record<string, unknown> | null;
+                } | null;
+            };
+            if (!post) return respond(404, { error: 'Publicación no encontrada' });
+            if (post.external_post_id) {
+                return respond(200, {
+                    ok: true, found: true, already: true, video_id: post.external_post_id,
+                    url: `https://www.youtube.com/watch?v=${post.external_post_id}`,
+                });
+            }
+            if (post.status !== 'failed' && post.status !== 'publishing') {
+                return respond(200, { ok: true, found: false, reason: 'not_pending' });
+            }
+
+            await loadAccount(supabase, post.account_id);
+            const accessToken = await getSocialAccessToken(supabase, post.account_id);
+            const { vids } = await listChannelVideos(accessToken);
+            /* Los 3 shorts tenían el MISMO título: si el operador vincula uno
+               y luego otro, el segundo NO puede robarle el video al primero. */
+            const { data: vinculados } = await supabase
+                .from('social_posts')
+                .select('external_post_id')
+                .not('external_post_id', 'is', null)
+                .limit(500) as { data: Array<{ external_post_id: string }> | null };
+            const vedados = new Set((vinculados ?? []).map((r) => String(r.external_post_id)));
+            const title = String((post.content ?? {}).title ?? '');
+            const v = mejorCoincidencia(title, post.created_at, vids, vedados);
+            if (!v || !v.id) {
+                return respond(200, { ok: true, found: false, reason: 'not_found', revisados: vids.length });
+            }
+
+            const privacy = String(v.status?.privacyStatus ?? 'private');
+            const uploadStatus = String(v.status?.uploadStatus ?? 'processed');
+            const url = `https://www.youtube.com/watch?v=${v.id}`;
+            const now = new Date().toISOString();
+            const { error } = await supabase.from('social_posts').update({
+                status: uploadStatus === 'processed' ? 'published' : 'publishing',
+                external_post_id: v.id,
+                external_url: url,
+                published_at: v.snippet?.publishedAt ?? post.created_at,
+                error: null,
+                updated_at: now,
+                metrics: Object.assign({}, post.metrics ?? {}, {
+                    youtube_privacy: privacy,
+                    youtube_upload_status: uploadStatus,
+                    reconciled_at: now,
+                }),
+                /* No pisamos el contenido del CRM: la metadata del formulario
+                   es la fuente de verdad; sólo agregamos la visibilidad REAL. */
+                content: Object.assign({}, post.content ?? {}, { youtube_privacy: privacy }),
+            }).eq('id', post.id);
+            if (error) return respond(500, { error: error.message });
+
+            try {
+                await supabase.from('audit_log').insert({
+                    user_id: adminId,
+                    action: 'yt_upload_reconciled',
+                    module: 'contenido',
+                    table_name: 'social_posts',
+                    record_id: post.id,
+                    status: 'success',
+                    metadata: {
+                        video_id: v.id,
+                        title: v.snippet?.title ?? '',
+                        post_created_at: post.created_at,
+                        video_published_at: v.snippet?.publishedAt ?? '',
+                    },
+                });
+            } catch (_) { /* best-effort: la auditoría nunca bloquea la reparación */ }
+
+            return respond(200, {
+                ok: true, found: true, video_id: v.id, url,
+                status: uploadStatus === 'processed' ? 'published' : 'publishing',
+                title: v.snippet?.title ?? '',
+            });
+        }
+
         /* ------- Sincronizar el canal real con el CRM -------
            Importa/actualiza el inventario del canal en social_posts para:
              · que la página pública (/canal.html) muestre los videos ya
@@ -570,53 +754,8 @@ Deno.serve(async (req) => {
             await loadAccount(supabase, accountId);
             const accessToken = await getSocialAccessToken(supabase, accountId);
 
-            // 1. Playlist de uploads = inventario completo del canal
-            const ch = (await youtubeFetch(
-                `${YOUTUBE_API}/channels?part=contentDetails&mine=true`,
-                accessToken,
-            )) as { items?: Array<{ contentDetails?: { relatedPlaylists?: { uploads?: string } } }> };
-            const uploadsPlaylist = ch.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
-            if (!uploadsPlaylist) throw new Error('No se encontró la playlist de uploads del canal');
-
-            const MAX_SYNC = 200;
-            const ids: string[] = [];
-            let pageToken: string | undefined;
-            do {
-                const url = new URL(`${YOUTUBE_API}/playlistItems`);
-                url.searchParams.set('part', 'contentDetails');
-                url.searchParams.set('playlistId', uploadsPlaylist);
-                url.searchParams.set('maxResults', '50');
-                if (pageToken) url.searchParams.set('pageToken', pageToken);
-                const pl = (await youtubeFetch(url.toString(), accessToken)) as {
-                    items?: Array<{ contentDetails?: { videoId?: string } }>;
-                    nextPageToken?: string;
-                };
-                for (const it of pl.items ?? []) {
-                    const vid = it.contentDetails?.videoId;
-                    if (vid) ids.push(vid);
-                }
-                pageToken = pl.nextPageToken || undefined;
-            } while (pageToken && ids.length < MAX_SYNC);
-            /* Si quedó pagination sin terminar, el inventario está incompleto:
-               no se reconcilia (podríamos marcar como borrado un video que
-               existe pero no entró en esta vuelta). */
-            const completo = !pageToken;
-
-            // 2. Detalle (snippet + status) de esos videos — en lotes de 50
-            type SyncVideo = {
-                id?: string;
-                snippet?: { title?: string; description?: string; publishedAt?: string; categoryId?: string; tags?: string[] };
-                status?: { privacyStatus?: string; uploadStatus?: string };
-            };
-            const vids: SyncVideo[] = [];
-            for (let i = 0; i < ids.length; i += 50) {
-                const lote = ids.slice(i, i + 50);
-                const res = (await youtubeFetch(
-                    `${YOUTUBE_API}/videos?part=snippet,status&id=${lote.join(',')}`,
-                    accessToken,
-                )) as { items?: SyncVideo[] };
-                vids.push(...(res.items ?? []));
-            }
+            // 1+2. Inventario REAL del canal (helper compartido con reconcile_upload)
+            const { vids, completo } = await listChannelVideos(accessToken);
 
             // 3. Filas que ya existen para ESTA cuenta
             const { data: existentes } = await supabase
@@ -636,8 +775,68 @@ Deno.serve(async (req) => {
             };
             const porId = new Map((existentes ?? []).map((r) => [String(r.external_post_id), r]));
 
+            /* Posts que el CRM cree que fallaron pero cuyo video SÍ está en
+               el canal (incidente 27/10). Se vinculan ANTES de insertar una
+               fila nueva para no duplicar el inventario en el CRM. */
+            const { data: huerfanos } = await supabase
+                .from('social_posts')
+                .select('id, content, created_at, status, metrics')
+                .eq('platform', 'youtube')
+                .eq('account_id', accountId)
+                .in('status', ['failed', 'publishing'])
+                .is('external_post_id', null)
+                .order('created_at', { ascending: false })
+                .limit(50) as {
+                data: Array<{
+                    id: string; content: Record<string, unknown> | null;
+                    created_at: string; status: string;
+                    metrics: Record<string, unknown> | null;
+                }> | null;
+            };
+            /* Emparejamiento único (1 post huérfano ↔ 1 video real): se
+               elige la fecha más cercana y cada video se usa una sola vez.
+               Los videos YA vinculados se excluyen para no robarles el
+               match a un post que todavía no tiene external_post_id. */
+            const vedados = new Set<string>(porId.keys());
+            const huerfanoPorVideo = new Map<string, {
+                id: string; content: Record<string, unknown> | null;
+                created_at: string; status: string;
+                metrics: Record<string, unknown> | null;
+            }>();
+            /* Emparejamiento GLOBALmente óptimo (por distancia, no por orden de
+               filas): con 3 shorts del mismo título, elegir el par más cercano
+               primero evita que el último quede a 2 minutos del suyo. */
+            type Huerfano = {
+                id: string; content: Record<string, unknown> | null;
+                created_at: string; status: string; metrics: Record<string, unknown> | null;
+            };
+            const pares: Array<{ vid: string; post: Huerfano; diff: number }> = [];
+            for (const o of huerfanos ?? []) {
+                for (const v of vids) {
+                    const vid = String(v.id ?? '');
+                    if (!vid || vedados.has(vid) || !esMismoVideo(
+                        String((o.content ?? {}).title ?? ''), String(o.created_at), v,
+                    )) continue;
+                    const diff = Math.abs(
+                        new Date(String(v.snippet?.publishedAt ?? '')).getTime()
+                        - new Date(String(o.created_at)).getTime(),
+                    );
+                    pares.push({ vid, post: o, diff });
+                }
+            }
+            pares.sort((a, b) => a.diff - b.diff);
+            const postsUsados = new Set<string>();
+            for (const par of pares) {
+                /* Ambos lados son únicos: un video NO puede vincularse a dos
+                   posts aunque la distancia del segundo sea menor. */
+                if (postsUsados.has(par.post.id) || huerfanoPorVideo.has(par.vid)) continue;
+                huerfanoPorVideo.set(par.vid, par.post);
+                postsUsados.add(par.post.id);
+            }
+
             let importados = 0;
             let actualizados = 0;
+            let reconciliadosSubidas = 0;
             for (const v of vids) {
                 const vid = String(v.id ?? '');
                 if (!vid) continue;
@@ -674,6 +873,29 @@ Deno.serve(async (req) => {
                     const { error } = await supabase.from('social_posts').update(patch).eq('id', prev.id);
                     if (error) return respond(500, { error: error.message });
                     actualizados++;
+                    continue;
+                }
+                /* ¿Es éste el video de una subida que el CRM marcó fallida?
+                   El emparejamiento 1:1 se calculó arriba (título + fecha,
+                   video más cercano, sin repetir videos ni posts). */
+                const huerfano = huerfanoPorVideo.get(vid);
+                if (huerfano) {
+                    /* La fila fallida puede tener métricas propias (datos del
+                       formulario/score). NO las pisamos con las del video: el
+                       match es una vinculación, no una importación nueva. */
+                    const metricsHuerfano = Object.assign({}, huerfano.metrics ?? {}, metrics);
+                    const { error } = await supabase.from('social_posts').update({
+                        status: uploadStatus === 'processed' ? 'published' : 'publishing',
+                        external_post_id: vid,
+                        external_url: url,
+                        published_at: v.snippet?.publishedAt ?? huerfano.created_at,
+                        error: null,
+                        updated_at: new Date().toISOString(),
+                        metrics: metricsHuerfano,
+                        content: Object.assign({}, huerfano.content ?? {}, { youtube_privacy: privacy }),
+                    }).eq('id', huerfano.id);
+                    if (error) return respond(500, { error: error.message });
+                    reconciliadosSubidas++;
                     continue;
                 }
                 const { error } = await supabase.from('social_posts').insert({
@@ -719,6 +941,7 @@ Deno.serve(async (req) => {
                 importados,
                 actualizados,
                 reconciliados,
+                reconciliadosSubidas,
                 total: vids.length,
                 completo,
             });

@@ -1120,13 +1120,27 @@ cargados antes que él, todos bajo `window.BH_YT`:
 **Actions del Studio** (`social-youtube-studio`, todas vía `body.action`): `channel`, `videos`,
 `video_update`, `video_delete`, `video_promote`, `thumbnail`, `playlists`, `playlist_create`,
 `playlist_item_add`, `playlist_item_remove`, `video_categories`, `snapshot`, `analytics`,
-`analytics_report`, `videos_sync_public`, `platforms_config`, `settings_get`, `settings_set` y
-`audit_log`.
+`analytics_report`, `videos_sync_public`, `reconcile_upload`, `platforms_config`,
+`settings_get`, `settings_set` y `audit_log`.
 
 - `platforms_config`: qué redes tienen app OAuth configurada (`app_settings.social_<plataforma>`) →
   la tarjeta distingue **"Sin configurar"** (no hay app) de **"Sin conectar"** (hay app, falta autorizar).
 - `video_promote`: promueve un video a público → escribe `metrics.youtube_privacy` (la visibilidad real).
 - `audit_log`: única vía de auditoría desde el panel (ver abajo).
+
+> **Reparación de subidas "fantasma" (incidente Shorts 27/10/2026):** los bytes llegaron a Google
+> pero la llamada `complete` no registró el `video_id`; el post quedó `publishing`, el zombie sweep lo
+> marcó `failed` y cada reintento volvió a subir el archivo (3 shorts idénticos en el canal, CRM
+> mintiendo "falló"). `reconcile_upload` (solo `requireAdmin` + JWT) busca el video por **título
+> normalizado + fecha (±30 min)** y vincula la fila existente: **nunca re-subimos**. El emparejamiento
+> es 1:1 por ambos lados y globalmente cercano (los 3 shorts tienen el MISMO título), excluye videos
+> ya vinculados y conserva las `metrics` del huérfano. Se llama antes de marcar fallo, antes de
+> reintentar, desde el botón manual del historial y en `videos_sync_public` (antes insertaba filas
+> nuevas → duplicados también en el CRM). La sesión resumable de chunks pasó de `sessionStorage` a
+> `localStorage` con **TTL 6 días** y guarda el byte exacto en `finally`, para sobrevivir al cierre de
+> pestaña sin re-subir desde cero. Guard behavioral: `tests/yt-reconcile.spec.js` (10 tests).
+> **Las 4 filas reales ya fallidas NO se tocan sin backup + OK explícito del dueño**; tampoco se
+> borran los duplicados de YouTube sin su autorización.
 
 **OAuth (app y credenciales):** las credenciales se leen de `app_settings` con la clave
 `social_<plataforma>` (`{client_id, client_secret}`) y, si no están, del fallback

@@ -50,6 +50,11 @@
   const CHUNK_TIMEOUT = 5 * 60 * 1000;  // por chunk
   const MAX_STALLS = 8;                 // intentos sin progreso antes de rendirse
   const RESUME_KEY = 'upload_resume';
+  /* La sesión resumable dura 7 días en Google. La guardamos en localStorage
+     (no sessionStorage) para que cerrar la pestaña NO descarte el offset:
+     ese era el mensaje del incidente del 27/10. Con TTL propio de 6 días
+     nunca se intenta retomar una URL ya vencida. */
+  const RESUME_TTL_MS = 6 * 24 * 60 * 60 * 1000;
   const QUEUE_KEY = 'publish_queue';
   /* Copia de la cola en el servidor (app_settings) — la escribe la Edge
      Function con service_role (el cliente no puede escribir app_settings). */
@@ -185,7 +190,10 @@
        argumento: en ambos casos se usa la misma. */
     ctx.sessionUrl = ctx.sessionUrl || sessionUrl;
     const total = file.size;
-    let offset = 0;
+    /* Retomada real: si venimos de una sesión guardada, Google ya tiene
+       bytes. Arrancamos desde el offset conocido y, antes de enviar nada,
+       le preguntamos a Google cuántos recibió para no re-subirlos. */
+    let offset = Math.max(0, Number(ctx.startOffset || 0));
     let stalls = 0;
     let bps = 0;
     let lastBytes = 0;
@@ -209,6 +217,18 @@
       ctx.onProgress(Math.min(100, Math.round((loaded / total) * 100)), loaded, total, tick(loaded));
     };
     const cancelled = function () { return typeof ctx.cancelled === 'function' && ctx.cancelled(); };
+
+    if (offset > 0) {
+      const st = await queryUploadStatus(ctx, total);
+      if (st.complete) {
+        report(total);
+        if (ctx.onOffset) ctx.onOffset(total);
+        return st.resource || {};
+      }
+      /* Google manda la verdad: si guardamos más de lo que recibió, volvemos
+         a ese byte en vez de enviar un Content-Range inválido. */
+      if (st.received >= 0) offset = st.received;
+    }
 
     while (offset < total) {
       if (cancelled()) throw new Error('Subida cancelada — no se publicó nada.');
@@ -260,10 +280,10 @@
      SESIÓN PERSISTENTE — retomar la subida tras recargar la página
      ============================================================ */
   const resume = {
-    /** Guarda la sesión (sessionStorage: se pierde al cerrar la pestaña). */
+    /** Guarda la sesión en localStorage: sobrevive al cierre de la pestaña. */
     save(info) {
       if (!storage) return;
-      storage.sessionSet(RESUME_KEY, {
+      storage.set(RESUME_KEY, {
         sessionUrl: info.sessionUrl,
         postId: info.postId,
         fileName: info.fileName || '',
@@ -275,13 +295,25 @@
     },
     updateOffset(offset) {
       if (!storage) return;
-      const cur = storage.sessionGet(RESUME_KEY, null);
+      const cur = resume.load();
       if (!cur) return;
       cur.offset = offset;
-      storage.sessionSet(RESUME_KEY, cur);
+      cur.savedAt = Date.now();
+      storage.set(RESUME_KEY, cur);
     },
-    load() { return storage ? storage.sessionGet(RESUME_KEY, null) : null; },
-    clear() { if (storage) storage.sessionRemove(RESUME_KEY); },
+    /** Devuelve la sesión sólo si es reciente (URL resumable vence en 7 días). */
+    load() {
+      if (!storage) return null;
+      const cur = storage.get(RESUME_KEY, null);
+      if (!cur || !cur.sessionUrl) return null;
+      const age = Date.now() - Number(cur.savedAt || 0);
+      if (!Number.isFinite(age) || age < 0 || age > RESUME_TTL_MS) {
+        resume.clear();
+        return null;
+      }
+      return cur;
+    },
+    clear() { if (storage) storage.remove(RESUME_KEY); },
   };
 
   /* ============================================================

@@ -126,6 +126,9 @@
     /* Sincronización del canal: playlistItems (1 por 50) + videos.list
        (1 por 50) → ~2-4 unidades. */
     videos_sync_public: 4,
+    /* Misma lectura del inventario, para vincular una subida que ya llegó
+       a YouTube pero cuyo `complete` no se registró (incidente 27/10). */
+    reconcile_upload: 4,
   };
 
   let _accounts = [];
@@ -3581,16 +3584,19 @@
      este algoritmo se desincronizan yersen y el resultado es un video
      "a medio subir" sin que nadie sepa por qué. */
 
-  async function xhrUploadToGoogle(sessionUrl, file, onProgress) {
+  async function xhrUploadToGoogle(sessionUrl, file, onProgress, startOffset) {
     if (!YTPUB || typeof YTPUB.upload !== 'function') {
       throw new Error('Falta el módulo de publicación (yt-publish.js). Recargá la página e intentá de nuevo.');
     }
     /* ctx: es el puente con la UI. El módulo expone el XHR en vuelo para
-       que el botón "Cancelar subida" pueda abortarlo. */
+       que el botón "Cancelar subida" pueda abortarlo. startOffset viene de
+       la sesión guardada: los bytes ya recibidos por Google NO se re-envían. */
     const ctx = {
       sessionUrl: sessionUrl,
+      startOffset: Math.max(0, Number(startOffset || 0)),
       cancelled: function () { return _uploadCancelled; },
       onProgress: function (pct, loaded, total, extra) {
+        ctx.loaded = loaded; // para persistir el byte exacto al cerrar/cancelar
         if (onProgress) onProgress(loaded, total, extra);
       },
       onOffset: function (offset) {
@@ -3615,6 +3621,46 @@
     const json = await res.json().catch(function () { return {}; });
     if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status));
     return json;
+  }
+
+  /* ---------- Reconciliación de subidas (incidente Shorts 27/10) ----------
+     El video puede estar en YouTube aunque `complete` nunca se registró
+     (micro-corte de red / pestaña cerrada). Antes de dar la subida por
+     perdida —y antes de volver a subir el MISMO archivo— le preguntamos
+     al servidor por el video real (título + fecha). Esta llamada SOLO lee
+     YouTube y vincula la fila existente: nunca genera otro video. */
+  async function reconcileUpload(postId) {
+    if (!postId) return null;
+    try {
+      const r = await studioApiCall({ action: 'reconcile_upload', post_id: postId });
+      return r && r.found ? r : null;
+    } catch (_) {
+      return null; // best-effort: si falla, el flujo normal sigue igual
+    }
+  }
+
+  /** Botón manual del historial: "ya se subió, vinculá este registro". */
+  async function reconcileFromHistory(postId) {
+    const ya = await reconcileUpload(postId);
+    if (!ya) {
+      showToast('No encontramos ese video en el canal (por título y fecha). Si recién se subió, esperá un minuto e intentá de nuevo.', 'warning');
+      return;
+    }
+    showToast('Video vinculado: ' + (ya.video_id || '') + '. El registro ya no figura como fallido.', 'success');
+    loadHistory();
+  }
+
+  /** Limpieza del form compartida entre publicación OK y subida ya vinculada. */
+  function resetPublishForm(fileInput) {
+    setFieldValue('ytTitle', '');
+    setFieldValue('ytDesc', '');
+    setFieldValue('ytTags', '');
+    if ($('#ytPublishAt')) $('#ytPublishAt').value = '';
+    if ($('#ytProperty')) $('#ytProperty').value = '';
+    if ($('#ytKeyword')) $('#ytKeyword').value = '';
+    if (fileInput) fileInput.value = '';
+    if ($('#ytFileInfo')) $('#ytFileInfo').style.display = 'none';
+    recomputeSeoPanel();
   }
 
   /* ---------- Publicación (normal o borrador) ----------
@@ -3716,6 +3762,21 @@
     const progressWrap = $('#ytProgress');
     if (progressWrap) progressWrap.classList.add('is-visible');
 
+    /* ¿Hay una sesión guardada para ESTE MISMO archivo? Se retoma desde el
+       byte que Google ya recibió. Si es otro archivo, se descarta. */
+    let resuming = null;
+    if (YTPUB && YTPUB.resume && typeof YTPUB.resume.load === 'function') {
+      const prev = YTPUB.resume.load();
+      /* La sesión de Google ya tiene la metadata del init: si el título
+         cambió, esa sesión no sirve (publicaría el título viejo). */
+      if (prev && prev.postId && prev.fileName === (file.name || '') &&
+          Number(prev.fileSize) === file.size && (!prev.title || prev.title === title)) {
+        resuming = prev;
+      } else if (prev) {
+        YTPUB.resume.clear();
+      }
+    }
+
     try {
       /* 1. init: sesión de subida en Google + registro del post */
       const initPayload = {
@@ -3740,24 +3801,40 @@
         license: (($('#ytLicense') || {}).value || 'youtube'),
         draft: isDraft,
       };
-      const init = CORE && CORE.api
-        ? await CORE.api.publish('init', initPayload)
-        : await legacyPublishCall('init', initPayload);
-      if (!init || !init.session_url || !init.post_id) throw new Error('La función no devolvió la sesión de subida');
-      postId = init.post_id;
+      let sessionUrl;
+      if (resuming) {
+        /* ANTES de re-subir: si ese video ya está en YouTube, lo vinculamos
+           y no gastamos otra vez la cuota de subida (1600 unidades). */
+        const ya = await reconcileUpload(resuming.postId);
+        if (ya) {
+          showToast('Ese video ya estaba en YouTube: lo vinculamos. No se subió ningún duplicado.', 'success');
+          if (YTPUB && YTPUB.resume) YTPUB.resume.clear();
+          resetPublishForm(fileInput);
+          loadHistory();
+          return;
+        }
+        sessionUrl = resuming.sessionUrl;
+        postId = resuming.postId;
+      } else {
+        const init = CORE && CORE.api
+          ? await CORE.api.publish('init', initPayload)
+          : await legacyPublishCall('init', initPayload);
+        if (!init || !init.session_url || !init.post_id) throw new Error('La función no devolvió la sesión de subida');
+        sessionUrl = init.session_url;
+        postId = init.post_id;
 
-      /* Sesión persistente: si el navegador se recarga durante la subida,
-         queda registrado en qué byte iba (y qué post era) para poder
-         retomar la subida en vez de perderla. */
-      if (YTPUB && YTPUB.resume) {
-        YTPUB.resume.save({
-          sessionUrl: init.session_url,
-          postId: init.post_id,
-          fileName: file.name || '',
-          fileSize: file.size,
-          title: title,
-          offset: 0,
-        });
+        /* Sesión persistente en localStorage: si el navegador se cierra,
+           quedan el post y el byte exacto para retomar sin duplicar. */
+        if (YTPUB && YTPUB.resume) {
+          YTPUB.resume.save({
+            sessionUrl: sessionUrl,
+            postId: postId,
+            fileName: file.name || '',
+            fileSize: file.size,
+            title: title,
+            offset: 0,
+          });
+        }
       }
 
       /* Heartbeat: mientras la subida está viva refresca updated_at del post
@@ -3771,18 +3848,24 @@
 
       /* 2. subida directa del navegador a Google (los bytes nunca pasan por Supabase) */
       setUploadProgress(2, 'Subiendo a YouTube…', { bps: 0, etaSec: 0 });
-      const uploaded = await xhrUploadToGoogle(init.session_url, file, (loaded, t, extra) => {
+      const uploaded = await xhrUploadToGoogle(sessionUrl, file, (loaded, t, extra) => {
         const pct = Math.min(95, Math.round((loaded / t) * 95));
         setUploadProgress(pct, Math.round((loaded / t) * 100) + '% subido...', extra || null);
-      });
-      const videoId = uploaded.id || '';
+      }, resuming ? resuming.offset : 0);
+      let videoId = uploaded.id || '';
+      /* Si el PUT terminó pero la respuesta no trajo id, no damos la subida
+         por perdida: buscamos el video real antes de marcar fallo. */
+      if (!videoId) {
+        const ya = await reconcileUpload(postId);
+        if (ya) videoId = ya.video_id;
+      }
       if (!videoId) throw new Error('YouTube no devolvió el id del video');
 
       /* 3. complete: verifica y marca publicado */
       setUploadProgress(97, 'Verificando…');
       const done = CORE && CORE.api
-        ? await CORE.api.publish('complete', { post_id: init.post_id, video_id: videoId })
-        : await legacyPublishCall('complete', { post_id: init.post_id, video_id: videoId });
+        ? await CORE.api.publish('complete', { post_id: postId, video_id: videoId })
+        : await legacyPublishCall('complete', { post_id: postId, video_id: videoId });
 
       setUploadProgress(100, isDraft ? '¡Borrador guardado!' : '¡Publicado!');
       trackQuota(1600); // #44: costo real de una subida resumable
@@ -3801,23 +3884,26 @@
         'success'
       );
       if (done.url && !publishAt && !isDraft) window.open(done.url, '_blank', 'noopener');
-      setFieldValue('ytTitle', '');
-      setFieldValue('ytDesc', '');
-      setFieldValue('ytTags', '');
-      if ($('#ytPublishAt')) $('#ytPublishAt').value = '';
-      if ($('#ytProperty')) $('#ytProperty').value = '';
-      if ($('#ytKeyword')) $('#ytKeyword').value = '';
-      if (fileInput) fileInput.value = '';
-      if ($('#ytFileInfo')) $('#ytFileInfo').style.display = 'none';
+      resetPublishForm(fileInput);
       studioInvalidate(); // #30: un studio abierto seguiría mostrando el cache
-      recomputeSeoPanel(); // el form quedó vacío — el score vuelve a arrancar
       loadHistory();
       loadAccounts(); // refresca last_publish_at
     } catch (err) {
       logError('Contenido: publish', err);
-      /* Marcar el post como fallado en el acto — sin esto quedaba 'publishing'
-         y el historial mostraba un estado mentiroso hasta el zombie sweep. */
+      /* ANTES de marcar fallo: el video puede haberse subido de todos modos.
+         Si el servidor lo encuentra en el canal, se vincula y NO se marca
+         fallido (así el empleador no vuelve a subir un duplicado). */
       if (postId) {
+        const ya = await reconcileUpload(postId);
+        if (ya) {
+          showToast('El video ya estaba en YouTube: lo vinculamos y no hace falta volver a subirlo.', 'success');
+          if (YTPUB && YTPUB.resume) YTPUB.resume.clear();
+          resetPublishForm(fileInput);
+          loadHistory();
+          return;
+        }
+        /* Marcar el post como fallado en el acto — sin esto quedaba 'publishing'
+           y el historial mostraba un estado mentiroso hasta el zombie sweep. */
         try {
           const failPayload = { post_id: postId, upload_error: err.message };
           if (CORE && CORE.api) await CORE.api.publish('fail', failPayload);
@@ -3839,6 +3925,14 @@
       if (progressWrap) progressWrap.classList.remove('is-visible');
     } finally {
       if (hbTimer) { clearInterval(hbTimer); hbTimer = null; }
+      /* Persistir el último byte recibido para que un cierre de pestaña
+         pueda retomar desde ahí en vez de re-subir el archivo entero. */
+      if (resuming && postId && YTPUB && YTPUB.resume && typeof YTPUB.resume.updateOffset === 'function') {
+        try {
+          const off = (_uploadCtx && typeof _uploadCtx.loaded === 'number') ? _uploadCtx.loaded : 0;
+          YTPUB.resume.updateOffset(off);
+        } catch (_) { /* best-effort */ }
+      }
       _publishing = false;
       _uploadCtx = null;
       _uploadCancelled = false;
@@ -3866,10 +3960,41 @@
        failed. No se usa created_at: un video grande legítimo puede tardar
        horas y un sweep por edad lo marcaba fallado en vivo (falso positivo). */
     try {
-      await client.from('social_posts')
-        .update({ status: 'failed', error: 'Subida interrumpida (el navegador se cerró antes de terminar).' })
+      /* ANTES de marcar fallo, reconciliar: los bytes pueden estar en YouTube
+         aunque `complete` no se registró (incidente del 27/10). */
+      const { data: zombis } = await client.from('social_posts')
+        .select('id')
+        .eq('platform', 'youtube')
         .eq('status', 'publishing')
+        .is('external_post_id', null)
         .lt('updated_at', new Date(Date.now() - 30 * 60_000).toISOString());
+      /* PASO 1: reconciliar ANTES del update. Si los bytes llegaron a Google,
+         la fila se vincula y NO debe caer en `failed`. */
+      for (const z of zombis || []) {
+        const ya = await reconcileUpload(z.id);
+        if (ya) showToast('El video ya estaba en YouTube: lo vinculamos en vez de marcarlo fallido.', 'success');
+      }
+      /* PASO 2: marcar fallo SÓLO a los zombis que SIGUEN sin video. El update
+         va por id explícito: nunca toca filas `publishing` con heartbeat vivo
+         ni videos ya vinculados por otra pestaña. */
+      const aunZombis = await client.from('social_posts')
+        .select('id')
+        .eq('platform', 'youtube')
+        .eq('status', 'publishing')
+        .is('external_post_id', null)
+        .lt('updated_at', new Date(Date.now() - 30 * 60_000).toISOString());
+      const idsAFallar = (aunZombis.data || []).map((z) => z.id);
+      if (idsAFallar.length) {
+        await client.from('social_posts')
+          .update({ status: 'failed', error: 'Subida interrumpida (el navegador se cerró antes de terminar).' })
+          .in('id', idsAFallar);
+      }
+      for (const z of zombis || []) {
+        const ya = await reconcileUpload(z.id);
+        if (ya) {
+          showToast('El video ya estaba en YouTube: lo vinculamos en vez de marcarlo fallido.', 'success');
+        }
+      }
     } catch (e) { logError('Contenido: zombie sweep', e); }
 
     const { data, error } = await client
@@ -3924,6 +4049,11 @@
         seoChip +
         importedChip +
         (p.status !== 'publishing' ? '<button type="button" data-contenido-copy="' + esc(p.id) + '" title="Copiar esta metadata al formulario" style="background:none;border:none;color:var(--text-dim);cursor:pointer;padding:4px;flex-shrink:0;"><i class="fas fa-copy" style="font-size:12px;"></i></button>' : '') +
+        /* El video puede estar en YouTube aunque el CRM diga "fallido"
+           (incidente 27/10): ofrecer vincularlo ANTES de volver a subir. */
+        (p.platform === 'youtube' && p.status === 'failed' && !p.external_post_id
+          ? '<button type="button" data-yt-reconcile="' + esc(p.id) + '" title="Ya se subió: buscar el video en YouTube y vincularlo (no sube otro)" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:4px;flex-shrink:0;"><i class="fas fa-link" style="font-size:12px;"></i></button>'
+          : '') +
         (p.status === 'failed' ? '<button type="button" data-contenido-retry="' + esc(p.id) + '" title="Reintentar: carga la metadata en el formulario" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:4px;flex-shrink:0;"><i class="fas fa-rotate-right" style="font-size:12px;"></i></button>' : '') +
         /* Instagram (v2): post publicado en IG → eliminar de verdad (no solo el registro). */
         (p.platform === 'instagram' && p.status === 'published' && p.external_post_id
@@ -6059,10 +6189,28 @@
         if (p) { prefillFromPost(p, false); showToast('Metadata copiada al formulario.', 'info'); }
         return;
       }
+      const recBtn = e.target.closest('[data-yt-reconcile]');
+      if (recBtn) { reconcileFromHistory(recBtn.dataset.ytReconcile); return; }
       const retryBtn = e.target.closest('[data-contenido-retry]');
       if (retryBtn) {
         const p = _lastHistory.find(function (x) { return x.id === retryBtn.dataset.contenidoRetry; });
-        if (p) { prefillFromPost(p, true); showToast('Metadata cargada — elegí el archivo y volvé a publicar.', 'info'); }
+        if (!p) return;
+        /* NUNCA re-subir a ciegas: si el video ya está en YouTube, vinculamos
+           la fila y evitamos un duplicado en el canal (27/10/2026). */
+        if (p.platform === 'youtube' && !p.external_post_id) {
+          reconcileUpload(p.id).then(function (ya) {
+            if (ya) {
+              showToast('El video ya estaba en YouTube: lo vinculamos. No hace falta volver a subirlo.', 'success');
+              loadHistory();
+              return;
+            }
+            prefillFromPost(p, true);
+            showToast('No encontramos el video en el canal — elegí el archivo y volvé a publicar.', 'info');
+          });
+          return;
+        }
+        prefillFromPost(p, true);
+        showToast('Metadata cargada — elegí el archivo y volvé a publicar.', 'info');
         return;
       }
       /* #48: backup JSON del historial */

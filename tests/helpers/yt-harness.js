@@ -215,7 +215,7 @@ async function boot(page, opts = {}) {
   /* Contadores de llamadas a la Edge Function (para assertar refrescos). */
   const calls = { channel: 0, videos: 0, analytics: 0, init: 0, complete: 0, fail: 0, dry_run: 0, video_categories: 0, audit_log: 0,
     comments_list: 0, comments_inbox: 0, comment_reply: 0, comment_heart: 0, comment_moderate: 0, comment_lead: 0,
-    analytics_report: 0, settings_get: 0, settings_set: 0, videos_sync_public: 0,
+    analytics_report: 0, settings_get: 0, settings_set: 0, videos_sync_public: 0, reconcile_upload: 0,
     upload_temp: 0, create: 0, status: 0, publish: 0, media_info: 0, cleanup_temp: 0, 'delete': 0 };
   /* Copia de app_settings en el server fake (settings_set escribe acá). */
   const settingsStore = Object.assign({}, opts.settings || {});
@@ -279,8 +279,15 @@ async function boot(page, opts = {}) {
       }
     } else if (action === 'videos_sync_public') {
       payload = Object.assign(
-        { importados: 0, actualizados: 0, reconciliados: 0, total: 0, completo: true },
+        { importados: 0, actualizados: 0, reconciliados: 0, reconciliadosSubidas: 0, total: 0, completo: true },
         opts.syncResult || {},
+      );
+    } else if (action === 'reconcile_upload') {
+      /* El servidor real busca el video por título+fecha y vincula la fila.
+         El harness simula el resultado para probar el flujo del cliente. */
+      payload = Object.assign(
+        { ok: true, found: false, reason: 'not_found', revisados: 0 },
+        opts.reconcileResult || {},
       );
     } else if (action === 'video_categories') {
       /* Demora opcional: sirve para probar que una categoría pedida
