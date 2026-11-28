@@ -170,6 +170,12 @@ jobs:
         uses: supabase/setup-cli@v1
         with:
           version: latest
+          # Sin token, la action resuelve "latest" con la API pública de
+          # GitHub y el runner puede caer en `rate limit exceeded` (falló
+          # el deploy del 28/11/2026: lint y tests verdes, functions sin
+          # desplegar). El GITHUB_TOKEN del workflow ya tiene el permiso
+          # necesario para leer releases.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Deploy Edge Functions (todas las del repo, verify_jwt por funcion)
         run: |
