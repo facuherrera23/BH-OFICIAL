@@ -55,6 +55,9 @@
   <div class="crm-side-panel" id="crmSidePanel"></div>
 </section>
 
+<!-- Panel embebido del Dashboard: lo usa el guard de mini-KPIs del agente. -->
+<div id="dashMiDiaBody"></div>
+
 <p id="crmSubtitle"></p>
 <button id="crmModeToggle"></button>
 <button id="crmTrashToggle"></button>
@@ -99,8 +102,30 @@
         is_published: true, deleted_at: null, image_urls: []
       }
     ],
-    lead_activities: [], lead_properties: [], visits: [], lead_tasks: [],
-    owners: [], owner_tasks: [], visit_surveys: [], lead_offers: []
+    lead_activities: [], lead_properties: [], visits: [],
+    lead_tasks: [
+      { id: 'tarea-1', lead_id: '22222222-2222-2222-2222-222222222222', title: 'Llamar a seguir', status: 'pendiente', due_at: '2026-11-27T12:00:00Z' }
+    ],
+    owners: [], owner_tasks: [], visit_surveys: [], lead_offers: [],
+    /* RPC de sola lectura que alimenta "Mi día" y la bandeja de siguiente
+       acción. Es un fixture determinístico: el guard no depende de la fecha. */
+    __rpc: {
+      mi_dia: function () {
+        return {
+          data: {
+            ok: true, agente: 'Harness', total: 2,
+            items: [
+              { tipo: 'seguimiento', accion: 'contactar', lead_id: '11111111-1111-1111-1111-111111111111', stage: 'nuevo', nombre: 'Lead Sin Sugerencias', telefono: '3515550001', detalle: 'Seguimiento vencido', prioridad: 3 }
+            ],
+            vencidas: [
+              { tarea_id: 'tarea-1', lead_id: '22222222-2222-2222-2222-222222222222', nombre: 'Lead Con Sugerencias', titulo: 'Llamar a seguir', vencimiento: '27/11/2026', escalada: false }
+            ],
+            conteos: { tareas: 2, esperas: 0, visitas: 0, escaladas: 1, seguimientos: 2, sin_contacto: 1, visitas_semana: 0 }
+          },
+          error: null
+        };
+      }
+    }
   }, window.__HARNESS_LOG, { mutate: true });
 
   window.currentProfile = { role: 'super_admin', full_name: 'Harness' };

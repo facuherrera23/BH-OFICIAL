@@ -210,6 +210,14 @@
         from: function (table) {
           return makeQuery(table, store[table] || [], log, opts, store);
         },
+        /* RPCs del harness: store.__rpc[nombre](params) → {data, error}.
+           No existe en producción (es sólo el fake): permite correr las
+           vistas que hoy usan mi_dia()/cierre_de_dia() sin tocar la base. */
+        rpc: function (name, params) {
+          var fn = store.__rpc && store.__rpc[name];
+          if (typeof fn !== 'function') return Promise.resolve({ data: {}, error: null });
+          return Promise.resolve(fn(params || {}));
+        },
         auth: {
           getSession: function () { return Promise.resolve({ data: { session: null }, error: null }); },
           onAuthStateChange: function () { return { data: { subscription: { unsubscribe: function () {} } } }; }

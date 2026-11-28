@@ -3163,6 +3163,13 @@ function init() {
     miDiaBtn.dataset.crmBound = '1';
     miDiaBtn.addEventListener('click', openMiDia);
   }
+  /* Bandeja "Siguiente acción" (28/11/2026): misma RPC `mi_dia` y misma
+     lógica de `siguientesAccionesDe()` de la ficha, agrupada por lead. */
+  var sigBtn = $id('crmSiguienteBtn');
+  if (sigBtn && !sigBtn.dataset.crmBound) {
+    sigBtn.dataset.crmBound = '1';
+    sigBtn.addEventListener('click', openSiguienteAccion);
+  }
   /* "Cierre de día" (28/11/2026): las 4 colas en un solo lugar. */
   var cierreBtn = $id('crmCierreDiaBtn');
   if (cierreBtn && !cierreBtn.dataset.crmBound) {
@@ -3430,6 +3437,8 @@ function _syncHeader() {
   /* "Mi día" (P1-8): sólo en el modo leads (es la agenda del agente). */
   var miDiaBtn = $id('crmMiDiaBtn');
   if (miDiaBtn) miDiaBtn.style.display = ownersMode ? 'none' : '';
+  var sigBtn = $id('crmSiguienteBtn');
+  if (sigBtn) sigBtn.style.display = ownersMode ? 'none' : '';
   var cierreBtn = $id('crmCierreDiaBtn');
   if (cierreBtn) cierreBtn.style.display = ownersMode ? 'none' : '';
   /* Duplicados (2026-11-26): mismo modo leads; gate de rol en la RPC. */
@@ -4222,6 +4231,33 @@ function miDiaItemHtml(it) {
   '</div>';
 }
 
+/* Mini-KPIs del agente: 4 chips compactos con los `conteos` de `mi_dia()`.
+   Cada chip lleva la vista del CRM que corresponde y el delegado único
+   (bindMiDiaActions) se encarga de navegar — sin segunda RPC ni duplicar
+   handlers. `míos` cuando la vista es sólo del agente (Dashboard). */
+var MINI_KPIS = [
+  { k: 'tareas', l: 'tareas vencidas', icon: 'fas fa-list-check', color: '#FFB800' },
+  { k: 'seguimientos', l: 'seguimientos', icon: 'fas fa-clock', color: '#f87171' },
+  { k: 'sin_contacto', l: 'sin contacto', icon: 'fas fa-comment-slash', color: '#fbbf24' },
+  { k: 'visitas_semana', l: 'visitas esta semana', icon: 'fas fa-calendar-check', color: '#4ade80' }
+];
+
+function miniKpisHtml(conteos, soloPropio, body) {
+  var c = conteos || {};
+  var chips = MINI_KPIS.map(function (x) {
+    return '<button type="button" class="crm-mini-kpi" data-midia-kpi="' + x.k + '"' +
+      ' title="' + esc(x.l) + ': abrí el panel de Mi día para ver el detalle"' +
+      ' style="display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid var(--border-subtle);border-radius:9px;background:rgba(255,255,255,0.025);color:var(--text-primary);cursor:pointer;">' +
+      '<i class="' + x.icon + '" style="color:' + x.color + ';"></i>' +
+      '<span style="font-size:15px;font-weight:800;">' + Number(c[x.k] || 0) + '</span>' +
+      '<span style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.3px;">' + esc(x.l) + '</span>' +
+      '</button>';
+  }).join('');
+  return '<div class="crm-mini-kpis" style="display:flex;flex-wrap:wrap;gap:7px;margin:2px 0 10px;">' + chips +
+    (soloPropio ? '<span style="font-size:9.5px;color:var(--text-dim);align-self:center;">mis pendientes</span>' : '') +
+    '</div>';
+}
+
 function miDiaConteosHtml(conteos) {
   var c = conteos || {};
   var chips = [
@@ -4297,6 +4333,10 @@ async function miDiaRender(body, sub, soloPropio) {
     body.innerHTML = (items.length
       ? items.map(miDiaItemHtml).join('')
       : '<div style="font-size:12.5px;color:var(--text-secondary);padding:14px 0;"><i class="fas fa-circle-check" style="color:#4ade80;"></i> Nada urgente para hoy. ✔</div>') +
+      /* Mini-KPIs del agente (28/11/2026): los MISMOS `conteos` de la RPC,
+         en chips compactos y clicables. No es una segunda query ni otra
+         vista: el delegado `bindMiDiaActions` ya entiende `data-midia-vista`. */
+      miniKpisHtml(d.conteos, soloPropio, body) +
       miDiaConteosHtml(d.conteos) +
       miDiaVencidasHtml(d.vencidas) +
       '<div style="margin-top:10px;"><button type="button" class="status-pill" data-midia-refresh style="cursor:pointer;font-size:10.5px;"><i class="fas fa-rotate"></i> Actualizar</button></div>';
@@ -4351,6 +4391,22 @@ function bindMiDiaActions(body, ctx) {
     var render = ctx.render || miDiaRender;
     var refresh = e.target.closest('[data-midia-refresh]');
     if (refresh) { refresh.disabled = true; render(ctx.body, ctx.sub, ctx.soloPropio).then(function() { refresh.disabled = false; }); return; }
+    /* Mini-KPIs: resaltan el número y llevan al detalle correspondiente del
+       MISMO overlay (misma RPC, sin segunda query). En el Dashboard el bloque
+       ya es el detalle: el chip se queda marcado como "mío". */
+    var mini = e.target.closest('[data-midia-kpi]');
+    if (mini) {
+      var on = mini.classList.toggle('crm-mini-kpi--on');
+      mini.style.boxShadow = on ? '0 0 0 2px rgba(31,200,195,.45)' : '';
+      /* En el overlay "Mi día" los KPIs son un resumen del detalle que ya
+         está abajo; al tocarlos hacemos scroll al bloque de conteos (no hay
+         una vista nueva que abrir y la RPC ya corrió). */
+      if (body) {
+        var destino = body.querySelector('.crm-midia-conteos');
+        if (destino && destino.scrollIntoView) destino.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+      return;
+    }
     var verVencidas = e.target.closest('[data-midia-ver-vencidas]');
     if (verVencidas) {
       /* Sólo cambia la vista: NO vuelve a llamar a la RPC (evita una
@@ -4384,6 +4440,127 @@ function bindMiDiaActions(body, ctx) {
     var encuesta = e.target.closest('[data-cierre-encuesta]');
     if (encuesta) { cierreDiaEncuesta(encuesta, ctx); return; }
   });
+}
+
+/* ============================================================
+   BANDEJA "SIGUIENTE ACCIÓN" (28/11/2026): la misma lógica de la tarjeta
+   del lead (`siguientesAccionesDe`) aplicada a TODOS los leads de `mi_dia`.
+   La RPC trae el lead_id y el resumen; por cada uno completamos el lead real
+   con queries puntuales, resolvemos la mejor acción y reutilizamos
+   `siguientesAccionesHtml` + `bindSiguientesAcciones` (el delegado de la
+   ficha). Cero flujos nuevos: los botones ejecutan los mismos handlers
+   existentes dentro del panel del lead.
+   ============================================================ */
+var _sigAccionOverlay = null;
+
+/* El item de `mi_dia` trae lead_id + teléfono; el lead completo y sus
+   propiedades/visitas/tareas se piden con queries puntuales (RLS aplica la
+   misma visibilidad que el panel del lead). */
+async function sigAccionLeadData(item) {
+  var leadId = item && item.lead_id;
+  if (!leadId) return null;
+  try {
+    var r = await db().from('leads').select('*').eq('id', leadId).maybeSingle();
+    if (r.error || !r.data) return null;
+    var lead = r.data;
+    var [props, visits, tasks] = await Promise.all([
+      db().from('lead_properties').select('property_id, properties(*)').eq('lead_id', leadId),
+      db().from('visits').select('id, visit_date, status').eq('lead_id', leadId),
+      db().from('lead_tasks').select('id, title, due_at, status').eq('lead_id', leadId)
+    ]);
+    var propRows = (props.data || []).map(function (p) { return p.properties || p; }).filter(Boolean);
+    return {
+      lead: lead,
+      acciones: siguientesAccionesDe(lead, propRows, visits.data || [], tasks.data || [])
+    };
+  } catch (err) {
+    if (window.__BH && window.__BH.logError) window.__BH.logError('sig accion lead:', err);
+    return null;
+  }
+}
+
+async function openSiguienteAccion() {
+  if (!db()) { toast('Sin conexión con la base.', 'error'); return; }
+  if (_sigAccionOverlay) { _sigAccionOverlay.remove(); _sigAccionOverlay = null; }
+  var overlay = document.createElement('div');
+  overlay.className = 'crm-bandeja-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10061;background:rgba(2,3,5,0.7);backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;';
+  overlay.innerHTML = '<div class="crm-bandeja-box" role="dialog" aria-modal="true" aria-label="Siguiente acción" style="width:min(760px,100%);background:var(--bg,#05070A);border:1px solid var(--border-subtle);border-radius:16px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,0.55);">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;">' +
+      '<h3 style="margin:0;font-size:16px;color:var(--text-primary);"><i class="fas fa-bolt" style="color:var(--accent);"></i> Siguiente acción — por lead</h3>' +
+      '<button type="button" class="modal-x-close" data-sig-close aria-label="Cerrar" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;"><i class="fas fa-xmark"></i></button>' +
+    '</div>' +
+    '<p data-sig-sub style="margin:0 0 16px;font-size:11.5px;color:var(--text-dim);">Cargando…</p>' +
+    '<div data-sig-body style="font-size:12px;">Cargando…</div>' +
+  '</div>';
+  document.body.appendChild(overlay);
+  _sigAccionOverlay = overlay;
+
+  var onKey = function (e) { if (e.key === 'Escape') cerrar(); };
+  function cerrar() {
+    document.removeEventListener('keydown', onKey);
+    overlay.remove();
+    if (_sigAccionOverlay === overlay) _sigAccionOverlay = null;
+  }
+  overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) cerrar(); });
+  var closeBtn = overlay.querySelector('[data-sig-close]');
+  if (closeBtn) closeBtn.addEventListener('click', cerrar);
+  document.addEventListener('keydown', onKey);
+
+  var body = overlay.querySelector('[data-sig-body]');
+  var sub = overlay.querySelector('[data-sig-sub]');
+  try {
+    var r = await db().rpc('mi_dia', {});
+    if (r.error) throw new Error(r.error.message);
+    var d = r.data || {};
+    if (d.error) throw new Error(d.error);
+    /* `mi_dia` trae items + vencidas:-un lead puede estar en ambos. Un set
+       de lead_ids para no repetirlo (misma doctrina del claim de ML). */
+    var ids = [];
+    var vistos = {};
+    (d.items || []).concat(d.vencidas || []).forEach(function (it) {
+      if (it.lead_id && !vistos[it.lead_id]) { vistos[it.lead_id] = true; ids.push(it); }
+    });
+    if (sub) sub.innerHTML = 'La misma lógica de la ficha, aplicada a los <strong style="color:var(--text-primary);">' + ids.length + '</strong> lead(s) de hoy.';
+    var filas = await Promise.all(ids.map(sigAccionLeadData));
+    var html = filas.map(function (f, i) {
+      if (!f) return '';
+      var item = ids[i];
+      var tarjeta = siguientesAccionesHtml(f.acciones, f.lead);
+      if (!tarjeta) {
+        /* Lead sin acción sugerida (ej. ya cerrado): se muestra igual para
+           que el agente pueda abrirlo, pero sin botones muertos. */
+        tarjeta = '<div style="font-size:11px;color:var(--text-dim);padding:6px 10px;">Sin acción pendiente — abrilo para revisarlo.</div>';
+      }
+      return '<div class="crm-sig-bandeja-lead" data-lead-id="' + esc(f.lead.id) + '" style="margin-bottom:12px;border:1px solid var(--border-subtle);border-radius:11px;overflow:hidden;">' +
+        '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:rgba(255,255,255,0.02);">' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:12.5px;font-weight:700;color:var(--text-primary);">' + esc(f.lead.full_name || item.nombre || 'Sin nombre') + '</div>' +
+            '<div style="font-size:10.5px;color:var(--text-dim);">' + esc((f.lead.whatsapp || f.lead.phone || item.telefono || '') + ' · ' + (STATUS_LABELS[f.lead.stage] || f.lead.stage || '')) + '</div>' +
+          '</div>' +
+          '<button type="button" class="status-pill" data-sig-abrir="' + esc(f.lead.id) + '" style="cursor:pointer;font-size:10.5px;"><i class="fas fa-folder-open"></i> Abrir</button>' +
+        '</div>' + tarjeta + '</div>';
+    }).join('');
+    body.innerHTML = html || '<div style="font-size:12.5px;color:var(--text-secondary);padding:14px 0;">Sin leads pendientes hoy. ✔</div>';
+
+    /* Vinculamos el delegado de la ficha ANTES de que exista el primer click.
+       Si se hiciera dentro del handler, el primer clic sólo agregaría el
+       listener y no ejecutaría la acción (el evento ya pasó por el wrapper). */
+    Array.prototype.forEach.call(body.querySelectorAll('.crm-sig-bandeja-lead'), function (wrap) {
+      var leadId = wrap.getAttribute('data-lead-id');
+      var lead = filas.filter(function (f) { return f && f.lead.id === leadId; })[0];
+      if (lead) bindSiguientesAcciones(wrap, lead.lead);
+    });
+    /* "Abrir" es el único botón propio del overlay (los de acción son los de
+       la ficha, manejados por su delegado). */
+    body.addEventListener('click', function (e) {
+      var abrir = e.target.closest('[data-sig-abrir]');
+      if (abrir) { cerrar(); openDetailPanel(abrir.getAttribute('data-sig-abrir')); }
+    });
+  } catch (err) {
+    if (window.__BH && window.__BH.logError) window.__BH.logError('sig accion:', err);
+    body.innerHTML = '<div style="color:var(--danger);font-size:12px;">No se pudo cargar Siguiente acción: ' + esc(err.message) + '</div>';
+  }
 }
 
 /* Panel embebido en el Dashboard: MISMA RPC y MISMAS acciones que la bandeja,
@@ -4795,7 +4972,7 @@ async function openDuplicados() {
 /* markLeadContacted se publica porque admin-crm-tasks.js (que carga ANTES
    que este archivo) lo necesita al completar una tarea: es el punto único
    que registra contacto, cierra la tarea de SLA y recalcula el followup. */
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja, openDuplicados: openDuplicados, openConversion: openConversion, cerrarVisitaRapido: cerrarVisitaRapido, reprogramarVisitaRapido: reprogramarVisitaRapido, leadPasarAEspera: leadPasarAEspera, leadReactivar: leadReactivar, openMiDia: openMiDia, mountMiDiaPanel: mountMiDiaPanel, openCierreDia: openCierreDia, mountCierreDiaPanel: mountCierreDiaPanel, showLostReasonModal: showLostReasonModal, setLostReason: setLostReason, openLostReasonBackfill: openLostReasonBackfill, batchSetAgent: batchSetAgent, batchSetStage: batchSetStage, batchToEspera: batchToEspera, batchExportCsv: batchExportCsv, batchSelClear: batchSelClear };
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja, openDuplicados: openDuplicados, openConversion: openConversion, cerrarVisitaRapido: cerrarVisitaRapido, reprogramarVisitaRapido: reprogramarVisitaRapido, leadPasarAEspera: leadPasarAEspera, leadReactivar: leadReactivar, openMiDia: openMiDia, openSiguienteAccion: openSiguienteAccion, mountMiDiaPanel: mountMiDiaPanel, openCierreDia: openCierreDia, mountCierreDiaPanel: mountCierreDiaPanel, showLostReasonModal: showLostReasonModal, setLostReason: setLostReason, openLostReasonBackfill: openLostReasonBackfill, batchSetAgent: batchSetAgent, batchSetStage: batchSetStage, batchToEspera: batchToEspera, batchExportCsv: batchExportCsv, batchSelClear: batchSelClear };
 
 /* --- Generación de token portal desde CRM (en modo propietarios) --- */
 (function () {
