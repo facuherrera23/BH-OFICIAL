@@ -186,3 +186,86 @@ test.describe('Resumen por agente (bug de los super_admin, 28/11)', () => {
     expect(digestSpec).toContain('p_solo_propio: true');
   });
 });
+
+test.describe('Operación proactiva: escalado y alertas → tareas (28/11)', () => {
+  const proactiva = read('supabase/migrations/20261128000010_operacion_proactiva.sql');
+
+  test('la firma 3-argumentos de mi_dia_agenda queda SOLO service_role', () => {
+    expect(proactiva).toContain(
+      'REVOKE ALL ON FUNCTION public.mi_dia_agenda(uuid, integer, boolean) FROM PUBLIC, anon, authenticated;',
+    );
+    expect(proactiva).toContain(
+      'GRANT EXECUTE ON FUNCTION public.mi_dia_agenda(uuid, integer, boolean) TO service_role;',
+    );
+    expect(proactiva).not.toContain('GRANT EXECUTE ON FUNCTION public.mi_dia_agenda(uuid, integer, boolean) TO authenticated;');
+  });
+
+  test('las dos RPCs nuevas son SECURITY DEFINER, search_path fijo y service_role', () => {
+    expect((proactiva.match(/p_dry_run boolean DEFAULT false/g) || []).length).toBe(2);
+    expect((proactiva.match(/SET search_path = ''/g) || []).length).toBeGreaterThanOrEqual(2);
+    expect(proactiva).toContain(
+      'REVOKE ALL ON FUNCTION public.crm_escalar_tareas_vencidas(integer, boolean) FROM PUBLIC, anon, authenticated;',
+    );
+    expect(proactiva).toContain(
+      'REVOKE ALL ON FUNCTION public.crm_alertas_a_tareas(integer, boolean) FROM PUBLIC, anon, authenticated;',
+    );
+    expect(proactiva).toContain('GRANT EXECUTE ON FUNCTION public.crm_escalar_tareas_vencidas(integer, boolean) TO service_role;');
+    expect(proactiva).toContain('GRANT EXECUTE ON FUNCTION public.crm_alertas_a_tareas(integer, boolean) TO service_role;');
+  });
+
+  test('p_dry_run es una compuerta real y la dedup usa columnas existentes', () => {
+    expect((proactiva.match(/IF NOT COALESCE\(p_dry_run, false\) THEN/g) || []).length).toBe(2);
+    expect(proactiva).toContain("a.alert_type = 'task_overdue_escalated'");
+    expect(proactiva).toContain("a.evidence ->> 'task_id' = t.id::text");
+    expect(proactiva).toContain("left('[alert:' || r.alert_id::text || '] '");
+    expect(proactiva).toContain("t.description LIKE '%[alert:' || a.id::text || ']%'");
+    expect(proactiva).toContain("a.status = 'open'");
+    // supervision_alerts NO tiene updated_at (bug real del botón manual).
+    expect(proactiva).not.toContain('a.updated_at');
+  });
+
+  test('un solo cron diario, sin secretos ni current_setting', () => {
+    expect(proactiva).toContain("'crm-operacion-proactiva'");
+    expect(proactiva).toContain("'30 14 * * *'");
+    expect(proactiva).toContain("$$ SELECT public.crm_escalar_tareas_vencidas(), public.crm_alertas_a_tareas(); $$");
+    expect(proactiva).toContain("SELECT cron.unschedule('crm-operacion-proactiva')");
+    expect((proactiva.match(/cron\.schedule\(/g) || []).length).toBe(1);
+    expect(proactiva).not.toContain('current_setting(');
+    expect(proactiva).not.toContain('x-sync-secret');
+  });
+});
+
+test.describe('Ciclo cerrado de encuestas post-visita (28/11)', () => {
+  const encuesta = read('supabase/migrations/20261128000012_encuesta_ciclo_cerrado.sql');
+
+  test('dos recordatorios y cierre a los 7 días, sin tocar las respuestas', () => {
+    expect(encuesta).toContain('DROP FUNCTION IF EXISTS public.survey_pending_reminders();');
+    expect(encuesta).toContain('CREATE OR REPLACE FUNCTION public.survey_pending_reminders(p_dry_run boolean DEFAULT false)');
+    expect(encuesta).toContain("interval '48 hours'");
+    expect(encuesta).toContain("interval '96 hours'");
+    expect(encuesta).toContain("interval '7 days'");
+    expect(encuesta).toContain('SET finalized = true');
+    expect(encuesta).toContain("'Encuesta cerrada sin respuesta'");
+    expect(encuesta).toContain('[recordatorio:1]');
+    expect(encuesta).toContain('[recordatorio:2]');
+    // survey_submit_by_token valida un full-set de keys: la RPC NO inventa answers.
+    expect(encuesta).not.toContain('answers');
+  });
+
+  test('dedup por lead + fecha de creación y firma sin anon/authenticated', () => {
+    expect(encuesta).toContain('t.title LIKE \'Encuesta sin responder%\'');
+    expect(encuesta).toContain('t.created_at >= r.created_at');
+    expect(encuesta).toContain("la.title = 'Encuesta cerrada sin respuesta'");
+    expect(encuesta).toContain(
+      'REVOKE ALL ON FUNCTION public.survey_pending_reminders(boolean) FROM PUBLIC, anon, authenticated;',
+    );
+    expect(encuesta).toContain('GRANT EXECUTE ON FUNCTION public.survey_pending_reminders(boolean) TO service_role;');
+    expect((encuesta.match(/IF NOT COALESCE\(p_dry_run, false\) THEN/g) || []).length).toBe(3);
+  });
+
+  test('el cron se reprograma (sin duplicar) y el default sigue siendo real', () => {
+    expect(encuesta).toContain("SELECT cron.unschedule('survey-reminders-daily')");
+    expect(encuesta).toContain("'0 15 * * *'");
+    expect(encuesta).toContain("$$ SELECT public.survey_pending_reminders(); $$");
+  });
+});

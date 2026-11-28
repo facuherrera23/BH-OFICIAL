@@ -171,3 +171,43 @@ test.describe('P1-8 — "Mi día" (las 3 acciones más urgentes)', () => {
     expect(cssSrc).toContain('.crm-midia-chip');
   });
 });
+
+test.describe('Mi día — dueño real de la tarea e inventario de vencidas (28/11)', () => {
+  const operacion = read('supabase/migrations/20261128000010_operacion_proactiva.sql');
+
+  test('las dos RPCs filtran por lead_tasks.assigned_to (con fallback al lead)', () => {
+    expect(operacion).toContain('DROP FUNCTION IF EXISTS public.mi_dia(uuid, boolean);');
+    expect(operacion).toContain('p_user_id uuid DEFAULT NULL, p_solo_propio boolean DEFAULT false');
+    // 4 usos en mi_dia + 2 en mi_dia_agenda; antes era SIEMPRE l.assigned_to.
+    expect((operacion.match(/COALESCE\(t\.assigned_to, l\.assigned_to\) = v_agent/g) || []).length).toBe(6);
+    expect(operacion).toContain('COALESCE(r.task_agent, r.lead_agent)');
+  });
+
+  test('mi_dia devuelve el inventario de vencidas y el conteo de escaladas', () => {
+    expect(operacion).toContain("'vencidas', v_vencidas");
+    expect(operacion).toContain("'escaladas', v_c_esc");
+    expect(operacion).toContain("t.due_at < now() - interval '7 days'");
+    expect(operacion).toContain("'escalada', x.due_at < now() - interval '7 days'");
+    expect(operacion).toContain('ORDER BY t.due_at ASC');
+    expect(operacion).toContain('LIMIT 10');
+    // El top 3 sigue intacto (la lista completa va aparte).
+    expect(operacion).toContain('jsonb_array_length(v_items) < 3');
+  });
+
+  test('front: el toggle muestra las vencidas sin volver a llamar a la RPC', () => {
+    expect(crmSrc).toContain('var _miDiaVerVencidas = false;');
+    expect(crmSrc).toContain('function miDiaVencidasHtml(vencidas)');
+    expect(crmSrc).toContain('function miDiaVencidasListaHtml(source)');
+    expect(crmSrc).toContain('data-midia-ver-vencidas');
+    expect(crmSrc).toContain('data-midia-vencidas-lista');
+    expect(crmSrc).toContain('body._miDiaVencidas = d.vencidas || [];');
+    expect(crmSrc).toContain('miDiaVencidasHtml(d.vencidas)');
+    expect(crmSrc).toContain("var escColor = Number(c.escaladas || 0) > 0");
+    const desde = crmSrc.indexOf('var verVencidas = e.target.closest(');
+    const hasta = crmSrc.indexOf('var abrir = e.target.closest(', desde);
+    expect(desde).toBeGreaterThan(-1);
+    const toggle = crmSrc.slice(desde, hasta);
+    expect(toggle).toContain('miDiaVencidasListaHtml(ctx.body._miDiaVencidas');
+    expect(toggle).not.toContain('miDiaRender('); // sólo cambia la vista
+  });
+});

@@ -2659,11 +2659,26 @@ function esc(s) {
           '<div style="font-size:10.5px; color:var(--text-dim); margin-bottom:6px;">Completar motivo (usa el mismo modal del CRM):</div>' +
           sinLeads.map(r => '<button type="button" class="status-pill" data-lost-fijar="' + esc(r.id) + '" style="cursor:pointer;margin:0 4px 4px 0;font-size:10.5px;"><i class="fas fa-circle-plus"></i> ' + esc(r.full_name || 'Lead sin nombre') + '</button>').join('') +
           (sin > sinLeads.length ? '<span style="font-size:10.5px; color:var(--text-dim);"> y ' + (sin - sinLeads.length) + ' más en el CRM</span>' : '') +
+          '<div style="margin-top:8px;"><button type="button" class="status-pill" data-lost-backfill style="cursor:pointer;font-size:10.5px;"><i class="fas fa-list-check"></i> Completar ' + sin + ' históricos (guiado)</button></div>' +
         '</div>' : '');
 
       if (!el.dataset.lostBound) {
         el.dataset.lostBound = '1';
         el.addEventListener('click', async (e) => {
+          /* Backfill guiado: abre el overlay del CRM con sugerencias del
+             timeline; la RPC es de lectura y NADA se escribe sin confirmar. */
+          const backfill = e.target.closest('[data-lost-backfill]');
+          if (backfill) {
+            if (!window.BH_CRM || typeof window.BH_CRM.openLostReasonBackfill !== 'function') return;
+            backfill.disabled = true;
+            try {
+              await window.BH_CRM.openLostReasonBackfill();
+              await renderDashLostReasons();
+            } catch (err2) {
+              showToast('No se pudo abrir el backfill: ' + err2.message, 'error');
+            } finally { backfill.disabled = false; }
+            return;
+          }
           const btn = e.target.closest('[data-lost-fijar]');
           if (!btn || !window.BH_CRM || !window.BH_CRM.showLostReasonModal) return;
           const lost = await window.BH_CRM.showLostReasonModal();

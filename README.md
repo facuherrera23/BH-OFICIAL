@@ -848,6 +848,39 @@ Guards: `tests/operacion-diaria.spec.js`, `tests/reparto-leads.spec.js` y
 **anon-SECDEF 16 / `search_path_mutable` 0 / RLS sin policy 19**, con EXECUTE
 de la RPC para `authenticated`/`service_role` y no para `anon`.
 
+**Cierre operativo de la semana (28/11/2026, migraciones 10/11/12).** Tres
+mejoras sobre el mismo diagnóstico en frío, verificadas en producción SÓLO con
+`dry_run=true` (cero escrituras) y con 45 guards nuevos:
+
+1. **Dueño real + escalado.** `mi_dia`/`mi_dia_agenda` filtran
+   `COALESCE(t.assigned_to, l.assigned_to)` (8 tareas tenían otro agente de
+   tarea que de lead). `mi_dia` agrega `vencidas` (top 10, con chip de
+   `escaladas` >7d) detrás de un toggle que NO vuelve a llamar a la RPC.
+   `crm_escalar_tareas_vencidas(7,true)` → 15 y `crm_alertas_a_tareas(50,true)`
+   → 7 (marca `[alert:<id>]`, la misma del botón manual); el cron
+   `crm-operacion-proactiva` (jobid 46, 11:30 ART) las ejecuta sin
+   `current_setting` ni secretos. `mi_dia_agenda(uuid,integer,boolean)` quedó
+   **solo service_role** (el digest la llama con JWT de servicio).
+2. **Backfill guiado de motivos.** `crm_motivos_pendientes(p_limit)` es
+   **solo lectura**: sugiere el motivo desde el último evento del timeline
+   (35 leads históricos sin razón) y jamás escribe. El botón "Completar N
+   históricos (guiado)" del Dashboard abre un overlay donde el agente revisa
+   cada sugerencia y guarda por fila o en lote con confirmación, reutilizando
+   `BH_CRM.setLostReason` (traza en `lead_activities`). Si la sugerencia no
+   está en el catálogo, el `<select>` cae en "Otro" — nunca en "Presupuesto".
+3. **Encuesta post-visita de circuito cerrado.** El check-out y el cierre
+   rápido de visita envían **sin confirm**: la pestaña de WhatsApp se abre
+   ANTES del primer `await` (misma técnica de `wa-handoff`; si el popup se
+   bloquea, el link queda copiado y se avisa). `survey_pending_reminders` pasó
+   a 2 recordatorios (48h/96h) y cierra a los 7 días con `finalized=true`,
+   nota en el timeline y tareas de recordatorio completadas — sin inventar
+   keys en `answers` (la RPC de envío valida full-set). Dry-run real: 9
+   encuestas pendientes de las 10 históricas, ninguna finalizada.
+
+El advisor sigue en baseline tras las 3 migraciones: **anon-SECDEF 16 /
+`search_path_mutable` 0 / RLS sin policy 19**. Guards: `tests/cron-health.spec.js`,
+`tests/mi-dia.spec.js` y `tests/operacion-diaria.spec.js`.
+
 **Guardián de crons y secretos en runtime (28/11/2026).** El cron de retención
 (jobid 36) falló 27 veces entre el 23 y el 28/11 con
 `function ... is not unique` y `pg_cron` seguía reportando `1 row`: nadie lo vio. La RPC

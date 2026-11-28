@@ -2315,20 +2315,20 @@ window.adminApp.editVisit = async function (id) {
       if (error) throw error;
       if (v?.lead_id) await logVisitOutcome(v.lead_id, note);
       showToast('Salida registrada', 'success');
-      /* Momento natural: ofrecer la encuesta de visita al visitante */
+      /* 28/11/2026: envío AUTOMÁTICO al check-out. Antes dependía de que el
+         agente aceptara un confirm: en 10 encuestas en toda la historia, 0
+         finalizadas. El botón "Encuesta" del panel sigue disponible para
+         reenviar, y el cron cierra el ciclo a los 7 días sin respuesta. */
       if (v?.lead_id && v?.property_id && window.BH_CRM && typeof window.BH_CRM.sendSurvey === 'function' && window.BH_CRM.waNumber(v.client_phone)) {
         try {
-          const send = typeof window.showConfirmDialog === 'function'
-            ? await window.showConfirmDialog({ title: '¿Enviar encuesta?', message: 'La visita quedó completada. ¿Le mandás la encuesta de visita por WhatsApp?', icon: 'fas fa-clipboard-list', confirmText: 'Enviar encuesta' })
-            : confirm('¿Enviar la encuesta de visita por WhatsApp?');
-          if (send) {
-            await window.BH_CRM.sendSurvey(
-              { id: v.lead_id, full_name: v.client_name, whatsapp: v.client_phone, phone: v.client_phone },
-              v.property_id,
-              (v.properties && v.properties.title) || '',
-              null
-            );
-          }
+          await window.BH_CRM.sendSurvey(
+            { id: v.lead_id, full_name: v.client_name, whatsapp: v.client_phone, phone: v.client_phone },
+            v.property_id,
+            (v.properties && v.properties.title) || '',
+            null,
+            true /* abre la pestaña antes de los awaits (popup blocker) */
+          );
+          showToast('Encuesta de visita abierta en WhatsApp.', 'info');
         } catch (_) { logError('Encuesta post-checkout:', _); }
       }
       loadAgenda();

@@ -1828,18 +1828,17 @@ function showSurveyPropertyPicker(lead, props, panel) {
 }
 
 /* Tras completar la visita: ofrecer mandar la encuesta en el momento. */
-async function offerSurveyAfterVisit(leadId, visitId, panel) {
+async function offerSurveyAfterVisit(leadId, visitId, panel, openEarly) {
   var vr = await db().from('visits').select('property_id, properties(title)').eq('id', visitId).single();
   if (vr.error || !vr.data || !vr.data.property_id) return;
   var lr = await db().from('leads').select('id, full_name, whatsapp, phone').eq('id', leadId).single();
   if (lr.error || !lr.data) return;
   var lead = lr.data;
   if (!waNumber(lead.whatsapp) && !waNumber(lead.phone)) return;
-  var ok = typeof window.showConfirmDialog === 'function'
-    ? await window.showConfirmDialog({ title: '¿Enviar encuesta?', message: 'La visita quedó completada. ¿Le mandás la encuesta de visita por WhatsApp?', icon: 'fas fa-clipboard-list', confirmText: 'Enviar encuesta' })
-    : confirm('¿Enviar la encuesta de visita por WhatsApp?');
-  if (!ok) return;
-  await sendSurveyForProperty(lead, vr.data.property_id, (vr.data.properties && vr.data.properties.title) || '', panel);
+  /* 28/11/2026: automático tras la visita (el panel y la Agenda usan este
+     mismo camino). El cron `survey-reminders-daily` cierra el ciclo si no
+     hay respuesta; el botón "Encuesta" del lead sigue sirviendo para reenviar. */
+  await sendSurveyForProperty(lead, vr.data.property_id, (vr.data.properties && vr.data.properties.title) || '', panel, openEarly);
 }
 
 /* ── Encuesta de visita (HOJA DE VISITA) ── */
@@ -1873,19 +1872,43 @@ async function ensureSurveyToken(leadId, propertyId) {
   throw new Error(ins.error.message);
 }
 
-async function sendSurveyForProperty(lead, propId, propTitle, panel) {
+async function sendSurveyForProperty(lead, propId, propTitle, panel, openEarly) {
+  /* 28/11/2026: en el envío automático abrimos la pestaña ANTES de cualquier
+     await. Chrome mantiene la "transient user activation" ~5 s desde el clic
+     del agente; después de 3 queries + clipboard el popup puede ser bloqueado
+     (mismo patrón de wa-handoff). La URL se escribe sobre esa pestaña abajo. */
+  var popup = null;
+  if (openEarly) {
+    try { popup = window.open('about:blank', '_blank'); } catch (_) { popup = null; }
+  }
   try {
     var s = await ensureSurveyToken(lead.id, propId);
-    if (s.finalized) { toast('Este visitante ya respondió la encuesta.', 'info'); return; }
+    if (s.finalized) {
+      if (popup) { try { popup.close(); } catch (_) {} }
+      toast('Este visitante ya respondió la encuesta.', 'info');
+      return;
+    }
     var link = location.origin + '/encuesta.html?token=' + encodeURIComponent(s.token);
     var firstName = (lead.full_name || '').split(' ')[0] || '';
     var text = 'Hola' + (firstName ? ' ' + firstName : '') + ', ¡gracias por visitar ' + (propTitle || 'la propiedad') + '! ¿Nos ayudás con esta breve encuesta sobre la visita? Tus respuestas quedan guardadas solas:\n' + link;
     var wa = waNumber(lead.whatsapp) || waNumber(lead.phone);
     try { await navigator.clipboard.writeText(link); } catch (_) {}
     if (wa) {
-      window.open('https://wa.me/' + wa + '?text=' + encodeURIComponent(text), '_blank', 'noopener');
-      toast('Link de encuesta copiado. Abriendo WhatsApp…', 'success');
+      var url = 'https://wa.me/' + wa + '?text=' + encodeURIComponent(text);
+      var opened = !!popup;
+      if (popup) {
+        /* Sin `noopener` en la apertura temprana para poder navegarla. La URL
+           es nuestra (wa.me + teléfono saneado + texto codificado), no HTML
+           del lead. Si el navegador ya la redirigió, caemos al open normal. */
+        try { popup.location.replace(url); } catch (_) { opened = false; window.open(url, '_blank', 'noopener'); }
+      } else {
+        window.open(url, '_blank', 'noopener');
+      }
+      toast(opened
+        ? 'Link de encuesta copiado. Abriendo WhatsApp…'
+        : 'Link copiado. Pegalo en el chat del lead (el navegador bloqueó la pestaña).', opened ? 'success' : 'info');
     } else {
+      if (popup) { try { popup.close(); } catch (_) {} }
       toast('Link de encuesta copiado (el lead no tiene WhatsApp).', 'info');
     }
     try {
@@ -1898,6 +1921,7 @@ async function sendSurveyForProperty(lead, propId, propTitle, panel) {
     } catch (_) { /* el envío no se bloquea por el log */ }
     updateSurveyChip(panel, propId, 'sent');
   } catch (e) {
+    if (popup) { try { popup.close(); } catch (_) {} }
     toast('Error al generar la encuesta: ' + e.message, 'error');
   }
 }
@@ -4118,6 +4142,10 @@ async function bandejaRepartir(btn, body) {
    ítems ya ordenados por urgencia y con el alcance por rol.
    ============================================================ */
 var _miDiaOverlay = null;
+/* 28/11/2026: el top 3 no puede tapar el inventario real de vencidas.
+   El toggle vive acá (no en el dataset del botón) para sobrevivir al
+   refresco de la RPC al completar una tarea. */
+var _miDiaVerVencidas = false;
 
 var MI_DIA_TIPO = {
   visita: { icon: 'fas fa-calendar-check', color: '#4ade80', label: 'Visita' },
@@ -4175,7 +4203,42 @@ function miDiaConteosHtml(conteos) {
       Number(c[x.k] || 0) + ' ' + esc(x.l) + '</span>';
   }).join('');
   if (!html) return '';
-  return '<div class="crm-midia-conteos" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border-subtle);">' + html + '</div>';
+  var escColor = Number(c.escaladas || 0) > 0
+    ? '<span class="crm-midia-chip" style="font-size:10.5px;color:#f87171;background:rgba(248,113,113,.14);border:1px solid rgba(248,113,113,.4);padding:2px 8px;border-radius:999px;font-weight:700;">' + Number(c.escaladas) + ' escaladas (&gt;7d)</span>'
+    : '';
+  return '<div class="crm-midia-conteos" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border-subtle);">' + html + escColor + '</div>';
+}
+
+/* Lista completa de tareas vencidas (hasta 10) detrás del top 3.
+   Misma acción "Completar" que el ítem urgente: delegación única. */
+function miDiaVencidasHtml(vencidas) {
+  var rows = vencidas || [];
+  if (!rows.length) return '';
+  var lista = miDiaVencidasListaHtml(rows);
+  return '<div style="margin-top:10px;border:1px solid var(--border-subtle);border-radius:10px;overflow:hidden;">' +
+    '<button type="button" data-midia-ver-vencidas style="width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 11px;background:rgba(255,184,0,.06);border:none;color:var(--text-primary);font-size:11px;font-weight:700;cursor:pointer;">' +
+      '<span><i class="fas fa-list-check" style="color:#FFB800;margin-right:6px;"></i> Ver todas las tareas vencidas (' + rows.length + ')</span>' +
+      '<i class="fas fa-chevron-' + (_miDiaVerVencidas ? 'up' : 'down') + '" style="color:var(--text-dim);"></i>' +
+    '</button>' +
+    '<div data-midia-vencidas-lista>' + (_miDiaVerVencidas ? lista : '') + '</div>' +
+  '</div>';
+}
+
+function miDiaVencidasListaHtml(source) {
+  var rows = Array.isArray(source) ? source : ((source && source._miDiaVencidas) || []);
+  return rows.map(function (t) {
+    var escChip = t.escalada
+      ? '<span style="font-size:9.5px;font-weight:800;color:#f87171;background:rgba(248,113,113,.14);padding:2px 6px;border-radius:5px;">ESCALADA</span>'
+      : '';
+    return '<div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-bottom:1px solid var(--border-subtle);">' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:11.5px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(t.titulo || 'Tarea') + ' ' + escChip + '</div>' +
+        '<div style="font-size:10px;color:var(--text-dim);">' + esc(t.nombre || '') + ' · ' + esc(t.vencimiento || '') + '</div>' +
+      '</div>' +
+      '<button type="button" class="status-pill" data-midia-tarea="' + esc(t.tarea_id) + '" data-lead="' + esc(t.lead_id || '') + '" style="cursor:pointer;font-size:10px;white-space:nowrap;"><i class="fas fa-check"></i> Completar</button>' +
+      '<button type="button" class="status-pill" data-midia-abrir="' + esc(t.lead_id || '') + '" style="cursor:pointer;font-size:10px;white-space:nowrap;">Abrir</button>' +
+    '</div>';
+  }).join('');
 }
 
 async function miDiaRender(body, sub, soloPropio) {
@@ -4189,6 +4252,7 @@ async function miDiaRender(body, sub, soloPropio) {
     if (d.error) throw new Error(d.error);
     var items = d.items || [];
     var total = Number(d.total || 0);
+    body._miDiaVencidas = d.vencidas || [];
     if (sub) {
       var quien = soloPropio
         ? 'Tus pendientes de hoy.'
@@ -4201,6 +4265,7 @@ async function miDiaRender(body, sub, soloPropio) {
       ? items.map(miDiaItemHtml).join('')
       : '<div style="font-size:12.5px;color:var(--text-secondary);padding:14px 0;"><i class="fas fa-circle-check" style="color:#4ade80;"></i> Nada urgente para hoy. ✔</div>') +
       miDiaConteosHtml(d.conteos) +
+      miDiaVencidasHtml(d.vencidas) +
       '<div style="margin-top:10px;"><button type="button" class="status-pill" data-midia-refresh style="cursor:pointer;font-size:10.5px;"><i class="fas fa-rotate"></i> Actualizar</button></div>';
   } catch (err) {
     if (window.__BH && window.__BH.logError) window.__BH.logError('mi dia:', err);
@@ -4250,6 +4315,18 @@ function bindMiDiaActions(body, ctx) {
   body.addEventListener('click', function (e) {
     var refresh = e.target.closest('[data-midia-refresh]');
     if (refresh) { refresh.disabled = true; miDiaRender(ctx.body, ctx.sub, ctx.soloPropio).then(function() { refresh.disabled = false; }); return; }
+    var verVencidas = e.target.closest('[data-midia-ver-vencidas]');
+    if (verVencidas) {
+      /* Sólo cambia la vista: NO vuelve a llamar a la RPC (evita una
+         ráfaga de queries y mantiene el estado al completar una tarea). */
+      var lista = verVencidas.parentNode.querySelector('[data-midia-vencidas-lista]');
+      if (lista) {
+        _miDiaVerVencidas = !_miDiaVerVencidas;
+        lista.innerHTML = _miDiaVerVencidas ? miDiaVencidasListaHtml(ctx.body._miDiaVencidas || []) : '';
+        verVencidas.querySelector('i.fa-chevron-up, i.fa-chevron-down').className = 'fas fa-chevron-' + (_miDiaVerVencidas ? 'up' : 'down');
+      }
+      return;
+    }
     var abrir = e.target.closest('[data-midia-abrir]');
     if (abrir) { if (ctx.cerrar) ctx.cerrar(); openDetailPanel(abrir.getAttribute('data-midia-abrir')); return; }
     var agenda = e.target.closest('[data-midia-agenda]');
@@ -4484,7 +4561,7 @@ async function openDuplicados() {
 /* markLeadContacted se publica porque admin-crm-tasks.js (que carga ANTES
    que este archivo) lo necesita al completar una tarea: es el punto único
    que registra contacto, cierra la tarea de SLA y recalcula el followup. */
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja, openDuplicados: openDuplicados, openConversion: openConversion, cerrarVisitaRapido: cerrarVisitaRapido, reprogramarVisitaRapido: reprogramarVisitaRapido, leadPasarAEspera: leadPasarAEspera, leadReactivar: leadReactivar, openMiDia: openMiDia, mountMiDiaPanel: mountMiDiaPanel, showLostReasonModal: showLostReasonModal, setLostReason: setLostReason, batchSetAgent: batchSetAgent, batchSetStage: batchSetStage, batchToEspera: batchToEspera, batchExportCsv: batchExportCsv, batchSelClear: batchSelClear };
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja, openDuplicados: openDuplicados, openConversion: openConversion, cerrarVisitaRapido: cerrarVisitaRapido, reprogramarVisitaRapido: reprogramarVisitaRapido, leadPasarAEspera: leadPasarAEspera, leadReactivar: leadReactivar, openMiDia: openMiDia, mountMiDiaPanel: mountMiDiaPanel, showLostReasonModal: showLostReasonModal, setLostReason: setLostReason, openLostReasonBackfill: openLostReasonBackfill, batchSetAgent: batchSetAgent, batchSetStage: batchSetStage, batchToEspera: batchToEspera, batchExportCsv: batchExportCsv, batchSelClear: batchSelClear };
 
 /* --- Generación de token portal desde CRM (en modo propietarios) --- */
 (function () {
@@ -4711,7 +4788,7 @@ async function updateVisitStatus(visitId, newStatus, leadId, panel, cancelReason
     }
     toast('Visita ' + (VISIT_STATUS_LABELS[newStatus] || newStatus).toLowerCase() + '.', 'success');
     if (newStatus === 'completada' && leadId) {
-      try { await offerSurveyAfterVisit(leadId, visitId, panel); } catch (e) { console.warn('[crm] oferta encuesta:', e && e.message); }
+      try { await offerSurveyAfterVisit(leadId, visitId, panel, true); } catch (e) { console.warn('[crm] oferta encuesta:', e && e.message); }
     }
     closeDetailPanel();
     openDetailPanel(leadId);
@@ -4778,7 +4855,7 @@ async function cerrarVisitaRapido(visitId, accion) {
   }
   toast(accion === 'fui' ? 'Visita marcada como realizada.' : 'Visita marcada como no asistió.', 'success');
   if (accion === 'fui' && v.lead_id) {
-    try { await offerSurveyAfterVisit(v.lead_id, visitId, null); } catch (_) {}
+    try { await offerSurveyAfterVisit(v.lead_id, visitId, null, true); } catch (_) {}
   }
   return v;
 }
@@ -5202,6 +5279,115 @@ async function setLostReason(leadId, lost) {
     }]);
   } catch (e2) { /* la nota es best-effort: el motivo ya quedó guardado */ }
   return true;
+}
+
+/* ── Backfill GUIADO de motivos históricos (28/11/2026) ──
+   35 leads perdidos sin motivo. La RPC es SÓLO LECTURA y sugiere la razón
+   desde el último evento del timeline. NADA se escribe hasta que el agente
+   confirma: por fila o en lote, con el mismo setLostReason del modal. */
+var _lostBackfillOverlay = null;
+
+async function openLostReasonBackfill() {
+  if (!db()) { toast('Sin conexión con la base.', 'error'); return; }
+  if (_lostBackfillOverlay) { _lostBackfillOverlay.remove(); _lostBackfillOverlay = null; }
+  var r = await db().rpc('crm_motivos_pendientes', { p_limit: 50 });
+  if (r.error) throw new Error(r.error.message);
+  var d = r.data || {};
+  var rows = d.leads || [];
+  if (!rows.length) { toast('No hay motivos pendientes.', 'info'); return; }
+
+  var opciones = LOST_REASONS.concat([{ id: 'otro', label: 'Otro' }]).map(function (x) {
+    return '<option value="' + esc(x.id) + '">' + esc(x.label) + '</option>';
+  }).join('');
+  var overlay = document.createElement('div');
+  overlay.className = 'crm-bandeja-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:10061;background:rgba(2,3,5,0.7);backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;';
+  overlay.innerHTML = '<div class="crm-bandeja-box" role="dialog" aria-modal="true" aria-label="Completar motivos históricos" style="width:min(880px,100%);background:var(--bg,#05070A);border:1px solid var(--border-subtle);border-radius:16px;padding:22px;box-shadow:0 24px 60px rgba(0,0,0,0.55);">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;">' +
+      '<h3 style="margin:0;font-size:16px;color:var(--text-primary);"><i class="fas fa-list-check" style="color:#FFB800;"></i> Completar motivos históricos</h3>' +
+      '<button type="button" class="modal-x-close" data-bf-close aria-label="Cerrar" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;"><i class="fas fa-xmark"></i></button>' +
+    '</div>' +
+    '<p style="margin:0 0 14px;font-size:11.5px;color:var(--text-dim);">' + Number(d.total || rows.length) + ' lead(s) perdido(s) sin motivo. Las sugerencias salen del historial: <strong>revisalas y confirmá</strong>. No se escribe nada hasta que hagas clic en Guardar o en el botón de lote.</p>' +
+    '<div data-bf-list style="max-height:55vh;overflow-y:auto;border:1px solid var(--border-subtle);border-radius:10px;">' +
+      rows.map(function (x, i) {
+        var sug = LOST_REASON_LABELS[x.sugerido] || x.label || 'Otro';
+        /* Un motivo sugerido fuera del catálogo (o NULL) debe caer en "Otro":
+           sin esta marca el select cae al primero ("Presupuesto") y guardaría
+           un motivo inventado por la UI. */
+        var pick = LOST_REASON_LABELS[x.sugerido] ? x.sugerido : 'otro';
+        return '<div data-bf-row="' + esc(x.lead_id) + '" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-bottom:1px solid var(--border-subtle);">' +
+          '<input type="checkbox" data-bf-check checked aria-label="Incluir en el lote" style="margin-top:4px;accent-color:var(--accent);">' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:12.5px;font-weight:700;color:var(--text-primary);">' + esc(x.nombre) + '</div>' +
+            '<div style="font-size:10.5px;color:var(--text-dim);overflow-wrap:break-word;">Sugerencia: <strong style="color:#FFB800;">' + esc(sug) + '</strong> · ' + esc(x.indicio || '') + '</div>' +
+          '</div>' +
+          '<select data-bf-sel class="crm-field-input" style="width:180px;flex-shrink:0;font-size:11px;">' + opciones.replace('value="' + esc(pick) + '"', 'value="' + esc(pick) + '" selected') + '</select>' +
+          '<button type="button" data-bf-save class="status-pill" style="cursor:pointer;font-size:10.5px;white-space:nowrap;">Guardar</button>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;flex-wrap:wrap;">' +
+      '<span data-bf-status style="font-size:11px;color:var(--text-dim);"></span>' +
+      '<button type="button" data-bf-batch class="btn-luxury-action" style="font-size:11.5px;"><i class="fas fa-check-double"></i> Aplicar seleccionados</button>' +
+    '</div>' +
+  '</div>';
+  document.body.appendChild(overlay);
+  _lostBackfillOverlay = overlay;
+
+  function cerrar() { document.removeEventListener('keydown', onKey); overlay.remove(); if (_lostBackfillOverlay === overlay) _lostBackfillOverlay = null; }
+  function onKey(e) { if (e.key === 'Escape') cerrar(); }
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) cerrar(); });
+  overlay.querySelector('[data-bf-close]').addEventListener('click', cerrar);
+
+  async function aplicar(fila) {
+    var id = fila.getAttribute('data-bf-row');
+    var sel = fila.querySelector('[data-bf-sel]');
+    var reason = sel.value;
+    var opt = sel.options[sel.selectedIndex];
+    var btn = fila.querySelector('[data-bf-save]');
+    if (btn.disabled) return false;
+    btn.disabled = true;
+    try {
+      await setLostReason(id, { reason: reason, label: opt ? opt.text : reason, detail: null });
+      fila.style.opacity = '0.55';
+      fila.querySelector('[data-bf-check]').checked = false;
+      btn.innerHTML = '<i class="fas fa-check"></i> Guardado';
+      return true;
+    } catch (e) {
+      btn.disabled = false;
+      toast('No se pudo guardar: ' + e.message, 'error');
+      return false;
+    }
+  }
+
+  overlay.addEventListener('click', async function (e) {
+    var save = e.target.closest('[data-bf-save]');
+    if (save) { await aplicar(save.closest('[data-bf-row]')); return; }
+    var batch = e.target.closest('[data-bf-batch]');
+    if (!batch) return;
+    var filas = Array.prototype.slice.call(overlay.querySelectorAll('[data-bf-row]')).filter(function (f) {
+      var ch = f.querySelector('[data-bf-check]');
+      var btn = f.querySelector('[data-bf-save]');
+      return ch && ch.checked && btn && !btn.disabled;
+    });
+    if (!filas.length) { toast('No hay filas seleccionadas.', 'info'); return; }
+    var dialog = window.__BH && window.__BH.showConfirmDialog;
+    var ok = typeof dialog === 'function'
+      ? await dialog({ title: 'Confirmar motivos', message: 'Se van a guardar ' + filas.length + ' motivo(s). Cada uno quedará trazado en el timeline del lead. ¿Continuar?', icon: 'fas fa-check-double', confirmText: 'Guardar ' + filas.length })
+      : window.confirm('¿Guardar ' + filas.length + ' motivo(s)?');
+    if (!ok) return;
+    batch.disabled = true;
+    var status = overlay.querySelector('[data-bf-status]');
+    var guardados = 0;
+    for (var i = 0; i < filas.length; i++) {
+      if (await aplicar(filas[i])) guardados++;
+      status.textContent = 'Procesados ' + (i + 1) + ' de ' + filas.length + ' · ' + guardados + ' guardados';
+    }
+    batch.disabled = false;
+    toast(guardados + ' motivo(s) guardados.', 'success');
+    if (window.BH_CRM && window.BH_CRM.refresh) window.BH_CRM.refresh();
+  });
 }
 
 function bindLeadTaskForm(panel, lead) {

@@ -61,7 +61,7 @@ test.describe('Operación diaria — Mi día en el Dashboard', () => {
 
 test.describe('Operación diaria — motivo de pérdida', () => {
   test('el Dashboard muestra "sin motivo" en vez de ocultarlo', () => {
-    const fn = app.slice(app.indexOf('async function renderDashLostReasons()'), app.indexOf('async function renderDashLostReasons()') + 4200);
+    const fn = app.slice(app.indexOf('async function renderDashLostReasons()'), app.indexOf('async function renderDashLostReasons()') + 6000);
     expect(fn).not.toContain(".not('lost_reason', 'is', null)");
     expect(fn).toContain("const k = r.lost_reason || 'sin_motivo'");
     expect(fn).toContain("sin_motivo: 'Sin motivo'");
@@ -105,5 +105,86 @@ test.describe('Operación diaria — alertas de supervisión', () => {
     expect(sup).toContain('var taskBtn = ev.target.closest(\'.sup-alert-task\')');
     // Sin onclick inline (CSP) y con feedback visible.
     expect(sup).toContain("window.__BH.showToast('Tarea creada en el CRM desde la alerta.'");
+  });
+});
+
+test.describe('Operación diaria — backfill guiado de motivos (28/11)', () => {
+  const backfillSql = read('supabase/migrations/20261128000011_backfill_motivos.sql');
+
+  test('la RPC es SÓLO LECTURA: sugiere desde el timeline y no escribe', () => {
+    expect(backfillSql).toContain(
+      'CREATE OR REPLACE FUNCTION public.crm_motivos_pendientes(p_limit integer DEFAULT 50)',
+    );
+    expect(backfillSql).toContain("SET search_path = ''");
+    expect(backfillSql).toContain(
+      'REVOKE ALL ON FUNCTION public.crm_motivos_pendientes(integer) FROM PUBLIC, anon;',
+    );
+    expect(backfillSql).toContain(
+      'GRANT EXECUTE ON FUNCTION public.crm_motivos_pendientes(integer) TO authenticated, service_role;',
+    );
+    const sql = backfillSql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+    expect(sql).not.toMatch(/\bINSERT\s+INTO\b/);
+    expect(sql).not.toMatch(/\bUPDATE\b/);
+    expect(sql).not.toMatch(/\bDELETE\b/);
+    expect(sql).toContain("'sugerido'");
+    expect(sql).toContain("'indicio'");
+    expect(sql).toContain('ORDER BY la.created_at DESC');
+  });
+
+  test('el Dashboard ofrece el backfill y el overlay confirma antes de escribir', () => {
+    const fn = app.slice(app.indexOf('async function renderDashLostReasons()'), app.indexOf('async function renderDashLostReasons()') + 6000);
+    expect(fn).toContain('data-lost-backfill');
+    expect(fn).toContain('window.BH_CRM.openLostReasonBackfill');
+    expect(fn).toContain('await renderDashLostReasons()');
+
+    expect(crm).toContain('async function openLostReasonBackfill()');
+    expect(crm).toContain("db().rpc('crm_motivos_pendientes', { p_limit: 50 })");
+    expect(crm).toContain('openLostReasonBackfill: openLostReasonBackfill');
+    const bf = crm.slice(crm.indexOf('async function openLostReasonBackfill()'), crm.indexOf('function bindLeadTaskForm('));
+    expect(bf).toContain('LOST_REASON_LABELS[x.sugerido]');
+    expect(bf).toContain("var pick = LOST_REASON_LABELS[x.sugerido] ? x.sugerido : 'otro';");
+    expect(bf).toContain("opciones.replace('value=\"' + esc(pick) + '\"'");
+    expect(bf).toContain('data-bf-check');
+    expect(bf).toContain('await setLostReason(id,'); // reutiliza el camino del modal
+    expect(bf).toContain('window.__BH && window.__BH.showConfirmDialog');
+    expect(bf).not.toContain('window.showConfirmDialog'); // no es global
+    expect(bf).not.toMatch(/[^.]\bconfirm\(/); // ni confirm() nativo
+  });
+});
+
+test.describe('Operación diaria — encuesta post-visita automática (28/11)', () => {
+  const agenda = read('assets/js/admin-agenda.js');
+  const encuestaSql = read('supabase/migrations/20261128000012_encuesta_ciclo_cerrado.sql');
+
+  test('el check-out y el panel envían sin pedir confirm', () => {
+    const ofrecer = crm.slice(crm.indexOf('async function offerSurveyAfterVisit('), crm.indexOf('/* ── Encuesta de visita'));
+    expect(ofrecer).not.toContain('showConfirmDialog');
+    expect(ofrecer).not.toContain('confirm(');
+    expect(ofrecer).toContain('sendSurveyForProperty(lead, vr.data.property_id');
+    expect(ofrecer).toContain('openEarly');
+
+    const checkout = agenda.slice(agenda.indexOf('window.adminApp.checkoutVisit'), agenda.indexOf('function remindUpcomingVisits'));
+    expect(checkout).not.toContain('¿Enviar encuesta?');
+    expect(checkout).toContain('window.BH_CRM.sendSurvey(');
+    expect(checkout).toContain('true /* abre la pestaña antes de los awaits (popup blocker) */');
+  });
+
+  test('la pestaña se abre ANTES del primer await y el link nunca se pierde', () => {
+    const fn = crm.slice(crm.indexOf('async function sendSurveyForProperty('), crm.indexOf('/* Actualiza el estado del chip'));
+    const apertura = fn.indexOf("window.open('about:blank'");
+    const primerAwait = fn.indexOf('await ensureSurveyToken');
+    expect(apertura).toBeGreaterThan(-1);
+    expect(apertura).toBeLessThan(primerAwait);
+    expect(fn).toContain('popup.location.replace(url)');
+    expect(fn).toContain('Pegalo en el chat del lead');
+    expect((fn.match(/popup\.close\(\)/g) || []).length).toBe(3); // finalizada, sin WhatsApp y error
+    // El botón manual NO pide apertura temprana (no hay doble pestaña).
+    expect(crm).toContain('sendSurveyForProperty(lead, propId, propTitle, panel);');
+  });
+
+  test('el cron cierra el ciclo de las encuestas que nadie respondió', () => {
+    expect(encuestaSql).toContain("interval '96 hours'");
+    expect(encuestaSql).toContain("interval '7 days'");
+    expect(encuestaSql).toContain('SET finalized = true');
   });
 });
