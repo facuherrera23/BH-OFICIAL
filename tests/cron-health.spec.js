@@ -17,6 +17,7 @@ const secretRaw = read('supabase/migrations/20261128000005_cron_secret_runtime.s
 const secret = secretRaw.replace(/--.*$/gm, ''); // los comentarios explican el jobid 1, el CÓDIGO no lo toca
 const agenda = read('supabase/migrations/20261128000006_mi_dia_agenda_rpc.sql');
 const agendaPermisos = read('supabase/migrations/20261128000007_mi_dia_agenda_revoke_auth.sql');
+const soloPropio = read('supabase/migrations/20261128000008_mi_dia_solo_propio.sql');
 const fn = read('supabase/functions/agent-daily-digest/index.ts');
 const digestSpec = read('tests/agent-daily-digest.spec.js');
 
@@ -150,5 +151,38 @@ test.describe('Agenda de próximos días en el mail', () => {
 
   test('el spec del digest ya documenta el contrato agregado', () => {
     expect(digestSpec).toContain('mi_dia_agenda');
+  });
+});
+
+test.describe('Resumen por agente (bug de los super_admin, 28/11)', () => {
+  test('la migración reemplaza las firmas (sin sobrecargas) y conserva permisos', () => {
+    const sql = soloPropio.replace(/--.*$/gm, ''); // el comentario también lo menciona
+    expect(sql).toContain('DROP FUNCTION IF EXISTS public.mi_dia(uuid)');
+    expect(sql).toContain('DROP FUNCTION IF EXISTS public.mi_dia_agenda(uuid, integer)');
+    expect((sql.match(/p_solo_propio boolean DEFAULT false/g) || []).length).toBe(2);
+    // Con true se ignora el alcance por rol; con false (default) queda igual.
+    expect(
+      (sql.match(/v_ver_todos := \(NOT COALESCE\(p_solo_propio, false\)\) AND \(v_role IN/g) || [])
+        .length,
+    ).toBe(2);
+    // Los leads sin asignar se ven en la bandeja del CRM, NO en el mail.
+    expect(
+      (sql.match(/\(NOT COALESCE\(p_solo_propio, false\) AND l\.assigned_to IS NULL\)/g) || [])
+        .length,
+    ).toBe(2);
+    expect(soloPropio).toContain(
+      'REVOKE ALL ON FUNCTION public.mi_dia_agenda(uuid, integer, boolean) FROM PUBLIC, anon, authenticated;',
+    );
+    expect(soloPropio).toContain(
+      'GRANT EXECUTE ON FUNCTION public.mi_dia_agenda(uuid, integer, boolean) TO service_role;',
+    );
+    expect(soloPropio).not.toContain(
+      'GRANT EXECUTE ON FUNCTION public.mi_dia_agenda(uuid, integer) TO authenticated;',
+    );
+  });
+
+  test('el mail pide el alcance propio en el top 3 y en la agenda', () => {
+    expect((fn.match(/p_solo_propio: true/g) || []).length).toBe(2);
+    expect(digestSpec).toContain('p_solo_propio: true');
   });
 });

@@ -11,9 +11,12 @@
 //    la función DEBE estar en NO_VERIFY de deploy.yml.
 //  · Un destinatario por AGENTE ACTIVO (agents.status='activo', sin borrar)
 //    con profile activo y email (profile.email, fallback agents.email).
-//  · El top 3 NO se recalcula acá: se llama a la RPC `mi_dia(p_user_id)`,
-//    la MISMA que abre el botón del CRM. Si mañana cambia la urgencia,
-//    el mail cambia solo (cero duplicación de reglas de negocio).
+//  · El top 3 NO se recalcula acá: se llama a la RPC `mi_dia(p_user_id,
+//    p_solo_propio => true)`, la MISMA que abre el botón del CRM. Si mañana
+//    cambia la urgencia, el mail cambia solo (cero duplicación de reglas).
+//    ⚠️ `p_solo_propio` es obligatorio en el mail: ambos agentes activos son
+//    super_admin y mi_dia da visión global a ese rol → sin él recibían el
+//    MISMO resumen (el de Helmut). El CRM sigue llamando sin el parámetro.
 //  · Dedupe por día en `crm_envios` (origen='agent_daily_digest', estado
 //    'enviado', agente_id, fecha ART). Un fallo SÍ se reintenta el mismo día;
 //    un 'enviado' no se duplica. `force:true` (con secret) permite reenviar.
@@ -240,8 +243,8 @@ function buildContent(
         </td></tr>`;
   }
 
-  /* Agenda: la trae mi_dia_agenda (mismo alcance por rol que mi_dia). Si no
-     hay nada, se dice en claro: un bloque vacío parece un bug del cron. */
+  /* Agenda: la trae mi_dia_agenda con el MISMO alcance "solo propio" que el
+     top 3. Si no hay nada, se dice en claro: un bloque vacío parece un bug. */
   const agendaItems: AgendaItem[] = [
     ...(Array.isArray(agenda.visitas) ? agenda.visitas : []),
     ...(Array.isArray(agenda.tareas) ? agenda.tareas : []),
@@ -417,7 +420,10 @@ Deno.serve(async (req: Request) => {
 
       let payload: MiDiaPayload;
       try {
-        const { data, error } = await supabase.rpc('mi_dia', { p_user_id: perfil.id });
+        const { data, error } = await supabase.rpc('mi_dia', {
+          p_user_id: perfil.id,
+          p_solo_propio: true,
+        });
         if (error) throw new Error(error.message);
         payload = (data || {}) as MiDiaPayload;
         if (payload.error) throw new Error(String(payload.error));
@@ -455,6 +461,7 @@ Deno.serve(async (req: Request) => {
         const { data: agendaData, error: agendaErr } = await supabase.rpc('mi_dia_agenda', {
           p_user_id: perfil.id,
           p_dias: 3,
+          p_solo_propio: true,
         });
         if (agendaErr) throw new Error(agendaErr.message);
         agenda = (agendaData || {}) as AgendaPayload;

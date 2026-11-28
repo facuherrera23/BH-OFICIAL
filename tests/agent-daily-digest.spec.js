@@ -73,7 +73,10 @@ test.describe('Resumen diario para agentes — Mi día por email', () => {
   });
 
   test('el top 3 NO se reimplementa: se usa la RPC mi_dia con el profile del agente', () => {
-    expect(fn).toContain("supabase.rpc('mi_dia', { p_user_id: perfil.id })");
+    // Normalizar whitespace: la llamada está en varias líneas para leer mejor.
+    expect(fn.replace(/\s+/g, ' ')).toContain(
+      "supabase.rpc('mi_dia', { p_user_id: perfil.id, p_solo_propio: true, })",
+    );
     // Las 5 categorías viven SOLO en la RPC; si se copiaran acá divergirían.
     expect(fn).not.toContain("'tipo', 'visita'");
     expect(fn).not.toContain("'tipo', 'seguimiento'");
@@ -132,5 +135,29 @@ test.describe('Resumen diario para agentes — Mi día por email', () => {
     expect(fn).toContain('agenda = {};'); // degradación: sin agenda, con top 3 igual
     expect(fn).toContain('Agenda · próximos 3 días');
     expect(fn).toContain('agendaConteos'); // traza en crm_envios/dry_run
+  });
+
+  test('el resumen es POR AGENTE: p_solo_propio en las dos RPCs; el CRM no cambia', () => {
+    // Bug real 28/11: ambos agentes activos son super_admin → mi_dia daba
+    // visión global y los dos mails eran idénticos (el top 3 de Helmut).
+    expect((fn.match(/p_solo_propio: true/g) || []).length).toBe(2);
+    const dia = fn.indexOf("supabase.rpc('mi_dia',");
+    expect(fn.slice(dia, dia + 180)).toContain('p_solo_propio: true');
+    const agendaRpc = fn.indexOf("supabase.rpc('mi_dia_agenda',");
+    expect(fn.slice(agendaRpc, agendaRpc + 200)).toContain('p_solo_propio: true');
+
+    const migracion = read('supabase/migrations/20261128000008_mi_dia_solo_propio.sql');
+    const sql = migracion.replace(/--.*$/gm, ''); // los comentarios también lo mencionan
+    // CREATE OR REPLACE con otra aridad CREA UNA SOBRECARGA: hay que dropear.
+    expect(sql).toContain('DROP FUNCTION IF EXISTS public.mi_dia(uuid)');
+    expect(sql).toContain('DROP FUNCTION IF EXISTS public.mi_dia_agenda(uuid, integer)');
+    // Default false = el panel sigue viendo todo sin pasar el parámetro.
+    expect((sql.match(/p_solo_propio boolean DEFAULT false/g) || []).length).toBe(2);
+    expect(sql).toContain(
+      'GRANT EXECUTE ON FUNCTION public.mi_dia(uuid, boolean) TO authenticated, service_role;',
+    );
+    expect(migracion).toContain(
+      'GRANT EXECUTE ON FUNCTION public.mi_dia_agenda(uuid, integer, boolean) TO service_role;',
+    );
   });
 });

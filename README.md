@@ -803,14 +803,18 @@ historial, y agrega `timeout_milliseconds := 30000` porque el default de 5 s de
 pg_net ya dio timeouts de DNS en este proyecto. Verificado en producción: sin
 secret → 401; con `dry_run:true` → 2 agentes, top 3 real y `crm_envios` en 0;
 con el cron activo → 1 envío por agente/día y el segundo disparo omitido por
-dedupe. ⚠️ `mi_dia` da alcance global a `super_admin`/`broker`: los dos agentes
-activos tienen ese rol, por eso sus resúmenes son idénticos (comportamiento de
-la RPC, no de este módulo). **Desde el 28/11 el mail lleva además un bloque
+dedupe. ⚠️ `mi_dia` da alcance global a `super_admin`/`broker` y los dos agentes
+activos tienen ese rol: sin más, los dos mails eran idénticos (el de Helmut).
+**Corregido el 28/11**: ambas RPCs aceptan `p_solo_propio boolean DEFAULT false`
+(migración `20261128000008`) y el mail las llama en `true` → cada agente ve SOLO
+lo suyo (conteos verificados: Danilo 20 propio vs 34 global, Helmut 14 propio vs
+34 global). El CRM sigue llamando sin el parámetro: su visión global no cambió.
+**Desde el 28/11 el mail lleva además un bloque
 "Agenda · próximos 3 días"**: visitas (`pendiente`/`confirmada`) y tareas
-(`pendiente`/`en_progreso`, lead no terminal) calculadas por la RPC nueva
-`mi_dia_agenda(p_user_id, p_dias)` — mismo alcance por rol que `mi_dia`, top 10
-por familia + conteo REAL completo, ventana en ART (sólo `service_role` la
-invoca: `20261128000007` revocó el EXECUTE heredado por `authenticated`). Si la RPC falla, el bloque
+(`pendiente`/`en_progreso`, lead no terminal) calculadas por
+`mi_dia_agenda(p_user_id, p_dias, p_solo_propio)` — mismo alcance que el top 3,
+top 10 por familia + conteo REAL completo, ventana en ART (sólo `service_role`
+la invoca: `20261128000007` revocó el EXECUTE heredado por `authenticated`). Si la RPC falla, el bloque
 se degrada y el top 3 sigue llegando (ver `tests/cron-health.spec.js`).
 
 **Guardián de crons y secretos en runtime (28/11/2026).** El cron de retención
