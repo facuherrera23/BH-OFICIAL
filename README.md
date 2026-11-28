@@ -805,7 +805,32 @@ secret → 401; con `dry_run:true` → 2 agentes, top 3 real y `crm_envios` en 0
 con el cron activo → 1 envío por agente/día y el segundo disparo omitido por
 dedupe. ⚠️ `mi_dia` da alcance global a `super_admin`/`broker`: los dos agentes
 activos tienen ese rol, por eso sus resúmenes son idénticos (comportamiento de
-la RPC, no de este módulo).
+la RPC, no de este módulo). **Desde el 28/11 el mail lleva además un bloque
+"Agenda · próximos 3 días"**: visitas (`pendiente`/`confirmada`) y tareas
+(`pendiente`/`en_progreso`, lead no terminal) calculadas por la RPC nueva
+`mi_dia_agenda(p_user_id, p_dias)` — mismo alcance por rol que `mi_dia`, top 10
+por familia + conteo REAL completo, ventana en ART (sólo `service_role` la
+invoca: `20261128000007` revocó el EXECUTE heredado por `authenticated`). Si la RPC falla, el bloque
+se degrada y el top 3 sigue llegando (ver `tests/cron-health.spec.js`).
+
+**Guardián de crons y secretos en runtime (28/11/2026).** El cron de retención
+(jobid 36) falló 27 veces entre el 23 y el 28/11 con
+`function ... is not unique` y `pg_cron` seguía reportando `1 row`: nadie lo vio. La RPC
+`bh_check_cron_health(p_ventana_minutos)` (SECURITY DEFINER, `search_path=''`,
+solo `service_role`) lee `cron.job_run_details`, abre **una** alerta
+`cron_failed` (severidad `high`, módulo `supervision`) por `jobname` con el
+`return_message` real en `evidence` — `supervision_alerts` NO tiene `metadata`
+NI `updated_at` — y la auto-resuelve cuando el último run es `succeeded`.
+El cron `bh-cron-health-15min` corre cada 15 min (`20261128000004`). Probado en
+producción contra los 3 fallos reales del jobid 36: creó la alerta y la cerró en
+la misma corrida. Además, los jobs 25 (`zernio-sync-every-2-min`) y 26
+(`backup-snapshot-daily`) tenían el `x-sync-secret` **en claro** en
+`cron.job.command`: `cron.alter_job` (`20261128000005`) los cambió para leerlo en
+runtime de `zernio_config(key='sync_secret')`, conservando jobids/historial y
+sumando `timeout_milliseconds := 30000`. El jobid 1 (`ml-sync-every-5-min`) NO
+se tocó: usa `vault.decrypted_secrets(name='ml_sync_secret')`, un secret
+distinto (576 corridas `succeeded` en 48 h). Las filas viejas de
+`cron.job_run_details` con el literal no se borraron sin OK del dueño.
 
 **Correcciones de datos autorizadas (27/11/2026).** `agents.email` de Facundo
 corregido a `hfacundo45@gmail.com`. El reparto automático ya no tenía huérfanos

@@ -5,7 +5,9 @@
 // además las reglas de negocio críticas:
 //   · el top 3 NO se reimplementa: se llama a la RPC `mi_dia`;
 //   · dedupe por día en crm_envios (un fallo se reintenta, un OK no se repite);
-//   · `dry_run` NO envía correos (es el camino de verificación en producción).
+//   · `dry_run` NO envía correos (es el camino de verificación en producción);
+//   · la agenda de los próximos 3 días la calcula `mi_dia_agenda`, NO se
+//     reimplementan sus filtros acá (watcher en tests/cron-health.spec.js).
 const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
@@ -122,5 +124,13 @@ test.describe('Resumen diario para agentes — Mi día por email', () => {
     expect(fn).toContain('esc(it.nombre');
     expect(fn).toContain('href="tel:${esc(telLink)}"');
     expect(fn).toContain('api.brevo.com/v3/smtp/email');
+  });
+
+  test('el bloque de agenda viene de mi_dia_agenda y no frena el resumen', () => {
+    expect(fn).toContain("supabase.rpc('mi_dia_agenda'");
+    expect(fn).toContain('p_dias: 3');
+    expect(fn).toContain('agenda = {};'); // degradación: sin agenda, con top 3 igual
+    expect(fn).toContain('Agenda · próximos 3 días');
+    expect(fn).toContain('agendaConteos'); // traza en crm_envios/dry_run
   });
 });

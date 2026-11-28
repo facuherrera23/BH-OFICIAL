@@ -52,6 +52,25 @@ interface MiDiaPayload {
   total?: number;
 }
 
+/** Agenda de los próximos días: la calcula la RPC, NO se reimplementa acá. */
+interface AgendaItem {
+  tipo?: string;
+  fecha?: unknown;
+  nombre?: string | null;
+  telefono?: string | null;
+  titulo?: string;
+  detalle?: string;
+}
+
+interface AgendaPayload {
+  ok?: boolean;
+  error?: string;
+  visitas?: AgendaItem[];
+  tareas?: AgendaItem[];
+  conteos?: Record<string, number>;
+  dias?: number;
+}
+
 interface Agente {
   id: string;
   full_name: string;
@@ -174,7 +193,13 @@ const CONTEO_LBL: Record<string, string> = {
   sin_contacto: 'sin contacto',
 };
 
-function buildContent(payload: MiDiaPayload, nombre: string, fecha: string, url: string) {
+function buildContent(
+  payload: MiDiaPayload,
+  agenda: AgendaPayload,
+  nombre: string,
+  fecha: string,
+  url: string,
+) {
   const items = Array.isArray(payload.items) ? payload.items : [];
   const conteos = payload.conteos || {};
   const total = Number(payload.total ?? items.length ?? 0);
@@ -215,6 +240,26 @@ function buildContent(payload: MiDiaPayload, nombre: string, fecha: string, url:
         </td></tr>`;
   }
 
+  /* Agenda: la trae mi_dia_agenda (mismo alcance por rol que mi_dia). Si no
+     hay nada, se dice en claro: un bloque vacío parece un bug del cron. */
+  const agendaItems: AgendaItem[] = [
+    ...(Array.isArray(agenda.visitas) ? agenda.visitas : []),
+    ...(Array.isArray(agenda.tareas) ? agenda.tareas : []),
+  ];
+  const agendaHtml = agendaItems.length
+    ? agendaItems
+        .map((a) => {
+          const when = fmtFecha(a.fecha);
+          return `
+        <div style="padding:8px 0;border-bottom:1px solid #f1f1f1;">
+          <div style="font-size:13px;font-weight:700;color:#222;">${esc(a.titulo || a.tipo || 'Pendiente')}</div>
+          ${a.nombre ? `<div style="margin-top:2px;font-size:12px;color:#555;">${esc(a.nombre)}</div>` : ''}
+          ${a.detalle || when ? `<div style="margin-top:2px;font-size:11px;color:#888;">${esc([when, a.detalle].filter(Boolean).join(' · '))}</div>` : ''}
+        </div>`;
+        })
+        .join('')
+    : '<div style="padding:8px 0;font-size:12px;color:#777;">Sin visitas ni tareas en los próximos 3 días.</div>';
+
   const html = `
 <!DOCTYPE html>
 <html>
@@ -234,6 +279,10 @@ function buildContent(payload: MiDiaPayload, nombre: string, fecha: string, url:
       <p style="margin:18px 0 0;font-size:12px;color:#777;">
         <strong>Pendiente además:</strong> ${esc(resumen)}.
       </p>
+      <div style="margin-top:18px;border-top:1px solid #eee;padding-top:14px;">
+        <div style="font-size:13px;font-weight:800;color:#111;margin-bottom:4px;">Agenda · próximos 3 días</div>
+        ${agendaHtml}
+      </div>
     </div>
     <div style="padding:22px 24px 28px;text-align:center;">
       <a href="${esc(url)}" style="display:inline-block;background:#1FC8C3;color:#062b2a;padding:13px 26px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;">Abrir el CRM</a>
@@ -256,7 +305,16 @@ function buildContent(payload: MiDiaPayload, nombre: string, fecha: string, url:
       })
     : ['Todo al día: no hay acciones urgentes para hoy.'];
 
-  const text = `BIENENHAUS CRM — Tu día de hoy\n${'='.repeat(36)}\n${fecha} · ${nombre || 'Agente'}\n\n${textLines.join('\n')}\n\nPendiente además: ${resumen}.\n\nAbrir el CRM: ${url}\n\n---\nResumen automático de "Mi día" · Bienenhaus Propiedades\n`;
+  const agendaTexto = agendaItems.length
+    ? `\n\nAgenda · próximos 3 días:\n${agendaItems
+        .map((a) => {
+          const when = fmtFecha(a.fecha);
+          return `- ${a.titulo || a.tipo || 'Pendiente'}${a.nombre ? ` — ${a.nombre}` : ''}${when ? ` (${when})` : ''}${a.detalle ? ` · ${a.detalle}` : ''}`;
+        })
+        .join('\n')}`
+    : '\n\nAgenda · próximos 3 días: sin visitas ni tareas.';
+
+  const text = `BIENENHAUS CRM — Tu día de hoy\n${'='.repeat(36)}\n${fecha} · ${nombre || 'Agente'}\n\n${textLines.join('\n')}\n\nPendiente además: ${resumen}.${agendaTexto}\n\nAbrir el CRM: ${url}\n\n---\nResumen automático de "Mi día" · Bienenhaus Propiedades\n`;
 
   const subject = `${items.length || 0} acción${items.length === 1 ? '' : 'es'} · ${total} pendiente${total === 1 ? '' : 's'}`;
   return { html, text, subject };
@@ -388,8 +446,28 @@ Deno.serve(async (req: Request) => {
       const conteos = payload.conteos || {};
       const total = Number(payload.total ?? items.length ?? 0);
       const nombre = String(payload.agente || ag.full_name || 'Agente');
-      const { html, text, subject: resumenSubject } = buildContent(payload, nombre, fecha, config.dashboard_url || '');
+
+      /* La agenda (visitas + tareas de los próximos 3 días) la calcula la RPC:
+         acá no se reimplementan filtros ni reglas de visibilidad. Un fallo de
+         la RPC degrada el bloque, NUNCA frena el top 3 (ya verificado en prod). */
+      let agenda: AgendaPayload = {};
+      try {
+        const { data: agendaData, error: agendaErr } = await supabase.rpc('mi_dia_agenda', {
+          p_user_id: perfil.id,
+          p_dias: 3,
+        });
+        if (agendaErr) throw new Error(agendaErr.message);
+        agenda = (agendaData || {}) as AgendaPayload;
+        if (agenda.error) throw new Error(String(agenda.error));
+      } catch (err) {
+        const msg = (err as Error).message || String(err);
+        console.error(`agent-daily-digest: mi_dia_agenda falló para ${ag.full_name}`, msg);
+        agenda = {};
+      }
+
+      const { html, text, subject: resumenSubject } = buildContent(payload, agenda, nombre, fecha, config.dashboard_url || '');
       const subject = `[Bienenhaus CRM] Tu día ${fecha} — ${resumenSubject}`;
+      const agendaConteos = agenda.conteos || {};
 
       if (dryRun) {
         detalle.push({
@@ -398,6 +476,7 @@ Deno.serve(async (req: Request) => {
           items: items.map((it) => ({ tipo: it.tipo, titulo: it.titulo, lead_id: it.lead_id })),
           conteos,
           total,
+          agenda: agendaConteos,
           modo: 'dry_run (sin envío)',
         });
         continue;
@@ -418,6 +497,7 @@ Deno.serve(async (req: Request) => {
           total,
           conteos,
           items: items.map((it) => ({ tipo: it.tipo, titulo: it.titulo, lead_id: it.lead_id })),
+          agenda: agendaConteos,
           message_id: resultado.messageId || null,
         },
       });
