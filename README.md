@@ -817,6 +817,37 @@ top 10 por familia + conteo REAL completo, ventana en ART (sólo `service_role`
 la invoca: `20261128000007` revocó el EXECUTE heredado por `authenticated`). Si la RPC falla, el bloque
 se degrada y el top 3 sigue llegando (ver `tests/cron-health.spec.js`).
 
+**Operación diaria accionable (28/11/2026).** Cuatro mejoras aprobadas por el
+dueño, con el mismo criterio de "no reimplementar flujos":
+
+1. **"Mi día" en el Dashboard** (`#dashMiDiaPanel`): reutiliza la RPC `mi_dia` y
+   las acciones del overlay del CRM, pero con `p_solo_propio=true` para que cada
+   agente vea SOLO lo suyo (el overlay de la bandeja sigue siendo global). Se
+   monta **fuera del `try` general** de `loadDashboard()` para que un fallo de
+   otra query no lo oculte; "Ver bandeja completa" delega en `BH_CRM.openMiDia()`.
+2. **Motivo de pérdida obligatorio**: el Dashboard dejó de ocultar los leads
+   `cerrado_perdido` sin `lost_reason` (35 en producción) y muestra "Sin motivo"
+   con acción directa; el panel lateral lo pide al guardar un lead ya perdido.
+   Reutiliza `showLostReasonModal` + `setLostReason` del CRM; sin trigger ni
+   constraint nuevos en DB.
+3. **Reparto con vista previa**: `repartir_leads_sin_agente(p_dry_run boolean
+   DEFAULT false)` (migración `20261128000009`) simula la carga por agente y
+   devuelve `detalle` sin escribir; el botón muestra el reparto propuesto y
+   recién tras confirmar ejecuta. El cron `lead-reparto-daily` (jobid 42) sigue
+   llamando sin argumentos (`dry_run=false`). Verificado en producción con
+   transacción + `ROLLBACK`: 1 asignado simulado, 0 escrituras persistentes.
+4. **Alertas → tareas**: "Convertir en tarea" (Supervisión) crea la tarea en
+   `lead_tasks` con lead/agente/vencimiento tomados de `evidence`, la marca
+   `[alert:<id>]` en `description` evita duplicados y la alerta pasa a
+   `assigned` con traza en `notes`. "Reconocer/Resolver" dejó de escribir
+   `updated_at` (columna inexistente en `supervision_alerts`) y usa
+   `acknowledged_at` / `resolved_at` / `dismissed_at` reales.
+
+Guards: `tests/operacion-diaria.spec.js`, `tests/reparto-leads.spec.js` y
+`tests/mi-dia.spec.js`. Tras la migración 09 el advisor sigue en baseline:
+**anon-SECDEF 16 / `search_path_mutable` 0 / RLS sin policy 19**, con EXECUTE
+de la RPC para `authenticated`/`service_role` y no para `anon`.
+
 **Guardián de crons y secretos en runtime (28/11/2026).** El cron de retención
 (jobid 36) falló 27 veces entre el 23 y el 28/11 con
 `function ... is not unique` y `pg_cron` seguía reportando `1 row`: nadie lo vio. La RPC
