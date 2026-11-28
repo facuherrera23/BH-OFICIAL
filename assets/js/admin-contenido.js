@@ -3989,7 +3989,9 @@
           .update({ status: 'failed', error: 'Subida interrumpida (el navegador se cerró antes de terminar).' })
           .in('id', idsAFallar);
       }
-      for (const z of zombis || []) {
+      /* Sólo los que SIGUEN sin video: reconsultar los ya vinculados gastaba
+         llamadas al Studio y duplicaba el toast en el historial. */
+      for (const z of aunZombis.data || []) {
         const ya = await reconcileUpload(z.id);
         if (ya) {
           showToast('El video ya estaba en YouTube: lo vinculamos en vez de marcarlo fallido.', 'success');

@@ -126,9 +126,10 @@ test.describe('reconciliación de subidas — navegador', () => {
     await page.click('#contenidoSubTabs button[data-sub="history"]');
     await expect(page.locator('[data-yt-reconcile]')).toHaveCount(1);
     await page.locator('[data-yt-reconcile]').click();
-    await expect.poll(() => h.calls.reconcile_upload).toBeGreaterThan(0);
-    const toasts = await page.evaluate(() => window.__TOASTS.join(' | '));
-    expect(toasts).toContain('Video vinculado');
+    /* El sweep del historial ya puede haber llamado a reconcile_upload: esperar
+       por el CONTADOR daba un falso positivo (el toast del botón llegaba después). */
+    await expect.poll(async () => page.evaluate(() => window.__TOASTS.join(' | '))).toContain('Video vinculado');
+    expect(h.calls.reconcile_upload).toBeGreaterThan(0);
     expect(h.calls.init).toBe(0);
   });
 
@@ -136,10 +137,9 @@ test.describe('reconciliación de subidas — navegador', () => {
     const h = await boot(page, { posts: [FALLIDO], reconcileResult: VIDEO_EN_CANAL });
     await page.click('#contenidoSubTabs button[data-sub="history"]');
     await page.locator('[data-contenido-retry]').click();
-    await expect.poll(() => h.calls.reconcile_upload).toBeGreaterThan(0);
+    await expect.poll(async () => page.evaluate(() => window.__TOASTS.join(' | '))).toContain('No hace falta volver a subirlo');
+    expect(h.calls.reconcile_upload).toBeGreaterThan(0);
     expect(h.calls.init).toBe(0);
-    const toasts = await page.evaluate(() => window.__TOASTS.join(' | '));
-    expect(toasts).toContain('No hace falta volver a subirlo');
   });
 
   test('la sesión resumable sobrevive a recargar la página', async ({ page }) => {
