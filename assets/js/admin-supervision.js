@@ -241,19 +241,73 @@
     return res.data || [];
   }
 
-  async function updateAlertStatus(id, newStatus) {
+  /* FIX 28/11/2026: `supervision_alerts` NO tiene `updated_at` (columnas
+     reales: acknowledged_at / resolved_at / dismissed_at). Escribirla hacía
+     que "Reconocer" y "Resolver" fallaran con error de PostgREST en silencio. */
+  async function currentUid() {
     var fn = window.supabaseClient && window.supabaseClient.auth && window.supabaseClient.auth.getSession
       ? function() { return window.supabaseClient.auth.getSession(); } : null;
-    var uid = null;
-    if (fn) {
-      try { var s = await fn(); uid = s && s.data && s.data.session && s.data.session.user ? s.data.session.user.id : null; } catch (_) {}
-    }
-    var patch = { status: newStatus, updated_at: new Date().toISOString() };
-    if (newStatus === 'acknowledged') patch.acknowledged_by = uid;
-    if (newStatus === 'resolved') patch.resolved_by = uid;
-    if (newStatus === 'dismissed') patch.dismissed_by = uid;
+    if (!fn) return null;
+    try {
+      var s = await fn();
+      return s && s.data && s.data.session && s.data.session.user ? s.data.session.user.id : null;
+    } catch (_) { return null; }
+  }
+
+  async function updateAlertStatus(id, newStatus) {
+    var uid = await currentUid();
+    var patch = { status: newStatus };
+    var now = new Date().toISOString();
+    if (newStatus === 'acknowledged') { patch.acknowledged_by = uid; patch.acknowledged_at = now; }
+    if (newStatus === 'resolved') { patch.resolved_by = uid; patch.resolved_at = now; }
+    if (newStatus === 'dismissed') { patch.dismissed_by = uid; patch.dismissed_at = now; }
     var res = await db().from('supervision_alerts').update(patch).eq('id', id);
     if (res.error) throw res.error;
+  }
+
+  /* 28/11/2026 — Convertir una alerta en tarea accionable. Las alertas
+     `lead_followup_overdue` traen en `evidence` el lead, el agente y la fecha
+     de vencimiento: se trasladan a `lead_tasks` (misma tabla que usa el CRM).
+     El ID de la alerta queda como marca en `description` para no duplicar
+     aunque el usuario haga doble clic antes de que recargue la lista. */
+  async function alertToTask(alert) {
+    var ev = (alert && alert.evidence && typeof alert.evidence === 'object') ? alert.evidence : {};
+    var leadId = ev.lead_id || null;
+    if (!leadId) throw new Error('Esta alerta no tiene un lead asociado.');
+    var marca = '[alert:' + alert.id + ']';
+    var prev = await db().from('lead_tasks').select('id').eq('lead_id', leadId).like('description', '%' + marca + '%').limit(1);
+    if (prev.error) throw prev.error;
+    if (prev.data && prev.data.length) return prev.data[0].id;
+
+    var due = ev.due_at && !isNaN(Date.parse(ev.due_at)) ? new Date(ev.due_at).toISOString() : null;
+    var uid = await currentUid();
+    var ins = await db().from('lead_tasks').insert([{
+      lead_id: leadId,
+      title: (alert.title || 'Seguimiento pendiente').substring(0, 180),
+      description: (marca + ' ' + (alert.description || 'Tarea creada desde una alerta de supervisión.')).substring(0, 2000),
+      status: 'pendiente',
+      priority: alert.severity === 'critical' || alert.severity === 'high' ? 'alta' : 'media',
+      type: 'contact',
+      due_at: due,
+      assigned_to: ev.assigned_to || null,
+      created_by: uid
+    }]).select('id');
+    if (ins.error) throw ins.error;
+    var taskId = ins.data && ins.data[0] && ins.data[0].id;
+
+    /* La alerta pasa a "assigned" deja de pedir atención en el listado de
+       abiertas, sin borrar su historial. best-effort: si esto falla, la tarea
+       ya quedó creada y el dedup evita duplicarla. */
+    try {
+      await db().from('supervision_alerts').update({
+        status: 'assigned',
+        assigned_to: ev.assigned_to || null,
+        assigned_by: uid,
+        assigned_at: new Date().toISOString(),
+        notes: 'Convertida en tarea ' + (taskId || '')
+      }).eq('id', alert.id);
+    } catch (_) { /* la tarea es lo importante */ }
+    return taskId || true;
   }
 
   async function fetchEntityHistory(entityLabel) {
@@ -913,9 +967,12 @@
     return (Date.now() - t) < ALERT_NUEVA_HORAS * 3600000;
   }
 
+  var _alertsCache = [];
+
   function renderAlerts(alerts) {
     var el = $('supAlertsList');
     if (!el) return;
+    _alertsCache = alerts || [];
     var nuevas = (alerts || []).filter(esAlertaNueva).length;
     var chip = $('supAlertsNewChip');
     if (chip) {
@@ -968,6 +1025,7 @@
           (a.status === 'open' ? '<div style="display:flex; gap:8px; flex-shrink:0;">' +
             '<button type="button" class="status-pill active sup-alert-act" data-aid="' + esc(a.id) + '" data-act="acknowledged" style="padding:6px 12px; font-size:11px; cursor:pointer;"><i class="fas fa-check"></i> Reconocer</button>' +
             '<button type="button" class="status-pill pending sup-alert-act" data-aid="' + esc(a.id) + '" data-act="resolved" style="padding:6px 12px; font-size:11px; cursor:pointer;"><i class="fas fa-check-double"></i> Resolver</button>' +
+            (a.evidence && a.evidence.lead_id ? '<button type="button" class="status-pill sup-alert-task" data-aid="' + esc(a.id) + '" style="padding:6px 12px; font-size:11px; cursor:pointer;" title="Crea una tarea en el CRM con el lead, el agente y el vencimiento de la alerta"><i class="fas fa-list-check"></i> Convertir en tarea</button>' : '') +
           '</div>' : '<span style="font-size:11px; color:' + meta.color + '; font-weight:600; text-transform:uppercase;">' + esc(a.status) + '</span>') +
         '</div></div>';
     }).join('');
@@ -1708,6 +1766,25 @@
         });
         return;
       }
+      var taskBtn = ev.target.closest('.sup-alert-task');
+      if (taskBtn) {
+        var alerta = _alertsCache.filter(function(a) { return a.id === taskBtn.getAttribute('data-aid'); })[0];
+        if (!alerta) return;
+        taskBtn.disabled = true;
+        taskBtn.style.opacity = '0.5';
+        alertToTask(alerta).then(function() {
+          if (window.__BH && window.__BH.showToast) window.__BH.showToast('Tarea creada en el CRM desde la alerta.', 'success');
+          loadAlerts();
+          refreshAlertsBadge();
+          if (window.BH_CRM && window.BH_CRM.refresh) window.BH_CRM.refresh();
+        }).catch(function(err) {
+          console.error('[sup] alertToTask:', err);
+          if (window.__BH && window.__BH.showToast) window.__BH.showToast('No se pudo crear la tarea: ' + err.message, 'error');
+          taskBtn.disabled = false;
+          taskBtn.style.opacity = '1';
+        });
+        return;
+      }
       var btn = ev.target.closest('.sup-alert-act');
       if (!btn) return;
       var aid = btn.getAttribute('data-aid');
@@ -1715,10 +1792,12 @@
       btn.disabled = true;
       btn.style.opacity = '0.5';
       updateAlertStatus(aid, act).then(function() {
+        if (window.__BH && window.__BH.showToast) window.__BH.showToast('Alerta actualizada.', 'success');
         loadAlerts();
         refreshAlertsBadge();
       }).catch(function(err) {
         console.error('[sup] updateAlert:', err);
+        if (window.__BH && window.__BH.showToast) window.__BH.showToast('No se pudo actualizar la alerta: ' + err.message, 'error');
         btn.disabled = false;
         btn.style.opacity = '1';
       });

@@ -25,6 +25,12 @@ const _numFormatter = new Intl.NumberFormat('es-AR');
      bandeja) la usan para "Ver agenda" sin depender de un data-action
      estático (el delegation de data-action sólo resuelve window.adminApp). */
   window.adminApp.navigateTo = function (section, opts) { return navigateTo(section, opts); };
+  /* 28/11: botón del panel "Mi día" del Dashboard → abre la bandeja completa
+     del CRM (visión global), que es la misma que abre el botón del sidebar. */
+  window.adminApp.openMiDiaPanel = function () {
+    if (window.BH_CRM && typeof window.BH_CRM.openMiDia === 'function') return window.BH_CRM.openMiDia();
+    return navigateTo('tab-leads');
+  };
 
   /* ------------------------------------------------
      DEBUG FLAG — false en producción, true solo en desarrollo
@@ -2182,6 +2188,7 @@ function esc(s) {
     const client = await getAuthedClient();
     if (!client) return;
     renderDashAlquileres(); /* Bloque 2.E + 2.D: independiente — no depende de las demás queries */
+    renderDashMiDia();      /* 28/11: cola accionable SOLO propia — fallo aislado del resto */
     try {
       const now = new Date();
       const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
@@ -2320,6 +2327,23 @@ function esc(s) {
     } catch (err) {
       logError('Alquileres KPIs:', err);
       body.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:8px 0;">No se pudieron cargar los KPIs de administración.</p>';
+    }
+  }
+
+  /* 28/11/2026 — "Mi día" en el Dashboard. No reimplementa las acciones:
+     delega en el CRM (BH_CRM.mountMiDiaPanel) y su RPC con p_solo_propio=true. */
+  async function renderDashMiDia() {
+    const body = $('#dashMiDiaBody');
+    if (!body) return;
+    try {
+      if (!window.BH_CRM || !window.BH_CRM.mountMiDiaPanel) {
+        body.innerHTML = '<p style="color:var(--text-dim); font-size:12px;">Mi día no disponible en este momento.</p>';
+        return;
+      }
+      await window.BH_CRM.mountMiDiaPanel(body, $('#dashMiDiaSub'));
+    } catch (err) {
+      logError('Dashboard Mi día:', err);
+      body.innerHTML = '<p style="color:var(--text-dim); font-size:12px;">No se pudo cargar Mi día.</p>';
     }
   }
 
@@ -2592,36 +2616,69 @@ function esc(s) {
     const client = await getAuthedClient();
     if (!client) return;
     try {
-      const res = await client.from('leads').select('lost_reason').eq('stage', 'cerrado_perdido').is('deleted_at', null).not('lost_reason', 'is', null);
-      if (res.error) throw res.error.error || res.error;
+      /* 28/11: antes había un .not('lost_reason','is',null) que ocultaba justo
+         el hueco. Ahora los "sin motivo" son una categoría visible y editable. */
+      const res = await client.from('leads').select('id, full_name, lost_reason').eq('stage', 'cerrado_perdido').is('deleted_at', null);
+      if (res.error) throw res.error;
       const rows = res.data || [];
       if (!rows.length) {
         el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Aún no hay razones registradas. Cuando marques un lead como perdido, elegí el motivo.</p>';
         return;
       }
 
-      /* Contar por razón */
       const counts = {};
-      rows.forEach(r => { counts[r.lost_reason] = (counts[r.lost_reason] || 0) + 1; });
+      rows.forEach(r => { const k = r.lost_reason || 'sin_motivo'; counts[k] = (counts[k] || 0) + 1; });
+      const sin = counts.sin_motivo || 0;
       const total = rows.length;
-      const LBL = { presupuesto: 'Presupuesto', ubicacion: 'Ubicación', encontro_otra: 'Encontró otra', no_responde: 'No responde', financiamiento: 'Financiamiento', timing: 'Timing', perdio_interes: 'Perdió interés', sin_propiedad: 'Sin propiedad adecuada', duplicado: 'Duplicado', otro: 'Otro' };
-      const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-      const maxCount = entries[0][1];
+      const LBL = { presupuesto: 'Presupuesto', ubicacion: 'Ubicación', encontro_otra: 'Encontró otra', no_responde: 'No responde', financiamiento: 'Financiamiento', timing: 'Timing', perdio_interes: 'Perdió interés', sin_propiedad: 'Sin propiedad adecuada', duplicado: 'Duplicado', otro: 'Otro', sin_motivo: 'Sin motivo' };
+      const entries = Object.entries(counts).sort((a, b) => {
+        if (a[0] === 'sin_motivo') return -1;
+        if (b[0] === 'sin_motivo') return 1;
+        return b[1] - a[1];
+      });
+      const maxCount = Math.max.apply(null, Object.values(counts));
+      const sinLeads = rows.filter(r => !r.lost_reason).slice(0, 6);
 
       el.innerHTML =
-        '<div style="margin-bottom:10px; font-size:11px; color:var(--text-dim);">' + total + ' lead' + (total === 1 ? '' : 's') + ' perdido' + (total === 1 ? '' : 's') + ' con razón registrada</div>' +
+        '<div style="margin-bottom:10px; font-size:11px; color:var(--text-dim);">' + total + ' lead' + (total === 1 ? '' : 's') + ' perdido' + (total === 1 ? '' : 's') +
+          (sin ? ' · <strong style="color:#FFB800;">' + sin + ' sin motivo</strong>' : '') + '</div>' +
         entries.map(([reason, count]) => {
           const pct = Math.round((count / maxCount) * 100);
           const lbl = LBL[reason] || reason;
+          const color = reason === 'sin_motivo' ? 'rgba(255,184,0,0.75)' : 'rgba(239,68,68,0.8)';
           return `
           <div style="display:flex; align-items:center; gap:8px; padding:6px 0;">
             <span style="width:90px; font-size:11px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0;">${esc(lbl)}</span>
             <div style="flex:1; height:6px; background:rgba(255,255,255,0.04); border-radius:3px; overflow:hidden;">
-              <div style="height:100%; background:linear-gradient(90deg, rgba(239,68,68,0.6), rgba(239,68,68,0.8)); border-radius:3px; width:${pct}%;"></div>
+              <div style="height:100%; background:${color}; border-radius:3px; width:${pct}%;"></div>
             </div>
             <span style="font-size:11px; color:var(--text-dim); width:24px; text-align:right; flex-shrink:0;">${count}</span>
           </div>`;
-        }).join('');
+        }).join('') +
+        (sin ? '<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border-subtle);">' +
+          '<div style="font-size:10.5px; color:var(--text-dim); margin-bottom:6px;">Completar motivo (usa el mismo modal del CRM):</div>' +
+          sinLeads.map(r => '<button type="button" class="status-pill" data-lost-fijar="' + esc(r.id) + '" style="cursor:pointer;margin:0 4px 4px 0;font-size:10.5px;"><i class="fas fa-circle-plus"></i> ' + esc(r.full_name || 'Lead sin nombre') + '</button>').join('') +
+          (sin > sinLeads.length ? '<span style="font-size:10.5px; color:var(--text-dim);"> y ' + (sin - sinLeads.length) + ' más en el CRM</span>' : '') +
+        '</div>' : '');
+
+      if (!el.dataset.lostBound) {
+        el.dataset.lostBound = '1';
+        el.addEventListener('click', async (e) => {
+          const btn = e.target.closest('[data-lost-fijar]');
+          if (!btn || !window.BH_CRM || !window.BH_CRM.showLostReasonModal) return;
+          const lost = await window.BH_CRM.showLostReasonModal();
+          if (!lost) return;
+          btn.disabled = true;
+          try {
+            await window.BH_CRM.setLostReason(btn.getAttribute('data-lost-fijar'), lost);
+            showToast('Motivo guardado: ' + lost.label, 'success');
+            await renderDashLostReasons();
+          } catch (err2) {
+            showToast('No se pudo guardar el motivo: ' + err2.message, 'error');
+            btn.disabled = false;
+          }
+        });
+      }
     } catch (err) {
       logError('renderDashLostReasons:', err);
       el.innerHTML = '<p style="color:var(--text-dim); font-size:12px; padding:16px 0;">Error al cargar.</p>';

@@ -69,10 +69,30 @@ test.describe('Reparto automático de leads sin agente', () => {
     // Y el job quedó activo en producción (verificado 2026-11-26).
   });
 
-  test('la bandeja ofrece el botón Repartir (con confirmación del panel)', () => {
+  test('vista previa: la firma nueva conserva el default y NO escribe (28/11)', () => {
+    const preview = read('supabase/migrations/20261128000009_reparto_dry_run.sql');
+    // El cron y cualquier llamador viejo siguen andando sin argumentos.
+    expect(preview).toContain('repartir_leads_sin_agente(p_dry_run boolean DEFAULT false)');
+    expect(preview).toContain('DROP FUNCTION IF EXISTS public.repartir_leads_sin_agente();');
+    expect(preview).toContain('SECURITY DEFINER');
+    expect(preview).toContain("SET search_path = ''");
+    // La rama preview simula carga en la tabla TEMP, nunca en las tablas reales.
+    expect(preview).toMatch(/IF v_es_preview THEN[\s\S]{0,300}UPDATE _reparto_carga/);
+    expect(preview).toContain("'dry_run', v_es_preview");
+    // Ni traza, ni auditoría, ni alerta cuando es vista previa.
+    expect(preview).toMatch(/IF NOT v_es_preview THEN[\s\S]{0,200}INSERT INTO public\.audit_log/);
+    expect(preview).toContain('IF NOT v_es_preview THEN\n      INSERT INTO public.supervision_alerts');
+    // Permisos intactos (anon ✗ / authenticated ✓ / service_role ✓).
+    expect(preview).toContain('REVOKE ALL ON FUNCTION public.repartir_leads_sin_agente(boolean) FROM PUBLIC, anon, authenticated');
+    expect(preview).toContain('GRANT EXECUTE ON FUNCTION public.repartir_leads_sin_agente(boolean) TO authenticated, service_role');
+  });
+
+  test('la bandeja ofrece el botón Repartir (con vista previa REAL)', () => {
     expect(crmSrc).toContain('data-bandeja-repartir');
     expect(crmSrc).toContain('async function bandejaRepartir(btn, body) {');
-    expect(crmSrc).toContain("db().rpc('repartir_leads_sin_agente')");
+    // 28/11: primero pregunta sin escribir y la confirmación dice cuántos y a quién.
+    expect(crmSrc).toContain("db().rpc('repartir_leads_sin_agente', { p_dry_run: true })");
+    expect(crmSrc).toContain("db().rpc('repartir_leads_sin_agente', { p_dry_run: false })");
     expect(crmSrc).toContain('window.__BH.showConfirmDialog');
     // Sin onclick inline (CSP) y con re-listado de la bandeja.
     expect(crmSrc).toContain("repartir.addEventListener('click'" === '' ? '' : "if (repartir) { bandejaRepartir(repartir, body); return; }");

@@ -88,7 +88,8 @@ test.describe('P1-8 — "Mi día" (las 3 acciones más urgentes)', () => {
     expect(htmlSrc).toContain('id="crmMiDiaBtn"');
     expect(htmlSrc).toContain('Mi día');
     expect(crmSrc).toContain('async function openMiDia() {');
-    expect(crmSrc).toContain("db().rpc('mi_dia')");
+    // 28/11: la bandeja sigue con visión global; el Dashboard pasa p_solo_propio.
+    expect(crmSrc).toContain("db().rpc('mi_dia', soloPropio ? { p_solo_propio: true } : {})");
     expect(crmSrc).toContain("miDiaBtn.addEventListener('click', openMiDia);");
     // Sólo en el modo leads (es la agenda del agente, no de los propietarios).
     expect(crmSrc).toContain("if (miDiaBtn) miDiaBtn.style.display = ownersMode ? 'none' : '';");

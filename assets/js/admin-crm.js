@@ -2797,23 +2797,35 @@ function bindSideSave(lead, panel) {
     if (!d.full_name) { toast('El nombre es obligatorio.', 'error'); return; }
     var stageChanged = d.stage && normalizeStage(d.stage) !== normalizeStage(originalStage);
     var lostDetailToSave = null;
+    var lostResult = null;
+
+    function cancelarPerdido() {
+      var stageSel = panel.querySelector('#crmDtlStatus');
+      if (stageSel) stageSel.value = normalizeStage(originalStage);
+      btn.disabled = false;
+      btn.textContent = 'Guardar cambios';
+    }
 
     /* Razón de pérdida obligatoria: si el nuevo estado es cerrado_perdido
        y no lo estaba antes, pedir la razón antes de guardar. */
     if (stageChanged && normalizeStage(d.stage) === 'cerrado_perdido' && normalizeStage(originalStage) !== 'cerrado_perdido') {
-      var lostResult = await showLostReasonModal();
-      if (!lostResult) {
-        /* Canceló el modal: revertir el dropdown al estado original */
-        var stageSel = panel.querySelector('#crmDtlStatus');
-        if (stageSel) stageSel.value = normalizeStage(originalStage);
-        btn.disabled = false;
-        btn.textContent = 'Guardar cambios';
-        return;
-      }
+      lostResult = await showLostReasonModal();
+      if (!lostResult) { cancelarPerdido(); return; }
       d.lost_reason = lostResult.reason;
       /* FIX 2026-10-26 (bug silencioso): el detalle escrito para "Otro" por
          esta vía se descartaba — nunca se persistía. Se guarda tras el update
          exitoso para no dejar nota huérfana si el guardado falla. */
+      lostDetailToSave = lostResult;
+      toast('Razón registrada: ' + lostResult.label, 'info');
+    }
+
+    /* 28/11/2026: un lead historial YA perdido pero sin motivo también lo
+       completa al guardar. Antes sólo se pedía si la etapa CAMBIABA, así que
+       editar cualquier otro campo de esos leads dejaba el hueco intacto. */
+    if (!lostResult && normalizeStage(d.stage) === 'cerrado_perdido' && !lead.lost_reason) {
+      lostResult = await showLostReasonModal();
+      if (!lostResult) { cancelarPerdido(); return; }
+      d.lost_reason = lostResult.reason;
       lostDetailToSave = lostResult;
       toast('Razón registrada: ' + lostResult.label, 'info');
     }
@@ -4041,17 +4053,41 @@ async function bandejaReactivar(btn) {
    con menos carga. La RPC gatea el rol (super_admin/broker); si no hay
    agentes activos abre una alerta de supervisión. */
 async function bandejaRepartir(btn, body) {
-  var ok = await (window.__BH && window.__BH.showConfirmDialog
-    ? window.__BH.showConfirmDialog({
-        title: '¿Repartir los leads sin agente?',
-        message: 'Cada lead sin dueño se asigna al agente activo con menos leads vivos (round-robin por carga). Queda la traza en el historial de cada lead.',
-        confirmText: 'Repartir'
-      })
-    : Promise.resolve(window.confirm('¿Repartir los leads sin agente entre los agentes activos?')));
-  if (!ok) return;
   btn.disabled = true;
   try {
-    var r = await db().rpc('repartir_leads_sin_agente');
+    /* Preview REAL (sin escribir nada): la confirmación dice cuántos leads
+       se van a mover y a qué agentes, no una promesa genérica. El cron sigue
+       llamando a la RPC sin argumentos (dry_run=false por default). */
+    var prev = await db().rpc('repartir_leads_sin_agente', { p_dry_run: true });
+    if (prev.error) throw new Error(prev.error.message);
+    var pv = prev.data || {};
+    if (pv.alerta) {
+      toast('No hay agentes activos: se abrió una alerta de supervisión.', 'error');
+      btn.disabled = false;
+      return;
+    }
+    var n = Number(pv.asignados || 0);
+    if (!n) {
+      toast('No hay leads sin agente para repartir.', 'info');
+      btn.disabled = false;
+      return;
+    }
+    var agentes = (pv.agentes || []).map(function(a) {
+      return (a.nombre || 'Agente') + ' (' + (a.leads_vivos || 0) + ' vivos)';
+    }).join(', ');
+    var mensaje = n + ' lead(s) sin dueño se asignan al agente activo con menos carga' +
+      (agentes ? ' — agentes: ' + agentes : '') +
+      '. Cada asignación queda en el historial del lead.';
+    var ok = await (window.__BH && window.__BH.showConfirmDialog
+      ? window.__BH.showConfirmDialog({
+          title: '¿Repartir ' + n + ' lead(s)?',
+          message: mensaje,
+          confirmText: 'Repartir'
+        })
+      : Promise.resolve(window.confirm(mensaje)));
+    if (!ok) { btn.disabled = false; return; }
+
+    var r = await db().rpc('repartir_leads_sin_agente', { p_dry_run: false });
     if (r.error) throw new Error(r.error.message);
     var d = r.data || {};
     if (d.alerta) { toast('No hay agentes activos: se abrió una alerta de supervisión.', 'error'); }
@@ -4142,23 +4178,30 @@ function miDiaConteosHtml(conteos) {
   return '<div class="crm-midia-conteos" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border-subtle);">' + html + '</div>';
 }
 
-async function miDiaRender(body, sub) {
+async function miDiaRender(body, sub, soloPropio) {
   try {
-    var r = await db().rpc('mi_dia');
+    /* p_solo_propio=true lo usa el Dashboard: la visión global de los
+       super_admin (ambos agentes lo son) no sirve para "qué hago YO".
+       El overlay de la bandeja sigue con el default global. */
+    var r = await db().rpc('mi_dia', soloPropio ? { p_solo_propio: true } : {});
     if (r.error) throw new Error(r.error.message);
     var d = r.data || {};
     if (d.error) throw new Error(d.error);
     var items = d.items || [];
     var total = Number(d.total || 0);
     if (sub) {
-      sub.innerHTML = d.agente
-        ? ('Hoy le toca a <strong style="color:var(--text-primary);">' + esc(d.agente) + '</strong>. ' + total + ' cosa(s) pendientes.')
-        : (total + ' cosa(s) pendientes en el equipo.');
+      var quien = soloPropio
+        ? 'Tus pendientes de hoy.'
+        : (d.agente
+          ? ('Hoy le toca a <strong style="color:var(--text-primary);">' + esc(d.agente) + '</strong>.')
+          : 'Pendientes del equipo.');
+      sub.innerHTML = quien + ' ' + total + ' cosa(s) pendientes.';
     }
     body.innerHTML = (items.length
       ? items.map(miDiaItemHtml).join('')
       : '<div style="font-size:12.5px;color:var(--text-secondary);padding:14px 0;"><i class="fas fa-circle-check" style="color:#4ade80;"></i> Nada urgente para hoy. ✔</div>') +
-      miDiaConteosHtml(d.conteos);
+      miDiaConteosHtml(d.conteos) +
+      '<div style="margin-top:10px;"><button type="button" class="status-pill" data-midia-refresh style="cursor:pointer;font-size:10.5px;"><i class="fas fa-rotate"></i> Actualizar</button></div>';
   } catch (err) {
     if (window.__BH && window.__BH.logError) window.__BH.logError('mi dia:', err);
     body.innerHTML = '<div style="color:var(--danger);font-size:12px;">No se pudo cargar Mi día: ' + esc(err.message) + '</div>';
@@ -4195,30 +4238,51 @@ async function openMiDia() {
 
   var body = overlay.querySelector('[data-midia-body]');
   var sub = overlay.querySelector('[data-midia-sub]');
+  bindMiDiaActions(body, { body: body, sub: sub, soloPropio: false, cerrar: cerrar });
+  await miDiaRender(body, sub, false);
+}
 
-  /* Delegación: un solo listener para todas las acciones de "Mi día". */
+/* Delegación ÚNICA de acciones: la usa el overlay y el panel del Dashboard.
+   Así las dos vistas comparten los mismos handlers (no hay flujos duplicados). */
+function bindMiDiaActions(body, ctx) {
+  if (!body || body.dataset.midiaBound) return;
+  body.dataset.midiaBound = '1';
   body.addEventListener('click', function (e) {
+    var refresh = e.target.closest('[data-midia-refresh]');
+    if (refresh) { refresh.disabled = true; miDiaRender(ctx.body, ctx.sub, ctx.soloPropio).then(function() { refresh.disabled = false; }); return; }
     var abrir = e.target.closest('[data-midia-abrir]');
-    if (abrir) { cerrar(); openDetailPanel(abrir.getAttribute('data-midia-abrir')); return; }
+    if (abrir) { if (ctx.cerrar) ctx.cerrar(); openDetailPanel(abrir.getAttribute('data-midia-abrir')); return; }
     var agenda = e.target.closest('[data-midia-agenda]');
     if (agenda) {
-      cerrar();
+      if (ctx.cerrar) ctx.cerrar();
       if (window.adminApp && window.adminApp.navigateTo) window.adminApp.navigateTo('tab-agenda');
       return;
     }
     var contactado = e.target.closest('[data-midia-contactado]');
-    if (contactado) { miDiaMarcarContactado(contactado, body, sub); return; }
+    if (contactado) { miDiaMarcarContactado(contactado, ctx.body, ctx.sub, ctx.soloPropio); return; }
     var tarea = e.target.closest('[data-midia-tarea]');
-    if (tarea) { miDiaCompletarTarea(tarea, body, sub); return; }
+    if (tarea) { miDiaCompletarTarea(tarea, ctx.body, ctx.sub, ctx.soloPropio); return; }
     var rea = e.target.closest('[data-midia-reactivar]');
-    if (rea) { miDiaReactivar(rea, body, sub); return; }
+    if (rea) { miDiaReactivar(rea, ctx.body, ctx.sub, ctx.soloPropio); return; }
   });
+}
 
-  await miDiaRender(body, sub);
+/* Panel embebido en el Dashboard: MISMA RPC y MISMAS acciones que la bandeja,
+   pero con p_solo_propio=true (el agente ve lo suyo, no la visión global). */
+async function mountMiDiaPanel(el, subExterno) {
+  if (!el || !db()) return;
+  var body = el.querySelector('[data-midia-body]');
+  var sub = subExterno || el.querySelector('[data-midia-sub]');
+  if (!body) {
+    el.innerHTML = '<div data-midia-body style="font-size:12px;">Cargando…</div>';
+    body = el.querySelector('[data-midia-body]');
+  }
+  bindMiDiaActions(body, { body: body, sub: sub, soloPropio: true, cerrar: null });
+  await miDiaRender(body, sub, true);
 }
 
 /* "Marcar contactado" (mismo punto único del CRM que usa la bandeja). */
-async function miDiaMarcarContactado(btn, body, sub) {
+async function miDiaMarcarContactado(btn, body, sub, soloPropio) {
   var leadId = btn.getAttribute('data-midia-contactado');
   var stage = btn.getAttribute('data-stage') || '';
   btn.disabled = true;
@@ -4234,7 +4298,7 @@ async function miDiaMarcarContactado(btn, body, sub) {
     toast('Lead marcado como contactado.', 'success');
     await loadLeads();
     pintarBadgeBandeja();
-    await miDiaRender(body, sub);
+    await miDiaRender(body, sub, soloPropio);
   } catch (e) {
     btn.disabled = false;
     toast('No se pudo marcar: ' + e.message, 'error');
@@ -4242,7 +4306,7 @@ async function miDiaMarcarContactado(btn, body, sub) {
 }
 
 /* "Completar" una tarea vencida. */
-async function miDiaCompletarTarea(btn, body, sub) {
+async function miDiaCompletarTarea(btn, body, sub, soloPropio) {
   var tareaId = btn.getAttribute('data-midia-tarea');
   var leadId = btn.getAttribute('data-lead');
   btn.disabled = true;
@@ -4258,7 +4322,7 @@ async function miDiaCompletarTarea(btn, body, sub) {
     toast('Tarea completada.', 'success');
     await loadLeads();
     pintarBadgeBandeja();
-    await miDiaRender(body, sub);
+    await miDiaRender(body, sub, soloPropio);
   } catch (e) {
     btn.disabled = false;
     toast('No se pudo completar: ' + e.message, 'error');
@@ -4266,7 +4330,7 @@ async function miDiaCompletarTarea(btn, body, sub) {
 }
 
 /* "Reactivar" un lead que volvió de "en espera". */
-async function miDiaReactivar(btn, body, sub) {
+async function miDiaReactivar(btn, body, sub, soloPropio) {
   var leadId = btn.getAttribute('data-midia-reactivar');
   btn.disabled = true;
   try {
@@ -4277,7 +4341,7 @@ async function miDiaReactivar(btn, body, sub) {
     toast('Lead reactivado: ' + (STATUS_LABELS[d.stage] || d.stage) + '.', 'success');
     await loadLeads();
     pintarBadgeBandeja();
-    await miDiaRender(body, sub);
+    await miDiaRender(body, sub, soloPropio);
   } catch (e) {
     btn.disabled = false;
     toast('No se pudo reactivar: ' + e.message, 'error');
@@ -4420,7 +4484,7 @@ async function openDuplicados() {
 /* markLeadContacted se publica porque admin-crm-tasks.js (que carga ANTES
    que este archivo) lo necesita al completar una tarea: es el punto único
    que registra contacto, cierra la tarea de SLA y recalcula el followup. */
-window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja, openDuplicados: openDuplicados, openConversion: openConversion, cerrarVisitaRapido: cerrarVisitaRapido, reprogramarVisitaRapido: reprogramarVisitaRapido, leadPasarAEspera: leadPasarAEspera, leadReactivar: leadReactivar, openMiDia: openMiDia, batchSetAgent: batchSetAgent, batchSetStage: batchSetStage, batchToEspera: batchToEspera, batchExportCsv: batchExportCsv, batchSelClear: batchSelClear };
+window.BH_CRM = { init: init, refresh: loadLeads, close: closeDetailPanel, open: openDetailPanel, refreshOwners: loadOwners, openOwners: openOwners, handleSubView: handleSubView, waNumber: waNumber, telNumber: telNumber, sendSurvey: sendSurveyForProperty, refreshTasksInPanel: refreshTasksInPanel, markLeadContacted: markLeadContacted, openBandeja: openBandeja, pintarBadgeBandeja: pintarBadgeBandeja, openDuplicados: openDuplicados, openConversion: openConversion, cerrarVisitaRapido: cerrarVisitaRapido, reprogramarVisitaRapido: reprogramarVisitaRapido, leadPasarAEspera: leadPasarAEspera, leadReactivar: leadReactivar, openMiDia: openMiDia, mountMiDiaPanel: mountMiDiaPanel, showLostReasonModal: showLostReasonModal, setLostReason: setLostReason, batchSetAgent: batchSetAgent, batchSetStage: batchSetStage, batchToEspera: batchToEspera, batchExportCsv: batchExportCsv, batchSelClear: batchSelClear };
 
 /* --- Generación de token portal desde CRM (en modo propietarios) --- */
 (function () {
@@ -5122,6 +5186,22 @@ function showLostReasonModal(prefill) {
       close({ reason: selected.reason, label: selected.label, detail: detail });
     });
   });
+}
+
+/* Completar el motivo de un lead ya perdido (los históricos sin razón).
+   La usa el Dashboard y la deja trazada en el timeline del lead. */
+async function setLostReason(leadId, lost) {
+  if (!leadId || !lost || !lost.reason) return false;
+  var r = await db().from('leads').update({ lost_reason: lost.reason }).eq('id', leadId);
+  if (r.error) throw new Error(r.error.message);
+  try {
+    await db().from('lead_activities').insert([{
+      lead_id: leadId, activity_type: 'note',
+      title: 'Motivo del rechazo: ' + lost.label,
+      description: lost.detail || null
+    }]);
+  } catch (e2) { /* la nota es best-effort: el motivo ya quedó guardado */ }
+  return true;
 }
 
 function bindLeadTaskForm(panel, lead) {
